@@ -1,0 +1,15 @@
+kind: Pod
+apiVersion: v1
+metadata:
+  name: mypod
+spec:
+  containers:
+    - name: mycontainer
+      image: ******
+      volumeMounts:
+        - name: mypv
+          mountPath: /mnt/path/in/container
+  volumes:
+    - name: mypv
+      persistentVolumeClaim:
+        claimName: mypvc

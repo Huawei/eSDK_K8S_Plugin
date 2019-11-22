@@ -1,0 +1,58 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: external-attacher
+  labels:
+    app: external-attacher
+spec:
+  selector:
+    app: external-attacher
+  ports:
+    - name: dummy
+      port: 12345
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: external-attacher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      external-attacher: external-attacher
+  template:
+    metadata:
+      labels:
+        external-attacher: external-attacher
+    spec:
+      serviceAccount: csi-attacher
+      containers:
+        - name: external-attacher
+          image: quay.io/k8scsi/csi-attacher:v1.0.1
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election"
+            - "--leader-election-namespace=$(MY_NAMESPACE)"
+            - "--leader-election-identity=$(MY_NAME)"
+          env:
+            - name: MY_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+      volumes:
+        - name: socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/huawei.csi.driver
+            type: Directory

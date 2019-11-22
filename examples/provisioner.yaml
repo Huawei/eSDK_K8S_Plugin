@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: huawei-provisioner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: huawei-provisioner
+  template:
+    metadata:
+      labels:
+        app: huawei-provisioner
+    spec:
+      serviceAccountName: huawei-provisioner
+      containers:
+      - name: huawei-provisioner
+        image: huawei-provisioner:*.*.*
+        imagePullPolicy: "IfNotPresent"
+        securityContext:
+          privileged: true
+        volumeMounts:
+          - name: etc
+            mountPath: /etc
+            readOnly: true
+          - name: log
+            mountPath: /var/log
+      volumes:
+        - name: etc
+          hostPath:
+            path: /etc
+            type: Directory
+        - name: log
+          hostPath:
+            path: /var/log/
+            type: Directory

@@ -1,0 +1,14 @@
+all:
+        mkdir -p ./bin
+
+ifeq (${PLATFORM}, X86)
+        mkdir -p ./bin/X86
+        go build -o ./bin/X86/huawei-csi ./csi
+        go build -o ./bin/X86/passwdEncrypt ./tools/passwdEncrypt
+endif
+
+ifeq (${PLATFORM}, ARM)
+        mkdir -p ./bin/ARM
+        GOOS=linux GOARCH=arm64 go build -o ./bin/ARM/huawei-csi ./csi
+        GOOS=linux GOARCH=arm64 go build -o ./bin/ARM/passwdEncrypt ./tools/passwdEncrypt
+endif
