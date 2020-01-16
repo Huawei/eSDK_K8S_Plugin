@@ -6,7 +6,6 @@ import (
 	"storage/oceanstor/client"
 	"storage/oceanstor/smartx"
 	"strconv"
-	"utils"
 	"utils/log"
 )
 
@@ -21,9 +20,7 @@ func (p *Base) commonPreCreate(params map[string]interface{}) error {
 		params["alloctype"] = 1
 	}
 
-	if v, exist := params["clonefrom"].(string); exist && v != "" {
-		_, params["clonefrom"] = utils.GetBackendAndVolume(v)
-
+	if _, exist := params["clonefrom"].(string); exist {
 		if v, exist := params["clonespeed"].(string); exist {
 			speed, err := strconv.Atoi(v)
 			if err != nil || speed < 1 || speed > 4 {
@@ -36,11 +33,6 @@ func (p *Base) commonPreCreate(params map[string]interface{}) error {
 	}
 
 	if v, exist := params["storagepool"].(string); exist {
-		err := p.cli.Login()
-		if err != nil {
-			return err
-		}
-
 		pool, err := p.cli.GetPoolByName(v)
 		if err != nil {
 			log.Errorf("Get storage pool %s info error: %v", v, err)

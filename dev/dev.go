@@ -1,6 +1,7 @@
 package dev
 
 import (
+	"fmt"
 	"strings"
 	"time"
 	"utils"
@@ -10,27 +11,41 @@ import (
 func GetDev(wwn string) (string, error) {
 	output, err := utils.ExecShellCmd("ls -l /dev/disk/by-id/ | grep %s", wwn)
 	if err != nil {
-		if strings.TrimSpace(output) == "" {
+		if strings.TrimSpace(output) == "" || strings.Contains(output, "No such file or directory") {
 			return "", nil
 		}
 
 		return "", err
 	}
 
+	var dev string
+
 	devLines := strings.Split(output, "\n")
 	for _, line := range devLines {
 		splits := strings.Split(line, "../../")
 		if len(splits) >= 2 {
-			if strings.HasPrefix(splits[1], "dm") {
-				return splits[1], nil
-			} else if strings.HasPrefix(splits[1], "sd") {
-				log.Warningf("Only sd dev %s was found, maybe multipath isn't installed or there're not multipaths", splits[1])
-				return splits[1], nil
+			name := splits[1]
+
+			if strings.HasPrefix(name, "dm") {
+				dev = name
+				break
+			}
+
+			if len(dev) == 0 && strings.HasPrefix(name, "sd") {
+				log.Warningf("sd dev %s was found, may multipath isn't installed or there're no multipaths", name)
+				dev = name
 			}
 		}
 	}
 
-	return "", nil
+	if len(dev) != 0 {
+		devPath := fmt.Sprintf("/dev/%s", dev)
+		if exist, _ := utils.PathExist(devPath); !exist {
+			return "", nil
+		}
+	}
+
+	return dev, nil
 }
 
 func rescan(protocol string) error {
@@ -52,7 +67,7 @@ func rescan(protocol string) error {
 }
 
 func deleteDMDev(dm string) error {
-	output, err := utils.ExecShellCmd("for sd in $(ls /sys/block/%s/slaves/); do echo \"1\" > /sys/block/${sd}/device/delete; done", dm)
+	output, err := utils.ExecShellCmd("for sd in $(ls /sys/block/%s/slaves/); do echo 1 > /sys/block/${sd}/device/delete; done", dm)
 	if err != nil {
 		log.Errorf("Delete DM device %s error: %v", dm, output)
 		return err
@@ -69,8 +84,12 @@ func deleteDMDev(dm string) error {
 }
 
 func deleteSDDev(sd string) error {
-	output, err := utils.ExecShellCmd("echo \"1\" > /sys/block/%s/device/delete", sd)
+	output, err := utils.ExecShellCmd("echo 1 > /sys/block/%s/device/delete", sd)
 	if err != nil {
+		if strings.Contains(output, "No such file or directory") {
+			return nil
+		}
+
 		log.Errorf("Delete SD device %s error: %v", sd, output)
 		return err
 	}
@@ -111,11 +130,8 @@ func ScanDev(wwn, protocol string) string {
 	device, _ := GetDev(wwn)
 	if device == "" {
 		log.Warningf("Device of WWN %s wasn't found yet, will rescan and check again", wwn)
-		output, err := utils.ExecShellCmd("multipath -F; for dev in $(ls /sys/block/); do echo 1 > /sys/block/${dev}/device/rescan; done; multipath -v2")
-		if err != nil {
-			log.Warningf("Rescan error: %v", output)
-		}
 
+		rescan(protocol)
 		device, _ = GetDev(wwn)
 	}
 
@@ -209,9 +225,4 @@ func WaitDevOnline(devPath string) {
 	}
 
 	log.Warningf("Wait dev %s online timeout", devPath)
-}
-
-func CheckMultiPathAvailable() error {
-	_, err := utils.ExecShellCmd("multipath -l")
-	return err
 }

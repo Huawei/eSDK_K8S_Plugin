@@ -17,7 +17,7 @@ type Task struct {
 
 type TaskFlow struct {
 	name   string
-	tasks  []Task
+	tasks  []*Task
 	result map[string]interface{}
 }
 
@@ -29,7 +29,7 @@ func NewTaskFlow(name string) *TaskFlow {
 }
 
 func (p *TaskFlow) AddTask(name string, run TaskRunFunc, revert TaskRevertFunc) {
-	p.tasks = append(p.tasks, Task{
+	p.tasks = append(p.tasks, &Task{
 		name:   name,
 		finish: false,
 		run:    run,
@@ -67,6 +67,7 @@ func (p *TaskFlow) Revert() {
 
 	for i := len(p.tasks) - 1; i >= 0; i-- {
 		task := p.tasks[i]
+
 		if task.finish && task.revert != nil {
 			err := task.revert(p.result)
 			if err != nil {

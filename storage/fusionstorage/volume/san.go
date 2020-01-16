@@ -13,28 +13,49 @@ type SAN struct {
 	cli *client.Client
 }
 
-var taskStatusCache = make(map[string]bool)
-
 func NewSAN(cli *client.Client) *SAN {
 	return &SAN{
 		cli: cli,
 	}
 }
-func (p *SAN) Create(params map[string]interface{}) error {
 
+func (p *SAN) preCreate(params map[string]interface{}) error {
 	name := params["name"].(string)
-	if taskStatusCache[name] {
-		delete(taskStatusCache, name)
-		return nil
+	params["name"] = utils.GetFusionStorageLunName(name)
+
+	if v, exist := params["storagepool"].(string); exist {
+		pool, err := p.cli.GetPoolByName(v)
+		if err != nil {
+			return err
+		}
+		if pool == nil {
+			return fmt.Errorf("Storage pool %s doesn't exist", v)
+		}
+
+		params["poolId"] = int64(pool["poolId"].(float64))
 	}
+
+	if v, exist := params["clonefrom"].(string); exist && v != "" {
+		params["clonefrom"] = utils.GetFusionStorageLunName(v)
+	}
+
+	return nil
+}
+
+func (p *SAN) Create(params map[string]interface{}) error {
+	err := p.preCreate(params)
+	if err != nil {
+		return err
+	}
+
 	taskflow := taskflow.NewTaskFlow("Create-FusionStorage-LUN-Volume")
 	taskflow.AddTask("Create-LUN", p.createLun, nil)
-	err := taskflow.Run(params)
+
+	err = taskflow.Run(params)
 	if err != nil {
 		taskflow.Revert()
 		return err
 	}
-	taskStatusCache[name] = true // 任务完成
 
 	return nil
 }
@@ -49,7 +70,7 @@ func (p *SAN) createLun(params, taskResult map[string]interface{}) (map[string]i
 	}
 
 	if vol == nil {
-		_, exist := params["cloneFrom"]
+		_, exist := params["clonefrom"]
 		if exist {
 			err = p.clone(params)
 		} else {
@@ -66,8 +87,7 @@ func (p *SAN) createLun(params, taskResult map[string]interface{}) (map[string]i
 }
 
 func (p *SAN) clone(params map[string]interface{}) error {
-
-	cloneFrom := params["cloneFrom"].(string)
+	cloneFrom := params["clonefrom"].(string)
 
 	srcVol, err := p.cli.GetVolumeByName(cloneFrom)
 	if err != nil {
@@ -79,12 +99,14 @@ func (p *SAN) clone(params map[string]interface{}) error {
 		log.Errorln(msg)
 		return errors.New(msg)
 	}
+
 	volCapacity := params["capacity"].(int64)
 	if volCapacity < int64(srcVol["volSize"].(float64)) {
 		msg := fmt.Sprintf("Clone vol capacity must be >= src %s", cloneFrom)
 		log.Errorln(msg)
 		return errors.New(msg)
 	}
+
 	snapshotName := fmt.Sprintf("k8s_vol_%s_snap_%d", cloneFrom, utils.RandomInt(10000000000))
 
 	err = p.cli.CreateSnapshot(snapshotName, cloneFrom)
@@ -92,6 +114,11 @@ func (p *SAN) clone(params map[string]interface{}) error {
 		log.Errorf("Create snapshot %s error: %v", snapshotName, err)
 		return err
 	}
+
+	defer func() {
+		p.cli.DeleteSnapshot(snapshotName)
+	}()
+
 	volName := params["name"].(string)
 
 	err = p.cli.CreateVolumeFromSnapshot(volName, volCapacity, snapshotName)
@@ -99,14 +126,8 @@ func (p *SAN) clone(params map[string]interface{}) error {
 		log.Errorf("Create volume %s from %s error: %v", volName, snapshotName, err)
 		return err
 	}
-	err = p.cli.DeleteSnapshot(snapshotName)
-	if err != nil {
-		log.Errorf("Delete snapshot %s of %s error: %v", snapshotName, srcVol, err)
-		return err
-	}
 
 	return nil
-
 }
 
 func (p *SAN) Delete(name string) error {
@@ -119,9 +140,6 @@ func (p *SAN) Delete(name string) error {
 		log.Warningf("Volume %s doesn't exist while trying to delete it", name)
 		return nil
 	}
-	err = p.cli.DeleteVolume(name)
-	if err != nil {
-		return err
-	}
-	return nil
+
+	return p.cli.DeleteVolume(name)
 }

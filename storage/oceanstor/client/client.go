@@ -41,9 +41,6 @@ const (
 	LUN_SNAPSHOT_NOT_EXIST       int64 = 1077937880
 	SNAPSHOT_NOT_ACTIVATED       int64 = 1077937891
 	FS_SNAPSHOT_NOT_EXIST        int64 = 1073754118
-	FS_9000_DIR_NOT_EXIST        int64 = 1800000024
-	FS_9000_NFS_SHARE_EXIST      int64 = 204001
-	FS_9000_QUOTA_EXIST          int64 = 1800000046
 )
 
 var (
@@ -64,13 +61,13 @@ func logFilter(method, url string) bool {
 }
 
 type Client struct {
-	url      string
-	urls     []string
-	user     string
-	password string
-	deviceid string
-	token    string
-	client   *http.Client
+	url        string
+	urls       []string
+	user       string
+	password   string
+	deviceid   string
+	token      string
+	client     *http.Client
 	vstoreName string
 }
 
@@ -79,12 +76,12 @@ type Response struct {
 	Data  interface{}            `json:"data,omitempty"`
 }
 
-func NewClient(urls []string, user, password,vstoreName string) *Client {
+func NewClient(urls []string, user, password, vstoreName string) *Client {
 	return &Client{
-		urls:     urls,
-		user:     user,
-		password: password,
-		vstoreName:vstoreName,
+		urls:       urls,
+		user:       user,
+		password:   password,
+		vstoreName: vstoreName,
 	}
 }
 
@@ -204,7 +201,8 @@ func (cli *Client) Login() error {
 		"password": cli.password,
 		"scope":    "0",
 	}
-	if len(cli.vstoreName) >0 {
+
+	if len(cli.vstoreName) > 0 {
 		data["vstorename"] = cli.vstoreName
 	}
 
@@ -572,6 +570,10 @@ func (cli *Client) CreateHost(name string) (map[string]interface{}, error) {
 	}
 
 	code := int64(resp.Error["code"].(float64))
+	if code == OBJECT_NAME_ALREADY_EXIST {
+		log.Infof("Host %s already exists", name)
+		return cli.GetHostByName(name)
+	}
 	if code != 0 {
 		msg := fmt.Sprintf("Create host %s error: %d", name, code)
 		return nil, errors.New(msg)
@@ -579,7 +581,6 @@ func (cli *Client) CreateHost(name string) (map[string]interface{}, error) {
 
 	host := resp.Data.(map[string]interface{})
 	return host, nil
-
 }
 
 func (cli *Client) GetHostByName(name string) (map[string]interface{}, error) {
@@ -973,12 +974,12 @@ func (cli *Client) GetLunCountOfMapping(mappingID string) (int64, error) {
 
 func (cli *Client) CreateFileSystem(params map[string]interface{}) (map[string]interface{}, error) {
 	data := map[string]interface{}{
-		"NAME":        params["name"].(string),
-		"PARENTID":    params["parentid"].(string),
-		"CAPACITY":    params["capacity"].(int64),
-		"DESCRIPTION": params["description"].(string),
-		"ALLOCTYPE":   params["alloctype"].(int),
-		"ISSHOWSNAPDIR": false ,
+		"NAME":          params["name"].(string),
+		"PARENTID":      params["parentid"].(string),
+		"CAPACITY":      params["capacity"].(int64),
+		"DESCRIPTION":   params["description"].(string),
+		"ALLOCTYPE":     params["alloctype"].(int),
+		"ISSHOWSNAPDIR": false,
 	}
 
 	resp, err := cli.post("/filesystem", data)
@@ -1135,25 +1136,31 @@ func (cli *Client) GetNfsShareByPath(path string) (map[string]interface{}, error
 }
 
 func (cli *Client) GetNfsShareAccess(parentID, name string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/NFS_SHARE_AUTH_CLIENT?filter=PARENTID::%s&NAME::%s&range=[0-100]", parentID, name)
-	resp, err := cli.get(url)
+	count, err := cli.GetNfsShareAccessCount(parentID)
 	if err != nil {
 		return nil, err
 	}
 
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		return nil, fmt.Errorf("Get nfs share client of %s:%s error: %d", parentID, name, code)
+	var i int64
+	for i = 0; i < count; i += 100 { // Query per page 100
+		clients, err := cli.GetNfsShareAccessRange(parentID, i, i + 100)
+		if err != nil {
+			return nil, err
+		}
+
+		if clients == nil {
+			return nil, nil
+		}
+
+		for _, ac := range clients {
+			access := ac.(map[string]interface{})
+			if access["NAME"].(string) == name {
+				return access, nil
+			}
+		}
 	}
 
-	if resp.Data == nil {
-		log.Infof("Nfs share client of %s:%s does not exist", parentID, name)
-		return nil, nil
-	}
-
-	respData := resp.Data.([]interface{})
-	access := respData[0].(map[string]interface{})
-	return access, nil
+	return nil, nil
 }
 
 func (cli *Client) GetNfsShareAccessCount(parentID string) (int64, error) {
@@ -1171,6 +1178,7 @@ func (cli *Client) GetNfsShareAccessCount(parentID string) (int64, error) {
 	respData := resp.Data.(map[string]interface{})
 	countStr := respData["COUNT"].(string)
 	count, _ := strconv.ParseInt(countStr, 10, 64)
+
 	return count, nil
 }
 
@@ -1742,7 +1750,7 @@ func (cli *Client) DeactivateLunSnapshot(snapshotID string) error {
 	return nil
 }
 
-func (cli *Client) CreateLunCopy(name, srcLunID, dstLunID, copySpeed string) (map[string]interface{}, error) {
+func (cli *Client) CreateLunCopy(name, srcLunID, dstLunID string, copySpeed int) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"NAME":      name,
 		"COPYSPEED": copySpeed,
@@ -1928,7 +1936,7 @@ func (cli *Client) CloneFileSystem(name string, allocType int, parentID string) 
 	return respData, nil
 }
 
-func (cli *Client) SplitCloneFS(fsID,splitSpeed string) error {
+func (cli *Client) SplitCloneFS(fsID string, splitSpeed int) error {
 	data := map[string]interface{}{
 		"ID":                     fsID,
 		"SPLITENABLE":            true,
@@ -2006,40 +2014,38 @@ func (cli *Client) ExtendLun(lunID string, newCapacity int64) error {
 	return nil
 }
 
-func (cli *Client) GetHyperMetroDomainID(name string) (string, error) {
+func (cli *Client) GetHyperMetroDomain(name string) (map[string]interface{}, error) {
 	resp, err := cli.get("/HyperMetroDomain?range=[0-100]")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	code := int64(resp.Error["code"].(float64))
 	if code != 0 {
-		return "", fmt.Errorf("Get HyperMetroDomain error: %d", code)
+		return nil, fmt.Errorf("Get HyperMetroDomain error: %d", code)
 	}
-
 	if resp.Data == nil {
 		log.Infof("No HyperMetroDomain exist")
-		return "", nil
+		return nil, nil
 	}
-
-	var domainID string
 
 	respData := resp.Data.([]interface{})
 	for _, i := range respData {
 		domain := i.(map[string]interface{})
 		if domain["NAME"].(string) == name {
-			domainID = domain["ID"].(string)
+			return domain, nil
 		}
 	}
 
-	return domainID, nil
+	return nil, nil
 }
 
-func (cli *Client) CreateHyperMetroPair(domainID, localID, remoteID string) (map[string]interface{}, error) {
+func (cli *Client) CreateHyperMetroPair(
+	domainID, localID, remoteID string, firstSync bool) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"DOMAINID":       domainID,
 		"HCRESOURCETYPE": 1,
-		"ISFIRSTSYNC":    true,
+		"ISFIRSTSYNC":    firstSync,
 		"LOCALOBJID":     localID,
 		"REMOTEOBJID":    remoteID,
 		"SPEED":          4,
@@ -2158,293 +2164,22 @@ func (cli *Client) GetHyperMetroPairByLocalObjID(objID string) (map[string]inter
 	}
 
 	respData := resp.Data.([]interface{})
-	if len(respData) <= 0 {
-		log.Infof("Hypermetro of local obj %s does not exist", objID)
-		return nil, nil
-	}
-
-	pair := respData[0].(map[string]interface{})
-	return pair, nil
-}
-
-func (cli *Client) GetFilesystemByName9000(childDirName string) (map[string]interface{}, error) {
-
-	url := fmt.Sprintf("/singleFile?name=%s&parentDir=/",childDirName)
-	resp, err := cli.get(url)
-	if err != nil {
-		return nil, err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code == FS_9000_DIR_NOT_EXIST {
-		msg := fmt.Sprintf("The query directory does not exist")
-		log.Errorln(msg)
-		return nil, nil
-
-	}
-	if code != 0 {
-		msg := fmt.Sprintf("Get directory %s error: %d", childDirName, code)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
-	respData := resp.Data.(map[string]interface{})
-	if len(respData) == 0 {
-		return nil, nil
-	}
-	return respData, nil
-}
-
-func (cli *Client) CreateFileSystem9000(fsName string) (map[string]interface{}, error) {
-
-	data := map[string]interface{}{
-		"name":        fsName,
-		"parentDir":    "/",
-		"owner": "root",
-		"group":   "administrators",
-		"domainType":   2,
-
-	}
-	resp, err := cli.post("/file", data)
-	if err != nil {
-		return nil, err
-	}
-	code := int64(resp.Error["code"].(float64))
-
-	if code != 0 {
-		msg := fmt.Sprintf("Create filesystem %v error: %d", data, code)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
-	}
-	respData := resp.Data.(map[string]interface{})
-	return respData, nil
-}
-
-
-func (cli *Client) DeleteFileSystem9000(dirName string) error {
-	url := fmt.Sprintf("/file?name=%s&parentDir=/", dirName)
-	resp, err := cli.delete(url, nil)
-	if err != nil {
-		return err
-	}
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Delete filesystem %s error: %d", dirName, code)
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-	return nil
-}
-
-func (cli *Client) CreateNfsShare9000(sharePath, description string ) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"sharePath":   sharePath,
-		"description": description,
-	}
-
-	resp, err := cli.post("/nfshare", data)
-	if err != nil {
-		return nil, err
-	}
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		return nil, fmt.Errorf("Create nfs share %v error: %d", data, code)
-	}
-	respData := resp.Data.(map[string]interface{})
-	return respData, nil
-}
-
-
-func (cli *Client) DeleteNfsShare9000(id string) error {
-	url := fmt.Sprintf("/nfshare/%s", id)
-	resp, err := cli.delete(url, nil)
-	if err != nil {
-		return err
-	}
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Delete nfs share %s error: %d", id, code)
-		return errors.New(msg)
-	}
-
-	return nil
-}
-
-func (cli *Client) GetNfsShareByPath9000(sharePath string) (map[string]interface{}, error) {
-
-	url := fmt.Sprintf("/nfshare?filter=sharePath::%s",sharePath)
-	resp, err := cli.get(url)
-	if err != nil {
-		return nil,err
-	}
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Get nfs share %s error: %d", sharePath, code)
-		log.Errorln(msg)
-		return nil,errors.New(msg)
-	}
-	shareInfo := resp.Data.([]interface{})
-	if len(shareInfo) == 0{
-		return nil, nil
-	}
-	return shareInfo[0].(map[string]interface{}),nil
-
-}
-
-func (cli *Client) GetNfsShareById9000(shareId string) (map[string]interface{}, error) {
-
-	url := fmt.Sprintf("/nfshare/%s",shareId)
-	resp, err := cli.get(url)
-	if err != nil {
-		return nil,err
-	}
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Get nfs share %s error: %d", shareId, code)
-		return nil,errors.New(msg)
-	}
-	shareInfo := resp.Data.(map[string]interface{})
-	if len(shareInfo) == 0{
-		return nil, nil
-	}
-	return shareInfo,nil
-
-}
-
-func (cli *Client) AllowNfsShareAccess9000(sharePath string) error {
-	data := map[string]interface{}{
-		"name":       "*",
-		"sharePath": sharePath ,
-		"accessVal":  1,
-		"sync":       0,
-		"allSquash":  1,
-		"rootSquash": 0,
-	}
-
-	resp, err := cli.post("/nfs_share_auth_client", data)
-	if err != nil {
-		return err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Allow nfs share %s access error: %d",sharePath, code)
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-	return nil
-}
-
-func (cli *Client) GetFsQuotaById(quotaId string) (map[string]interface{}, error) {
-
-	url := fmt.Sprintf("/fsquota/%s",quotaId)
-	resp, err := cli.get(url)
-	if err != nil {
-		return nil,err
-	}
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Get quota %s error: %d", quotaId, code)
-		return nil,errors.New(msg)
-	}
-	quotaInfo := resp.Data.(map[string]interface{})
-	if len(quotaInfo) == 0{
-		return nil, nil
-	}
-	return quotaInfo,nil
-}
-
-func (cli *Client) GetFsQuotaByPath(dirName string) (map[string]interface{}, error) {
-
-	url := fmt.Sprintf("/fsquota?filter::treeName=%s",dirName)
-	resp, err := cli.get(url)
-	if err != nil {
-		return nil,err
-	}
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Get the quota of treeName %s  error: %d", dirName, code)
-		return nil,errors.New(msg)
-	}
-	quotas := resp.Data.([]interface{})
-	if len(quotas) == 0{
-		return nil, nil
-	}
-	for _, quota := range quotas {
-		quotaInfo := quota.(map[string]interface{})
-		if quotaInfo["treeName"] == dirName {
-			return quotaInfo, nil
+	for _, i := range respData {
+		pair := i.(map[string]interface{})
+		if pair["LOCALOBJID"] == objID {
+			return pair, nil
 		}
 	}
-	return nil,nil
+
+	log.Infof("Hypermetro of local obj %s does not exist", objID)
+	return nil, nil
 }
 
-func (cli *Client) CreatFsQuota(treeName string, capacity int64) (map[string]interface{}, error) {
-
+func (cli *Client) CreateClonePair(srcLunID, dstLunID string, cloneSpeed int) (map[string]interface{}, error) {
 	data := map[string]interface{}{
-		"parentType": "16400",
-		"parentID": treeName,
-		"resourceType":[]int{1},
-		"hardLimit":[]int64{capacity},
-		"userOrGrpName": "everyone",
-		"treeName" : treeName,
-		"userType":0,
-		"domainType":2,
-		"monitor" : false,
-	}
-
-	resp, err := cli.post("/fsquota", data)
-	if err != nil {
-		return nil, err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Create filesystem quota %v error: %d", data, code)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
-	respData := resp.Data.(map[string]interface{})
-	return respData, nil
-}
-
-func (cli *Client) DeleteFsQuota(quotaId string) error{
-	url := fmt.Sprintf("/fsquota/%s",quotaId)
-	resp, err := cli.delete(url, nil)
-	if err != nil {
-		return err
-	}
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Delete uota error %d: ", code)
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-	return nil
-}
-
-func (cli *Client) GetFilesystemNodeStatus() ([]interface{},error){
-
-	resp, err := cli.get("/node_fs_service")
-	if err != nil {
-		return nil, err
-	}
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Query node information error %d: ", code)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
-	}
-	respData := resp.Data.([]interface{})
-	return respData,nil
-}
-
-func (cli *Client) CreateClonePair(srcLunID, dstLunID, cloneSpeed string) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"copyRate": cloneSpeed,
-		"sourceID": srcLunID,
-		"targetID": dstLunID,
+		"copyRate":          cloneSpeed,
+		"sourceID":          srcLunID,
+		"targetID":          dstLunID,
 		"isNeedSynchronize": "0",
 	}
 
@@ -2462,9 +2197,9 @@ func (cli *Client) CreateClonePair(srcLunID, dstLunID, cloneSpeed string) (map[s
 	return respData, nil
 }
 
-func (cli *Client) SyncClonePair(clonePairID string) error{
+func (cli *Client) SyncClonePair(clonePairID string) error {
 	data := map[string]interface{}{
-		"ID": clonePairID,
+		"ID":         clonePairID,
 		"copyAction": 0,
 	}
 
@@ -2481,9 +2216,9 @@ func (cli *Client) SyncClonePair(clonePairID string) error{
 	return nil
 }
 
-func (cli *Client) DeleteClonePair(clonePairID string) error{
+func (cli *Client) DeleteClonePair(clonePairID string) error {
 	data := map[string]interface{}{
-		"ID": clonePairID,
+		"ID":             clonePairID,
 		"isDeleteDstLun": false,
 	}
 
@@ -2504,8 +2239,8 @@ func (cli *Client) DeleteClonePair(clonePairID string) error{
 	return nil
 }
 
-func (cli *Client) GetClonePairInfo(clonePairID string) (map[string]interface{}, error){
-	url := fmt.Sprintf("/clonepair/%s", clonePairID)
+func (cli *Client) GetClonePairInfo(clonePairID string) (map[string]interface{}, error) {
+	url := fmt.Sprintf("/clonepair?filter=ID::%s", clonePairID)
 
 	resp, err := cli.get(url)
 	if err != nil {
@@ -2517,6 +2252,17 @@ func (cli *Client) GetClonePairInfo(clonePairID string) (map[string]interface{},
 		return nil, fmt.Errorf("Get ClonePair info %s error: %d", clonePairID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
-	return respData, nil
+	if resp.Data == nil {
+		log.Infof("clonePair %s does not exist", clonePairID)
+		return nil, nil
+	}
+
+	respData := resp.Data.([]interface{})
+	if len(respData) <= 0 {
+		log.Infof("clonePair %s does not exist", clonePairID)
+		return nil, nil
+	}
+
+	clonePair := respData[0].(map[string]interface{})
+	return clonePair, nil
 }

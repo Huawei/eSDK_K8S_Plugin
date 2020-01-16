@@ -6,18 +6,21 @@ import (
 	"fmt"
 	"regexp"
 	"sync"
+	"utils"
 	"utils/log"
 )
 
 var (
 	mutex       sync.Mutex
 	csiBackends = make(map[string]*Backend)
+
 	FilterFuncs = [][]interface{}{
 		{"backend", filterByBackendName},
 		{"pool", filterByStoragePool},
 		{"volumeType", filterByVolumeType},
 		{"allocType", filterByAllocType},
 		{"qos", filterByQos},
+		{"hyperMetro", filterByMetro},
 	}
 )
 
@@ -36,35 +39,46 @@ type Backend struct {
 	Plugin     plugin.Plugin
 	Pools      []*StoragePool
 	Parameters map[string]interface{}
+
+	MetroDomain  string
+	MetroBackend *Backend
 }
 
 func analyzePools(backend *Backend, config map[string]interface{}) error {
-	configPools, exist := config["pools"].([]interface{})
-	if !exist || len(configPools) <= 0 {
-		return fmt.Errorf("pools must be configured for backend %s", backend.Name)
-	}
-
 	var pools []*StoragePool
 
-	for _, i := range configPools {
-		name := i.(string)
-		if name == "" {
-			continue
+	if backend.Storage != "OceanStor-9000" {
+		configPools, _ := config["pools"].([]interface{})
+		for _, i := range configPools {
+			name := i.(string)
+			if name == "" {
+				continue
+			}
+
+			pool := &StoragePool{
+				Storage:      backend.Storage,
+				Name:         name,
+				Parent:       backend.Name,
+				Plugin:       backend.Plugin,
+				Capabilities: make(map[string]interface{}),
+			}
+
+			pools = append(pools, pool)
 		}
 
+		if len(pools) == 0 {
+			return fmt.Errorf("No valid pools configured for backend %s", backend.Name)
+		}
+	} else {
 		pool := &StoragePool{
 			Storage:      backend.Storage,
-			Name:         name,
+			Name:         backend.Name,
 			Parent:       backend.Name,
 			Plugin:       backend.Plugin,
 			Capabilities: make(map[string]interface{}),
 		}
 
 		pools = append(pools, pool)
-	}
-
-	if len(pools) <= 0 {
-		return fmt.Errorf("No valid pools configured for backend %s", backend.Name)
 	}
 
 	backend.Pools = pools
@@ -92,51 +106,75 @@ func newBackend(backendName string, config map[string]interface{}) (*Backend, er
 		return nil, err
 	}
 
+	metroDomain, _ := config["hyperMetroDomain"].(string)
+
 	return &Backend{
-		Name:       backendName,
-		Storage:    storage,
-		Available:  false,
-		Plugin:     plugin,
-		Parameters: parameters,
+		Name:        backendName,
+		Storage:     storage,
+		Available:   false,
+		Plugin:      plugin,
+		Parameters:  parameters,
+		MetroDomain: metroDomain,
 	}, nil
 }
 
-func RegisterBackend(backendConfigs []map[string]interface{}) error {
-	for _, config := range backendConfigs {
-		backendName, exist := config["name"].(string)
-		if !exist {
-			msg := "Name must be configured for backend"
-			log.Errorln(msg)
-			return errors.New(msg)
-		} else {
-			match, err := regexp.MatchString(`^[A-Za-z-0-9]+$`, backendName)
-			if err != nil || !match {
-				msg := fmt.Sprintf("backend name %v is invalid, only support consisted by upper&lower characters, numeric and [-]", backendName)
-				log.Errorln(msg)
-				return errors.New(msg)
+func analyzeBackend(config map[string]interface{}) error {
+	backendName, exist := config["name"].(string)
+	if !exist {
+		return errors.New("Name must be configured for backend")
+	}
+
+	match, err := regexp.MatchString(`^[\w-]+$`, backendName)
+	if err != nil || !match {
+		return fmt.Errorf(
+			"backend name %v is invalid, support upper&lower characters, numeric and [-_]", backendName)
+	}
+
+	if _, exist := csiBackends[backendName]; exist {
+		return fmt.Errorf("Backend name %s is duplicated", backendName)
+	}
+
+	backend, err := newBackend(backendName, config)
+	if err != nil {
+		return err
+	}
+
+	err = analyzePools(backend, config)
+	if err != nil {
+		return err
+	}
+
+	csiBackends[backendName] = backend
+	return nil
+}
+
+func updateMetroBackends() {
+	for _, i := range csiBackends {
+		if len(i.MetroDomain) == 0 || i.MetroBackend != nil {
+			continue
+		}
+
+		for _, j := range csiBackends {
+			if i.Name != j.Name && i.MetroDomain == j.MetroDomain && i.Storage == j.Storage {
+				i.MetroBackend, j.MetroBackend = j, i
+
+				i.Plugin.UpdateMetroRemotePlugin(j.Plugin)
+				j.Plugin.UpdateMetroRemotePlugin(i.Plugin)
 			}
 		}
-
-		if _, exist := csiBackends[backendName]; exist {
-			msg := fmt.Sprintf("Backend name %s is duplicated", backendName)
-			log.Errorln(msg)
-			return errors.New(msg)
-		}
-
-		backend, err := newBackend(backendName, config)
-		if err != nil {
-			log.Errorf("New backend %s error: %v", backendName, err)
-			return err
-		}
-
-		err = analyzePools(backend, config)
-		if err != nil {
-			log.Errorf("Analyze pools config of backend %s error: %v", backendName, err)
-			return err
-		}
-
-		csiBackends[backendName] = backend
 	}
+}
+
+func RegisterBackend(backendConfigs []map[string]interface{}) error {
+	for _, i := range backendConfigs {
+		err := analyzeBackend(i)
+		if err != nil {
+			log.Errorf("Analyze backend error: %v", err)
+			return err
+		}
+	}
+
+	updateMetroBackends()
 
 	return nil
 }
@@ -145,7 +183,11 @@ func GetBackend(backendName string) *Backend {
 	return csiBackends[backendName]
 }
 
-func SelectStoragePool(requestSize int64, parameters map[string]string) (*StoragePool, error) {
+func GetMetroDomain(backendName string) string {
+	return csiBackends[backendName].MetroDomain
+}
+
+func selectOnePool(requestSize int64, parameters map[string]interface{}) (*StoragePool, error) {
 	var selectPool *StoragePool
 	var filterPools []*StoragePool
 
@@ -166,7 +208,7 @@ func SelectStoragePool(requestSize int64, parameters map[string]string) (*Storag
 
 	for _, i := range FilterFuncs {
 		key, filter := i[0].(string), i[1].(func(string, []*StoragePool) []*StoragePool)
-		value, _ := parameters[key]
+		value, _ := parameters[key].(string)
 		filterPools = filter(value, filterPools)
 	}
 
@@ -192,11 +234,33 @@ func SelectStoragePool(requestSize int64, parameters map[string]string) (*Storag
 		return nil, errors.New(msg)
 	}
 
-	log.Infof("Select storage pool %s:%s for volume (%d, %v)", selectPool.Parent, selectPool.Name, requestSize, parameters)
+	log.Infof("Select storage pool %s:%s for volume (%d, %v)",
+		selectPool.Parent, selectPool.Name, requestSize, parameters)
+
 	freeCapacity, _ := selectPool.Capabilities["FreeCapacity"].(int64)
 	selectPool.Capabilities["FreeCapacity"] = freeCapacity - requestSize
 
 	return selectPool, nil
+}
+
+func SelectStoragePool(requestSize int64, parameters map[string]interface{}) (*StoragePool, *StoragePool, error) {
+	localPool, err := selectOnePool(requestSize, parameters)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var remotePool *StoragePool
+
+	localBackend := csiBackends[localPool.Parent]
+	if localBackend.MetroBackend != nil {
+		parameters["backend"] = localBackend.MetroBackend.Name
+		remotePool, err = selectOnePool(requestSize, parameters)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	return localPool, remotePool, nil
 }
 
 func filterByBackendName(backendName string, candidatePools []*StoragePool) []*StoragePool {
@@ -232,7 +296,7 @@ func filterByVolumeType(volumeType string, candidatePools []*StoragePool) []*Sto
 				filterPools = append(filterPools, pool)
 			}
 		} else if volumeType == "fs" {
-			if pool.Storage == "oceanstor-nas" {
+			if pool.Storage == "oceanstor-nas" || pool.Storage == "oceanstor-9000" {
 				filterPools = append(filterPools, pool)
 			}
 		}
@@ -247,7 +311,9 @@ func filterByAllocType(allocType string, candidatePools []*StoragePool) []*Stora
 	for _, pool := range candidatePools {
 		valid := false
 
-		if allocType == "thin" || allocType == "" {
+		if pool.Storage == "oceanstor-9000" {
+			valid = true
+		} else if allocType == "thin" || allocType == "" {
 			supportThin, exist := pool.Capabilities["SupportThin"].(bool)
 			valid = exist && supportThin
 		} else if allocType == "thick" {
@@ -273,6 +339,27 @@ func filterByQos(qos string, candidatePools []*StoragePool) []*StoragePool {
 				filterPools = append(filterPools, pool)
 			}
 		} else {
+			filterPools = append(filterPools, pool)
+		}
+	}
+
+	return filterPools
+}
+
+func filterByMetro(hyperMetro string, candidatePools []*StoragePool) []*StoragePool {
+	if len(hyperMetro) == 0 || !utils.StrToBool(hyperMetro) {
+		return candidatePools
+	}
+
+	var filterPools []*StoragePool
+
+	for _, pool := range candidatePools {
+		backend, exist := csiBackends[pool.Parent]
+		if !exist || backend.MetroBackend == nil {
+			continue
+		}
+
+		if supportMetro, exist := pool.Capabilities["SupportMetro"].(bool); exist && supportMetro {
 			filterPools = append(filterPools, pool)
 		}
 	}

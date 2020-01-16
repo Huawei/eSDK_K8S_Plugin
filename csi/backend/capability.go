@@ -36,7 +36,8 @@ func updateBackendCapabilities(backend *Backend, sync bool) error {
 	for _, pool := range backend.Pools {
 		for k, v := range backendCapabilities {
 			if cur, exist := pool.Capabilities[k]; !exist || cur != v {
-				log.Infof("Update capability %s of pool %s of backend %s from %v to %v", k, pool.Name, pool.Parent, cur, v)
+				log.Infof("Update capability %s of pool %s of backend %s from %v to %v",
+					k, pool.Name, pool.Parent, cur, v)
 				pool.Capabilities[k] = v
 			}
 		}
@@ -45,7 +46,8 @@ func updateBackendCapabilities(backend *Backend, sync bool) error {
 		if exist {
 			for k, v := range capabilities {
 				if cur, exist := pool.Capabilities[k]; !exist || cur != v {
-					log.Infof("Update capability %s of pool %s of backend %s from %v to %v", k, pool.Name, pool.Parent, cur, v)
+					log.Infof("Update capability %s of pool %s of backend %s from %v to %v",
+						k, pool.Name, pool.Parent, cur, v)
 					pool.Capabilities[k] = v
 				}
 			}
@@ -58,33 +60,31 @@ func updateBackendCapabilities(backend *Backend, sync bool) error {
 	return nil
 }
 
-func SyncUpdateCapabilities(updateFlagFile string) error {
+func SyncUpdateCapabilities() error {
 	for _, backend := range csiBackends {
 		err := updateBackendCapabilities(backend, true)
 		if err != nil {
 			return err
 		}
 
-		if _, err := os.Stat(updateFlagFile); err != nil {
-			backend.Available = false
-		} else {
-			backend.Available = true
-		}
+		backend.Available = true
 	}
 
 	return nil
 }
 
-func AsyncUpdateCapabilities(updateFlagFile string) {
+func AsyncUpdateCapabilities(controllerFlagFile string) {
 	var wait sync.WaitGroup
 
 	mutex.Lock()
 	defer mutex.Unlock()
 
 	for _, backend := range csiBackends {
-		if _, err := os.Stat(updateFlagFile); err != nil {
-			backend.Available = false
-			continue
+		if len(controllerFlagFile) > 0 {
+			if _, err := os.Stat(controllerFlagFile); err != nil {
+				backend.Available = false
+				continue
+			}
 		}
 
 		wait.Add(1)

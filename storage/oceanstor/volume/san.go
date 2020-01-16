@@ -20,19 +20,22 @@ const (
 	LUNCOPY_RUNNING_STATUS_STOP    = "38"
 	LUNCOPY_RUNNING_STATUS_PAUSED  = "41"
 
-	CLONEPAIR_HEALTH_STATUS_FAULT    = "1"
+	CLONEPAIR_HEALTH_STATUS_FAULT         = "1"
 	CLONEPAIR_RUNNING_STATUS_UNSYNCING    = "0"
 	CLONEPAIR_RUNNING_STATUS_SYNCING      = "1"
 	CLONEPAIR_RUNNING_STATUS_NORMAL       = "2"
 	CLONEPAIR_RUNNING_STATUS_INITIALIZING = "3"
 
 	HYPERMETROPAIR_HEALTH_STATUS_FAULT    = "2"
+	HYPERMETROPAIR_RUNNING_STATUS_NORMAL  = "1"
 	HYPERMETROPAIR_RUNNING_STATUS_TO_SYNC = "100"
 	HYPERMETROPAIR_RUNNING_STATUS_SYNCING = "23"
 	HYPERMETROPAIR_RUNNING_STATUS_UNKNOWN = "0"
 	HYPERMETROPAIR_RUNNING_STATUS_PAUSE   = "41"
 	HYPERMETROPAIR_RUNNING_STATUS_ERROR   = "94"
 	HYPERMETROPAIR_RUNNING_STATUS_INVALID = "35"
+
+	HYPERMETRODOMAIN_RUNNING_STATUS_NORMAL = "1"
 )
 
 type SAN struct {
@@ -48,88 +51,22 @@ func NewSAN(cli, remoteCli *client.Client) *SAN {
 }
 
 func (p *SAN) preCreate(params map[string]interface{}) error {
-	if v, exist := params["hypermetro"].(string); exist {
-		hypermetro, err := strconv.ParseBool(v)
-		if err != nil {
-			log.Errorf("Hypermetro %s is invalid", v)
-			return err
-		}
-		if hypermetro {
-			err := p.getHyperMetroParams(params)
-			if err != nil {
-				log.Errorf("Parse hypermetro params error: %v", err)
-				return err
-			}
-		}
-
-		params["hypermetro"] = hypermetro
-	}
-
-	return nil
-}
-
-func (p *SAN) getHyperMetroParams(params map[string]interface{}) error {
-	metroDomain, exist := params["metrodomain"].(string)
-	if !exist {
-		msg := "No hypermetro domain is specified for metro volume"
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-
-	if p.remoteCli == nil {
-		msg := "No hypermetro remote backend is specified for metro volume"
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-
-	err := p.remoteCli.Login()
+	err := p.commonPreCreate(params)
 	if err != nil {
-		log.Errorf("Cannot login hypermetro remote backend: %v", err)
 		return err
 	}
 
-	if v, exist := params["remotestoragepool"].(string); exist {
-		pool, err := p.remoteCli.GetPoolByName(v)
-		if err != nil {
-			log.Errorf("Get hypermetro remote storage pool %s info error: %v", v, err)
-			return err
-		}
-		if pool == nil {
-			return fmt.Errorf("Hypermetro remote storage pool %s doesn't exist", v)
-		}
+	name := params["name"].(string)
+	params["name"] = utils.GetLunName(name)
 
-		params["remotePoolID"] = pool["ID"].(string)
-	} else {
-		return errors.New("Must specify remote storage pool to create hypermetro volume")
+	if v, exist := params["clonefrom"].(string); exist {
+		params["clonefrom"] = utils.GetLunName(v)
 	}
-
-	domainID, err := p.remoteCli.GetHyperMetroDomainID(metroDomain)
-	if err != nil || domainID == "" {
-		msg := fmt.Sprintf("Cannot get hypermetro domain %s ID", metroDomain)
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-
-	params["metroDomainID"] = domainID
 
 	return nil
 }
 
-func (p *SAN) postCreate(params map[string]interface{}) {
-	p.cli.Logout()
-
-	hyperMetro, exist := params["hypermetro"].(bool)
-	if exist && hyperMetro {
-		p.remoteCli.Logout()
-	}
-}
-
 func (p *SAN) Create(params map[string]interface{}) error {
-	name := params["name"].(string)
-	if taskStatusCache[name] {
-		delete(taskStatusCache,name)
-		return nil
-	}
 	err := p.preCreate(params)
 	if err != nil {
 		return err
@@ -137,15 +74,19 @@ func (p *SAN) Create(params map[string]interface{}) error {
 
 	taskflow := taskflow.NewTaskFlow("Create-LUN-Volume")
 
-	taskflow.AddTask("Get-System-Feature", p.getSystemDiffFeatures, nil)
-	taskflow.AddTask("Create-Local-LUN", p.createLocalLun, p.deleteLocalLun)
-	taskflow.AddTask("Create-Local-QoS", p.createLocalQoS, p.deleteLocalQoS)
+	hyperMetro, ok := params["hypermetro"].(bool)
+	if ok && hyperMetro {
+		taskflow.AddTask("Get-HyperMetro-Params", p.getHyperMetroParams, nil)
+	}
 
-	hyperMetro, exist := params["hypermetro"].(bool)
-	if exist && hyperMetro {
-		taskflow.AddTask("Create-Remote-LUN", p.createRemoteLun, p.deleteRemoteLun)
-		taskflow.AddTask("Create-Remote-QoS", p.createRemoteQoS, p.deleteRemoteQoS)
-		taskflow.AddTask("Create-HyperMetro", p.createHyperMetro, p.deleteHyperMetro)
+	taskflow.AddTask("Get-System-Feature", p.getSystemDiffFeatures, nil)
+	taskflow.AddTask("Create-Local-LUN", p.createLocalLun, p.revertLocalLun)
+	taskflow.AddTask("Create-Local-QoS", p.createLocalQoS, p.revertLocalQoS)
+
+	if ok && hyperMetro {
+		taskflow.AddTask("Create-Remote-LUN", p.createRemoteLun, p.revertRemoteLun)
+		taskflow.AddTask("Create-Remote-QoS", p.createRemoteQoS, p.revertRemoteQoS)
+		taskflow.AddTask("Create-HyperMetro", p.createHyperMetro, p.revertHyperMetro)
 	}
 
 	err = taskflow.Run(params)
@@ -153,7 +94,6 @@ func (p *SAN) Create(params map[string]interface{}) error {
 		taskflow.Revert()
 		return err
 	}
-	taskStatusCache[name] = true //任务已完成
 
 	return nil
 }
@@ -170,63 +110,34 @@ func (p *SAN) Delete(name string) error {
 		return nil
 	}
 
-	lunID := lun["ID"].(string)
 	rssStr := lun["HASRSSOBJECT"].(string)
 
 	var rss map[string]string
 	json.Unmarshal([]byte(rssStr), &rss)
 
+	taskflow := taskflow.NewTaskFlow("Delete-LUN-Volume")
+
 	if rss["HyperMetro"] == "TRUE" {
-		pair, err := p.cli.GetHyperMetroPairByLocalObjID(lunID)
-		if err != nil {
-			log.Errorf("Get hypermetro pair by local obj ID %s error: %v", lunID, err)
-			return err
-		}
-		if pair != nil {
-			pairID := pair["ID"].(string)
-
-			p.cli.StopHyperMetroPair(pairID)
-			p.cli.DeleteHyperMetroPair(pairID)
-		}
-
-		remoteLunID := pair["REMOTEOBJID"].(string)
-		err = p.remoteCli.Login()
-		p.remoteCli.DeleteLun(remoteLunID)
+		taskflow.AddTask("Delete-HyperMetro", p.deleteHyperMetro, nil)
+		taskflow.AddTask("Delete-Remote-LUN", p.deleteRemoteLun, nil)
 	}
 
 	if rss["LunCopy"] == "TRUE" {
-		lunCopyName, err := p.getLunCopyOfLunID(lunID)
-		if err != nil {
-			log.Errorf("Get luncopy of LUN %s error: %v", lunName, err)
-			return err
-		}
-
-		if lunCopyName != "" {
-			err := p.deleteLunCopy(lunCopyName)
-			if err != nil {
-				log.Errorf("Try to delete luncopy of lun %s error: %v", lunID, err)
-				return err
-			}
-		}
+		taskflow.AddTask("Delete-Local-LunCopy", p.deleteLocalLunCopy, nil)
 	}
 
-	qosID, exist := lun["IOCLASSID"].(string)
-	if exist && qosID != "" {
-		smartX := smartx.NewSmartX(p.cli)
-		err := smartX.DeleteQos(qosID, lunID, "lun")
-		if err != nil {
-			log.Errorf("Remove lun %s from qos %s error: %v", lunID, qosID, err)
-			return err
-		}
+	if rss["HyperCopy"] == "TRUE" {
+		taskflow.AddTask("Delete-Local-HyperCopy", p.deleteLocalHyperCopy, nil)
 	}
 
-	err = p.cli.DeleteLun(lunID)
-	if err != nil {
-		log.Errorf("Delete lun %s error: %v", lunName, err)
-		return err
+	taskflow.AddTask("Delete-Local-LUN", p.deleteLocalLun, nil)
+
+	params := map[string]interface{}{
+		"lun":   lun,
+		"lunID": lun["ID"].(string),
 	}
 
-	return nil
+	return taskflow.Run(params)
 }
 
 func (p *SAN) createLocalLun(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
@@ -238,17 +149,12 @@ func (p *SAN) createLocalLun(params, taskResult map[string]interface{}) (map[str
 		return nil, err
 	}
 
-	clonePairFlag := taskResult["isSupportClonePair"].(bool)
-	cloneFrom, exist := params["clonefrom"].(string)
 	if lun == nil {
+		params["parentid"] = params["poolID"].(string)
+
+		_, exist := params["clonefrom"]
 		if exist {
-			cloneFrom = utils.GetLunName(cloneFrom)
-			params["clonefrom"] = cloneFrom
-			if clonePairFlag {
-				lun, err = p.clonePair(params)
-			} else {
-				lun, err = p.clone(params)
-			}
+			lun, err = p.clone(params, taskResult)
 		} else {
 			lun, err = p.cli.CreateLun(params)
 		}
@@ -258,26 +164,10 @@ func (p *SAN) createLocalLun(params, taskResult map[string]interface{}) (map[str
 			return nil, err
 		}
 	} else {
-		if exist {
-			lunID := lun["ID"].(string)
-			if clonePairFlag {
-				err = p.waitClonePairFinish(lunID)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				lunCopyName, err := p.getLunCopyOfLunID(lunID)
-				if err != nil {
-					return nil, err
-				}
-
-				if lunCopyName != "" {
-					err = p.waitLunCopyFinish(lunCopyName)
-					if err != nil {
-						return nil, err
-					}
-				}
-			}
+		err := p.waitCloneFinish(lun, taskResult)
+		if err != nil {
+			log.Errorf("Wait clone finish for LUN %s error: %v", lunName, err)
+			return nil, err
 		}
 	}
 
@@ -286,7 +176,7 @@ func (p *SAN) createLocalLun(params, taskResult map[string]interface{}) (map[str
 	}, nil
 }
 
-func (p *SAN) clonePair(params map[string]interface{}) (map[string]interface{}, error){
+func (p *SAN) clonePair(params map[string]interface{}) (map[string]interface{}, error) {
 	cloneFrom := params["clonefrom"].(string)
 	srcLun, err := p.cli.GetLunByName(cloneFrom)
 	if err != nil {
@@ -325,7 +215,7 @@ func (p *SAN) clonePair(params map[string]interface{}) (map[string]interface{}, 
 	srcLunID := srcLun["ID"].(string)
 	dstLunID := dstLun["ID"].(string)
 
-	cloneSpeed := params["clonespeed"].(string)
+	cloneSpeed := params["clonespeed"].(int)
 	ClonePair, err := p.cli.CreateClonePair(srcLunID, dstLunID, cloneSpeed)
 	if err != nil {
 		log.Errorf("Create ClonePair from %s to %s error: %v", srcLunID, dstLunID, err)
@@ -334,6 +224,18 @@ func (p *SAN) clonePair(params map[string]interface{}) (map[string]interface{}, 
 	}
 
 	ClonePairID := ClonePair["ID"].(string)
+
+	if srcLunCapacity < cloneLunCapacity {
+		err = p.cli.ExtendLun(dstLunID, cloneLunCapacity)
+		if err != nil {
+			log.Errorf("Extend clone lun %s error: %v", dstLunID, err)
+			p.cli.DeleteClonePair(ClonePairID)
+			p.cli.DeleteLun(dstLunID)
+
+			return nil, err
+		}
+	}
+
 	err = p.cli.SyncClonePair(ClonePairID)
 	if err != nil {
 		log.Errorf("Start ClonePair %s error: %v", ClonePairID, err)
@@ -349,18 +251,10 @@ func (p *SAN) clonePair(params map[string]interface{}) (map[string]interface{}, 
 		return nil, err
 	}
 
-	if srcLunCapacity < cloneLunCapacity {
-		err = p.cli.ExtendLun(dstLunID, cloneLunCapacity)
-		if err != nil {
-			log.Errorf("Extend clone lun %s error: %v", dstLunID, err)
-			p.cli.DeleteLun(dstLunID)
-			return nil, err
-		}
-	}
 	return dstLun, nil
 }
 
-func (p *SAN) clone(params map[string]interface{}) (map[string]interface{}, error) {
+func (p *SAN) lunCopy(params map[string]interface{}) (map[string]interface{}, error) {
 	clonefrom := params["clonefrom"].(string)
 	srcLun, err := p.cli.GetLunByName(clonefrom)
 	if err != nil {
@@ -420,10 +314,13 @@ func (p *SAN) clone(params map[string]interface{}) (map[string]interface{}, erro
 
 	lunCopy, err := p.cli.GetLunCopyByName(lunCopyName)
 	if err != nil {
+		smartX.DeleteLunSnapshot(snapshotID)
+		p.cli.DeleteLun(dstLunID)
+
 		return nil, err
 	}
 	if lunCopy == nil {
-		clonespeed := params["clonespeed"].(string)
+		clonespeed := params["clonespeed"].(int)
 		lunCopy, err = p.cli.CreateLunCopy(lunCopyName, snapshotID, dstLunID, clonespeed)
 		if err != nil {
 			log.Errorf("Create luncopy from %s to %s error: %v", snapshotID, dstLunID, err)
@@ -455,7 +352,16 @@ func (p *SAN) clone(params map[string]interface{}) (map[string]interface{}, erro
 	return dstLun, nil
 }
 
-func (p *SAN) deleteLocalLun(taskResult map[string]interface{}) error {
+func (p *SAN) clone(params map[string]interface{}, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	isSupportClonePair := taskResult["isSupportClonePair"].(bool)
+	if isSupportClonePair {
+		return p.clonePair(params)
+	} else {
+		return p.lunCopy(params)
+	}
+}
+
+func (p *SAN) revertLocalLun(taskResult map[string]interface{}) error {
 	lunID, exist := taskResult["localLunID"].(string)
 	if !exist || lunID == "" {
 		return nil
@@ -492,9 +398,12 @@ func (p *SAN) createLocalQoS(params, taskResult map[string]interface{}) (map[str
 	}, nil
 }
 
-func (p *SAN) deleteLocalQoS(taskResult map[string]interface{}) error {
-	lunID := taskResult["localLunID"].(string)
-	qosID := taskResult["localQosID"].(string)
+func (p *SAN) revertLocalQoS(taskResult map[string]interface{}) error {
+	lunID, lunIDExist := taskResult["localLunID"].(string)
+	qosID, qosIDExist := taskResult["localQosID"].(string)
+	if !lunIDExist || !qosIDExist {
+		return nil
+	}
 
 	smartX := smartx.NewSmartX(p.cli)
 	err := smartX.DeleteQos(qosID, lunID, "lun")
@@ -595,7 +504,7 @@ func (p *SAN) waitLunCopyFinish(lunCopyName string) error {
 	return nil
 }
 
-func (p *SAN) waitClonePairFinish(clonePairID string) error{
+func (p *SAN) waitClonePairFinish(clonePairID string) error {
 	err := utils.WaitUntil(func() (bool, error) {
 		clonePair, err := p.cli.GetClonePairInfo(clonePairID)
 		if err != nil {
@@ -630,6 +539,32 @@ func (p *SAN) waitClonePairFinish(clonePairID string) error{
 	return nil
 }
 
+func (p *SAN) waitCloneFinish(lun map[string]interface{}, taskResult map[string]interface{}) error {
+	lunID := lun["ID"].(string)
+
+	isSupportClonePair := taskResult["isSupportClonePair"].(bool)
+	if isSupportClonePair {
+		// ID of clone pair is the same as destination LUN ID
+		err := p.waitClonePairFinish(lunID)
+		if err != nil {
+			return err
+		}
+	} else {
+		lunCopyName, err := p.getLunCopyOfLunID(lunID)
+		if err != nil {
+			return err
+		}
+
+		if len(lunCopyName) > 0 {
+			err := p.waitLunCopyFinish(lunCopyName)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
 
 func (p *SAN) createRemoteLun(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	lunName := params["name"].(string)
@@ -641,7 +576,7 @@ func (p *SAN) createRemoteLun(params, taskResult map[string]interface{}) (map[st
 	}
 
 	if lun == nil {
-		params["parentid"] = params["remotePoolID"].(string)
+		params["parentid"] = taskResult["remotePoolID"].(string)
 
 		lun, err = p.remoteCli.CreateLun(params)
 		if err != nil {
@@ -655,7 +590,7 @@ func (p *SAN) createRemoteLun(params, taskResult map[string]interface{}) (map[st
 	}, nil
 }
 
-func (p *SAN) deleteRemoteLun(taskResult map[string]interface{}) error {
+func (p *SAN) revertRemoteLun(taskResult map[string]interface{}) error {
 	lunID, exist := taskResult["remoteLunID"].(string)
 	if !exist {
 		return nil
@@ -672,7 +607,7 @@ func (p *SAN) createRemoteQoS(params, taskResult map[string]interface{}) (map[st
 	}
 
 	lunID := taskResult["remoteLunID"].(string)
-	lun, err := p.cli.GetLunByID(lunID)
+	lun, err := p.remoteCli.GetLunByID(lunID)
 	if err != nil {
 		return nil, err
 	}
@@ -692,7 +627,7 @@ func (p *SAN) createRemoteQoS(params, taskResult map[string]interface{}) (map[st
 	}, nil
 }
 
-func (p *SAN) deleteRemoteQoS(taskResult map[string]interface{}) error {
+func (p *SAN) revertRemoteQoS(taskResult map[string]interface{}) error {
 	lunID, lunIDExist := taskResult["remoteLunID"].(string)
 	qosID, qosIDExist := taskResult["remoteQosID"].(string)
 	if !lunIDExist || !qosIDExist {
@@ -705,7 +640,7 @@ func (p *SAN) deleteRemoteQoS(taskResult map[string]interface{}) error {
 }
 
 func (p *SAN) createHyperMetro(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	domainID := params["metroDomainID"].(string)
+	domainID := taskResult["metroDomainID"].(string)
 	localLunID := taskResult["localLunID"].(string)
 	remoteLunID := taskResult["remoteLunID"].(string)
 
@@ -718,7 +653,8 @@ func (p *SAN) createHyperMetro(params, taskResult map[string]interface{}) (map[s
 	var pairID string
 
 	if pair == nil {
-		pair, err := p.cli.CreateHyperMetroPair(domainID, localLunID, remoteLunID)
+		_, needFirstSync := params["clonefrom"]
+		pair, err := p.cli.CreateHyperMetroPair(domainID, localLunID, remoteLunID, needFirstSync)
 		if err != nil {
 			log.Errorf("Create hypermetro pair between lun (%s-%s) error: %v", localLunID, remoteLunID, err)
 			return nil, err
@@ -726,20 +662,47 @@ func (p *SAN) createHyperMetro(params, taskResult map[string]interface{}) (map[s
 
 		pairID = pair["ID"].(string)
 
-		err = p.cli.SyncHyperMetroPair(pairID)
-		if err != nil {
-			log.Errorf("Sync hypermetro pair %s error: %v", pairID, err)
-			p.cli.DeleteHyperMetroPair(pairID)
-			return nil, err
+		if needFirstSync {
+			err := p.cli.SyncHyperMetroPair(pairID)
+			if err != nil {
+				log.Errorf("Sync hypermetro pair %s error: %v", pairID, err)
+				p.cli.DeleteHyperMetroPair(pairID)
+				return nil, err
+			}
+
+			err = p.waitHyperMetroSyncFinish(pairID)
+			if err != nil {
+				log.Errorf("Wait hypermetro pair %s sync done error: %v", pairID, err)
+				p.cli.DeleteHyperMetroPair(pairID)
+				return nil, err
+			}
 		}
 	} else {
 		pairID = pair["ID"].(string)
+
+		err := p.waitHyperMetroSyncFinish(pairID)
+		if err != nil {
+			log.Errorf("Wait hypermetro pair %s sync done error: %v", pairID, err)
+			p.cli.DeleteHyperMetroPair(pairID)
+			return nil, err
+		}
 	}
 
-	err = utils.WaitUntil(func() (bool, error) {
+	return map[string]interface{}{
+		"hyperMetroPairID": pairID,
+	}, nil
+}
+
+func (p *SAN) waitHyperMetroSyncFinish(pairID string) error {
+	err := utils.WaitUntil(func() (bool, error) {
 		pair, err := p.cli.GetHyperMetroPair(pairID)
 		if err != nil {
 			return false, err
+		}
+		if pair == nil {
+			msg := fmt.Sprintf("Something wrong with hypermetro pair %s", pairID)
+			log.Errorln(msg)
+			return false, errors.New(msg)
 		}
 
 		healthStatus := pair["HEALTHSTATUS"].(string)
@@ -759,21 +722,17 @@ func (p *SAN) createHyperMetro(params, taskResult map[string]interface{}) (map[s
 		} else {
 			return true, nil
 		}
-	}, time.Hour*6, time.Second*30)
+	}, time.Hour*6, time.Second*5)
 
 	if err != nil {
 		p.cli.StopHyperMetroPair(pairID)
-		p.cli.DeleteHyperMetroPair(pairID)
-
-		return nil, err
+		return err
 	}
 
-	return map[string]interface{}{
-		"hyperMetroPairID": pairID,
-	}, nil
+	return nil
 }
 
-func (p *SAN) deleteHyperMetro(taskResult map[string]interface{}) error {
+func (p *SAN) revertHyperMetro(taskResult map[string]interface{}) error {
 	hyperMetroPairID, exist := taskResult["hyperMetroPairID"].(string)
 	if !exist {
 		return nil
@@ -784,19 +743,191 @@ func (p *SAN) deleteHyperMetro(taskResult map[string]interface{}) error {
 		log.Warningf("Stop hypermetro pair %s error: %v", hyperMetroPairID, err)
 	}
 
-	err = p.cli.DeleteHyperMetroPair(hyperMetroPairID)
-	return err
+	return p.cli.DeleteHyperMetroPair(hyperMetroPairID)
 }
 
-func (p *SAN) getSystemDiffFeatures(params, taskResult map[string]interface{}) (map[string]interface{}, error){
+func (p *SAN) getHyperMetroParams(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	metroDomain, exist := params["metrodomain"].(string)
+	if !exist || len(metroDomain) == 0 {
+		msg := "No hypermetro domain is specified for metro volume"
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	remotePool, exist := params["remotestoragepool"].(string)
+	if !exist || len(remotePool) == 0 {
+		msg := "No remote pool is specified for metro volume"
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	pool, err := p.remoteCli.GetPoolByName(remotePool)
+	if err != nil {
+		log.Errorf("Get hypermetro remote storage pool %s info error: %v", remotePool, err)
+		return nil, err
+	}
+	if pool == nil {
+		return nil, fmt.Errorf("Hypermetro remote storage pool %s doesn't exist", remotePool)
+	}
+
+	domain, err := p.remoteCli.GetHyperMetroDomain(metroDomain)
+	if err != nil || domain == nil {
+		msg := fmt.Sprintf("Cannot get hypermetro domain %s ID", metroDomain)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+	if status := domain["RUNNINGSTATUS"].(string); status != HYPERMETRODOMAIN_RUNNING_STATUS_NORMAL {
+		msg := fmt.Sprintf("Hypermetro domain %s status is not normal", metroDomain)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	return map[string]interface{}{
+		"remotePoolID":  pool["ID"].(string),
+		"metroDomainID": domain["ID"].(string),
+	}, nil
+}
+
+func (p *SAN) getSystemDiffFeatures(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	systemInfo, err := p.cli.GetSystem()
 	if err != nil {
 		log.Errorf("Get system info %s error: %v", systemInfo, err)
 		return nil, err
 	}
+
 	clonePairFlag := utils.IsSupportClonePair(systemInfo)
 
-	return map[string]interface{} {
+	return map[string]interface{}{
 		"isSupportClonePair": clonePairFlag,
+	}, nil
+}
+
+func (p *SAN) deleteLocalLunCopy(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	lunID := params["lunID"].(string)
+
+	lunCopyName, err := p.getLunCopyOfLunID(lunID)
+	if err != nil {
+		log.Errorf("Get luncopy of LUN %s error: %v", lunID, err)
+		return nil, err
+	}
+
+	if lunCopyName != "" {
+		err := p.deleteLunCopy(lunCopyName)
+		if err != nil {
+			log.Errorf("Try to delete luncopy of lun %s error: %v", lunID, err)
+			return nil, err
+		}
+	}
+
+	return nil, nil
+}
+
+func (p *SAN) deleteLocalHyperCopy(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	lunID := params["lunID"].(string)
+
+	// ID of clone pair is the same as destination LUN ID
+	clonePair, err := p.cli.GetClonePairInfo(lunID)
+	if err != nil {
+		log.Errorf("Get clone pair %s error: %v", lunID, err)
+		return nil, err
+	}
+	if clonePair == nil {
+		return nil, nil
+	}
+
+	clonePairID := clonePair["ID"].(string)
+	err = p.cli.DeleteClonePair(clonePairID)
+	if err != nil {
+		log.Errorf("Delete clone pair %s error: %v", clonePairID, err)
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (p *SAN) deleteLocalLun(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	lun := params["lun"].(map[string]interface{})
+	lunID := params["lunID"].(string)
+
+	qosID, exist := lun["IOCLASSID"].(string)
+	if exist && qosID != "" {
+		smartX := smartx.NewSmartX(p.cli)
+		err := smartX.DeleteQos(qosID, lunID, "lun")
+		if err != nil {
+			log.Errorf("Remove lun %s from qos %s error: %v", lunID, qosID, err)
+			return nil, err
+		}
+	}
+
+	err := p.cli.DeleteLun(lunID)
+	if err != nil {
+		log.Errorf("Delete lun %s error: %v", lunID, err)
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (p *SAN) deleteRemoteLun(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	remoteLunID, ok := taskResult["remoteLunID"].(string)
+	if !ok {
+		// No remote lun exists, directly return.
+		return nil, nil
+	}
+
+	lun, err := p.remoteCli.GetLunByID(remoteLunID)
+	if err != nil {
+		log.Errorf("Get hypermetro remote lun by ID %s error: %v", remoteLunID, err)
+		return nil, err
+	}
+
+	qosID, exist := lun["IOCLASSID"].(string)
+	if exist && qosID != "" {
+		smartX := smartx.NewSmartX(p.remoteCli)
+		err := smartX.DeleteQos(qosID, remoteLunID, "lun")
+		if err != nil {
+			log.Errorf("Remove hypermetro remote lun %s from qos %s error: %v", remoteLunID, qosID, err)
+			return nil, err
+		}
+	}
+
+	err = p.remoteCli.DeleteLun(remoteLunID)
+	if err != nil {
+		log.Errorf("Delete hypermetro remote lun %s error: %v", remoteLunID, err)
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (p *SAN) deleteHyperMetro(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	lunID := params["lunID"].(string)
+
+	pair, err := p.cli.GetHyperMetroPairByLocalObjID(lunID)
+	if err != nil {
+		log.Errorf("Get hypermetro pair by local obj ID %s error: %v", lunID, err)
+		return nil, err
+	}
+	if pair == nil {
+		return nil, nil
+	}
+
+	pairID := pair["ID"].(string)
+	status := pair["RUNNINGSTATUS"].(string)
+
+	if status == HYPERMETROPAIR_RUNNING_STATUS_NORMAL ||
+		status == HYPERMETROPAIR_RUNNING_STATUS_TO_SYNC ||
+		status == HYPERMETROPAIR_RUNNING_STATUS_SYNCING {
+		p.cli.StopHyperMetroPair(pairID)
+	}
+
+	err = p.cli.DeleteHyperMetroPair(pairID)
+	if err != nil {
+		log.Errorf("Delete hypermetro pair %s error: %v", pairID, err)
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"remoteLunID": pair["REMOTEOBJID"].(string),
 	}, nil
 }

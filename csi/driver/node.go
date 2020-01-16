@@ -29,23 +29,15 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	mnt := req.GetVolumeCapability().GetMount()
 
-	hostName, err := utils.GetHostName()
-	if err != nil {
-		msg := fmt.Sprint("Fail to get host name")
-		log.Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
 	parameters := map[string]interface{}{
 		"targetPath": req.GetStagingTargetPath(),
 		"fsType":     mnt.GetFsType(),
 		"mountFlags": strings.Join(mnt.GetMountFlags(), ","),
-		"HostName" : hostName,
 	}
 
-	err = backend.Plugin.StageVolume(volName, parameters)
+	err := backend.Plugin.StageVolume(volName, parameters)
 	if err != nil {
 		log.Errorf("Stage volume %s error: %v", volName, err)
-		backend.Plugin.UnstageVolume(volName,parameters)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -67,20 +59,11 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		return nil, status.Error(codes.Internal, msg)
 	}
 
-	hostName,err := utils.GetHostName()
-	if err != nil {
-		msg := fmt.Sprint("Fail to get host name")
-		log.Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
 	parameters := map[string]interface{}{
 		"targetPath": targetPath,
-		"HostName": hostName,
-
 	}
 
-	err = backend.Plugin.UnstageVolume(volName, parameters)
+	err := backend.Plugin.UnstageVolume(volName, parameters)
 	if err != nil {
 		log.Errorf("Unstage volume %s error: %v", volName, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -138,7 +121,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	}
 
 	node := map[string]interface{}{
-		"HostName":       hostname,
+		"HostName": hostname,
 	}
 
 	nodeBytes, err := json.Marshal(node)

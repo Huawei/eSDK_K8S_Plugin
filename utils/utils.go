@@ -5,12 +5,14 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"reflect"
+	"strconv"
 	"strings"
 	"time"
 	"utils/log"
 )
 
-var DoradoCloneVersion  =  "V600R003C00"
+var DoradoCloneVersion = "V600R003C00"
 
 func PathExist(path string) (bool, error) {
 	_, err := os.Stat(path)
@@ -152,11 +154,57 @@ func RandomInt(n int) int {
 	return rand.Intn(n)
 }
 
-func IsSupportClonePair(SystemInfo map[string]interface{}) bool{
-	versionInfo := SystemInfo["PRODUCTVERSION"].(string)
-	if versionInfo >= DoradoCloneVersion {
-		return true
+func CopyMap(srcMap interface{}) map[string]interface{} {
+	copied := make(map[string]interface{})
+
+	if m, ok := srcMap.(map[string]string); ok {
+		for k, v := range m {
+			copied[k] = v
+		}
+	} else if m, ok := srcMap.(map[string]interface{}); ok {
+		for k, v := range m {
+			copied[k] = v
+		}
 	}
 
-	return false
+	return copied
+}
+
+func StrToBool(str string) bool {
+	b, err := strconv.ParseBool(str)
+	if err != nil {
+		log.Warningf("Parse bool string %s error, return false")
+		return false
+	}
+
+	return b
+}
+
+func ReflectCall(obj interface{}, method string, args ...interface{}) []reflect.Value {
+	in := make([]reflect.Value, len(args))
+	for i, v := range args {
+		in[i] = reflect.ValueOf(v)
+	}
+
+	if v := reflect.ValueOf(obj).MethodByName(method); v.IsValid() {
+		return v.Call(in)
+	}
+
+	return nil
+}
+
+func IsSupportClonePair(SystemInfo map[string]interface{}) bool {
+	versionInfo := SystemInfo["PRODUCTVERSION"].(string)
+	return versionInfo >= DoradoCloneVersion
+}
+
+func IsSupportFeature(features map[string]int, feature string) bool {
+	var support bool
+
+	status, exist := features[feature]
+	if exist {
+		support = status == 1 || status == 2
+	}
+
+	return support
 }

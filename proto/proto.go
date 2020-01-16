@@ -13,7 +13,7 @@ func GetISCSIInitiator() (string, error) {
 	output, err := utils.ExecShellCmd("awk 'BEGIN{FS=\"=\";ORS=\"\"}/^InitiatorName=/{print $2}' /etc/iscsi/initiatorname.iscsi")
 	if err != nil {
 		if strings.Contains(output, "cannot open file") {
-			msg := fmt.Sprintf("No ISCSI initiator exist")
+			msg := "No ISCSI initiator exist"
 			log.Errorln(msg)
 			return "", errors.New(msg)
 		}
@@ -33,7 +33,7 @@ func GetFCInitiator() ([]string, error) {
 	}
 
 	if strings.Contains(output, "No such file or directory") {
-		msg := fmt.Sprintf("No FC initiator exist")
+		msg := "No FC initiator exist"
 		log.Errorln(msg)
 		return nil, errors.New(msg)
 	}

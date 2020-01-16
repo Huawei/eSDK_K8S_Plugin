@@ -3,6 +3,7 @@ package log
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ type Logger struct {
 	logDir        string
 	logFilePrefix string
 	logFilePath   string
+	logDebug      bool
 	logFileHandle *os.File
 	logFileMaxCap int64
 	logMutex      sync.Mutex
@@ -30,6 +32,7 @@ type Logger struct {
 func newLogger(conf map[string]string) (*Logger, error) {
 	var logDir = "/var/log/huawei"
 	var maxSize int64 = 1024 * 1024 * 20
+	var logDebug bool
 
 	if "" != conf["logDir"] {
 		logDir = conf["logDir"]
@@ -47,11 +50,16 @@ func newLogger(conf map[string]string) (*Logger, error) {
 		}
 	}
 
+	if "" != conf["logDebug"] {
+		logDebug, _ = strconv.ParseBool(conf["logDebug"])
+	}
+
 	logger := Logger{
 		logDir:        logDir,
 		logFileHandle: nil,
 		logFilePrefix: conf["logFilePrefix"],
 		logFileMaxCap: maxSize,
+		logDebug:      logDebug,
 	}
 
 	err := logger.initLogFile()
@@ -126,11 +134,19 @@ func (l *Logger) dumpLog() {
 }
 
 func (l *Logger) formatWriteLog(level int, format string, args ...interface{}) {
+	if level == debugLog && !l.logDebug {
+		return
+	}
+
 	formatMsg := fmt.Sprintf(format, args...)
 	l.writeLogMsg(level, formatMsg)
 }
 
 func (l *Logger) nonformatWriteLog(level int, args ...interface{}) {
+	if level == debugLog && !l.logDebug {
+		return
+	}
+
 	formatMsg := fmt.Sprint(args...)
 	l.writeLogMsg(level, formatMsg)
 }
@@ -174,6 +190,6 @@ func getLogLevel(level int) string {
 	case fatalLog:
 		return "[FATAL]: "
 	default:
-		return ""
+		return "[UNKNOWN]: "
 	}
 }

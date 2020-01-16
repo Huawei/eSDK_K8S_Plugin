@@ -3,7 +3,7 @@ package plugin
 type Plugin interface {
 	NewPlugin() Plugin
 	Init(map[string]interface{}, map[string]interface{}) error
-	CreateVolume(string, int64, string, map[string]string) (string ,error)
+	CreateVolume(string, map[string]interface{}) (string, error)
 	DeleteVolume(string) error
 	AttachVolume(string, map[string]interface{}) error
 	DetachVolume(string, map[string]interface{}) error
@@ -11,6 +11,7 @@ type Plugin interface {
 	UpdatePoolCapabilities([]string) (map[string]interface{}, error)
 	StageVolume(string, map[string]interface{}) error
 	UnstageVolume(string, map[string]interface{}) error
+	UpdateMetroRemotePlugin(remote Plugin)
 }
 
 var (

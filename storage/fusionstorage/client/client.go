@@ -15,10 +15,12 @@ import (
 )
 
 const (
-	NO_AUTHENTICATED               int64 = 10000003
-	VOLUME_TO_DELETE_NOT_EXIST     int64 = 32150005
-	VOLUME_NAME_TO_QUERY_NOT_EXIST int64 = 31000000
-	OFF_LINE_CODE = "1077949069"
+	VOLUME_NAME_NOT_EXIST   int64 = 50150005
+	INITIATOR_NOT_EXIST     int64 = 50155103
+	HOSTNAME_ALREADY_EXIST  int64 = 50157019
+	INITIATOR_ALREADY_EXIST int64 = 50155102
+	INITIATOR_ADDED_TO_HOST int64 = 50157021
+	OFF_LINE_CODE                 = "1077949069"
 )
 
 var (
@@ -26,7 +28,6 @@ var (
 		"POST": map[string]bool{
 			"/dsware/service/v1.3/sec/login":     true,
 			"/dsware/service/v1.3/sec/keepAlive": true,
-
 		},
 		"GET": map[string]bool{
 			"/dsware/service/v1.3/storagePool": true,
@@ -43,11 +44,9 @@ type Client struct {
 	url       string
 	user      string
 	password  string
-	version   string
 	authToken string
 	client    *http.Client
 }
-
 
 func NewClient(url, user, password string) *Client {
 	return &Client{
@@ -67,9 +66,6 @@ func (cli *Client) Login() error {
 		Timeout: 60 * time.Second,
 	}
 
-	//cli.version = "v1.3"
-	cli.authToken = ""
-
 	log.Infof("Try to login %s.", cli.url)
 
 	data := map[string]interface{}{
@@ -86,10 +82,10 @@ func (cli *Client) Login() error {
 	if result != 0 {
 		return fmt.Errorf("Login %s error: %d", cli.url, result)
 	}
+
 	cli.authToken = respHeader["X-Auth-Token"][0]
-	version, err := cli.GetStorageVersion()
-	cli.version = version
 	log.Infof("Login %s success", cli.url)
+
 	return nil
 }
 
@@ -125,15 +121,6 @@ func (cli *Client) KeepAlive() {
 	}
 }
 
-func (cli *Client) GetStorageVersion() (string, error) {
-	res, err := cli.get("/dsware/service/v1/version")
-	if err != nil {
-		return "", err
-	}
-	version := res["version"].(string)
-	return version, nil
-}
-
 func (cli *Client) doCall(method string, url string, data map[string]interface{}) (http.Header, []byte, error) {
 	var err error
 	var reqUrl string
@@ -150,7 +137,6 @@ func (cli *Client) doCall(method string, url string, data map[string]interface{}
 		reqBody = bytes.NewReader(reqBytes)
 	}
 	reqUrl = cli.url + url
-
 
 	req, err := http.NewRequest(method, reqUrl, reqBody)
 	if err != nil {
@@ -182,6 +168,7 @@ func (cli *Client) doCall(method string, url string, data map[string]interface{}
 		log.Errorf("Read response data error: %v", err)
 		return nil, nil, err
 	}
+
 	if !logFilter(method, url) {
 		log.Infof("Response method: %s, url: %s, body: %s", method, reqUrl, respBody)
 	}
@@ -190,7 +177,6 @@ func (cli *Client) doCall(method string, url string, data map[string]interface{}
 }
 
 func (cli *Client) call(method string, url string, data map[string]interface{}) (http.Header, map[string]interface{}, error) {
-	var result int64
 	var body map[string]interface{}
 
 	respHeader, respBody, err := cli.doCall(method, url, data)
@@ -208,16 +194,9 @@ func (cli *Client) call(method string, url string, data map[string]interface{}) 
 		log.Errorf("Unmarshal response body %s error: %v", respBody, err)
 		return nil, nil, err
 	}
-	if ret, ok := body["result"].(float64); ok {
-		result = int64(ret)
-	} else if ret, ok := body["result"].(map[string]interface{}); ok {
-		result = int64(ret["code"].(float64))
-	}
-	if code, exist := body["errorCode"].(string) ;exist && code == OFF_LINE_CODE{
-		goto RETRY
-	}
 
-	if result == NO_AUTHENTICATED {
+	if errorCode, ok := body["errorCode"].(string); ok && errorCode == OFF_LINE_CODE {
+		log.Warningf("User offline, try to relogin %s", cli.url)
 		goto RETRY
 	}
 
@@ -242,8 +221,8 @@ RETRY:
 	return respHeader, body, nil
 }
 
-func (cli *Client) get(url string) (map[string]interface{}, error) {
-	_, body, err := cli.call("GET", url, nil)
+func (cli *Client) get(url string, data map[string]interface{}) (map[string]interface{}, error) {
+	_, body, err := cli.call("GET", url, data)
 	return body, err
 }
 
@@ -276,7 +255,8 @@ func (cli *Client) CreateVolume(params map[string]interface{}) error {
 
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		return fmt.Errorf("Create volume %v error: %d", data, result)
+		errorCode, _ := resp["errorCode"].(string)
+		return fmt.Errorf("Create volume %v error: %s", data, errorCode)
 	}
 
 	return nil
@@ -284,29 +264,27 @@ func (cli *Client) CreateVolume(params map[string]interface{}) error {
 
 func (cli *Client) GetVolumeByName(name string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/dsware/service/v1.3/volume/queryByName?volName=%s", name)
-	resp, err := cli.get(url)
+	resp, err := cli.get(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		errorCode, exist := resp["errorCode"].(float64)
-		if exist && int64(errorCode) == VOLUME_NAME_TO_QUERY_NOT_EXIST {
-			log.Warningf("Volume of name %s doesn't exist", name)
-			return nil, nil
-		}
-		if exist && int64(errorCode) == 50150005 {
+		errorCode, _ := resp["errorCode"].(float64)
+		if int64(errorCode) == VOLUME_NAME_NOT_EXIST {
 			log.Warningf("Volume of name %s doesn't exist", name)
 			return nil, nil
 		}
 
-		return nil, fmt.Errorf("Get volume by name %s error: %d", name, result)
+		return nil, fmt.Errorf("Get volume by name %s error: %d", name, int64(errorCode))
 	}
-	lun := resp["lunDetailInfo"].(map[string]interface{})
-	if lun != nil && len(lun) == 0 {
+
+	lun, ok := resp["lunDetailInfo"].(map[string]interface{})
+	if !ok {
 		return nil, nil
 	}
+
 	return lun, nil
 }
 
@@ -322,11 +300,11 @@ func (cli *Client) DeleteVolume(name string) error {
 
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		detailList := resp["detail"].([]interface{})
-		detail := detailList[0].(map[string]interface{})
+		details := resp["detail"].([]interface{})
+		detail := details[0].(map[string]interface{})
 
 		errorCode := int64(detail["errorCode"].(float64))
-		if errorCode == VOLUME_TO_DELETE_NOT_EXIST {
+		if errorCode == VOLUME_NAME_NOT_EXIST {
 			log.Warningf("Volume %s doesn't exist while deleting.", name)
 			return nil
 		}
@@ -348,9 +326,15 @@ func (cli *Client) AttachVolume(name, ip string) error {
 		return err
 	}
 
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		return fmt.Errorf("Attach volume %s to %s error: %d", name, ip, result)
+	result := resp[name].([]interface{})
+	if len(result) == 0 {
+		return fmt.Errorf("Attach volume %s to %s error", name, ip)
+	}
+
+	attachResult := result[0].(map[string]interface{})
+	errorCode := attachResult["errorCode"].(string)
+	if errorCode != "0" {
+		return fmt.Errorf("Attach volume %s to %s error: %s", name, ip, errorCode)
 	}
 
 	return nil
@@ -367,40 +351,22 @@ func (cli *Client) DetachVolume(name, ip string) error {
 		return err
 	}
 
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		return fmt.Errorf("Detach volume %s from %s error: %d", name, ip, result)
+	result := resp["volumeInfo"].([]interface{})
+	if len(result) == 0 {
+		return fmt.Errorf("Detach volume %s from %s error", name, ip)
+	}
+
+	detachResult := result[0].(map[string]interface{})
+	errorCode := detachResult["errorCode"].(string)
+	if errorCode != "0" {
+		return fmt.Errorf("Detach volume %s from %s error: %s", name, ip, errorCode)
 	}
 
 	return nil
 }
 
-func (cli *Client) GetAllServers() ([]map[string]interface{}, error) {
-	resp, err := cli.get("/dsware/service/v1.3/server/list")
-	if err != nil {
-		return nil, err
-	}
-
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		return nil, fmt.Errorf("Get all servers error: %d", result)
-	}
-
-	hostInfoList, exist := resp["hostInfoList"].([]interface{})
-	if !exist || len(hostInfoList) <= 0 {
-		return nil, errors.New("No valid server info returned")
-	}
-
-	var servers []map[string]interface{}
-	for _, host := range hostInfoList {
-		servers = append(servers, host.(map[string]interface{}))
-	}
-
-	return servers, nil
-}
-
 func (cli *Client) GetPoolByName(poolName string) (map[string]interface{}, error) {
-	resp, err := cli.get("/dsware/service/v1.3/storagePool")
+	resp, err := cli.get("/dsware/service/v1.3/storagePool", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +392,7 @@ func (cli *Client) GetPoolByName(poolName string) (map[string]interface{}, error
 }
 
 func (cli *Client) GetAllPools() (map[string]interface{}, error) {
-	resp, err := cli.get("/dsware/service/v1.3/storagePool")
+	resp, err := cli.get("/dsware/service/v1.3/storagePool", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -509,273 +475,264 @@ func (cli *Client) CreateVolumeFromSnapshot(volName string, volSize int64, snaps
 	return nil
 }
 
-
-func (cli *Client) GetHostByName(hostName string ) (map[string]interface{},error) {
-
-	resp, err := cli.get("/dsware/service/iscsi/queryAllHost")
-	if err != nil {
-		return nil, err
-	}
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		msg := fmt.Sprintf("Get hostName error: %d",result)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
-	}
-	hostList := resp["hostList"].([]interface{})
-	if len(hostList) == 0 {
-		return nil, nil
-	}
-	for _, host := range hostList {
-		hostInfo := host.(map[string]interface{})
-		if hostInfo["hostName"] == hostName {
-			return hostInfo, nil
-
-		}
-
-	}
-	return nil, nil
-}
-
-func (cli *Client) CreateHost(hostName string ) error {
-
+func (cli *Client) GetHostByName(hostName string) (map[string]interface{}, error) {
 	data := map[string]interface{}{
-		"hostName" : hostName,
-	}
-
-	resp, err := cli.post("/dsware/service/iscsi/createHost",data)
-	if err != nil {
-		return  err
-	}
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		msg := fmt.Sprintf("Create host %s error: %d",hostName, result)
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-	return nil
-}
-func (cli *Client) GetInitiatorByName(initiatorName string ) (map[string]interface{}, error) {
-
-	data := map[string]interface{}{}
-
-	resp, err := cli.post("/dsware/service/iscsi/queryPortInfo",data)
-	if err != nil {
-		return  nil, err
-	}
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		msg := fmt.Sprintf("Get initiator %s error: %d",initiatorName, result)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
-	}
-	portList := resp["portList"].([]interface{})
-	if len(portList) == 0 {
-		return nil, nil
-	}
-	for _, port := range portList{
-		portInfo := port.(map[string]interface{})
-		if portInfo["portName"].(string) == initiatorName {
-			return portInfo ,nil
-
-		}
-	}
-	return nil, nil
-}
-
-func (cli *Client) QueryHostByPort(initiatorName string ) (string, error) {
-
-	data := map[string]interface{}{
-		"portName": []string{initiatorName},
-	}
-
-	resp, err := cli.post("/dsware/service/iscsi/queryHostByPort",data)
-	if err != nil {
-		return  "", err
-	}
-	result := int64(resp["result"].(float64))
-	if result !=0 {
-		msg := fmt.Sprintf("Get the host of initiator %s error: %d",initiatorName, result)
-		log.Errorln(msg)
-		return "", errors.New(msg)
-	}
-	portHostMap := resp["portHostMap"].(map[string]interface{})
-	if len(portHostMap) == 0 {
-		return "",nil
-	}
-	hosts := portHostMap[initiatorName].([]interface{})
-	return hosts[0].(string) ,nil
-}
-
-func (cli *Client) GetParentHostByInitiatorName(initiatorName string ) (map[string]interface{}, error) {
-
-	data := map[string]interface{}{
-		"portName" : initiatorName,
-	}
-
-	resp, err := cli.post("/dsware/service/iscsi/queryPortInfo",data)
-	if err != nil {
-		return  nil, err
-	}
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		msg := fmt.Sprintf("Get the parent host of initiator %s error: %d",initiatorName, result)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
-	}
-	return resp, nil
-}
-
-func (cli *Client) CreateInitiator(initiatorName string ) error {
-
-	data := map[string]interface{}{
-		"portName" : initiatorName,
-	}
-
-	resp, err := cli.post("/dsware/service/iscsi/createPort",data)
-	if err != nil {
-		return  err
-	}
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		msg := fmt.Sprintf("Create initiator %s error: %d",initiatorName, result)
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-	return nil
-}
-func (cli *Client) AddPortToHost(initiatorName, hostName string ) error {
-
-	data := map[string]interface{}{
-		"portNames" : []string{initiatorName},
 		"hostName": hostName,
 	}
 
-	resp, err := cli.post("/dsware/service/iscsi/addPortToHost",data)
-	if err != nil {
-		return  err
-	}
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		msg := fmt.Sprintf("Add initiator %s to host %s error: %d",initiatorName, hostName, result)
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-	return nil
-}
-
-func (cli *Client) AddLunToHost(lunName, hostName string ) error {
-
-	data := map[string]interface{}{
-		"lunNames" : []string{lunName},
-		"hostName": hostName,
-	}
-
-	resp, err := cli.post("/dsware/service/iscsi/addLunsToHost",data)
-	if err != nil {
-		return  err
-	}
-	result := int64(resp["result"].(float64))
-	if result != 0 {
-		msg := fmt.Sprintf("Add lun %s to host %s error: %d",lunName, hostName, result)
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-	return nil
-}
-
-func (cli *Client) QueryHostByLun(lunName string) ([]interface{}, error) {
-	data := map[string]interface{}{
-		"lunName" : lunName,
-	}
-
-	resp, err := cli.post("/dsware/service/v1.3/lun/host/list",data)
+	resp, err := cli.get("/dsware/service/iscsi/queryAllHost", data)
 	if err != nil {
 		return nil, err
 	}
 
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		msg := fmt.Sprintf("Query host by lun %s error: %d", lunName, result)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
+		return nil, fmt.Errorf("Get host of name %s error: %d", hostName, result)
 	}
 
-	hostList := resp["hostList"].([]interface{})
+	hostList, exist := resp["hostList"].([]interface{})
+	if !exist {
+		log.Infof("Host %s does not exist", hostName)
+		return nil, nil
+	}
 
-	return hostList, nil
+	for _, i := range hostList {
+		host := i.(map[string]interface{})
+		if host["hostName"] == hostName {
+			return host, nil
+		}
+	}
+
+	return nil, nil
 }
 
-
-func (cli *Client) DeleteLunFromHost(lunName, hostName string ) error {
-
+func (cli *Client) CreateHost(hostName string) error {
 	data := map[string]interface{}{
-		"lunNames" : []string{lunName},
 		"hostName": hostName,
+	}
+
+	resp, err := cli.post("/dsware/service/iscsi/createHost", data)
+	if err != nil {
+		return err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		if !cli.checkErrorCode(resp, HOSTNAME_ALREADY_EXIST) {
+			return fmt.Errorf("Create host %s error", hostName)
+		}
+	}
+
+	return nil
+}
+
+func (cli *Client) GetInitiatorByName(name string) (map[string]interface{}, error) {
+	data := map[string]interface{}{
+		"portName": name,
+	}
+
+	resp, err := cli.post("/dsware/service/iscsi/queryPortInfo", data)
+	if err != nil {
+		return nil, err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		if !cli.checkErrorCode(resp, INITIATOR_NOT_EXIST) {
+			return nil, fmt.Errorf("Get initiator %s error", name)
+		}
+
+		log.Infof("Initiator %s does not exist", name)
+		return nil, nil
+	}
+
+	portList, exist := resp["portList"].([]interface{})
+	if !exist || len(portList) == 0 {
+		log.Infof("Initiator %s does not exist", name)
+		return nil, nil
+	}
+
+	return portList[0].(map[string]interface{}), nil
+}
+
+func (cli *Client) QueryHostByPort(port string) (string, error) {
+	data := map[string]interface{}{
+		"portName": []string{port},
+	}
+
+	resp, err := cli.post("/dsware/service/iscsi/queryHostByPort", data)
+	if err != nil {
+		return "", err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		if !cli.checkErrorCode(resp, INITIATOR_NOT_EXIST) {
+			return "", fmt.Errorf("Get host initiator %s belongs error", port)
+		}
+
+		log.Infof("Initiator %s does not belong to any host", port)
+		return "", nil
+	}
+
+	portHostMap, exist := resp["portHostMap"].(map[string]interface{})
+	if !exist {
+		log.Infof("Initiator %s does not belong to any host", port)
+		return "", nil
+	}
+
+	hosts, exist := portHostMap[port].([]interface{})
+	if !exist || len(hosts) == 0 {
+		log.Infof("Initiator %s does not belong to any host", port)
+		return "", nil
+	}
+
+	return hosts[0].(string), nil
+}
+
+func (cli *Client) CreateInitiator(name string) error {
+	data := map[string]interface{}{
+		"portName": name,
+	}
+
+	resp, err := cli.post("/dsware/service/iscsi/createPort", data)
+	if err != nil {
+		return err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		if !cli.checkErrorCode(resp, INITIATOR_ALREADY_EXIST) {
+			return fmt.Errorf("Create initiator %s error", name)
+		}
+	}
+
+	return nil
+}
+
+func (cli *Client) AddPortToHost(initiatorName, hostName string) error {
+	data := map[string]interface{}{
+		"hostName":  hostName,
+		"portNames": []string{initiatorName},
+	}
+
+	resp, err := cli.post("/dsware/service/iscsi/addPortToHost", data)
+	if err != nil {
+		return err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		if !cli.checkErrorCode(resp, INITIATOR_ADDED_TO_HOST) {
+			return fmt.Errorf("Add initiator %s to host %s error", initiatorName, hostName)
+		}
+	}
+
+	return nil
+}
+
+func (cli *Client) AddLunToHost(lunName, hostName string) error {
+	data := map[string]interface{}{
+		"hostName": hostName,
+		"lunNames": []string{lunName},
+	}
+
+	resp, err := cli.post("/dsware/service/iscsi/addLunsToHost", data)
+	if err != nil {
+		return err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		return fmt.Errorf("Add lun %s to host %s error: %d", lunName, hostName, result)
+	}
+
+	return nil
+}
+
+func (cli *Client) DeleteLunFromHost(lunName, hostName string) error {
+	data := map[string]interface{}{
+		"hostName": hostName,
+		"lunNames": []string{lunName},
 	}
 
 	resp, err := cli.post("/dsware/service/iscsi/deleteLunFromHost", data)
 	if err != nil {
-		return  err
+		return err
 	}
+
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		msg := fmt.Sprintf("Unmap lun %s from host %s error: %d", lunName, hostName, result)
-		log.Errorln(msg)
-		return errors.New(msg)
+		return fmt.Errorf("Delete lun %s from host %s error: %d", lunName, hostName, result)
 	}
+
 	return nil
 }
 
-func (cli *Client) QueryIscsiPortal() ([]interface{}, error) {
+func (cli *Client) QueryIscsiPortal() ([]map[string]interface{}, error) {
 	data := make(map[string]interface{})
 	resp, err := cli.post("/dsware/service/cluster/dswareclient/queryIscsiPortal", data)
-
 	if err != nil {
-		return  nil, err
+		return nil, err
 	}
+
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		msg := fmt.Sprintf("Query iscsi portal error code : %d", result)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
+		return nil, fmt.Errorf("Query iscsi portal error: %d", result)
 	}
 
-	nodeResultList := resp["nodeResultList"].([]interface{})
+	var nodeResultList []map[string]interface{}
+
+	respData, exist := resp["nodeResultList"].([]interface{})
+	if exist {
+		for _, i := range respData {
+			nodeResultList = append(nodeResultList, i.(map[string]interface{}))
+		}
+	}
 
 	return nodeResultList, nil
 }
 
-
-func (cli *Client) QueryHostFromVolume(lunName, hostName string) (map[string]interface{}, error) {
-
+func (cli *Client) QueryHostOfVolume(lunName string) ([]map[string]interface{}, error) {
 	data := map[string]interface{}{
-		"lunName":lunName,
+		"lunName": lunName,
 	}
+
 	resp, err := cli.post("/dsware/service/iscsi/queryHostFromVolume", data)
 	if err != nil {
-		return  nil, err
+		return nil, err
 	}
+
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		msg := fmt.Sprintf("Query lun %s mapping information code : %d", lunName, result)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
+		return nil, fmt.Errorf("Query hosts which lun %s mapped error: %d", lunName, result)
 	}
-	hostList := resp["hostList"].([]interface{})
-	if len(hostList) ==0 {
-		return nil, nil
-	}
-	for _,host := range hostList {
-		hostInfo := host.(map[string]interface{})
-		if hostInfo["hostName"] == hostName {
-			return hostInfo, nil
+
+	var hostList []map[string]interface{}
+
+	respData, exist := resp["hostList"].([]interface{})
+	if exist {
+		for _, i := range respData {
+			hostList = append(hostList, i.(map[string]interface{}))
 		}
 	}
 
-	return nil, nil
+	return hostList, nil
 }
 
+func (cli *Client) checkErrorCode(resp map[string]interface{}, errorCode int64) bool {
+	details, exist := resp["detail"].([]interface{})
+	if !exist || len(details) == 0 {
+		return false
+	}
 
+	for _, i := range details {
+		detail := i.(map[string]interface{})
+		detailErrorCode := int64(detail["errorCode"].(float64))
+		if detailErrorCode != errorCode {
+			return false
+		}
+	}
 
-
+	return true
+}

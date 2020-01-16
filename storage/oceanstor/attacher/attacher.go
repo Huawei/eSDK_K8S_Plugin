@@ -15,13 +15,15 @@ type Attacher struct {
 	cli      *client.Client
 	protocol string
 	invoker  string
+	portals  []string
 }
 
-func NewAttacher(cli *client.Client, protocol, invoker string) *Attacher {
+func NewAttacher(cli *client.Client, protocol, invoker string, portals []string) *Attacher {
 	return &Attacher{
 		cli:      cli,
 		protocol: protocol,
 		invoker:  invoker,
+		portals:  portals,
 	}
 }
 
@@ -46,133 +48,8 @@ func (p *Attacher) getMappingName(postfix string) string {
 	return fmt.Sprintf("k8s_%s_mapping_%s", p.invoker, postfix)
 }
 
-func (p *Attacher) getExistHostByISCSIInitiator(iscsiInitiator string) (string, error) {
-	var hostID string
-	var err error
-
-	if iscsiInitiator == "" {
-		iscsiInitiator, err = proto.GetISCSIInitiator()
-		if err != nil {
-			log.Errorf("Get ISCSI initiator error: %v", err)
-			return "", err
-		}
-	}
-
-	initiator, err := p.cli.GetIscsiInitiator(iscsiInitiator)
-	if err != nil {
-		log.Errorf("Get ISCSI initiator %s error: %v", iscsiInitiator, err)
-		return "", err
-	}
-	if initiator == nil {
-		return "", nil
-	}
-
-	isFree := initiator["ISFREE"].(string)
-	if isFree == "false" {
-		hostID = initiator["PARENTID"].(string)
-	}
-
-	return hostID, nil
-}
-
-func (p *Attacher) getExistHostByFCInitiator(fcInitiators []string) (string, error) {
-	var err error
-
-	if fcInitiators == nil {
-		fcInitiators, err = proto.GetFCInitiator()
-		if err != nil {
-			log.Errorf("Get fc initiator error: %v", err)
-			return "", err
-		}
-	}
-
-	var hosts []string
-
-	for _, wwn := range fcInitiators {
-		initiator, err := p.cli.GetFCInitiator(wwn)
-		if err != nil {
-			log.Errorf("Get FC initiator %s error: %v", wwn, err)
-			return "", err
-		}
-		if initiator == nil {
-			log.Warningf("FC initiator %s does not exist", wwn)
-			continue
-		}
-
-		status := initiator["RUNNINGSTATUS"].(string)
-		if status != "27" {
-			log.Warningf("FC initiator %s is not online", wwn)
-			continue
-		}
-
-		isFree := initiator["ISFREE"].(string)
-		if isFree == "false" {
-			host := initiator["PARENTID"].(string)
-			hosts = append(hosts, host)
-		}
-	}
-
-	if len(hosts) <= 0 {
-		return "", nil
-	}
-
-	for i := 0; i < len(hosts)-1; i++ {
-		if hosts[i] != hosts[i+1] {
-			msg := fmt.Sprintf("There are more than 1 hosts FC initiators %v associated", fcInitiators)
-			log.Errorln(msg)
-			return "", errors.New(msg)
-		}
-	}
-
-	return hosts[0], nil
-}
-
-func (p *Attacher) getHostIDByLocalHostname(hostname string) (string, error){
-
-	hostToQuery := p.getHostName(hostname)
-	host, err := p.cli.GetHostByName(hostToQuery)
-	if err != nil {
-		log.Errorf("Get host %s error: %v", hostname, err)
-		return "", err
-	}
-	if host == nil {
-		host, err = p.cli.CreateHost(hostToQuery)
-		if err != nil {
-			log.Errorf("Create host %s error: %v", hostToQuery, err)
-			return "", err
-		}
-	}
-	return host["ID"].(string), nil
-
-}
-
 func (p *Attacher) getHostID(parameters map[string]interface{}, toCreate bool) (string, error) {
-	var hostID string
 	var err error
-
-	if p.protocol == "iscsi" {
-		initiator, exist := parameters["ISCSIInitiator"].(string)
-		if !exist {
-			initiator = ""
-		}
-
-		hostID, err = p.getExistHostByISCSIInitiator(initiator)
-	} else {
-		initiators, exist := parameters["FCInitiators"].([]string)
-		if !exist {
-			initiators = nil
-		}
-
-		hostID, err = p.getExistHostByFCInitiator(initiators)
-	}
-
-	if err != nil {
-		return "", err
-	}
-	if hostID != "" {
-		log.Infof("Get host ID %s", hostID)
-		return hostID, nil
-	}
 
 	hostname, exist := parameters["HostName"].(string)
 	if !exist {
@@ -186,15 +63,26 @@ func (p *Attacher) getHostID(parameters map[string]interface{}, toCreate bool) (
 	hostToQuery := p.getHostName(hostname)
 	host, err := p.cli.GetHostByName(hostToQuery)
 	if err != nil {
-		log.Errorf("Get host %s error: %v", hostname, err)
+		log.Errorf("Get host %s error: %v", hostToQuery, err)
 		return "", err
 	}
-	host, err = p.cli.CreateHost(hostToQuery)
-	if err != nil {
-		log.Errorf("Create host %s error: %v", hostToQuery, err)
-		return "", err
+	if host == nil && toCreate {
+		host, err = p.cli.CreateHost(hostToQuery)
+		if err != nil {
+			log.Errorf("Create host %s error: %v", hostToQuery, err)
+			return "", err
+		}
 	}
-	return host["ID"].(string), nil
+
+	if host != nil {
+		return host["ID"].(string), nil
+	}
+
+	if toCreate {
+		return "", fmt.Errorf("Cannot create host %s", hostToQuery)
+	}
+
+	return "", nil
 }
 
 func (p *Attacher) createMapping(hostID string) (string, error) {
@@ -344,8 +232,62 @@ Add_TO_MAPPING:
 
 	return nil
 }
-//config vstore should add initiator first
+
 func (p *Attacher) attachISCSI(hostID string, parameters map[string]interface{}) error {
+	ports, err := p.cli.GetIscsiTgtPort()
+	if err != nil {
+		log.Errorf("Get ISCSI tgt port error: %v", err)
+		return err
+	}
+	if ports == nil {
+		msg := "No ISCSI tgt port exist"
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+
+	validIPs := map[string]bool{}
+	for _, i := range ports {
+		port := i.(map[string]interface{})
+		portID := port["ID"].(string)
+		portIqn := strings.Split(portID, ",")[0]
+		splitIqn := strings.Split(portIqn, ":")
+
+		if len(splitIqn) < 6 {
+			continue
+		}
+
+		validIPs[splitIqn[5]] = true
+	}
+
+	for _, ip := range p.portals {
+		if !validIPs[ip] {
+			msg := fmt.Sprintf("ISCSI portal %s is not valid", ip)
+			log.Errorln(msg)
+			return errors.New(msg)
+		}
+
+		output, err := utils.ExecShellCmd("iscsiadm -m discovery -t sendtargets -p %s", ip)
+		if err != nil {
+			log.Errorf("Cannot connect ISCSI portal %s: %v", ip, output)
+			return err
+		}
+	}
+
+	// Need ignore error here
+	output, _ := utils.ExecShellCmd("iscsiadm -m session")
+
+	for _, ip := range p.portals {
+		if strings.Contains(output, ip) {
+			log.Infof("Already login iscsi target %s, no need login again", ip)
+			continue
+		}
+
+		output, err := utils.ExecShellCmd("iscsiadm -m node -p %s --login", ip)
+		if err != nil {
+			log.Errorf("Login iscsi target %s error: %s", ip, output)
+			return err
+		}
+	}
 
 	name, err := proto.GetISCSIInitiator()
 	if err != nil {
@@ -382,62 +324,6 @@ func (p *Attacher) attachISCSI(hostID string, parameters map[string]interface{})
 		return errors.New(msg)
 	}
 
-	//make connection to target
-	ports, err := p.cli.GetIscsiTgtPort()
-	if err != nil {
-		log.Errorf("Get ISCSI tgt port error: %v", err)
-		return err
-	}
-	if ports == nil {
-		msg := "No ISCSI tgt port exist"
-		log.Errorln(msg)
-		return errors.New(msg)
-	}
-
-	validIPs := map[string]bool{}
-	for _, i := range ports {
-		port := i.(map[string]interface{})
-		portID := port["ID"].(string)
-		portIqn := strings.Split(portID, ",")[0]
-		splitIqn := strings.Split(portIqn, ":")
-
-		if len(splitIqn) < 6 {
-			continue
-		}
-
-		validIPs[splitIqn[5]] = true
-	}
-
-	portals := parameters["portals"].([]string)
-	for _, ip := range portals {
-		if !validIPs[ip] {
-			msg := fmt.Sprintf("ISCSI portal %s is not valid at backend", ip)
-			log.Errorln(msg)
-			return errors.New(msg)
-		}
-
-		output, err := utils.ExecShellCmd("iscsiadm -m discovery -t sendtargets -p %s", ip)
-		if err != nil {
-			log.Errorf("Cannot connect ISCSI portal %s: %v", ip, output)
-			return err
-		}
-	}
-
-	// Need ignore error here
-	output, _ := utils.ExecShellCmd("iscsiadm -m session")
-
-	for _, ip := range portals {
-		if strings.Contains(output, ip) {
-			log.Infof("Already login iscsi target %s, no need login again", ip)
-			continue
-		}
-
-		output, err := utils.ExecShellCmd("iscsiadm -m node -p %s --login", ip)
-		if err != nil {
-			log.Errorf("Login iscsi target %s error: %s", ip, output)
-			return err
-		}
-	}
 	return nil
 }
 
@@ -561,31 +447,22 @@ func (p *Attacher) doUnmapping(hostID, lunName string, parameters map[string]int
 	return lun["WWN"].(string), nil
 }
 
-func (p *Attacher) NodeStage(lunName string, parameters map[string]interface{}) error {
+func (p *Attacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
 	wwn, err := p.ControllerAttach(lunName, parameters)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	device := dev.ScanDev(wwn, p.protocol)
 	if device == "" {
 		msg := fmt.Sprintf("Cannot detect device %s", wwn)
 		log.Errorln(msg)
-		return errors.New(msg)
+		return "", errors.New(msg)
 	}
 
 	devPath := fmt.Sprintf("/dev/%s", device)
-	targetPath := parameters["targetPath"].(string)
-	fsType := parameters["fsType"].(string)
-	mountFlags := parameters["mountFlags"].(string)
 
-	err = dev.MountLunDev(devPath, targetPath, fsType, mountFlags)
-	if err != nil {
-		log.Errorf("Mount device %s to %s error: %v", devPath, targetPath, err)
-		return err
-	}
-
-	return nil
+	return devPath, nil
 }
 
 func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
@@ -608,19 +485,10 @@ func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}
 }
 
 func (p *Attacher) ControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
-
-	hostname,exist := parameters["HostName"].(string)
-	if !exist {
-		hostname,_ = utils.GetHostName()
-	}
-	hostID, err := p.getHostIDByLocalHostname(hostname)
+	hostID, err := p.getHostID(parameters, true)
 	if err != nil {
 		log.Errorf("Get host ID error: %v", err)
 		return "", err
-	}
-	if hostID == "" {
-		log.Errorf("Cannot get host ID while attaching %s", lunName)
-		return "", nil
 	}
 
 	if p.protocol == "iscsi" {
@@ -630,7 +498,7 @@ func (p *Attacher) ControllerAttach(lunName string, parameters map[string]interf
 	}
 
 	if err != nil {
-		log.Errorf("Check %s connection error: %v", p.protocol, err)
+		log.Errorf("Attach %s connection error: %v", p.protocol, err)
 		return "", err
 	}
 
@@ -644,22 +512,15 @@ func (p *Attacher) ControllerAttach(lunName string, parameters map[string]interf
 }
 
 func (p *Attacher) ControllerDetach(lunName string, parameters map[string]interface{}) (string, error) {
-	hostname,exist := parameters["HostName"].(string)
-	if !exist {
-		hostname,_ = utils.GetHostName()
-	}
-	hostToQuery := p.getHostName(hostname)
-	host, err := p.cli.GetHostByName(hostToQuery)
+	hostID, err := p.getHostID(parameters, false)
 	if err != nil {
-		log.Errorf("Get host %s error: %v", hostname, err)
+		log.Infof("Get host ID error: %v", err)
 		return "", err
 	}
-
-	if host == nil {
-		log.Infof("Host %s doesn't exist while detaching", lunName)
+	if hostID == "" {
+		log.Infof("Host doesn't exist while detaching %s", lunName)
 		return "", nil
 	}
-	hostID := host["ID"].(string)
 
 	wwn, err := p.doUnmapping(hostID, lunName, parameters)
 	if err != nil {

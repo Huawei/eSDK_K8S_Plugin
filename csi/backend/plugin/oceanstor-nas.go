@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	osVol "storage/oceanstor/volume"
+	"storage/oceanstor/volume"
 	"utils"
 	"utils/log"
 )
@@ -43,31 +43,21 @@ func (p *OceanstorNasPlugin) Init(config, parameters map[string]interface{}) err
 	return nil
 }
 
-func (p *OceanstorNasPlugin) CreateVolume(name string, size int64, poolName string, parameters map[string]string) (string,error) {
-	params, err := p.getParams(size, name ,poolName, parameters)
+func (p *OceanstorNasPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
+	params := p.getParams(name, parameters)
+
+	nas := volume.NewNAS(p.cli)
+	err := nas.Create(params)
 	if err != nil {
-		return " ", err
-	}
-	volumeName := params["name"].(string)
-	nas := osVol.NewNAS(p.cli)
-	log.Infof("Start to create volume %s", volumeName)
-	err = nas.Create(params)
-	if err != nil {
-		return volumeName, err
+		return "", err
 	}
 
-	return volumeName, nil
+	return params["name"].(string), nil
 }
 
 func (p *OceanstorNasPlugin) DeleteVolume(name string) error {
-	var err error
-	nas := osVol.NewNAS(p.cli)
-	if p.version =="9000" {
-		err = nas.Delete9000(name)
-	}else {
-		err = nas.Delete(name)
-	}
-	return err
+	nas := volume.NewNAS(p.cli)
+	return nas.Delete(name)
 }
 
 func (p *OceanstorNasPlugin) AttachVolume(name string, parameters map[string]interface{}) error {
@@ -87,7 +77,7 @@ func (p *OceanstorNasPlugin) StageVolume(name string, parameters map[string]inte
 
 	err := dev.MountFsDev(exportPath, targetPath, mountFlags)
 	if err != nil {
-		log.Errorf("Mount filesystem %s to %s error: %v", exportPath, targetPath, err)
+		log.Errorf("Mount share %s to %s error: %v", exportPath, targetPath, err)
 		return err
 	}
 
@@ -98,19 +88,38 @@ func (p *OceanstorNasPlugin) UnstageVolume(name string, parameters map[string]in
 	targetPath := parameters["targetPath"].(string)
 	err := dev.Unmount(targetPath)
 	if err != nil {
-		log.Errorf("Cannot unmount volume %s error: %v", name, err)
+		log.Errorf("Unmount volume %s error: %v", name, err)
 		return err
 	}
 
 	return nil
 }
 
-func (p *OceanstorNasPlugin) checkPoolValid(pool map[string]interface{}) error {
-	if pool["USAGETYPE"].(string) != "2" {
-		msg := fmt.Sprintf("Pool %v is not for NAS", pool)
-		log.Errorln(msg)
-		return errors.New(msg)
+func (p *OceanstorNasPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
+	pools, err := p.cli.GetAllPools()
+	if err != nil {
+		log.Errorf("Get all pools error: %v", err)
+		return nil, err
 	}
 
-	return nil
+	log.Debugf("Get pools: %v", pools)
+
+	var validPools []map[string]interface{}
+	for _, name := range poolNames {
+		if pool, exist := pools[name].(map[string]interface{}); exist {
+			if pool["USAGETYPE"].(string) != "2" {
+				log.Warningf("Pool %s is not for NAS", name)
+			} else {
+				validPools = append(validPools, pool)
+			}
+		} else {
+			log.Warningf("Pool %s does not exist", name)
+		}
+	}
+
+	capabilities := p.analyzePoolsCapacity(validPools)
+	return capabilities, nil
+}
+
+func (p *OceanstorNasPlugin) UpdateMetroRemotePlugin(remote Plugin) {
 }

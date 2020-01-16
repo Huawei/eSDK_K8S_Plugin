@@ -5,7 +5,6 @@ import (
 	"csi/backend"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"utils"
 	"utils/log"
 
@@ -15,6 +14,9 @@ import (
 )
 
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+	name := req.GetName()
+
+	log.Infof("Start to create volume %s", name)
 
 	capacityRange := req.GetCapacityRange()
 	if capacityRange == nil || capacityRange.RequiredBytes <= 0 {
@@ -23,34 +25,39 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, status.Error(codes.InvalidArgument, msg)
 	}
 
+	parameters := utils.CopyMap(req.GetParameters())
 	size := capacityRange.RequiredBytes
-	parameters := req.GetParameters()
+	parameters["size"] = capacityRange.RequiredBytes
 
-	cloneFrom, exist := parameters["cloneFrom"]
+	cloneFrom, exist := parameters["cloneFrom"].(string)
 	if exist && cloneFrom != "" {
 		parameters["backend"], parameters["cloneFrom"] = utils.SplitVolumeId(cloneFrom)
 	}
 
-	pool, err := backend.SelectStoragePool(size, parameters)
+	localPool, remotePool, err := backend.SelectStoragePool(size, parameters)
 	if err != nil {
 		log.Errorf("Cannot select pool for volume creation: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	name, err := pool.Plugin.CreateVolume(req.GetName(), size, pool.Name, parameters)
+
+	parameters["storagepool"] = localPool.Name
+	if remotePool != nil {
+		parameters["metroDomain"] = backend.GetMetroDomain(remotePool.Parent)
+		parameters["remoteStoragePool"] = remotePool.Name
+	}
+
+	volName, err := localPool.Plugin.CreateVolume(name, parameters)
 	if err != nil {
 		log.Errorf("Create volume %s error: %v", name, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-
 	log.Infof("Volume %s is created", name)
 
-	name = strings.Replace(name,"_","-", -1)
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      pool.Parent + "." + name,
+			VolumeId:      localPool.Parent + "." + volName,
 			CapacityBytes: size,
-			VolumeContext: parameters,
 		},
 	}, nil
 }
@@ -60,7 +67,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 
 	log.Infof("Start to delete volume %s", volumeId)
 
-	backendName, volumeName := utils.SplitVolumeId(volumeId)
+	backendName, volName := utils.SplitVolumeId(volumeId)
 	backend := backend.GetBackend(backendName)
 	if backend == nil {
 		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
@@ -68,7 +75,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 		return nil, status.Error(codes.Internal, msg)
 	}
 
-	err := backend.Plugin.DeleteVolume(volumeName)
+	err := backend.Plugin.DeleteVolume(volName)
 	if err != nil {
 		log.Errorf("Delete volume %s error: %v", volumeId, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -97,15 +104,15 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 		return nil, status.Error(codes.Internal, msg)
 	}
 
-	var node map[string]interface{}
+	var parameters map[string]interface{}
 
-	err := json.Unmarshal([]byte(nodeInfo), &node)
+	err := json.Unmarshal([]byte(nodeInfo), &parameters)
 	if err != nil {
 		log.Errorf("Unmarshal node info of %s error: %v", nodeInfo, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	err = backend.Plugin.DetachVolume(volName, node)
+	err = backend.Plugin.DetachVolume(volName, parameters)
 	if err != nil {
 		log.Errorf("Unpublish volume %s from node %s error: %v", volName, nodeInfo, err)
 		return nil, status.Error(codes.Internal, err.Error())

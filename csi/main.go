@@ -5,13 +5,12 @@ import (
 	"csi/driver"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"time"
-	"utils"
 	"utils/log"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -20,35 +19,34 @@ import (
 )
 
 const (
-	ENDPOINT           = "huawei.csi.driver"
-	PLUGIN_DIR         = "/var/lib/kubelet/plugins/" + ENDPOINT
-	PROVIDER_FLAG_FILE = "/var/lib/kubelet/plugins/" + ENDPOINT + "/provider_running"
+	configFile        = "/etc/huawei/csi.json"
+	controllerLogFile = "huawei-csi-controller"
+	nodeLogFile       = "huawei-csi-node"
+	csiLogFile        = "huawei-csi"
+
+	csiVersion        = "2.2.6"
+	defaultDriverName = "csi.huawei.com"
 )
 
 var (
-	configFile = flag.String("config-file", "/etc/huawei/csi.json", "Config file of CSI driver")
+	endpoint           = flag.String("endpoint", "", "CSI endpoint")
+	controller         = flag.Bool("controller", false, "Run as a controller service")
+	controllerFlagFile = flag.String("controller-flag-file", "",
+		"The flag file path to specify controller service. Privilege is higher than controller")
+	driverName = flag.String("driver-name", defaultDriverName, "CSI driver name")
 
 	config CSIConfig
-	flock  = utils.NewFlock("/var/lock/huawei-csi-driver")
 )
 
 type CSIConfig struct {
-	Backends       []map[string]interface{} `json:"backends"`
-	LogFilePrefix  string                   `json:"logFilePrefix"`
-	MaxLogFileSize string                   `json:"maxLogFileSize"`
-	LogDir         string                   `json:"logDir"`
+	Backends []map[string]interface{} `json:"backends"`
 }
 
 func init() {
-	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		fmt.Println(utils.GetCSIVersion())
-		os.Exit(0)
-	}
-
 	flag.Set("log_dir", "/var/log/huawei")
 	flag.Parse()
 
-	data, err := ioutil.ReadFile(*configFile)
+	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		glog.Fatalf("Read config file %s error: %v", configFile, err)
 	}
@@ -62,30 +60,34 @@ func init() {
 		glog.Fatalf("Must configure at least one backend")
 	}
 
-	logFilePrefix := "huawei-csi"
-	if config.LogFilePrefix != "" {
-		logFilePrefix = config.LogFilePrefix
+	var logFilePrefix string
+	if len(*controllerFlagFile) > 0 {
+		logFilePrefix = csiLogFile
+	} else if *controller {
+		logFilePrefix = controllerLogFile
+	} else {
+		logFilePrefix = nodeLogFile
 	}
 
 	err = log.Init(map[string]string{
 		"logFilePrefix": logFilePrefix,
-		"logFileMaxCap": config.MaxLogFileSize,
-		"logDir":        config.LogDir,
 	})
 	if err != nil {
 		glog.Fatalf("Init log error: %v", err)
 	}
 }
 
-func updateBackends() {
-	err := backend.SyncUpdateCapabilities(PROVIDER_FLAG_FILE)
+func updateBackendCapabilities() {
+	err := backend.SyncUpdateCapabilities()
 	if err != nil {
 		log.Fatalf("Update backend capabilities error: %v", err)
 	}
 
-	ticker := time.NewTicker(time.Minute)
-	for range ticker.C {
-		backend.AsyncUpdateCapabilities(PROVIDER_FLAG_FILE)
+	if len(*controllerFlagFile) > 0 || *controller {
+		ticker := time.NewTicker(time.Minute)
+		for range ticker.C {
+			backend.AsyncUpdateCapabilities(*controllerFlagFile)
+		}
 	}
 }
 
@@ -98,47 +100,41 @@ func main() {
 
 		log.Flush()
 		log.Close()
-
-		flock.UnLock()
 	}()
 
-	err := flock.Lock()
-	if err != nil {
-		log.Fatalf("Lock error: %v, Huawei CSI driver may already be running", err)
-	}
-
-	if _, err := os.Stat(PLUGIN_DIR); err != nil && os.IsNotExist(err) {
-		os.Mkdir(PLUGIN_DIR, 0755)
-	}
-
-	sockFile := fmt.Sprintf("%s/csi.sock", PLUGIN_DIR)
-	_, err = os.Stat(sockFile)
-	if err == nil {
-		err := os.Remove(sockFile)
-		if err != nil {
-			log.Fatalf("Delete %s error: %v", sockFile, err)
-		}
-	}
-
-	listener, err := net.Listen("unix", sockFile)
-	if err != nil {
-		log.Fatalf("Listen on %s error: %v", sockFile, err)
-	}
-
-	err = backend.RegisterBackend(config.Backends)
+	err := backend.RegisterBackend(config.Backends)
 	if err != nil {
 		log.Fatalf("Register backends error: %v", err)
 	}
 
-	go updateBackends()
+	endpointDir := filepath.Dir(*endpoint)
+	_, err = os.Stat(endpointDir)
+	if err != nil && os.IsNotExist(err) {
+		os.Mkdir(endpointDir, 0755)
+	} else {
+		_, err := os.Stat(*endpoint)
+		if err == nil {
+			log.Infof("Gonna remove old sock file %s", *endpoint)
+			os.Remove(*endpoint)
+		}
+	}
 
-	d := driver.NewDriver()
+	listener, err := net.Listen("unix", *endpoint)
+	if err != nil {
+		log.Fatalf("Listen on %s error: %v", *endpoint, err)
+	}
 
+	d := driver.NewDriver(*driverName, csiVersion)
 	server := grpc.NewServer()
+
 	csi.RegisterIdentityServer(server, d)
 	csi.RegisterControllerServer(server, d)
 	csi.RegisterNodeServer(server, d)
 
-	log.Infof("Starting Huawei CSI driver, listening on %s", sockFile)
-	server.Serve(listener)
+	go updateBackendCapabilities()
+
+	log.Infof("Starting Huawei CSI driver, listening on %s", *endpoint)
+	if err := server.Serve(listener); err != nil {
+		log.Fatalf("Start Huawei CSI driver error: %v", err)
+	}
 }
