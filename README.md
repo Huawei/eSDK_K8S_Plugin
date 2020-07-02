@@ -44,11 +44,16 @@ Step 1. Download the package and **cd** into the package, the structure is as fo
       - deploy
       - example
 
-Step 2. Run following command to compile the Huawei CSI Driver
+step 2. Change the [keyText](https://github.com/Huawei/eSDK_K8S_Plugin/blob/master/src/utils/pwd/pwd.go#L11) 
+to a private value to prevent hacking. The length of the keyText is 32 characters. Such as:
+
+    keyText  = []byte("astaxie1279dkjajzmknm.ahkjkljl;k")
+
+Step 3. Run following command to compile the Huawei CSI Driver
 
     make -f Makefile-CSI PLATFORM=[X86|ARM]
  
-Step 3. After the compilation is finished, a bin directory will be created in the current 
+Step 4. After the compilation is finished, a bin directory will be created in the current 
 directory, the structure is as follows:
 
     - bin
