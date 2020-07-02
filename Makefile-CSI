@@ -1,14 +1,19 @@
-all:
-        mkdir -p ./bin
+PLATFORM=PLATFORM
+export GOPATH:=$(GOPATH):$(shell pwd)
 
+all:COMMON_1 DIFF 
+
+COMMON_1:
+	mkdir -p ./bin
+
+DIFF:
 ifeq (${PLATFORM}, X86)
-        mkdir -p ./bin/X86
-        go build -o ./bin/X86/huawei-csi ./csi
-        go build -o ./bin/X86/passwdEncrypt ./tools/passwdEncrypt
+	go build -o ./bin/huawei-csi	  ./src/csi
+	go build -o ./bin/passwdEncrypt	  ./src/tools/passwdEncrypt
 endif
 
 ifeq (${PLATFORM}, ARM)
-        mkdir -p ./bin/ARM
-        GOOS=linux GOARCH=arm64 go build -o ./bin/ARM/huawei-csi ./csi
-        GOOS=linux GOARCH=arm64 go build -o ./bin/ARM/passwdEncrypt ./tools/passwdEncrypt
+	GOOS=linux GOARCH=arm64 go build -o ./bin/huawei-csi	  ./src/csi
+	GOOS=linux GOARCH=arm64 go build -o ./bin/passwdEncrypt	  ./src/tools/passwdEncrypt
 endif
+

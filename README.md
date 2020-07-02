@@ -1,39 +1,105 @@
 
-# Huawei CSI Driver for Kubernetes
-The Huawei CSI driver for Kubernetes or OpenShift.
+# Huawei Storage CSI Driver For Kubernetes
+## Overview
+Huawei Container Storage Interface (CSI) Driver is used to provision LUN, recycle LUN, 
+and provide a series of disaster recovery functions of storages for Kubernetes Containers.
 
-## Compatibility
-| Kubernetes Version |  |
-|--|--|
-| 1.13 | Yes |
-| 1.14 | Yes |
-| 1.15 | Yes |
+## Compatibility Matrix
+| Features | 1.13|1.14|1.15|1.16|1.17|
+|---|---|---|---|---|---|
+|Create PVC|√|√|√|√|√|
+|Delete PVC|√|√|√|√|√|
+|Create POD|√|√|√|√|√|
+|Delete POD|√|√|√|√|√|
+|Offline Resize|x|x|x|√|√|
+|Online Resize|x|x|x|√|√|
+|Create Snapshot|x|x|x|x|√|
+|Delete Snapshot|x|x|x|x|√|
+|Restore|x|x|x|x|√|
+|Clone|x|x|x|x|√|
 
-## Compiling the driver
-### Compiling requirements
+## Compiling the Huawei CSI Driver
+This section describes the environmental requirements and steps of compiling Huawei CSI Driver
+
+### Compiler Environment
 | System | Go Version |
-|--|--|
-|Linux|>=1.10|
+|---|---|
+|Linux|    >=1.10|
 
-### How to compile
-Create a **src** directory at any parent directory.
-Put source code in this **src** directory. For instance the path tree looks like:
+### Compilation steps
+Step 1. Download the package and **cd** into the package, the structure is as follows:
 
-    .../src
-			/csi
-		    /dev
-		    /proto
-		    /storage
-		    /tools
-		    /utils
-		    /vendor
-		    /Makefile-CSI
-**cd** to **src** directory, and run the following command:
+    - docs
+      - en
+      - zh
+    - src
+      - csi
+      - dev
+      - proto
+      - storage
+      - tools
+      - utils
+      - vendor
+    - yamls
+      - deploy
+      - example
 
-    GOPATH=<absolute parent path of src> make -f Makefile-CSI PLATFORM=[X86|ARM]
-| Argument | Description |
-|--|--|
-|GOPATH|The absolute parent path of src directory(Start from /)|
-|PLATFORM|The target platform to compile for|
+Step 2. Run following command to compile the Huawei CSI Driver
 
-After the compilation is finished, a **bin** diretory will be created under **src**, where the executable programs will be placed in.
+    make -f Makefile-CSI PLATFORM=[X86|ARM]
+ 
+Step 3. After the compilation is finished, a bin directory will be created in the current 
+directory, the structure is as follows:
+
+    - bin
+      - huawei-csi
+      - passwdEncrypt
+ 
+In addition, we also provide a way to directly download the installation package, 
+click Release to obtain the 
+corresponding version of the plug-in package
+ 
+## Deployment and Examples
+### Create Dockerfile and Make Huawei CSI Image
+Ensure the docker has been installed on the host and host can access the networks in 
+order to obtain some dependent software, then you can create your own [Dockerfile]().
+
+    docker build -f Dockerfile -t huawei-csi:*.*.* 
+
+Export and import the image
+
+    docker save huawei-csi:*.*.* -o huawei-csi.tar
+
+    docker load -i huawei-csi.tar
+
+### Deploy The huawei-csi-rbac
+Fill in the appropriate mirror version in [huawei-csi-rbac.yaml](), and then create the 
+Huawei CSI Rbac.
+
+    kubectl create -f huawei-csi-rbac.yaml
+
+### Deploy the huawei-csi-configmap
+Fill in the appropriate mirror version in [huawei-csi-configmap.yaml](), and then create the 
+Huawei CSI Configmap
+
+    kubectl create -f huawei-csi-configmap.yaml
+    
+### Deploy the huawei-csi-controller
+Fill in the appropriate mirror version in [huawei-csi-controller.yaml](), and then create the 
+Huawei CSI Controller service
+
+    kubectl create -f huawei-csi-controller.yaml
+
+### Deploy the huawei-csi-node
+Fill in the appropriate mirror version in [huawei-csi-node.yaml](), and then create the 
+Huawei CSI Node service
+
+    kubectl create -f huawei-csi-node.yaml
+
+### Verify CSI Driver is running
+
+    kubectl get pods -n kube-system
+
+Also, we support our own logging service for the Huawei CSI Driver, the default directory is */var/log/huawei*. 
+When you encounter some driver issues, you can get some help from these logs.
+

@@ -1,0 +1,72 @@
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: huawei-csi-controller
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: huawei-csi-controller
+  template:
+    metadata:
+      labels:
+        app: huawei-csi-controller
+    spec:
+      serviceAccount: huawei-csi-controller
+      hostNetwork: true
+      containers:
+        - name: csi-provisioner
+          image: quay.io/k8scsi/csi-provisioner:v1.4.0
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=6h"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+
+        - name: csi-attacher
+          image: quay.io/k8scsi/csi-attacher:v1.2.1
+          args:
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+
+        - name: huawei-csi-driver
+          image: huawei-csi:*.*.*
+          args:
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--controller"
+            - "--containerized"
+          env:
+            - name: CSI_ENDPOINT
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+            - name: log
+              mountPath: /var/log
+            - name: config-map
+              mountPath: /etc/huawei
+
+      volumes:
+        - name: socket-dir
+          emptyDir:
+        - name: log
+          hostPath:
+            path: /var/log/
+            type: Directory
+        - name: config-map
+          configMap:
+            name: huawei-csi-configmap
