@@ -8,9 +8,12 @@ data:
     {
         "backends": [
             {
-                "storage": "fusionstorage-nas",
+                "storage": "oceanstor-nas",
+                "product": "***",
                 "name": "***",
-                "url": "https://*.*.*.*:28443",
+                "urls": [
+                    "https://*.*.*.*:8088/deviceManager/rest"
+                ],
                 "user": "***",
                 "password": "***",
                 "pools": ["***"],
