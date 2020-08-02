@@ -264,7 +264,6 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "Snapshot Name missing in request")
 	}
 	log.Infof("Start to Create snapshot %s for volume %s", snapshotName, volumeId)
-	defer log.Infof("Finish to Create snapshot %s for volume %s", snapshotName, volumeId)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
 	backend := backend.GetBackend(backendName)
@@ -280,6 +279,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	log.Infof("Finish to Create snapshot %s for volume %s", snapshotName, volumeId)
 	return &csi.CreateSnapshotResponse{
 		Snapshot: &csi.Snapshot{
 			SizeBytes:      snapshot["SizeBytes"].(int64),
@@ -297,7 +297,6 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 		return nil, status.Error(codes.InvalidArgument, "Snapshot ID missing in request")
 	}
 	log.Infof("Start to Delete snapshot %s.", snapshotId)
-	defer log.Infof("Finish to Delete snapshot %s", snapshotId)
 
 	backendName, snapshotParentId, snapshotName := utils.SplitSnapshotId(snapshotId)
 	backend := backend.GetBackend(backendName)
@@ -312,6 +311,8 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 		log.Errorf("Delete snapshot %s error: %v", snapshotName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	log.Infof("Finish to Delete snapshot %s", snapshotId)
 	return &csi.DeleteSnapshotResponse{}, nil
 }
 

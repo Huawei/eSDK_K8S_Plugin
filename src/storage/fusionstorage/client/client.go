@@ -878,7 +878,7 @@ func (cli *Client) CreateFileSystem(params map[string]interface{}) (map[string]i
 		return respData, nil
 	}
 
-	return nil, errors.New(fmt.Sprintf("Failed to create filesystem %v", data))
+	return nil, fmt.Errorf("failed to create filesystem %v", data)
 }
 
 func (cli *Client) DeleteFileSystem(id string) error {
@@ -946,7 +946,7 @@ func (cli *Client) CreateNfsShare(params map[string]interface{}) (map[string]int
 	if respData != nil {
 		return respData, nil
 	}
-	return nil, errors.New(fmt.Sprintf("Failed to create NFS share %v", data))
+	return nil, fmt.Errorf("failed to create NFS share %v", data)
 }
 
 func (cli *Client) DeleteNfsShare(id string) error {

@@ -168,9 +168,9 @@ func updateMetroBackends() {
 				continue
 			}
 
-			if i.MetroDomain == j.MetroDomain || i.MetrovStorePairID == j.MetrovStorePairID {
+			if (i.MetroDomain != "" && i.MetroDomain == j.MetroDomain) || (
+				i.MetrovStorePairID != "" && i.MetrovStorePairID == j.MetrovStorePairID) {
 				i.MetroBackend, j.MetroBackend = j, i
-
 				i.Plugin.UpdateMetroRemotePlugin(j.Plugin)
 				j.Plugin.UpdateMetroRemotePlugin(i.Plugin)
 			}

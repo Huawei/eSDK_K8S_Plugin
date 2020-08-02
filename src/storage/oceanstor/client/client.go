@@ -1243,6 +1243,11 @@ func (cli *Client) GetNfsShareByPath(path string) (map[string]interface{}, error
 	}
 
 	respData := resp.Data.([]interface{})
+	if len(respData) == 0 {
+		log.Infof("Nfs share of path %s does not exist", path)
+		return nil, nil
+	}
+
 	share := respData[0].(map[string]interface{})
 	return share, nil
 }
@@ -2067,6 +2072,7 @@ func (cli *Client) GetFSSnapshotByName(parentID, snapshotName string) (map[strin
 
 		return nil, fmt.Errorf("failed to get filesystem snapshot %s, error is %d", snapshotName, code)
 	}
+
 	if resp.Data == nil {
 		log.Infof("Filesystem snapshot %s does not exist", snapshotName)
 		return nil, nil

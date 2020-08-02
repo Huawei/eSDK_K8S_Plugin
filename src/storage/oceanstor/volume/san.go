@@ -761,6 +761,7 @@ func (p *SAN) createRemoteLun(params, taskResult map[string]interface{}) (map[st
 
 	if lun == nil {
 		params["parentid"] = taskResult["remotePoolID"].(string)
+		params["capacity"] = taskResult["capacity"].(int64)
 
 		lun, err = remoteCli.CreateLun(params)
 		if err != nil {
@@ -976,6 +977,7 @@ func (p *SAN) getHyperMetroParams(params, taskResult map[string]interface{}) (ma
 		"remotePoolID":  remotePoolID,
 		"remoteCli":     p.metroRemoteCli,
 		"metroDomainID": domain["ID"].(string),
+		"capacity":      params["capacity"].(int64),
 	}, nil
 }
 
@@ -1277,6 +1279,12 @@ func (p *SAN) CreateSnapshot(lunName, snapshotName string) (map[string]interface
 	result, err := taskflow.Run(params)
 	if err != nil {
 		taskflow.Revert()
+		return nil, err
+	}
+
+	snapshot, err = p.cli.GetLunSnapshotByName(snapshotName)
+	if err != nil {
+		log.Errorf("Get lun snapshot by name %s error: %v", snapshotName, err)
 		return nil, err
 	}
 

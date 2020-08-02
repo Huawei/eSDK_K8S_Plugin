@@ -24,7 +24,7 @@ const (
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "2.2.8"
+	csiVersion        = "2.2.9"
 	defaultDriverName = "csi.huawei.com"
 )
 

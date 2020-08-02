@@ -15,8 +15,6 @@ type NAS struct {
 	cli *client.Client
 }
 
-var taskStatusCache = make(map[string]bool)
-
 func NewNAS(cli *client.Client) *NAS {
 	return &NAS{
 		cli: cli,

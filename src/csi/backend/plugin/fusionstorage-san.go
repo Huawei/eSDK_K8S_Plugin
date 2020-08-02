@@ -195,37 +195,6 @@ func (p *FusionStorageSanPlugin) UpdateBackendCapabilities() (map[string]interfa
 	return capabilities, nil
 }
 
-func (p *FusionStorageSanPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
-	// To keep connection token alive
-	p.cli.KeepAlive()
-
-	pools, err := p.cli.GetAllPools()
-	if err != nil {
-		log.Errorf("Get fusionstorage pools error: %v", err)
-		return nil, err
-	}
-
-	log.Debugf("Get pools: %v", pools)
-
-	capabilities := make(map[string]interface{})
-
-	for _, name := range poolNames {
-		if i, exist := pools[name]; exist {
-			pool := i.(map[string]interface{})
-
-			totalCapacity := int64(pool["totalCapacity"].(float64))
-			usedCapacity := int64(pool["usedCapacity"].(float64))
-
-			freeCapacity := (totalCapacity - usedCapacity) * CAPACITY_UNIT
-			capabilities[name] = map[string]interface{}{
-				"FreeCapacity": freeCapacity,
-			}
-		}
-	}
-
-	return capabilities, nil
-}
-
 func (p *FusionStorageSanPlugin) NodeExpandVolume(name, volumePath string) error {
 	cli := p.cli.DuplicateClient()
 	err := cli.Login()
