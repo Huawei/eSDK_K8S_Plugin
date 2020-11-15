@@ -81,6 +81,7 @@ func (p *FusionStorageSanPlugin) getParams(name string, parameters map[string]in
 		"sourceSnapshotName",
 		"sourceVolumeName",
 		"snapshotParentId",
+		"qos",
 	}
 
 	for _, key := range paramKeys {
@@ -189,7 +190,7 @@ func (p *FusionStorageSanPlugin) UpdateBackendCapabilities() (map[string]interfa
 	capabilities := map[string]interface{}{
 		"SupportThin":  true,
 		"SupportThick": false,
-		"SupportQoS":   false,
+		"SupportQoS":   true,
 	}
 
 	return capabilities, nil

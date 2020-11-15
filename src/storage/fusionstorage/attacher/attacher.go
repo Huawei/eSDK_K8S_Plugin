@@ -1,6 +1,8 @@
 package attacher
 
 import (
+	"connector"
+	_ "connector/iscsi"
 	"dev"
 	"errors"
 	"fmt"
@@ -112,11 +114,11 @@ func (p *Attacher) createIscsiHost(hostName string) error {
 	return err
 }
 
-func (p *Attacher) loginIscsiTarget() error {
+func (p *Attacher) getTargetPortals() ([]string, error) {
 	nodeResultList, err := p.cli.QueryIscsiPortal()
 	if err != nil {
 		log.Errorf("Get ISCSI portals error: %v", err)
-		return err
+		return nil, err
 	}
 
 	validIPs := map[string]bool{}
@@ -140,36 +142,23 @@ func (p *Attacher) loginIscsiTarget() error {
 		}
 	}
 
-	// Need ignore error here
-	output, _ := utils.ExecShellCmd("iscsiadm -m session")
-
+	var availablePortals []string
 	for _, portal := range p.portals {
 		ip := net.ParseIP(portal).String()
 		if !validIPs[ip] {
-			msg := fmt.Sprintf("Config ISCSI portal %s is not valid", ip)
-			log.Errorln(msg)
-			return errors.New(msg)
-		}
-
-		if strings.Contains(output, ip) {
-			log.Infof("Already login iscsi target %s, no need login again", ip)
+			log.Warningf("Config ISCSI portal %s is not valid", ip)
 			continue
 		}
-
-		output, err := utils.ExecShellCmd("iscsiadm -m discovery -t sendtargets -p %s", ip)
-		if err != nil {
-			log.Errorf("Cannot connect ISCSI portal %s: %v", ip, output)
-			return err
-		}
-
-		output, err = utils.ExecShellCmd("iscsiadm -m node -p %s --login", ip)
-		if err != nil {
-			log.Errorf("Login iscsi target %s error: %s", ip, output)
-			return err
-		}
+		availablePortals = append(availablePortals, ip)
 	}
 
-	return nil
+	if availablePortals == nil {
+		msg := fmt.Sprintf("All config portal %s is not valid", p.portals)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	return availablePortals, nil
 }
 
 func (p *Attacher) attachIscsiInitiatorToHost(hostName string) error {
@@ -307,38 +296,79 @@ func (p *Attacher) doUnmapping(lunName, hostName string) (string, error) {
 	return lun["wwn"].(string), nil
 }
 
-func (p *Attacher) ControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
+func (p *Attacher) iSCSIControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
 	hostName, err := p.getHostName(parameters)
 	if err != nil {
 		log.Errorf("Get host name error: %v", err)
 		return "", err
 	}
 
-	if p.protocol == "iscsi" {
-		err := p.createIscsiHost(hostName)
-		if err != nil {
-			log.Errorf("Create ISCSI host %s error: %v", hostName, err)
-			return "", err
-		}
-
-		err = p.loginIscsiTarget()
-		if err != nil {
-			return "", err
-		}
-
-		err = p.attachIscsiInitiatorToHost(hostName)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	wwn, err := p.doMapping(lunName, hostName)
+	err = p.createIscsiHost(hostName)
 	if err != nil {
-		log.Errorf("Mapping LUN %s to host %s error: %v", lunName, hostName, err)
+		log.Errorf("Create ISCSI host %s error: %v", hostName, err)
 		return "", err
 	}
 
-	return wwn, nil
+	err = p.attachIscsiInitiatorToHost(hostName)
+	if err != nil {
+		return "", err
+	}
+
+	lun, err := p.cli.GetVolumeByName(lunName)
+	if err != nil {
+		log.Errorf("Get lun %s error: %v", lunName, err)
+		return "", err
+	}
+	if lun == nil {
+		msg := fmt.Sprintf("Lun %s not exist for attaching", lunName)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	isAdded, err := p.isVolumeAddToHost(lunName, hostName)
+	if err != nil {
+		return "", err
+	}
+
+	if !isAdded {
+		err := p.cli.AddLunToHost(lunName, hostName)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return lun["wwn"].(string), nil
+}
+
+func (p *Attacher) SCSIControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
+	hostName, err := p.getHostName(parameters)
+	if err != nil {
+		log.Errorf("Get host name error: %v", err)
+		return "", err
+	}
+
+	lun, err := p.cli.GetVolumeByName(lunName)
+	if err != nil {
+		log.Errorf("Get lun %s error: %v", lunName, err)
+		return "", err
+	}
+	if lun == nil {
+		msg := fmt.Sprintf("Lun %s not exist for attaching", lunName)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	manageIP, exist := p.hosts[hostName]
+	if !exist {
+		return "", fmt.Errorf("No manage IP configured for host %s", hostName)
+	}
+
+	err = p.cli.AttachVolume(lunName, manageIP)
+	if err != nil {
+		return "", err
+	}
+
+	return lun["wwn"].(string), nil
 }
 
 func (p *Attacher) ControllerDetach(lunName string, parameters map[string]interface{}) (string, error) {
@@ -362,23 +392,40 @@ func (p *Attacher) ControllerDetach(lunName string, parameters map[string]interf
 }
 
 func (p *Attacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
-	wwn, err := p.ControllerAttach(lunName, parameters)
-	if err != nil {
-		return "", err
-	}
-
 	var devPath string
-
 	if p.protocol == "iscsi" {
-		device := dev.ScanDev(wwn, p.protocol)
-		if device == "" {
-			msg := fmt.Sprintf("Cannot detect device %s", wwn)
-			log.Errorln(msg)
-			return "", errors.New(msg)
+		tgtPortals, err := p.getTargetPortals()
+		if err != nil {
+			return "", err
 		}
 
-		devPath = fmt.Sprintf("/dev/%s", device)
+		wwn, err := p.iSCSIControllerAttach(lunName, parameters)
+		if err != nil {
+			return "", err
+		}
+
+		lenPortals := len(tgtPortals)
+		var tgtLunWWNs []string
+		for i := 0; i < lenPortals; i++ {
+			tgtLunWWNs = append(tgtLunWWNs, wwn)
+		}
+		connMap := map[string]interface{}{
+			"tgtPortals": tgtPortals,
+			"tgtLunWWNs":  tgtLunWWNs,
+		}
+
+		conn := connector.GetConnector(connector.ISCSIDriver)
+		devPath, err = conn.ConnectVolume(connMap)
+		if err != nil {
+			return "", err
+		}
+
 	} else {
+		wwn, err := p.SCSIControllerAttach(lunName, parameters)
+		if err != nil {
+			return "", err
+		}
+
 		devPath = fmt.Sprintf("/dev/disk/by-id/wwn-0x%s", wwn)
 		dev.WaitDevOnline(devPath)
 	}
@@ -397,7 +444,8 @@ func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}
 	}
 
 	if p.protocol == "iscsi" {
-		err := dev.DeleteDev(wwn)
+		conn := connector.GetConnector(connector.ISCSIDriver)
+		err := conn.DisConnectVolume(wwn)
 		if err != nil {
 			log.Errorf("Delete dev %s error: %v", wwn, err)
 			return err

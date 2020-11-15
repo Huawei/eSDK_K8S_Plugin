@@ -34,11 +34,12 @@ type SAN struct {
 	Base
 }
 
-func NewSAN(cli, metroRemoteCli *client.Client) *SAN {
+func NewSAN(cli, metroRemoteCli, replicaRemoteCli *client.Client) *SAN {
 	return &SAN{
 		Base: Base{
 			cli:            cli,
 			metroRemoteCli: metroRemoteCli,
+			replicaRemoteCli: replicaRemoteCli,
 		},
 	}
 }
@@ -71,8 +72,15 @@ func (p *SAN) Create(params map[string]interface{}) error {
 
 	taskflow := taskflow.NewTaskFlow("Create-LUN-Volume")
 
-	hyperMetro, ok := params["hypermetro"].(bool)
-	if ok && hyperMetro {
+	replication, replicationOK := params["replication"].(bool)
+	hyperMetro, hyperMetroOK := params["hypermetro"].(bool)
+	if (replicationOK && replication) && (hyperMetroOK && hyperMetro) {
+		msg := "cannot create replication and hypermetro for a volume at the same time"
+		log.Errorln(msg)
+		return errors.New(msg)
+	} else if replicationOK && replication {
+		taskflow.AddTask("Get-Replication-Params", p.getReplicationParams, nil)
+	} else if hyperMetroOK && hyperMetro {
 		taskflow.AddTask("Get-HyperMetro-Params", p.getHyperMetroParams, nil)
 	}
 
@@ -80,7 +88,11 @@ func (p *SAN) Create(params map[string]interface{}) error {
 	taskflow.AddTask("Create-Local-LUN", p.createLocalLun, p.revertLocalLun)
 	taskflow.AddTask("Create-Local-QoS", p.createLocalQoS, p.revertLocalQoS)
 
-	if ok && hyperMetro {
+	if replicationOK && replication {
+		taskflow.AddTask("Create-Remote-LUN", p.createRemoteLun, p.revertRemoteLun)
+		taskflow.AddTask("Create-Remote-QoS", p.createRemoteQoS, p.revertRemoteQoS)
+		taskflow.AddTask("Create-Replication-Pair", p.createReplicationPair, nil)
+	} else if hyperMetroOK && hyperMetro {
 		taskflow.AddTask("Create-Remote-LUN", p.createRemoteLun, p.revertRemoteLun)
 		taskflow.AddTask("Create-Remote-QoS", p.createRemoteQoS, p.revertRemoteQoS)
 		taskflow.AddTask("Create-HyperMetro", p.createHyperMetro, p.revertHyperMetro)
@@ -119,6 +131,11 @@ func (p *SAN) Delete(name string) error {
 		taskflow.AddTask("Delete-HyperMetro-Remote-LUN", p.deleteHyperMetroRemoteLun, nil)
 	}
 
+	if rss["RemoteReplication"] == "TRUE" {
+		taskflow.AddTask("Delete-Replication-Pair", p.deleteReplicationPair, nil)
+		taskflow.AddTask("Delete-Replication-Remote-LUN", p.deleteReplicationRemoteLun, nil)
+	}
+
 	if rss["LunCopy"] == "TRUE" {
 		taskflow.AddTask("Delete-Local-LunCopy", p.deleteLocalLunCopy, nil)
 	}
@@ -130,8 +147,9 @@ func (p *SAN) Delete(name string) error {
 	taskflow.AddTask("Delete-Local-LUN", p.deleteLocalLun, nil)
 
 	params := map[string]interface{}{
-		"lun":   lun,
-		"lunID": lun["ID"].(string),
+		"lun":     lun,
+		"lunID":   lun["ID"].(string),
+		"lunName": lunName,
 	}
 
 	_, err = taskflow.Run(params)
@@ -166,15 +184,25 @@ func (p *SAN) Expand(name string, newSize int64) (bool, error) {
 	expandTask.AddTask("Expand-PreCheck-Capacity", p.preExpandCheckCapacity, nil)
 
 	if rss["HyperMetro"] == "TRUE" {
-		expandTask.AddTask("Expand-Remote-PreCheck-Capacity", p.preExpandCheckRemoteCapacity, nil)
+		expandTask.AddTask("Expand-HyperMetro-Remote-PreCheck-Capacity", p.preExpandHyperMetroCheckRemoteCapacity, nil)
 		expandTask.AddTask("Suspend-HyperMetro", p.suspendHyperMetro, nil)
 		expandTask.AddTask("Expand-HyperMetro-Remote-LUN", p.expandHyperMetroRemoteLun, nil)
+	}
+
+	if rss["RemoteReplication"] == "TRUE" {
+		expandTask.AddTask("Expand-Replication-Remote-PreCheck-Capacity", p.preExpandReplicationCheckRemoteCapacity, nil)
+		expandTask.AddTask("Split-Replication", p.splitReplication, nil)
+		expandTask.AddTask("Expand-Replication-Remote-LUN", p.expandReplicationRemoteLun, nil)
 	}
 
 	expandTask.AddTask("Expand-Local-Lun", p.expandLocalLun, nil)
 
 	if rss["HyperMetro"] == "TRUE" {
 		expandTask.AddTask("Sync-HyperMetro", p.syncHyperMetro, nil)
+	}
+
+	if rss["RemoteReplication"] == "TRUE" {
+		expandTask.AddTask("Sync-Replication", p.syncReplication, nil)
 	}
 
 	params := map[string]interface{}{
@@ -247,8 +275,6 @@ func (p *SAN) clonePair(params map[string]interface{}) (map[string]interface{}, 
 		msg := fmt.Sprintf("Clone LUN capacity must be >= src %s", cloneFrom)
 		log.Errorln(msg)
 		return nil, errors.New(msg)
-	} else {
-		params["capacity"] = srcLunCapacity
 	}
 
 	dstLun, err := p.cli.GetLunByName(params["name"].(string))
@@ -256,7 +282,10 @@ func (p *SAN) clonePair(params map[string]interface{}) (map[string]interface{}, 
 		return nil, err
 	}
 	if dstLun == nil {
-		dstLun, err = p.cli.CreateLun(params)
+		copyParams := utils.CopyMap(params)
+		copyParams["capacity"] = srcLunCapacity
+
+		dstLun, err = p.cli.CreateLun(copyParams)
 		if err != nil {
 			return nil, err
 		}
@@ -297,8 +326,6 @@ func (p *SAN) fromSnapshotByClonePair(params map[string]interface{}) (map[string
 		msg := fmt.Sprintf("Clone target LUN capacity must be >= src snapshot %s", srcSnapshotName)
 		log.Errorln(msg)
 		return nil, errors.New(msg)
-	} else {
-		params["capacity"] = srcSnapshotCapacity
 	}
 
 	dstLun, err := p.cli.GetLunByName(params["name"].(string))
@@ -306,7 +333,10 @@ func (p *SAN) fromSnapshotByClonePair(params map[string]interface{}) (map[string
 		return nil, err
 	}
 	if dstLun == nil {
-		dstLun, err = p.cli.CreateLun(params)
+		copyParams := utils.CopyMap(params)
+		copyParams["capacity"] = srcSnapshotCapacity
+
+		dstLun, err = p.cli.CreateLun(copyParams)
 		if err != nil {
 			return nil, err
 		}
@@ -761,7 +791,6 @@ func (p *SAN) createRemoteLun(params, taskResult map[string]interface{}) (map[st
 
 	if lun == nil {
 		params["parentid"] = taskResult["remotePoolID"].(string)
-		params["capacity"] = taskResult["capacity"].(int64)
 
 		lun, err = remoteCli.CreateLun(params)
 		if err != nil {
@@ -840,7 +869,9 @@ func (p *SAN) createHyperMetro(params, taskResult map[string]interface{}) (map[s
 	var pairID string
 
 	if pair == nil {
-		_, needFirstSync := params["clonefrom"]
+		_, needFirstSync1 := params["clonefrom"]
+		_, needFirstSync2 := params["fromSnapshot"]
+		needFirstSync := needFirstSync1 || needFirstSync2
 		data := map[string]interface{}{
 			"DOMAINID":       domainID,
 			"HCRESOURCETYPE": 1,
@@ -977,7 +1008,6 @@ func (p *SAN) getHyperMetroParams(params, taskResult map[string]interface{}) (ma
 		"remotePoolID":  remotePoolID,
 		"remoteCli":     p.metroRemoteCli,
 		"metroDomainID": domain["ID"].(string),
-		"capacity":      params["capacity"].(int64),
 	}, nil
 }
 
@@ -1039,58 +1069,20 @@ func (p *SAN) deleteLocalHyperCopy(params, taskResult map[string]interface{}) (m
 }
 
 func (p *SAN) deleteLocalLun(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lun := params["lun"].(map[string]interface{})
-	lunID := params["lunID"].(string)
-
-	qosID, exist := lun["IOCLASSID"].(string)
-	if exist && qosID != "" {
-		smartX := smartx.NewSmartX(p.cli)
-		err := smartX.DeleteQos(qosID, lunID, "lun")
-		if err != nil {
-			log.Errorf("Remove lun %s from qos %s error: %v", lunID, qosID, err)
-			return nil, err
-		}
-	}
-
-	err := p.cli.DeleteLun(lunID)
-	if err != nil {
-		log.Errorf("Delete lun %s error: %v", lunID, err)
-		return nil, err
-	}
-
-	return nil, nil
+	lunName := params["lunName"].(string)
+	err := p.deleteLun(lunName, p.cli)
+	return nil, err
 }
 
 func (p *SAN) deleteHyperMetroRemoteLun(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	remoteLunID, ok := taskResult["remoteLunID"].(string)
-	if !ok {
-		// No remote lun exists, directly return.
+	if p.metroRemoteCli == nil {
+		log.Warningln("HyperMetro remote cli is nil, the remote lun will be leftover")
 		return nil, nil
 	}
 
-	lun, err := p.metroRemoteCli.GetLunByID(remoteLunID)
-	if err != nil {
-		log.Errorf("Get hypermetro remote lun by ID %s error: %v", remoteLunID, err)
-		return nil, err
-	}
-
-	qosID, exist := lun["IOCLASSID"].(string)
-	if exist && qosID != "" {
-		smartX := smartx.NewSmartX(p.metroRemoteCli)
-		err := smartX.DeleteQos(qosID, remoteLunID, "lun")
-		if err != nil {
-			log.Errorf("Remove hypermetro remote lun %s from qos %s error: %v", remoteLunID, qosID, err)
-			return nil, err
-		}
-	}
-
-	err = p.metroRemoteCli.DeleteLun(remoteLunID)
-	if err != nil {
-		log.Errorf("Delete hypermetro remote lun %s error: %v", remoteLunID, err)
-		return nil, err
-	}
-
-	return nil, nil
+	lunName := params["lunName"].(string)
+	err := p.deleteLun(lunName, p.metroRemoteCli)
+	return nil, err
 }
 
 func (p *SAN) deleteHyperMetro(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
@@ -1120,37 +1112,35 @@ func (p *SAN) deleteHyperMetro(params, taskResult map[string]interface{}) (map[s
 		return nil, err
 	}
 
-	return map[string]interface{}{
-		"remoteLunID": pair["REMOTEOBJID"].(string),
-	}, nil
+	return nil, nil
 }
 
-func (p *SAN) preExpandCheckRemoteCapacity(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+func (p *SAN) preExpandCheckRemoteCapacity(params map[string]interface{}, cli *client.Client) (string, error) {
 	// check the remote pool
 	name := params["name"].(string)
 	remoteLunName := utils.GetLunName(name)
-	remoteLun, err := p.metroRemoteCli.GetLunByName(remoteLunName)
+	remoteLun, err := cli.GetLunByName(remoteLunName)
 	if err != nil {
 		log.Errorf("Get lun by name %s error: %v", remoteLunName, err)
-		return nil, err
+		return "", err
 	}
 	if remoteLun == nil {
 		msg := fmt.Sprintf("remote lun %s to extend does not exist", remoteLunName)
 		log.Errorln(msg)
-		return nil, errors.New(msg)
+		return "", errors.New(msg)
 	}
 
 	remoteParentName := remoteLun["PARENTNAME"].(string)
 	newSize := params["size"].(int64)
 	curSize, err := strconv.ParseInt(remoteLun["CAPACITY"].(string), 10, 64)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	pool, err := p.metroRemoteCli.GetPoolByName(remoteParentName)
+	pool, err := cli.GetPoolByName(remoteParentName)
 	if err != nil || pool == nil {
 		log.Errorf("Get storage pool %s info error: %v", remoteParentName, err)
-		return nil, err
+		return "", err
 	}
 
 	freeCapacity, _ := strconv.ParseInt(pool["USERFREECAPACITY"].(string), 10, 64)
@@ -1158,11 +1148,31 @@ func (p *SAN) preExpandCheckRemoteCapacity(params, taskResult map[string]interfa
 		msg := fmt.Sprintf("storage pool %s free capacity %s is not enough to expand to %v",
 			remoteParentName, pool["USERFREECAPACITY"], newSize-curSize)
 		log.Errorln(msg)
-		return nil, errors.New(msg)
+		return "", errors.New(msg)
+	}
+
+	return remoteLun["ID"].(string), nil
+}
+
+func (p *SAN) preExpandHyperMetroCheckRemoteCapacity(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	remoteLunID, err := p.preExpandCheckRemoteCapacity(params, p.metroRemoteCli)
+	if err != nil {
+		return nil, err
 	}
 
 	return map[string]interface{}{
-		"remoteLunID": remoteLun["ID"].(string),
+		"remoteLunID": remoteLunID,
+	}, nil
+}
+
+func (p *SAN) preExpandReplicationCheckRemoteCapacity(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	remoteLunID, err := p.preExpandCheckRemoteCapacity(params, p.replicaRemoteCli)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"remoteLunID": remoteLunID,
 	}, nil
 }
 
@@ -1422,5 +1432,176 @@ func (p *SAN) deactivateSnapshot(params, taskResult map[string]interface{}) (map
 		log.Errorf("Deactivate snapshot %s error: %v", snapshotID, err)
 		return nil, err
 	}
+	return nil, nil
+}
+
+func (p *SAN) getReplicationParams(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	if p.replicaRemoteCli == nil {
+		msg := "remote client for replication is nil"
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	remotePoolID, err := p.getRemotePoolID(params, p.replicaRemoteCli)
+	if err != nil {
+		return nil, err
+	}
+
+	remoteSystem, err := p.replicaRemoteCli.GetSystem()
+	if err != nil {
+		log.Errorf("Remote device is abnormal: %v", err)
+		return nil, err
+	}
+
+	sn := remoteSystem["ID"].(string)
+	remoteDeviceID, err := p.getRemoteDeviceID(sn)
+	if err != nil {
+		return nil, err
+	}
+
+	res := map[string]interface{}{
+		"remotePoolID":   remotePoolID,
+		"remoteCli":      p.replicaRemoteCli,
+		"remoteDeviceID": remoteDeviceID,
+		"resType":        11,
+	}
+
+	return res, nil
+}
+
+func (p *SAN) deleteReplicationPair(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	lunID := params["lunID"].(string)
+
+	pairs, err := p.cli.GetReplicationPairByResID(lunID, 11)
+	if err != nil {
+		return nil, err
+	}
+
+	if pairs == nil || len(pairs) == 0 {
+		return nil, nil
+	}
+
+	for _, pair := range pairs {
+		pairID := pair["ID"].(string)
+
+		runningStatus := pair["RUNNINGSTATUS"].(string)
+		if runningStatus == REPLICATION_PAIR_RUNNING_STATUS_NORMAL ||
+			runningStatus == REPLICATION_PAIR_RUNNING_STATUS_SYNC {
+			p.cli.SplitReplicationPair(pairID)
+		}
+
+		err = p.cli.DeleteReplicationPair(pairID)
+		if err != nil {
+			log.Errorf("Delete replication pair %s error: %v", pairID, err)
+			return nil, err
+		}
+	}
+
+	return nil, nil
+}
+
+func (p *SAN) deleteReplicationRemoteLun(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	if p.replicaRemoteCli == nil {
+		log.Warningln("Replication remote cli is nil, the remote lun will be leftover")
+		return nil, nil
+	}
+
+	lunName := params["lunName"].(string)
+	err := p.deleteLun(lunName, p.replicaRemoteCli)
+	return nil, err
+}
+
+func (p *SAN) deleteLun(name string, cli *client.Client) error {
+	lun, err := cli.GetLunByName(name)
+	if err != nil {
+		log.Errorf("Get lun by name %s error: %v", name, err)
+		return err
+	}
+	if lun == nil {
+		log.Infof("Lun %s to delete does not exist", name)
+		return nil
+	}
+
+	lunID := lun["ID"].(string)
+
+	qosID, exist := lun["IOCLASSID"].(string)
+	if exist && qosID != "" {
+		smartX := smartx.NewSmartX(cli)
+		err := smartX.DeleteQos(qosID, lunID, "lun")
+		if err != nil {
+			log.Errorf("Remove lun %s from qos %s error: %v", lunID, qosID, err)
+			return err
+		}
+	}
+
+	err = cli.DeleteLun(lunID)
+	if err != nil {
+		log.Errorf("Delete lun %s error: %v", lunID, err)
+		return err
+	}
+
+	return nil
+}
+
+func (p *SAN) splitReplication(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	lunID := params["lunID"].(string)
+
+	pairs, err := p.cli.GetReplicationPairByResID(lunID, 11)
+	if err != nil {
+		return nil, err
+	}
+
+	if pairs == nil || len(pairs) == 0 {
+		return nil, nil
+	}
+
+	replicationPairIDs := []string{}
+
+	for _, pair := range pairs {
+		pairID := pair["ID"].(string)
+
+		runningStatus := pair["RUNNINGSTATUS"].(string)
+		if runningStatus != REPLICATION_PAIR_RUNNING_STATUS_NORMAL &&
+			runningStatus != REPLICATION_PAIR_RUNNING_STATUS_SYNC {
+			continue
+		}
+
+		err := p.cli.SplitReplicationPair(pairID)
+		if err != nil {
+			return nil, err
+		}
+
+		replicationPairIDs = append(replicationPairIDs, pairID)
+	}
+
+	return map[string]interface{}{
+		"replicationPairIDs": replicationPairIDs,
+	}, nil
+}
+
+func (p *SAN) expandReplicationRemoteLun(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	remoteLunID := taskResult["remoteLunID"].(string)
+	newSize := params["size"].(int64)
+
+	err := p.replicaRemoteCli.ExtendLun(remoteLunID, newSize)
+	if err != nil {
+		log.Errorf("Extend replication remote lun %s error: %v", remoteLunID, err)
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (p *SAN) syncReplication(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	replicationPairIDs := taskResult["replicationPairIDs"].([]string)
+
+	for _, pairID := range replicationPairIDs {
+		err := p.cli.SyncReplicationPair(pairID)
+		if err != nil {
+			log.Errorf("Sync san replication pair %s error: %v", pairID, err)
+			return nil, err
+		}
+	}
+
 	return nil, nil
 }

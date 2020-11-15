@@ -1,7 +1,6 @@
 package attacher
 
 import (
-	"dev"
 	"storage/oceanstor/client"
 	"utils"
 	"utils/log"
@@ -71,8 +70,10 @@ func (p *DoradoV6Attacher) ControllerAttach(lunName string, parameters map[strin
 
 	if p.protocol == "iscsi" {
 		_, err = p.Attacher.attachISCSI(hostID)
-	} else {
+	} else if p.protocol == "fc" || p.protocol == "fc-nvme" {
 		_, err = p.Attacher.attachFC(hostID)
+	} else if p.protocol == "roce" {
+		_, err = p.Attacher.attachRoCE(hostID)
 	}
 
 	if err != nil {
@@ -90,15 +91,5 @@ func (p *DoradoV6Attacher) ControllerAttach(lunName string, parameters map[strin
 }
 
 func (p *DoradoV6Attacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
-	wwn, err := p.ControllerAttach(lunName, parameters)
-	if err != nil {
-		return "", err
-	}
-
-	devPath, err := dev.GetDevPath(wwn, p.protocol)
-	if err != nil {
-		return "", err
-	}
-
-	return devPath, nil
+	return connectVolume(p, lunName, p.protocol, parameters)
 }

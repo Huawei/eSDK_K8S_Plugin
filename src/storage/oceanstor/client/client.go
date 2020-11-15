@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
+	URL "net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -2569,8 +2570,8 @@ func (cli *Client) DeleteReplicationPair(pairID string) error {
 	return nil
 }
 
-func (cli *Client) GetReplicationPairByLocalResName(localResName string) ([]map[string]interface{}, error) {
-	url := fmt.Sprintf("/REPLICATIONPAIR?filter=LOCALRESNAME::%s", localResName)
+func (cli *Client) GetReplicationPairByResID(resID string, resType int) ([]map[string]interface{}, error) {
+	url := fmt.Sprintf("/REPLICATIONPAIR/associate?ASSOCIATEOBJTYPE=%d&ASSOCIATEOBJID=%s", resType, resID)
 	resp, err := cli.get(url)
 	if err != nil {
 		return nil, err
@@ -2578,11 +2579,11 @@ func (cli *Client) GetReplicationPairByLocalResName(localResName string) ([]map[
 
 	code := int64(resp.Error["code"].(float64))
 	if code != 0 {
-		return nil, fmt.Errorf("Get replication pairs local resource %s associated error: %d", localResName, code)
+		return nil, fmt.Errorf("get replication pairs resource %s associated error: %d", resID, code)
 	}
 
 	if resp.Data == nil {
-		log.Infof("Replication pairs local resource %s associated does not exist", localResName)
+		log.Infof("Replication pairs resource %s associated does not exist", resID)
 		return nil, nil
 	}
 
@@ -2726,4 +2727,115 @@ func (cli *Client) GetvStorePairByID(pairID string) (map[string]interface{}, err
 
 	pair := respData[0].(map[string]interface{})
 	return pair, nil
+}
+
+func (cli *Client) GetRoCEInitiator(initiator string) (map[string]interface{}, error) {
+	id := URL.QueryEscape(strings.Replace(initiator, ":", "\\:", -1))
+	url := fmt.Sprintf("/NVMe_over_RoCE_initiator?filter=ID::%s", id)
+	resp, err := cli.get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("get RoCE initiator %s error: %d", initiator, code)
+	}
+
+	if resp.Data == nil {
+		log.Infof("RoCE initiator %s does not exist", initiator)
+		return nil, nil
+	}
+
+	respData := resp.Data.([]interface{})
+	if len(respData) == 0 {
+		return nil, nil
+	}
+	ini := respData[0].(map[string]interface{})
+	return ini, nil
+}
+
+func (cli *Client) GetRoCEInitiatorByID(initiator string) (map[string]interface{}, error) {
+	id := URL.QueryEscape(strings.Replace(initiator, ":", "\\:", -1))
+	url := fmt.Sprintf("/NVMe_over_RoCE_initiator/%s", id)
+	resp, err := cli.get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("get RoCE initiator by ID %s error: %d", initiator, code)
+	}
+
+	respData := resp.Data.(map[string]interface{})
+	return respData, nil
+}
+
+func (cli *Client) AddRoCEInitiator(initiator string) (map[string]interface{}, error) {
+	data := map[string]interface{}{
+		"ID": initiator,
+	}
+
+	resp, err := cli.post("/NVMe_over_RoCE_initiator", data)
+	if err != nil {
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code == OBJECT_ID_NOT_UNIQUE {
+		log.Infof("RoCE initiator %s already exists", initiator)
+		return cli.GetRoCEInitiatorByID(initiator)
+	}
+	if code != 0 {
+		return nil, fmt.Errorf("add RoCE initiator %s error: %d", initiator, code)
+	}
+
+	respData := resp.Data.(map[string]interface{})
+	return respData, nil
+}
+
+func (cli *Client) AddRoCEInitiatorToHost(initiator, hostID string) error {
+	data := map[string]interface{}{
+		"ID":               hostID,
+		"ASSOCIATEOBJTYPE": 57870,
+		"ASSOCIATEOBJID":   initiator,
+	}
+	resp, err := cli.put("/host/create_associate", data)
+	if err != nil {
+		return err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return fmt.Errorf("add RoCE initiator %s to host %s error: %d", initiator, hostID, code)
+	}
+
+	return nil
+}
+
+func (cli *Client) GetRoCEPortalByIP(tgtPortal string) (map[string]interface{}, error) {
+	url := fmt.Sprintf("/lif?filter=IPV4ADDR::%s", tgtPortal)
+	resp, err := cli.get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("get RoCE by IP %s error: %d", tgtPortal, code)
+	}
+	if resp.Data == nil {
+		log.Infof("RoCE portal %s does not exist", tgtPortal)
+		return nil, nil
+	}
+
+	respData := resp.Data.([]interface{})
+	if len(respData) == 0 {
+		log.Infof("RoCE portal %s does not exist", tgtPortal)
+		return nil, nil
+	}
+
+	portal := respData[0].(map[string]interface{})
+	return portal, nil
 }

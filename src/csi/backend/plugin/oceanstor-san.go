@@ -25,7 +25,8 @@ type OceanstorSanPlugin struct {
 	portals  []string
 	alua     map[string]interface{}
 
-	metroRemotePlugin *OceanstorSanPlugin
+	replicaRemotePlugin *OceanstorSanPlugin
+	metroRemotePlugin   *OceanstorSanPlugin
 }
 
 func init() {
@@ -38,16 +39,16 @@ func (p *OceanstorSanPlugin) NewPlugin() Plugin {
 
 func (p *OceanstorSanPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
 	protocol, exist := parameters["protocol"].(string)
-	if !exist || (protocol != "iscsi" && protocol != "fc") {
-		return errors.New("protocol must be provided as 'iscsi' or 'fc' for oceanstor-san backend")
+	if !exist || (protocol != "iscsi" && protocol != "fc" && protocol != "roce" && protocol != "fc-nvme") {
+		return errors.New("protocol must be provided as 'iscsi', 'fc', 'roce' or 'fc-nvme' for oceanstor-san backend")
 	}
 
 	p.alua, _ = parameters["ALUA"].(map[string]interface{})
 
-	if protocol == "iscsi" {
+	if protocol == "iscsi" || protocol == "roce" {
 		portals, exist := parameters["portals"].([]interface{})
 		if !exist {
-			return errors.New("portals are required to configure for ISCSI backend")
+			return errors.New("portals are required to configure for iSCSI or RoCE backend")
 		}
 
 		IPs, err := proto.VerifyIscsiPortals(portals)
@@ -63,19 +64,29 @@ func (p *OceanstorSanPlugin) Init(config, parameters map[string]interface{}, kee
 		return err
 	}
 
+	if (protocol == "roce" || protocol == "fc-nvme") && p.product != "DoradoV6" {
+		msg := fmt.Sprintf("The storage backend %s does not support NVME protocol", p.product)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+
 	p.protocol = protocol
 
 	return nil
 }
 
 func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
-	var cli *client.Client
+	var metroRemoteCli *client.Client
+	var replicaRemoteCli *client.Client
 
 	if p.metroRemotePlugin != nil {
-		cli = p.metroRemotePlugin.cli
+		metroRemoteCli = p.metroRemotePlugin.cli
+	}
+	if p.replicaRemotePlugin != nil {
+		replicaRemoteCli = p.replicaRemotePlugin.cli
 	}
 
-	return volume.NewSAN(p.cli, cli)
+	return volume.NewSAN(p.cli, metroRemoteCli, replicaRemoteCli)
 }
 
 func (p *OceanstorSanPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
@@ -300,6 +311,10 @@ func (p *OceanstorSanPlugin) UpdatePoolCapabilities(poolNames []string) (map[str
 	return p.updatePoolCapabilities(poolNames, "1")
 }
 
+func (p *OceanstorSanPlugin) UpdateReplicaRemotePlugin(remote Plugin) {
+	p.replicaRemotePlugin = remote.(*OceanstorSanPlugin)
+}
+
 func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(remote Plugin) {
 	p.metroRemotePlugin = remote.(*OceanstorSanPlugin)
 }
@@ -324,10 +339,14 @@ func (p *OceanstorSanPlugin) NodeExpandVolume(name, volumePath string) error {
 		return errors.New(msg)
 	}
 
-	wwn := lun["WWN"].(string)
-	err = dev.BlockResize(wwn)
+	lunUniqueId, err := utils.GetLunUniqueId(p.protocol, lun)
 	if err != nil {
-		log.Errorf("Lun %s resize error: %v", wwn, err)
+		return err
+	}
+
+	err = dev.BlockResize(lunUniqueId)
+	if err != nil {
+		log.Errorf("Lun %s resize error: %v", lunUniqueId, err)
 		return err
 	}
 

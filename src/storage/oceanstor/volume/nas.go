@@ -99,11 +99,11 @@ func (p *NAS) Create(params map[string]interface{}) error {
 	taskflow.AddTask("Allow-Share-Access", p.allowShareAccess, nil)
 	taskflow.AddTask("Create-QoS", p.createLocalQoS, p.revertLocalQoS)
 
-	if replication, ok := params["replication"].(bool); ok && replication {
+	if replicationOK && replication {
 		taskflow.AddTask("Create-Remote-FS", p.createRemoteFS, p.revertRemoteFS)
 		taskflow.AddTask("Create-Remote-QoS", p.createRemoteQoS, p.revertRemoteQoS)
 		taskflow.AddTask("Create-Replication-Pair", p.createReplicationPair, nil)
-	} else if hyperMetro, ok := params["hypermetro"].(bool); ok && hyperMetro {
+	} else if hyperMetroOK && hyperMetro {
 		taskflow.AddTask("Create-Remote-FS", p.createRemoteFS, p.revertRemoteFS)
 		taskflow.AddTask("Create-Remote-QoS", p.createRemoteQoS, p.revertRemoteQoS)
 		taskflow.AddTask("Create-HyperMetro", p.createHyperMetro, nil)
@@ -716,28 +716,6 @@ func (p *NAS) getvStorePair() (map[string]interface{}, error) {
 	return vStorePair, nil
 }
 
-func (p *NAS) getRemoteDeviceID(deviceSN string) (string, error) {
-	remoteDevice, err := p.cli.GetRemoteDeviceBySN(deviceSN)
-	if err != nil {
-		log.Errorf("Get remote device %s error: %v", deviceSN, err)
-		return "", err
-	}
-	if remoteDevice == nil {
-		msg := fmt.Sprintf("Remote device of SN %s does not exist", deviceSN)
-		log.Errorln(msg)
-		return "", errors.New(msg)
-	}
-
-	if remoteDevice["HEALTHSTATUS"] != REMOTE_DEVICE_HEALTH_STATUS ||
-		remoteDevice["RUNNINGSTATUS"] != REMOTE_DEVICE_RUNNING_STATUS_LINK_UP {
-		msg := fmt.Sprintf("Remote device %s status is not normal", deviceSN)
-		log.Errorln(msg)
-		return "", errors.New(msg)
-	}
-
-	return remoteDevice["ID"].(string), nil
-}
-
 func (p *NAS) getReplicationParams(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	var vStorePairID string
 	var remoteDeviceID string
@@ -775,7 +753,6 @@ func (p *NAS) getReplicationParams(params, taskResult map[string]interface{}) (m
 		sn := remoteSystem["ID"].(string)
 		remoteDeviceID, err = p.getRemoteDeviceID(sn)
 		if err != nil {
-			log.Errorf("Get remote device ID of SN %s error: %v", sn, err)
 			return nil, err
 		}
 	} else if remoteDeviceSN != remoteSystem["ID"] {
@@ -789,6 +766,7 @@ func (p *NAS) getReplicationParams(params, taskResult map[string]interface{}) (m
 		"remotePoolID":   remotePoolID,
 		"remoteCli":      p.replicaRemoteCli,
 		"remoteDeviceID": remoteDeviceID,
+		"resType":        40,
 	}
 
 	if vStorePairID != "" {
@@ -830,48 +808,6 @@ func (p *NAS) revertRemoteFS(taskResult map[string]interface{}) error {
 
 	remoteCli := taskResult["remoteCli"].(*client.Client)
 	return remoteCli.DeleteFileSystem(fsID)
-}
-
-func (p *NAS) createReplicationPair(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	localFSID := taskResult["localFSID"].(string)
-	remoteFSID := taskResult["remoteFSID"].(string)
-	remoteDeviceID := taskResult["remoteDeviceID"].(string)
-
-	data := map[string]interface{}{
-		"LOCALRESID":       localFSID,
-		"LOCALRESTYPE":     40, // filesystem
-		"REMOTEDEVICEID":   remoteDeviceID,
-		"REMOTERESID":      remoteFSID,
-		"REPLICATIONMODEL": 2, // asynchronous replication
-		"SYNCHRONIZETYPE":  2, // timed wait after synchronization begins
-		"SPEED":            4, // highest speed
-	}
-
-	replicationSyncPeriod, exist := params["replicationSyncPeriod"]
-	if exist {
-		data["TIMINGVAL"] = replicationSyncPeriod
-	}
-
-	vStorePairID, exist := taskResult["vStorePairID"]
-	if exist {
-		data["VSTOREPAIRID"] = vStorePairID
-	}
-
-	pair, err := p.cli.CreateReplicationPair(data)
-	if err != nil {
-		log.Errorf("Create replication pair error: %v", err)
-		return nil, err
-	}
-
-	pairID := pair["ID"].(string)
-	err = p.cli.SyncReplicationPair(pairID)
-	if err != nil {
-		log.Errorf("Sync replication pair %s error: %v", pairID, err)
-		p.cli.DeleteReplicationPair(pairID)
-		return nil, err
-	}
-
-	return nil, nil
 }
 
 func (p *NAS) deleteReplicationPair(params, taskResult map[string]interface{}) (map[string]interface{}, error) {

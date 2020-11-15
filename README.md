@@ -5,18 +5,18 @@ Huawei Container Storage Interface (CSI) Driver is used to provision LUN, recycl
 and provide a series of disaster recovery functions of storages for Kubernetes Containers.
 
 ## Compatibility Matrix
-| Features | 1.13|1.14|1.15|1.16|1.17|
-|---|---|---|---|---|---|
-|Create PVC|√|√|√|√|√|
-|Delete PVC|√|√|√|√|√|
-|Create POD|√|√|√|√|√|
-|Delete POD|√|√|√|√|√|
-|Offline Resize|x|x|x|√|√|
-|Online Resize|x|x|x|√|√|
-|Create Snapshot|x|x|x|x|√|
-|Delete Snapshot|x|x|x|x|√|
-|Restore|x|x|x|x|√|
-|Clone|x|x|x|x|√|
+| Features | 1.13|1.14|1.15|1.16|1.17|1.17|
+|---|---|---|---|---|---|---|
+|Create PVC|√|√|√|√|√|√|
+|Delete PVC|√|√|√|√|√|√|
+|Create POD|√|√|√|√|√|√|
+|Delete POD|√|√|√|√|√|√|
+|Offline Resize|x|x|x|√|√|√|
+|Online Resize|x|x|x|√|√|√|
+|Create Snapshot|x|x|x|x|√|√|
+|Delete Snapshot|x|x|x|x|√|√|
+|Restore|x|x|x|x|√|√|
+|Clone|x|x|x|x|√|√|
 
 ## Compiling the Huawei CSI Driver
 This section describes the environmental requirements and steps of compiling Huawei CSI Driver

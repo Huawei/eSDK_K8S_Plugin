@@ -1,7 +1,6 @@
 package attacher
 
 import (
-	"dev"
 	"utils/log"
 )
 
@@ -20,17 +19,7 @@ func NewMetroAttacher(localAttacher, remoteAttacher AttacherPlugin, protocol str
 }
 
 func (p *MetroAttacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
-	wwn, err := p.ControllerAttach(lunName, parameters)
-	if err != nil {
-		return "", err
-	}
-
-	devPath, err := dev.GetDevPath(wwn, p.protocol)
-	if err != nil {
-		return "", err
-	}
-
-	return devPath, nil
+	return connectVolume(p, lunName, p.protocol, parameters)
 }
 
 func (p *MetroAttacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
@@ -43,13 +32,7 @@ func (p *MetroAttacher) NodeUnstage(lunName string, parameters map[string]interf
 		return nil
 	}
 
-	err = dev.DeleteDev(wwn)
-	if err != nil {
-		log.Errorf("Delete dev %s error: %v", wwn, err)
-		return err
-	}
-
-	return err
+	return disConnectVolume(wwn, p.protocol)
 }
 
 func (p *MetroAttacher) ControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
@@ -83,4 +66,38 @@ func (p *MetroAttacher) ControllerDetach(lunName string, parameters map[string]i
 	}
 
 	return lunWWN, nil
+}
+
+func (p *MetroAttacher) getTargetISCSIPortals() ([]string, error) {
+	var availablePortals []string
+	localPortals, err := p.localAttacher.getTargetISCSIPortals()
+	if err != nil {
+		return nil, err
+	}
+	availablePortals = append(availablePortals, localPortals...)
+
+	remotePortals, err := p.remoteAttacher.getTargetISCSIPortals()
+	if err != nil {
+		return nil, err
+	}
+	availablePortals = append(availablePortals, remotePortals...)
+
+	return availablePortals, nil
+}
+
+func (p *MetroAttacher) getTargetRoCEPortals() ([]string, error) {
+	var availablePortals []string
+	localPortals, err := p.localAttacher.getTargetRoCEPortals()
+	if err != nil {
+		return nil, err
+	}
+	availablePortals = append(availablePortals, localPortals...)
+
+	remotePortals, err := p.remoteAttacher.getTargetRoCEPortals()
+	if err != nil {
+		return nil, err
+	}
+	availablePortals = append(availablePortals, remotePortals...)
+
+	return availablePortals, nil
 }

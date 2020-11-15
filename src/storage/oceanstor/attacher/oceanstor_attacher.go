@@ -1,7 +1,6 @@
 package attacher
 
 import (
-	"dev"
 	"storage/oceanstor/client"
 	"utils"
 	"utils/log"
@@ -99,6 +98,11 @@ func (p *OceanStorAttacher) attachFC(hostID, hostName string) error {
 	return nil
 }
 
+func (p *OceanStorAttacher) attachRoCE(hostID string) error {
+	_, err := p.Attacher.attachRoCE(hostID)
+	return err
+}
+
 func (p *OceanStorAttacher) ControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
 	host, err := p.getHost(parameters, true)
 	if err != nil {
@@ -111,8 +115,10 @@ func (p *OceanStorAttacher) ControllerAttach(lunName string, parameters map[stri
 
 	if p.protocol == "iscsi" {
 		err = p.attachISCSI(hostID, hostName)
-	} else {
+	} else if p.protocol == "fc" || p.protocol == "fc-nvme" {
 		err = p.attachFC(hostID, hostName)
+	} else if p.protocol == "roce" {
+		err = p.attachRoCE(hostID)
 	}
 
 	if err != nil {
@@ -130,15 +136,5 @@ func (p *OceanStorAttacher) ControllerAttach(lunName string, parameters map[stri
 }
 
 func (p *OceanStorAttacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
-	wwn, err := p.ControllerAttach(lunName, parameters)
-	if err != nil {
-		return "", err
-	}
-
-	devPath, err := dev.GetDevPath(wwn, p.protocol)
-	if err != nil {
-		return "", err
-	}
-
-	return devPath, nil
+	return connectVolume(p, lunName, p.protocol, parameters)
 }

@@ -153,12 +153,98 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 					},
 				},
 			},
+			&csi.NodeServiceCapability{
+				Type: &csi.NodeServiceCapability_Rpc{
+					Rpc: &csi.NodeServiceCapability_RPC{
+						Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+					},
+				},
+			},
 		},
 	}, nil
 }
 
-func (d *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		msg := fmt.Sprintf("no volume ID provided")
+		log.Errorln(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
+	VolumePath := req.GetVolumePath()
+	if len(VolumePath) == 0 {
+		msg := fmt.Sprintf("no volume Path provided")
+		log.Errorln(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
+	}
+
+	volumeMetrics, err := utils.GetVolumeMetrics(VolumePath)
+	if err != nil {
+		msg := fmt.Sprintf("get volume metrics failed, reason %v", volumeMetrics)
+		log.Errorln(msg)
+		return nil, status.Error(codes.Internal, msg)
+	}
+
+	volumeAvailable, ok := volumeMetrics.Available.AsInt64()
+	if !ok {
+		msg := fmt.Sprintf("Volume metrics available %v is invalid", volumeMetrics.Available)
+		log.Errorln(msg)
+		return nil, status.Error(codes.Internal, msg)
+	}
+
+	volumeCapacity, ok := volumeMetrics.Capacity.AsInt64()
+	if !ok {
+		msg := fmt.Sprintf("Volume metrics capacity %v is invalid", volumeMetrics.Capacity)
+		log.Errorln(msg)
+		return nil, status.Error(codes.Internal, msg)
+	}
+
+	volumeUsed, ok := volumeMetrics.Used.AsInt64()
+	if !ok {
+		msg := fmt.Sprintf("Volume metrics used %v is invalid", volumeMetrics.Used)
+		log.Errorln(msg)
+		return nil, status.Errorf(codes.Internal, msg)
+	}
+
+	volumeInodesFree, ok := volumeMetrics.InodesFree.AsInt64()
+	if !ok {
+		msg := fmt.Sprintf("Volume metrics inodesFree %v is invalid", volumeMetrics.InodesFree)
+		log.Errorln(msg)
+		return nil, status.Errorf(codes.Internal, msg)
+	}
+
+	volumeInodes, ok := volumeMetrics.Inodes.AsInt64()
+	if !ok {
+		msg := fmt.Sprintf("Volume metrics inodes %v is invalid", volumeMetrics.Inodes)
+		log.Errorln(msg)
+		return nil, status.Errorf(codes.Internal, msg)
+	}
+
+	volumeInodesUsed, ok := volumeMetrics.InodesUsed.AsInt64()
+	if !ok {
+		msg := fmt.Sprintf("Volume metrics inodesUsed %v is invalid", volumeMetrics.InodesUsed)
+		log.Errorln(msg)
+		return nil, status.Errorf(codes.Internal, msg)
+	}
+
+	response := &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			&csi.VolumeUsage{
+				Available: volumeAvailable,
+				Total:     volumeCapacity,
+				Used:      volumeUsed,
+				Unit:      csi.VolumeUsage_BYTES,
+			},
+			&csi.VolumeUsage{
+				Available: volumeInodesFree,
+				Total:     volumeInodes,
+				Used:      volumeInodesUsed,
+				Unit:      csi.VolumeUsage_INODES,
+			},
+		},
+	}
+	return response, nil
 }
 
 func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
