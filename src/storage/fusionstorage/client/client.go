@@ -1113,3 +1113,192 @@ func (cli *Client) DeleteQuota(quotaID string) error {
 
 	return nil
 }
+
+func (cli *Client) CreateQoS(qosName string, qosData map[string]int) error {
+	data := map[string]interface{}{
+		"qosName":     qosName,
+		"qosSpecInfo": qosData,
+	}
+
+	resp, err := cli.post("/dsware/service/v1.3/qos/create", data)
+	if err != nil {
+		return err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		errorCode, _ := resp["errorCode"].(string)
+		return fmt.Errorf("create QoS %v error: %s", data, errorCode)
+	}
+
+	return nil
+}
+
+func (cli *Client) DeleteQoS(qosName string) error {
+	data := map[string]interface{}{
+		"qosNames": []string{qosName},
+	}
+
+	resp, err := cli.post("/dsware/service/v1.3/qos/delete", data)
+	if err != nil {
+		return err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		errorCode, _ := resp["errorCode"].(string)
+		return fmt.Errorf("delete QoS %v error: %s", data, errorCode)
+	}
+
+	return nil
+}
+
+func (cli *Client) AssociateQoSWithVolume(volName, qosName string) error {
+	data := map[string]interface{}{
+		"keyNames": []string{volName},
+		"qosName":  qosName,
+	}
+
+	resp, err := cli.post("/dsware/service/v1.3/qos/volume/associate", data)
+	if err != nil {
+		return err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		errorCode, _ := resp["errorCode"].(string)
+		return fmt.Errorf("associate QoS %s with volume %s error: %s", qosName, volName, errorCode)
+	}
+
+	return nil
+}
+
+func (cli *Client) DisassociateQoSWithVolume(volName, qosName string) error {
+	data := map[string]interface{}{
+		"keyNames": []string{volName},
+		"qosName":  qosName,
+	}
+
+	resp, err := cli.post("/dsware/service/v1.3/qos/volume/disassociate", data)
+	if err != nil {
+		return err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		errorCode, _ := resp["errorCode"].(string)
+		return fmt.Errorf("disassociate QoS %s with volume %s error: %s", qosName, volName, errorCode)
+	}
+
+	return nil
+}
+
+func (cli *Client) GetQoSNameByVolume(volName string) (string, error) {
+	url := fmt.Sprintf("/dsware/service/v1.3/volume/qos?volName=%s", volName)
+	resp, err := cli.get(url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		errorCode, _ := resp["errorCode"].(string)
+		return "", fmt.Errorf("get qos by volume %s error: %s", volName, errorCode)
+	}
+
+	qosName, exist := resp["qosName"].(string)
+	if !exist {
+		return "", nil
+	}
+
+	return qosName, nil
+}
+
+func (cli *Client) GetAssociateCountOfQoS(qosName string) (int, error) {
+	resp, err := cli.get("/dsware/service/v1.3/storagePool", nil)
+	if err != nil {
+		return 0, err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		return 0, fmt.Errorf("get all pools error: %d", result)
+	}
+
+	storagePools, exist := resp["storagePools"].([]interface{})
+	if !exist || len(storagePools) <= 0 {
+		return 0, nil
+	}
+
+	associatePools, err := cli.getAssociatePoolOfQoS(qosName)
+	if err != nil {
+		log.Errorf("Get associate snapshot of QoS %s error: %v", qosName, err)
+		return 0, err
+	}
+	pools := associatePools["pools"].([]interface{})
+	storagePoolsCount := len(pools)
+
+	for _, p := range storagePools {
+		pool := p.(map[string]interface{})
+		poolId := int64(pool["poolId"].(float64))
+		volumes, err := cli.getAssociateObjOfQoS(qosName, "volume", poolId)
+		if err != nil {
+			log.Errorf("Get associate volume of QoS %s error: %v", qosName, err)
+			return 0, err
+		}
+
+		snapshots, err := cli.getAssociateObjOfQoS(qosName, "snapshot", poolId)
+		if err != nil {
+			log.Errorf("Get associate snapshot of QoS %s error: %v", qosName, err)
+			return 0, err
+		}
+
+		volumeCount := int(volumes["totalNum"].(float64))
+		snapshotCount := int(snapshots["totalNum"].(float64))
+		totalCount := volumeCount + snapshotCount + storagePoolsCount
+		if totalCount != 0 {
+			return totalCount, nil
+		}
+	}
+
+	return 0, nil
+}
+
+func (cli *Client) getAssociateObjOfQoS(qosName, objType string, poolId int64) (map[string]interface{}, error) {
+	data := map[string]interface{}{
+		"qosName":   qosName,
+		"poolId":    poolId,
+	}
+
+	resp, err := cli.post("/dsware/service/v1.3/qos/volume/list?type=associated", data)
+	if err != nil {
+		return nil, err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		errorCode, _ := resp["errorCode"].(string)
+		return nil, fmt.Errorf("get qos %s associate obj %s error: %s", qosName, objType, errorCode)
+	}
+
+	return resp, nil
+}
+
+func (cli *Client) getAssociatePoolOfQoS(qosName string) (map[string]interface{}, error) {
+	data := map[string]interface{}{
+		"qosName":   qosName,
+	}
+
+	resp, err := cli.post("/dsware/service/v1.3/qos/storagePool/list?type=associated", data)
+	if err != nil {
+		return nil, err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		errorCode, _ := resp["errorCode"].(string)
+		return nil, fmt.Errorf("get qos %s associate storagePool error: %s", qosName, errorCode)
+	}
+
+	return resp, nil
+}

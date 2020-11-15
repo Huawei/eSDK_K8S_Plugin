@@ -68,6 +68,7 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		log.Errorf("Get system info error: %v", err)
 		return err
 	}
+
 	if utils.IsDoradoV6(system) {
 		product = "DoradoV6"
 	}
@@ -173,10 +174,12 @@ func (p *OceanstorPlugin) updatePoolCapabilities(poolNames []string, usageType s
 	var validPools []map[string]interface{}
 	for _, name := range poolNames {
 		if pool, exist := pools[name].(map[string]interface{}); exist {
-			if pool["USAGETYPE"] != usageType && pool["USAGETYPE"] != DORADO_V6_POOL_USAGE_TYPE {
-				log.Warningf("Pool %s is not for %s", name, usageType)
-			} else {
+			poolType, exist := pool["NEWUSAGETYPE"].(string)
+			if (pool["USAGETYPE"] == usageType || pool["USAGETYPE"] == DORADO_V6_POOL_USAGE_TYPE) || (
+				exist && poolType == DORADO_V6_POOL_USAGE_TYPE) {
 				validPools = append(validPools, pool)
+			} else {
+				log.Warningf("Pool %s is not for %s", name, usageType)
 			}
 		} else {
 			log.Warningf("Pool %s does not exist", name)

@@ -11,6 +11,12 @@ import (
 	"utils/taskflow"
 )
 
+const (
+	notSupportSnapShotSpace = 0
+	spaceQuotaUnitMB        = 2
+	quotaTargetFilesystem   = 1
+)
+
 type NAS struct {
 	cli *client.Client
 }
@@ -135,12 +141,13 @@ func (p *NAS) createQuota(params, taskResult map[string]interface{}) (map[string
 
 	if quota == nil {
 		quotaParams := map[string]interface{}{
-			"parent_id":         fsID,
-			"parent_type":       "40",
-			"quota_type":        "1",
-			"space_hard_quota":  params["capacity"].(int64),
-			"snap_space_switch": 0,
-			"space_unit_type":   2,
+			"parent_id":              fsID,
+			"parent_type":            "40",
+			"quota_type":             "1",
+			"space_hard_quota":       params["capacity"].(int64),
+			"snap_space_switch":      notSupportSnapShotSpace,
+			"space_unit_type":        spaceQuotaUnitMB,
+			"directory_quota_target": quotaTargetFilesystem,
 		}
 		err := p.cli.CreateQuota(quotaParams)
 		if err != nil {

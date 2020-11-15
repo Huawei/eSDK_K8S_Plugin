@@ -41,6 +41,22 @@ func GetFCInitiator() ([]string, error) {
 	return strings.Fields(output), nil
 }
 
+func GetRoCEInitiator() (string, error) {
+	output, err := utils.ExecShellCmd("cat /etc/nvme/hostnqn")
+	if err != nil {
+		if strings.Contains(output, "No such file or directory") {
+			msg := "No NVME initiator exists"
+			log.Errorln(msg)
+			return "", errors.New(msg)
+		}
+
+		log.Errorf("Get NVME initiator error: %v", output)
+		return "", err
+	}
+
+	return strings.TrimRight(output, "\n"), nil
+}
+
 func VerifyIscsiPortals(portals []interface{}) ([]string, error) {
 	if len(portals) < 1 {
 		return nil, errors.New("At least 1 portal must be provided for iscsi backend")

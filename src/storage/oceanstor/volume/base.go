@@ -161,3 +161,77 @@ func (p *Base) getSnapshotReturnInfo(snapshot map[string]interface{}, snapshotSi
 		"ParentID":     snapshot["PARENTID"].(string),
 	}
 }
+
+func (p *Base) createReplicationPair(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	resType := taskResult["resType"].(int)
+	remoteDeviceID := taskResult["remoteDeviceID"].(string)
+
+	var localID string
+	var remoteID string
+
+	if resType == 11 {
+		localID = taskResult["localLunID"].(string)
+		remoteID = taskResult["remoteLunID"].(string)
+	} else {
+		localID = taskResult["localFSID"].(string)
+		remoteID = taskResult["remoteFSID"].(string)
+	}
+
+	data := map[string]interface{}{
+		"LOCALRESID":       localID,
+		"LOCALRESTYPE":     resType,
+		"REMOTEDEVICEID":   remoteDeviceID,
+		"REMOTERESID":      remoteID,
+		"REPLICATIONMODEL": 2, // asynchronous replication
+		"SYNCHRONIZETYPE":  2, // timed wait after synchronization begins
+		"SPEED":            4, // highest speed
+	}
+
+	replicationSyncPeriod, exist := params["replicationSyncPeriod"]
+	if exist {
+		data["TIMINGVAL"] = replicationSyncPeriod
+	}
+
+	vStorePairID, exist := taskResult["vStorePairID"]
+	if exist {
+		data["VSTOREPAIRID"] = vStorePairID
+	}
+
+	pair, err := p.cli.CreateReplicationPair(data)
+	if err != nil {
+		log.Errorf("Create replication pair error: %v", err)
+		return nil, err
+	}
+
+	pairID := pair["ID"].(string)
+	err = p.cli.SyncReplicationPair(pairID)
+	if err != nil {
+		log.Errorf("Sync replication pair %s error: %v", pairID, err)
+		p.cli.DeleteReplicationPair(pairID)
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func (p *Base) getRemoteDeviceID(deviceSN string) (string, error) {
+	remoteDevice, err := p.cli.GetRemoteDeviceBySN(deviceSN)
+	if err != nil {
+		log.Errorf("Get remote device %s error: %v", deviceSN, err)
+		return "", err
+	}
+	if remoteDevice == nil {
+		msg := fmt.Sprintf("Remote device of SN %s does not exist", deviceSN)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	if remoteDevice["HEALTHSTATUS"] != REMOTE_DEVICE_HEALTH_STATUS ||
+		remoteDevice["RUNNINGSTATUS"] != REMOTE_DEVICE_RUNNING_STATUS_LINK_UP {
+		msg := fmt.Sprintf("Remote device %s status is not normal", deviceSN)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	return remoteDevice["ID"].(string), nil
+}

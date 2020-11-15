@@ -1,6 +1,7 @@
 package dev
 
 import (
+	"connector"
 	"errors"
 	"fmt"
 	"strings"
@@ -36,6 +37,11 @@ func GetDev(wwn string) (string, error) {
 				log.Warningf("sd dev %s was found, may multipath isn't installed or there're no multipaths", name)
 				dev = name
 			}
+
+			if len(dev) == 0 && strings.HasPrefix(name, "nvme") {
+				log.Warningf("nvme dev %s was found, may multipath isn't installed or there're no multipaths", name)
+				dev = name
+			}
 		}
 	}
 
@@ -47,24 +53,6 @@ func GetDev(wwn string) (string, error) {
 	}
 
 	return dev, nil
-}
-
-func rescan(protocol string) error {
-	var hostClass string
-
-	if protocol == "iscsi" {
-		hostClass = "iscsi_host"
-	} else {
-		hostClass = "fc_host"
-	}
-
-	output, err := utils.ExecShellCmd("for host in $(ls /sys/class/%s/); do echo \"- - -\" > /sys/class/scsi_host/${host}/scan; done", hostClass)
-	if err != nil {
-		log.Errorf("rescan %s error: %s", hostClass, output)
-		return err
-	}
-
-	return nil
 }
 
 func deleteDMDev(dm string) error {
@@ -125,30 +113,6 @@ func DeleteDev(wwn string) error {
 	}
 
 	return fmt.Errorf("delete device of WWN %s timeout", wwn)
-}
-
-func ScanDev(wwn, protocol string) string {
-	rescan(protocol)
-
-	var device string
-
-	for i := 0; i < 5; i++ {
-		time.Sleep(time.Second * 3)
-		device, _ = GetDev(wwn)
-		if device != "" {
-			break
-		}
-
-		log.Warningf("Device of WWN %s wasn't found yet, will wait and check again", wwn)
-	}
-
-	if device == "" {
-		log.Errorf("Device of WWN %s cannot be detected", wwn)
-		return ""
-	}
-
-	log.Infof("Device %s was found", device)
-	return device
 }
 
 func MountLunDev(dev, targetPath, fsType, flags string) error {
@@ -255,9 +219,12 @@ func BlockResize(wwn string) error {
 		err = resizeDMDev(device)
 	} else if strings.HasPrefix(device, "sd") {
 		err = resizeSDDev(device)
+	} else if strings.HasPrefix(device, "nvme") {
+		devices := []string{device}
+		err = resizeNVMeDev(devices)
 	} else {
 		msg := fmt.Sprintf("Device of WWN %s to resize does not exist anymore", wwn)
-		log.Errorf(msg)
+		log.Errorln(msg)
 		return errors.New(msg)
 	}
 
@@ -270,10 +237,20 @@ func BlockResize(wwn string) error {
 }
 
 func resizeDMDev(dm string) error {
-	output, err := utils.ExecShellCmd("for sd in $(ls /sys/block/%s/slaves/); do echo 1 > /sys/block/${sd}/device/rescan; done", dm)
-	if err != nil {
-		log.Errorf("Rescan DM device %s error: %v", dm, output)
-		return err
+	output, err := utils.ExecShellCmd("ls /sys/block/%s/slaves/", dm)
+	if strings.Contains(output, "nvme") {
+		devices := strings.Split(output, "\n")
+		err = resizeNVMeDev(devices)
+		if err != nil {
+			log.Errorf("Rescan nvme error: %v", output)
+			return err
+		}
+	} else {
+		output, err = utils.ExecShellCmd("for sd in $(ls /sys/block/%s/slaves/); do echo 1 > /sys/block/${sd}/device/rescan; done", dm)
+		if err != nil {
+			log.Errorf("Rescan DM device %s error: %v", dm, output)
+			return err
+		}
 	}
 
 	time.Sleep(time.Second * 2)
@@ -293,6 +270,11 @@ func resizeSDDev(sd string) error {
 		return err
 	}
 
+	return nil
+}
+
+func resizeNVMeDev(devices []string) error {
+	connector.ReScanNVMe(devices)
 	return nil
 }
 
@@ -335,15 +317,4 @@ func extResize(devicePath string) error {
 
 	log.Infof("Resize success for device path : %v", devicePath)
 	return nil
-}
-
-func GetDevPath(wwn, protocol string) (string, error) {
-	device := ScanDev(wwn, protocol)
-	if device == "" {
-		msg := fmt.Sprintf("Cannot detect device %s", wwn)
-		log.Errorln(msg)
-		return "", errors.New(msg)
-	}
-
-	return fmt.Sprintf("/dev/%s", device), nil
 }

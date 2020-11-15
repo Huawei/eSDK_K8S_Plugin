@@ -1,19 +1,55 @@
 PLATFORM=PLATFORM
+RELEASE_VER=RELEASE_VER
+VER=VER
 export GOPATH:=$(GOPATH):$(shell pwd)
+export PACKAGE=eSDK_Enterprise_Storage_${RELEASE_VER}_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
+export CLOUD_PACKAGE=eSDK_Cloud_Storage_${RELEASE_VER}_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
 
-all:COMMON_1 DIFF 
+all:COMMON_1 DIFF COMMON_2
 
 COMMON_1:
-	mkdir -p ./bin
+	rm -rf ./${PACKAGE} ./${CLOUD_PACKAGE}
+	rm -f ./src/vendor
+	ln -s ../third_party ./src/vendor
+
+	mkdir -p ./${PACKAGE}/bin
 
 DIFF:
 ifeq (${PLATFORM}, X86)
-	go build -o ./bin/huawei-csi	  ./src/csi
-	go build -o ./bin/passwdEncrypt	  ./src/tools/passwdEncrypt
+	go build -o ./${PACKAGE}/bin/huawei-csi	  ./src/csi
+	go build -o ./${PACKAGE}/bin/passwdEncrypt	  ./src/tools/passwdEncrypt
 endif
 
 ifeq (${PLATFORM}, ARM)
-	GOOS=linux GOARCH=arm64 go build -o ./bin/huawei-csi	  ./src/csi
-	GOOS=linux GOARCH=arm64 go build -o ./bin/passwdEncrypt	  ./src/tools/passwdEncrypt
+	GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/huawei-csi	  ./src/csi
+	GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/passwdEncrypt	  ./src/tools/passwdEncrypt
 endif
 
+COMMON_2:
+	mkdir -p ./${PACKAGE}/yamls
+	cp ./yamls/Containerized/huawei-csi-configmap*.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/huawei-csi-controller.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/huawei-csi-node.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/huawei-csi-rbac.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/fs-sc-for-csi-example.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/lun-sc-for-csi-example.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/pvc-example.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/pod-example.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/snapshotclass.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/snapshot.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/clone.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/restore.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/huawei-csi-multi-controller.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/huawei-csi-rbac-for-multi-controller.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/huawei-csi-resize-controller.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/huawei-csi-resize-rbac.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/huawei-csi-resize-snapshot-controller.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/huawei-csi-resize-snapshot-rbac.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/snapshot.storage.k8s.io_volumesnapshotclasses.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/snapshot.storage.k8s.io_volumesnapshotcontents.yaml ./${PACKAGE}/yamls/
+	cp ./yamls/Containerized/snapshot.storage.k8s.io_volumesnapshots.yaml ./${PACKAGE}/yamls/
+
+	zip -r ${PACKAGE}.zip ./${PACKAGE}
+	mv ${PACKAGE} ${CLOUD_PACKAGE}
+	zip -r ${CLOUD_PACKAGE}.zip ./${CLOUD_PACKAGE}
+	rm -rf ./${CLOUD_PACKAGE}

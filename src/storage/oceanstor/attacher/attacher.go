@@ -1,9 +1,9 @@
 package attacher
 
 import (
-	"dev"
 	"errors"
 	"fmt"
+	"net"
 	"proto"
 	"storage/oceanstor/client"
 	"strings"
@@ -16,6 +16,8 @@ type AttacherPlugin interface {
 	ControllerDetach(string, map[string]interface{}) (string, error)
 	NodeStage(string, map[string]interface{}) (string, error)
 	NodeUnstage(string, map[string]interface{}) error
+	getTargetISCSIPortals() ([]string, error)
+	getTargetRoCEPortals() ([]string, error)
 }
 
 type Attacher struct {
@@ -280,7 +282,7 @@ func (p *Attacher) needUpdateInitiatorAlua(initiator map[string]interface{}) boo
 	return false
 }
 
-func (p *Attacher) attachISCSI(hostID string) (map[string]interface{}, error) {
+func (p *Attacher) getTargetISCSIPortals() ([]string, error) {
 	ports, err := p.cli.GetIscsiTgtPort()
 	if err != nil {
 		log.Errorf("Get ISCSI tgt port error: %v", err)
@@ -306,34 +308,65 @@ func (p *Attacher) attachISCSI(hostID string) (map[string]interface{}, error) {
 		validIPs[splitIqn[5]] = true
 	}
 
-	// Need ignore error here
-	output, _ := utils.ExecShellCmd("iscsiadm -m session")
-
-	for _, ip := range p.portals {
+	var availablePortals []string
+	for _, portal := range p.portals {
+		ip := net.ParseIP(portal).String()
 		if !validIPs[ip] {
-			msg := fmt.Sprintf("ISCSI portal %s is not valid", ip)
+			log.Warningf("ISCSI portal %s is not valid", ip)
+			continue
+		}
+		availablePortals = append(availablePortals, ip)
+	}
+
+	if availablePortals == nil {
+		msg := fmt.Sprintf("All config portal %s is not valid", p.portals)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	return availablePortals, nil
+}
+
+func (p *Attacher) getTargetRoCEPortals() ([]string, error) {
+	var availablePortals []string
+	for _, portal := range p.portals {
+		ip := net.ParseIP(portal).String()
+		rocePortal, err := p.cli.GetRoCEPortalByIP(ip)
+		if err != nil {
+			log.Errorf("Get RoCE tgt portal error: %v", err)
+			return nil, err
+		}
+
+		if rocePortal == nil {
+			log.Warningf("the config portal %s does not exit.", ip)
+			continue
+		}
+
+		supportProtocol, exist := rocePortal["SUPPORTPROTOCOL"].(string)
+		if !exist {
+			msg := "current storage does not support NVMe"
 			log.Errorln(msg)
 			return nil, errors.New(msg)
 		}
 
-		if strings.Contains(output, ip) {
-			log.Infof("Already login iscsi target %s, no need login again", ip)
+		if supportProtocol != "64" { // 64 means NVME protocol
+			log.Warningf("the config portal %s does not support NVME.", ip)
 			continue
 		}
 
-		output, err := utils.ExecShellCmd("iscsiadm -m discovery -t sendtargets -p %s", ip)
-		if err != nil {
-			log.Errorf("Cannot connect ISCSI portal %s: %v", ip, output)
-			return nil, err
-		}
-
-		output, err = utils.ExecShellCmd("iscsiadm -m node -p %s --login", ip)
-		if err != nil {
-			log.Errorf("Login iscsi target %s error: %s", ip, output)
-			return nil, err
-		}
+		availablePortals = append(availablePortals, ip)
 	}
 
+	if availablePortals == nil {
+		msg := fmt.Sprintf("All config portal %s is not valid", p.portals)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	return availablePortals, nil
+}
+
+func (p *Attacher) attachISCSI(hostID string) (map[string]interface{}, error) {
 	name, err := proto.GetISCSIInitiator()
 	if err != nil {
 		log.Errorf("Get ISCSI initiator name error: %v", name)
@@ -424,6 +457,45 @@ func (p *Attacher) attachFC(hostID string) ([]map[string]interface{}, error) {
 	return hostInitiators, nil
 }
 
+func (p *Attacher) attachRoCE(hostID string) (map[string]interface{}, error) {
+	name, err := proto.GetRoCEInitiator()
+	if err != nil {
+		log.Errorf("Get RoCE initiator name error: %v", name)
+		return nil, err
+	}
+
+	initiator, err := p.cli.GetRoCEInitiator(name)
+	if err != nil {
+		log.Errorf("Get RoCE initiator %s error: %v", name, err)
+		return nil, err
+	}
+
+	if initiator == nil {
+		initiator, err = p.cli.AddRoCEInitiator(name)
+		if err != nil {
+			log.Errorf("Add initiator %s error: %v", name, err)
+			return nil, err
+		}
+	}
+
+	isFree, freeExist := initiator["ISFREE"].(string)
+	parent, parentExist := initiator["PARENTID"].(string)
+
+	if freeExist && isFree == "true" {
+		err := p.cli.AddRoCEInitiatorToHost(name, hostID)
+		if err != nil {
+			log.Errorf("Add RoCE initiator %s to host %s error: %v", name, hostID, err)
+			return nil, err
+		}
+	} else if parentExist && parent != hostID {
+		msg := fmt.Sprintf("RoCE initiator %s is already associated to another host %s", name, parent)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	return initiator, nil
+}
+
 func (p *Attacher) doMapping(hostID, lunName string) (string, error) {
 	lun, err := p.cli.GetLunByName(lunName)
 	if err != nil {
@@ -456,7 +528,11 @@ func (p *Attacher) doMapping(hostID, lunName string) (string, error) {
 		return "", err
 	}
 
-	return lun["WWN"].(string), nil
+	lunUniqueId, err := utils.GetLunUniqueId(p.protocol, lun)
+	if err != nil {
+		return "", err
+	}
+	return lunUniqueId, nil
 }
 
 func (p *Attacher) doUnmapping(hostID, lunName string) (string, error) {
@@ -492,7 +568,11 @@ func (p *Attacher) doUnmapping(hostID, lunName string) (string, error) {
 		}
 	}
 
-	return lun["WWN"].(string), nil
+	lunUniqueId, err := utils.GetLunUniqueId(p.protocol, lun)
+	if err != nil {
+		return "", err
+	}
+	return lunUniqueId, nil
 }
 
 func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
@@ -505,13 +585,7 @@ func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}
 		return nil
 	}
 
-	err = dev.DeleteDev(wwn)
-	if err != nil {
-		log.Errorf("Delete dev %s error: %v", wwn, err)
-		return err
-	}
-
-	return err
+	return disConnectVolume(wwn, p.protocol)
 }
 
 func (p *Attacher) ControllerDetach(lunName string, parameters map[string]interface{}) (string, error) {

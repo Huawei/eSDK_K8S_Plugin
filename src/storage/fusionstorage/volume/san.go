@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"storage/fusionstorage/client"
+	"storage/fusionstorage/smartx"
 	"strconv"
 	"utils"
 	"utils/log"
@@ -23,6 +24,19 @@ func NewSAN(cli *client.Client) *SAN {
 	return &SAN{
 		cli: cli,
 	}
+}
+
+func (p *SAN) getQoS(params map[string]interface{}) error {
+	if v, exist := params["qos"].(string); exist && v != "" {
+		qos, err := smartx.VerifyQos(v)
+		if err != nil {
+			log.Errorf("Verify qos %s error: %v", v, err)
+			return err
+		}
+		params["qos"] = qos
+	}
+
+	return nil
 }
 
 func (p *SAN) preCreate(params map[string]interface{}) error {
@@ -49,6 +63,11 @@ func (p *SAN) preCreate(params map[string]interface{}) error {
 		params["clonefrom"] = utils.GetFusionStorageLunName(v)
 	}
 
+	err := p.getQoS(params)
+	if err != nil {
+		return err
+	}
+	log.Infof("params is %v", params)
 	return nil
 }
 
@@ -59,7 +78,8 @@ func (p *SAN) Create(params map[string]interface{}) error {
 	}
 
 	taskflow := taskflow.NewTaskFlow("Create-FusionStorage-LUN-Volume")
-	taskflow.AddTask("Create-LUN", p.createLun, nil)
+	taskflow.AddTask("Create-LUN", p.createLun, p.revertLun)
+	taskflow.AddTask("Create-QoS", p.createQoS, nil)
 
 	_, err = taskflow.Run(params)
 	if err != nil {
@@ -94,7 +114,9 @@ func (p *SAN) createLun(params, taskResult map[string]interface{}) (map[string]i
 		return nil, err
 	}
 
-	return nil, nil
+	return map[string]interface{}{
+		"volumeName": name,
+	}, nil
 }
 
 func (p *SAN) clone(params map[string]interface{}) error {
@@ -173,6 +195,42 @@ func (p *SAN) createFromSnapshot(params map[string]interface{}) error {
 	return nil
 }
 
+func (p *SAN) revertLun(taskResult map[string]interface{}) error {
+	volName, exist := taskResult["volumeName"].(string)
+	if !exist || volName == "" {
+		return nil
+	}
+
+	err := p.cli.DeleteVolume(volName)
+	return err
+}
+
+func (p *SAN) createQoS(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	qos, exist := params["qos"].(map[string]int)
+	if !exist {
+		return nil, nil
+	}
+
+	volName := taskResult["volumeName"].(string)
+	qosName, err := p.cli.GetQoSNameByVolume(volName)
+	if err != nil {
+		return nil, err
+	}
+
+	if qosName == "" {
+		smartQos := smartx.NewQoS(p.cli)
+		qosName, err = smartQos.AddQoS(volName, qos)
+		if err != nil {
+			log.Errorf("Create qos %v for lun %s error: %v", qos, volName, err)
+			return nil, err
+		}
+	}
+
+	return map[string]interface{}{
+		"QosName": qosName,
+	}, nil
+}
+
 func (p *SAN) Delete(name string) error {
 	vol, err := p.cli.GetVolumeByName(name)
 	if err != nil {
@@ -182,6 +240,13 @@ func (p *SAN) Delete(name string) error {
 	if vol == nil {
 		log.Warningf("Volume %s doesn't exist while trying to delete it", name)
 		return nil
+	}
+
+	smartQos := smartx.NewQoS(p.cli)
+	err = smartQos.RemoveQoS(name)
+	if err != nil {
+		log.Errorf("Remove QoS of volume %s error: %v", name, err)
+		return err
 	}
 
 	return p.cli.DeleteVolume(name)

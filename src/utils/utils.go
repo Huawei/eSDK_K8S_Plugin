@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -11,11 +12,23 @@ import (
 	"strings"
 	"time"
 	"utils/log"
+
+	"golang.org/x/sys/unix"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 const (
 	DoradoV6Version = "V600R003C00"
 )
+
+type VolumeMetrics struct {
+	Available *resource.Quantity
+	Capacity *resource.Quantity
+	InodesUsed *resource.Quantity
+	Inodes *resource.Quantity
+	InodesFree *resource.Quantity
+	Used *resource.Quantity
+}
 
 func PathExist(path string) (bool, error) {
 	_, err := os.Stat(path)
@@ -88,7 +101,7 @@ func GetSharePath(name string) string {
 }
 
 func GetFSSharePath(name string) string {
-	return "/" + strings.Replace(name, "-", "_", -1)
+	return "/" + strings.Replace(name, "-", "_", -1) + "/"
 }
 
 func GetHostName() (string, error) {
@@ -275,4 +288,52 @@ func GetAlua(alua map[string]interface{}, host string) map[string]interface{} {
 	}
 
 	return alua["*"].(map[string]interface{})
+}
+
+func fsInfo(path string) (int64, int64, int64, int64, int64, int64, error) {
+	statfs := &unix.Statfs_t{}
+	err := unix.Statfs(path, statfs)
+	if err != nil {
+		return 0, 0, 0, 0, 0, 0, err
+	}
+
+	capacity := int64(statfs.Blocks) * int64(statfs.Bsize)
+	available := int64(statfs.Bavail) * int64(statfs.Bsize)
+	used := (int64(statfs.Blocks) - int64(statfs.Bfree)) * int64(statfs.Bsize)
+
+	inodes := int64(statfs.Files)
+	inodesFree := int64(statfs.Ffree)
+	inodesUsed := inodes - inodesFree
+	return inodes, inodesFree, inodesUsed, available, capacity, used, nil
+}
+
+func GetVolumeMetrics(path string) (*VolumeMetrics, error) {
+	volumeMetrics := &VolumeMetrics{}
+
+	inodes, inodesFree, inodesUsed, available, capacity, usage, err := fsInfo(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get FsInfo, error %v", err)
+	}
+	volumeMetrics.Inodes = resource.NewQuantity(inodes, resource.BinarySI)
+	volumeMetrics.InodesFree = resource.NewQuantity(inodesFree, resource.BinarySI)
+	volumeMetrics.InodesUsed = resource.NewQuantity(inodesUsed, resource.BinarySI)
+	volumeMetrics.Available = resource.NewQuantity(available, resource.BinarySI)
+	volumeMetrics.Capacity = resource.NewQuantity(capacity, resource.BinarySI)
+	volumeMetrics.Used = resource.NewQuantity(usage, resource.BinarySI)
+
+	return volumeMetrics, nil
+}
+
+func GetLunUniqueId(protocol string, lun map[string]interface{}) (string, error){
+	if protocol == "roce" || protocol == "fc-nvme" {
+		tgtLunGuid, exist := lun["NGUID"].(string)
+		if !exist {
+			msg := fmt.Sprintf("The Lun info %s does not contain key NGUID", lun)
+			log.Errorln(msg)
+			return "", errors.New(msg)
+		}
+		return tgtLunGuid, nil
+	} else {
+		return lun["WWN"].(string), nil
+	}
 }
