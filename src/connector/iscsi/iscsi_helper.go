@@ -239,10 +239,8 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 		return "", err
 	}
 
-	allSessions, err := utils.ExecShellCmd("iscsiadm -m session")
-	if err != nil {
-		return "", err
-	}
+    // must ignore the error
+	allSessions, _ := utils.ExecShellCmd("iscsiadm -m session")
 
 	var mPath string
 	var wait sync.WaitGroup
