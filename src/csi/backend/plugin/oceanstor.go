@@ -8,7 +8,6 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
-	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/pwd"
 )
 
 const (
@@ -51,15 +50,10 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		return errors.New("product only support config: V3, V5, Dorado")
 	}
 
-	decrypted, err := pwd.Decrypt(password)
-	if err != nil {
-		return err
-	}
-
 	vstoreName, _ := config["vstoreName"].(string)
 
-	cli := client.NewClient(urls, user, decrypted, vstoreName)
-	err = cli.Login()
+	cli := client.NewClient(urls, user, password, vstoreName)
+	err := cli.Login()
 	if err != nil {
 		return err
 	}

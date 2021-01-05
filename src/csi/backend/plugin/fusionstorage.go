@@ -7,7 +7,6 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/fusionstorage/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
-	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/pwd"
 )
 
 const (
@@ -35,13 +34,8 @@ func (p *FusionStoragePlugin) init(config map[string]interface{}, keepLogin bool
 		return errors.New("password must be provided")
 	}
 
-	decrypted, err := pwd.Decrypt(password)
-	if err != nil {
-		return err
-	}
-
-	cli := client.NewClient(url, user, decrypted)
-	err = cli.Login()
+	cli := client.NewClient(url, user, password)
+	err := cli.Login()
 	if err != nil {
 		return err
 	}
