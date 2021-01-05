@@ -321,6 +321,5 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 }
 
 func (d *Driver) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
-	// todo
-	return nil, nil
+	return nil, status.Error(codes.Unimplemented, "Not implemented")
 }
