@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"storage/oceanstor/client"
 	"strings"
 	"time"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 var (

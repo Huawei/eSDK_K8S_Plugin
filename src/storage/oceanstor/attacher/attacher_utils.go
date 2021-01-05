@@ -1,14 +1,15 @@
 package attacher
 
 import (
-	"connector"
-	_ "connector/fibrechannel"
-	_ "connector/iscsi"
-	_ "connector/nvme"
-	_ "connector/roce"
 	"errors"
 	"fmt"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/connector"
+	_ "github.com/Huawei/eSDK_K8S_Plugin/src/connector/fibrechannel"
+	_ "github.com/Huawei/eSDK_K8S_Plugin/src/connector/iscsi"
+	_ "github.com/Huawei/eSDK_K8S_Plugin/src/connector/nvme"
+	_ "github.com/Huawei/eSDK_K8S_Plugin/src/connector/roce"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 func iSCSIControllerAttach(attacher AttacherPlugin, lunName string,
@@ -25,7 +26,7 @@ func iSCSIControllerAttach(attacher AttacherPlugin, lunName string,
 	}
 	connMap := map[string]interface{}{
 		"tgtPortals": tgtPortals,
-		"tgtLunWWNs":  tgtLunWWNs,
+		"tgtLunWWNs": tgtLunWWNs,
 	}
 
 	conn := connector.GetConnector(connector.ISCSIDriver)
@@ -70,7 +71,7 @@ func roceControllerAttach(attacher AttacherPlugin, lunName string,
 		tgtLunGuids = append(tgtLunGuids, lunGuid)
 	}
 	connMap := map[string]interface{}{
-		"tgtPortals": tgtPortals,
+		"tgtPortals":  tgtPortals,
 		"tgtLunGuids": tgtLunGuids,
 	}
 
@@ -150,4 +151,3 @@ func connectVolume(attacher AttacherPlugin, lunName, protocol string, parameters
 		return "", nil
 	}
 }
-

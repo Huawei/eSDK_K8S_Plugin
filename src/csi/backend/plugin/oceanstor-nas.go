@@ -1,12 +1,13 @@
 package plugin
 
 import (
-	"dev"
 	"errors"
-	"storage/oceanstor/client"
-	"storage/oceanstor/volume"
-	"utils"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/dev"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/oceanstor/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 const (

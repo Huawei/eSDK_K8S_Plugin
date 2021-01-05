@@ -1,8 +1,8 @@
 package taskflow
 
 import (
-	"utils"
-	"utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 type TaskRunFunc func(params map[string]interface{}, result map[string]interface{}) (map[string]interface{}, error)

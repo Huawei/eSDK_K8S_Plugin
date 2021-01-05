@@ -2,13 +2,13 @@ package driver
 
 import (
 	"context"
-	"csi/backend"
 	"encoding/json"
 	"fmt"
 	"strings"
-	"utils"
-	"utils/log"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/src/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

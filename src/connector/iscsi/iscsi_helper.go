@@ -1,7 +1,6 @@
 package iscsi
 
 import (
-	"connector"
 	"errors"
 	"fmt"
 	"math"
@@ -9,8 +8,10 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"utils"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 type connectorInfo struct {
@@ -203,8 +204,7 @@ func findTgtMultiPath(lenIndex int, iscsiShareData *shareData, conn *connectorIn
 	var wwnAdded bool
 	var lastTryOn int64
 	for {
-		if (int64(lenIndex) == iscsiShareData.stoppedThreads && iscsiShareData.foundDevices == nil) || (
-			mPath != "" && int64(lenIndex) == iscsiShareData.numLogin+iscsiShareData.failedLogin) {
+		if (int64(lenIndex) == iscsiShareData.stoppedThreads && iscsiShareData.foundDevices == nil) || (mPath != "" && int64(lenIndex) == iscsiShareData.numLogin+iscsiShareData.failedLogin) {
 			break
 		}
 

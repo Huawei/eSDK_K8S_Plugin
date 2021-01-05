@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"storage/oceanstor/client"
-	"storage/oceanstor/smartx"
 	"strconv"
 	"time"
-	"utils"
-	"utils/log"
-	"utils/taskflow"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/oceanstor/smartx"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/taskflow"
 )
 
 const (
@@ -37,8 +38,8 @@ type SAN struct {
 func NewSAN(cli, metroRemoteCli, replicaRemoteCli *client.Client) *SAN {
 	return &SAN{
 		Base: Base{
-			cli:            cli,
-			metroRemoteCli: metroRemoteCli,
+			cli:              cli,
+			metroRemoteCli:   metroRemoteCli,
 			replicaRemoteCli: replicaRemoteCli,
 		},
 	}

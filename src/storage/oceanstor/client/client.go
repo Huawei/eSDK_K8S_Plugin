@@ -16,8 +16,9 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"utils"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 const (
@@ -48,9 +49,9 @@ const (
 	REPLICATION_NOT_EXIST        int64 = 1077937923
 	HYPERMETRO_NOT_EXIST         int64 = 1077674242
 	SNAPSHOT_PARENT_NOT_EXIST    int64 = 1073754117
-	DEFAULT_PARALLEL_COUNT          int = 50
-	MAX_PARALLEL_COUNT              int = 1000
-	MIN_PARALLEL_COUNT              int = 20
+	DEFAULT_PARALLEL_COUNT       int   = 50
+	MAX_PARALLEL_COUNT           int   = 1000
+	MIN_PARALLEL_COUNT           int   = 20
 )
 
 var (

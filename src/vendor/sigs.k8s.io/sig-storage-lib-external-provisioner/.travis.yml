@@ -1,9 +1,0 @@
-language: go
-go_import_path: sigs.k8s.io/sig-storage-lib-external-provisioner
-go:
-  - 1.13.7
-services: docker
-script:
-  - make verify
-  - make test
-  - ./test/e2e/test.sh

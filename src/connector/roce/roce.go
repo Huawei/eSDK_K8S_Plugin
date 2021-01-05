@@ -1,10 +1,11 @@
 package roce
 
 import (
-	"connector"
 	"strings"
 	"time"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 type RoCE struct{}
