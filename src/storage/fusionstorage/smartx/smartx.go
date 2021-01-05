@@ -79,7 +79,7 @@ func (p *QoS) AddQoS(volName string, params map[string]int) (string, error) {
 
 		err := p.RemoveQoS(volName)
 		if err != nil {
-			log.Errorf("Revert Create qos %s error: %v", params, err)
+			log.Errorf("Revert Create qos %v error: %v", params, err)
 			return "", err
 		}
 

@@ -220,7 +220,7 @@ func CopyMap(srcMap interface{}) map[string]interface{} {
 func StrToBool(str string) bool {
 	b, err := strconv.ParseBool(str)
 	if err != nil {
-		log.Warningf("Parse bool string %s error, return false")
+		log.Warningf("Parse bool string %s error, return false", err)
 		return false
 	}
 
