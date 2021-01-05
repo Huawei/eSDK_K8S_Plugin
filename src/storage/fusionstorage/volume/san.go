@@ -292,7 +292,7 @@ func (p *SAN) preExpandCheckCapacity(params, taskResult map[string]interface{}) 
 	expandSize := params["expandSize"].(int64)
 	pool, err := p.cli.GetPoolById(localParentId)
 	if err != nil || pool == nil {
-		log.Errorf("Get storage pool %s info error: %v", localParentId, err)
+		log.Errorf("Get storage pool %v info error: %v", localParentId, err)
 		return nil, err
 	}
 	totalCapacity := int64(pool["totalCapacity"].(float64))
