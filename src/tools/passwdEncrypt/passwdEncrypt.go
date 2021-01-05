@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
-	"utils/pwd"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/pwd"
 	"golang.org/x/crypto/ssh/terminal"
 )
 

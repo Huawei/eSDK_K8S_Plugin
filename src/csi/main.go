@@ -1,8 +1,6 @@
 package main
 
 import (
-	"csi/backend"
-	"csi/driver"
 	"encoding/json"
 	"flag"
 	"io/ioutil"
@@ -11,8 +9,10 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"time"
-	"utils/log"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/src/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/csi/driver"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"

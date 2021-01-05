@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"storage/fusionstorage/client"
 	"time"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 var (

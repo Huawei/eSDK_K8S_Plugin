@@ -1,7 +1,7 @@
 package attacher
 
 import (
-	"utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 type MetroAttacher struct {

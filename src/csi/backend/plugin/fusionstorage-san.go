@@ -1,16 +1,17 @@
 package plugin
 
 import (
-	"dev"
 	"errors"
 	"fmt"
 	"net"
-	"proto"
-	"storage/fusionstorage/attacher"
-	"storage/fusionstorage/volume"
 	"strings"
-	"utils"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/dev"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/proto"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/fusionstorage/attacher"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/fusionstorage/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 type FusionStorageSanPlugin struct {

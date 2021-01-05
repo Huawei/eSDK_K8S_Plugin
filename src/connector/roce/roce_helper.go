@@ -1,7 +1,6 @@
 package roce
 
 import (
-	"connector"
 	"errors"
 	"fmt"
 	"math"
@@ -9,12 +8,14 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"utils"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 type connectorInfo struct {
-	tgtPortals []string
+	tgtPortals  []string
 	tgtLunGuids []string
 }
 
@@ -97,8 +98,8 @@ func singleConnectVolume(allSessions, tgtPortal, tgtLunGuid string, nvmeShareDat
 		nvmeShareData.failedLogin += 1
 	} else {
 		nvmeShareData.numLogin += 1
-		connectInfo := map[string]interface{} {
-			"protocol": "iscsi",
+		connectInfo := map[string]interface{}{
+			"protocol":  "iscsi",
 			"targetNqn": tgtNqn,
 		}
 		for i := 1; i < 4; i++ {
@@ -165,8 +166,7 @@ func findTgtMultiPath(lenIndex int, nvmeShareData *shareData, conn *connectorInf
 	var mPath string
 	var lastTryOn int64
 	for {
-		if (int64(lenIndex) == nvmeShareData.stoppedThreads && nvmeShareData.foundDevices == nil) || (
-			mPath != "" && int64(lenIndex) == nvmeShareData.numLogin+nvmeShareData.failedLogin) {
+		if (int64(lenIndex) == nvmeShareData.stoppedThreads && nvmeShareData.foundDevices == nil) || (mPath != "" && int64(lenIndex) == nvmeShareData.numLogin+nvmeShareData.failedLogin) {
 			break
 		}
 

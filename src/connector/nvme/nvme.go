@@ -1,11 +1,12 @@
 package nvme
 
 import (
-	"connector"
 	"errors"
 	"fmt"
 	"time"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 type FCNVMe struct{}
@@ -22,7 +23,7 @@ func (fc *FCNVMe) ConnectVolume(conn map[string]interface{}) (string, error) {
 		log.Errorln(msg)
 		return "", errors.New(msg)
 	}
-	connectInfo := map[string]interface{} {
+	connectInfo := map[string]interface{}{
 		"protocol": "fc",
 	}
 	connector.ScanNVMe(connectInfo)

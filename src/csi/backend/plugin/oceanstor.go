@@ -2,12 +2,13 @@ package plugin
 
 import (
 	"errors"
-	"storage/oceanstor/client"
 	"strconv"
 	"strings"
-	"utils"
-	"utils/log"
-	"utils/pwd"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/pwd"
 )
 
 const (
@@ -175,8 +176,7 @@ func (p *OceanstorPlugin) updatePoolCapabilities(poolNames []string, usageType s
 	for _, name := range poolNames {
 		if pool, exist := pools[name].(map[string]interface{}); exist {
 			poolType, exist := pool["NEWUSAGETYPE"].(string)
-			if (pool["USAGETYPE"] == usageType || pool["USAGETYPE"] == DORADO_V6_POOL_USAGE_TYPE) || (
-				exist && poolType == DORADO_V6_POOL_USAGE_TYPE) {
+			if (pool["USAGETYPE"] == usageType || pool["USAGETYPE"] == DORADO_V6_POOL_USAGE_TYPE) || (exist && poolType == DORADO_V6_POOL_USAGE_TYPE) {
 				validPools = append(validPools, pool)
 			} else {
 				log.Warningf("Pool %s is not for %s", name, usageType)

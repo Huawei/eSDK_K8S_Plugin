@@ -1,13 +1,14 @@
 package backend
 
 import (
-	"csi/backend/plugin"
 	"errors"
 	"fmt"
 	"regexp"
 	"sync"
-	"utils"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 var (
@@ -168,8 +169,7 @@ func updateMetroBackends() {
 				continue
 			}
 
-			if (i.MetroDomain != "" && i.MetroDomain == j.MetroDomain) || (
-				i.MetrovStorePairID != "" && i.MetrovStorePairID == j.MetrovStorePairID) {
+			if (i.MetroDomain != "" && i.MetroDomain == j.MetroDomain) || (i.MetrovStorePairID != "" && i.MetrovStorePairID == j.MetrovStorePairID) {
 				i.MetroBackend, j.MetroBackend = j, i
 				i.Plugin.UpdateMetroRemotePlugin(j.Plugin)
 				j.Plugin.UpdateMetroRemotePlugin(i.Plugin)

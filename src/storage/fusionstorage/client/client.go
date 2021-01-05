@@ -11,7 +11,8 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"time"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 const (
@@ -1266,8 +1267,8 @@ func (cli *Client) GetAssociateCountOfQoS(qosName string) (int, error) {
 
 func (cli *Client) getAssociateObjOfQoS(qosName, objType string, poolId int64) (map[string]interface{}, error) {
 	data := map[string]interface{}{
-		"qosName":   qosName,
-		"poolId":    poolId,
+		"qosName": qosName,
+		"poolId":  poolId,
 	}
 
 	resp, err := cli.post("/dsware/service/v1.3/qos/volume/list?type=associated", data)
@@ -1286,7 +1287,7 @@ func (cli *Client) getAssociateObjOfQoS(qosName, objType string, poolId int64) (
 
 func (cli *Client) getAssociatePoolOfQoS(qosName string) (map[string]interface{}, error) {
 	data := map[string]interface{}{
-		"qosName":   qosName,
+		"qosName": qosName,
 	}
 
 	resp, err := cli.post("/dsware/service/v1.3/qos/storagePool/list?type=associated", data)

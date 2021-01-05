@@ -16,7 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 const (

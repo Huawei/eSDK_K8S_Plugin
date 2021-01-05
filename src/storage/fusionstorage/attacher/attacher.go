@@ -1,17 +1,18 @@
 package attacher
 
 import (
-	"connector"
-	_ "connector/iscsi"
-	"dev"
 	"errors"
 	"fmt"
 	"net"
-	"proto"
-	"storage/fusionstorage/client"
 	"strings"
-	"utils"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/connector"
+	_ "github.com/Huawei/eSDK_K8S_Plugin/src/connector/iscsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/dev"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/proto"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 type Attacher struct {
@@ -411,7 +412,7 @@ func (p *Attacher) NodeStage(lunName string, parameters map[string]interface{}) 
 		}
 		connMap := map[string]interface{}{
 			"tgtPortals": tgtPortals,
-			"tgtLunWWNs":  tgtLunWWNs,
+			"tgtLunWWNs": tgtLunWWNs,
 		}
 
 		conn := connector.GetConnector(connector.ISCSIDriver)

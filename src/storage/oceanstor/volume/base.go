@@ -3,10 +3,11 @@ package volume
 import (
 	"errors"
 	"fmt"
-	"storage/oceanstor/client"
-	"storage/oceanstor/smartx"
 	"strconv"
-	"utils/log"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/storage/oceanstor/smartx"
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 )
 
 const (

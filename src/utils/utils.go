@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"utils/log"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
 	"golang.org/x/sys/unix"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -22,12 +22,12 @@ const (
 )
 
 type VolumeMetrics struct {
-	Available *resource.Quantity
-	Capacity *resource.Quantity
+	Available  *resource.Quantity
+	Capacity   *resource.Quantity
 	InodesUsed *resource.Quantity
-	Inodes *resource.Quantity
+	Inodes     *resource.Quantity
 	InodesFree *resource.Quantity
-	Used *resource.Quantity
+	Used       *resource.Quantity
 }
 
 func PathExist(path string) (bool, error) {
@@ -324,7 +324,7 @@ func GetVolumeMetrics(path string) (*VolumeMetrics, error) {
 	return volumeMetrics, nil
 }
 
-func GetLunUniqueId(protocol string, lun map[string]interface{}) (string, error){
+func GetLunUniqueId(protocol string, lun map[string]interface{}) (string, error) {
 	if protocol == "roce" || protocol == "fc-nvme" {
 		tgtLunGuid, exist := lun["NGUID"].(string)
 		if !exist {
