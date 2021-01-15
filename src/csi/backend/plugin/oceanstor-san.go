@@ -156,7 +156,7 @@ func (p *OceanstorSanPlugin) metroHandler(localCli *client.Client, lun, paramete
 
 	localAttacher := attacher.NewAttacher(p.product, localCli, p.protocol, "csi", p.portals, p.alua)
 	remoteAttacher := attacher.NewAttacher(p.metroRemotePlugin.product, metroCli, p.metroRemotePlugin.protocol,
-		"csi", p.metroRemotePlugin.portals, p.alua)
+		"csi", p.metroRemotePlugin.portals, p.metroRemotePlugin.alua)
 
 	metroAttacher := attacher.NewMetroAttacher(localAttacher, remoteAttacher, p.protocol)
 	lunName := lun["NAME"].(string)

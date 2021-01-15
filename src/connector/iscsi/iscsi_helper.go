@@ -239,7 +239,7 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 		return "", err
 	}
 
-    // must ignore the error
+	// must ignore the error
 	allSessions, _ := utils.ExecShellCmd("iscsiadm -m session")
 
 	var mPath string

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"utils"
 	"utils/log"
 )
 
@@ -47,6 +48,9 @@ const (
 	REPLICATION_NOT_EXIST        int64 = 1077937923
 	HYPERMETRO_NOT_EXIST         int64 = 1077674242
 	SNAPSHOT_PARENT_NOT_EXIST    int64 = 1073754117
+	DEFAULT_PARALLEL_COUNT          int = 50
+	MAX_PARALLEL_COUNT              int = 1000
+	MIN_PARALLEL_COUNT              int = 20
 )
 
 var (
@@ -65,6 +69,8 @@ var (
 			`/vstore_pair\?filter=ID`,
 		},
 	}
+
+	clientSemaphore *utils.Semaphore
 )
 
 func logFilter(method, url string) bool {
@@ -102,7 +108,22 @@ type Response struct {
 	Data  interface{}            `json:"data,omitempty"`
 }
 
-func NewClient(urls []string, user, password, vstoreName string) *Client {
+func NewClient(urls []string, user, password, vstoreName, parallelNum string) *Client {
+	var err error
+	var parallelCount int
+
+	if len(parallelNum) > 0 {
+		parallelCount, err = strconv.Atoi(parallelNum)
+		if err != nil || parallelCount > MAX_PARALLEL_COUNT || parallelCount < MIN_PARALLEL_COUNT {
+			log.Warningf("The config parallelNum %d is invalid, set it to the default value %d", parallelCount, DEFAULT_PARALLEL_COUNT)
+			parallelCount = DEFAULT_PARALLEL_COUNT
+		}
+	} else {
+		parallelCount = DEFAULT_PARALLEL_COUNT
+	}
+
+	log.Infof("Init parallel count is %d", parallelCount)
+	clientSemaphore = utils.NewSemaphore(parallelCount)
 	return &Client{
 		urls:       urls,
 		user:       user,
@@ -131,8 +152,9 @@ func (cli *Client) call(method string, url string, data map[string]interface{}) 
 	return r, err
 }
 
-func (cli *Client) baseCall(method string, url string, data map[string]interface{}) (Response, error) {
-	var r Response
+func (cli *Client) getRequest(method string, url string, data map[string]interface{}) (*http.Request, error) {
+	var req *http.Request
+	var err error
 
 	reqUrl := cli.url
 	if cli.deviceid != "" {
@@ -146,15 +168,15 @@ func (cli *Client) baseCall(method string, url string, data map[string]interface
 		reqBytes, err := json.Marshal(data)
 		if err != nil {
 			log.Errorf("json.Marshal data %v error: %v", data, err)
-			return r, err
+			return req, err
 		}
 		reqBody = bytes.NewReader(reqBytes)
 	}
 
-	req, err := http.NewRequest(method, reqUrl, reqBody)
+	req, err = http.NewRequest(method, reqUrl, reqBody)
 	if err != nil {
 		log.Errorf("Construct http request error: %s", err.Error())
-		return r, err
+		return req, err
 	}
 
 	req.Header.Set("Connection", "keep-alive")
@@ -164,9 +186,35 @@ func (cli *Client) baseCall(method string, url string, data map[string]interface
 		req.Header.Set("iBaseToken", cli.token)
 	}
 
+	return req, nil
+}
+
+func (cli *Client) baseCall(method string, url string, data map[string]interface{}) (Response, error) {
+	var r Response
+	var req *http.Request
+	var err error
+
+	reqUrl := cli.url
+	reqUrl += url
+
+	if url != "/xx/sessions" && url != "/sessions" {
+		cli.reloginMutex.Lock()
+		req, err = cli.getRequest(method, url, data)
+		cli.reloginMutex.Unlock()
+	} else {
+		req, err = cli.getRequest(method, url, data)
+	}
+
+	if err != nil {
+		return r, err
+	}
+
 	if !logFilter(method, url) {
 		log.Infof("Request method: %s, url: %s, body: %v", method, reqUrl, data)
 	}
+
+	clientSemaphore.Acquire()
+	defer clientSemaphore.Release()
 
 	resp, err := cli.client.Do(req)
 	if err != nil {
@@ -247,7 +295,6 @@ func (cli *Client) Login() error {
 
 	cli.deviceid = ""
 	cli.token = ""
-
 	for i, url := range cli.urls {
 		cli.url = url
 
@@ -309,6 +356,8 @@ func (cli *Client) reLogin() error {
 	if cli.token != "" && oldToken != cli.token {
 		// Coming here indicates other thread had already done relogin, so no need to relogin again
 		return nil
+	} else if cli.token != "" {
+		cli.Logout()
 	}
 
 	err := cli.Login()
@@ -325,7 +374,7 @@ func (cli *Client) GetvStoreName() string {
 }
 
 func (cli *Client) GetLunByName(name string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/lun?filter=NAME::%s", name)
+	url := fmt.Sprintf("/lun?filter=NAME::%s&range=[0-100]", name)
 	resp, err := cli.get(url)
 	if err != nil {
 		return nil, err
@@ -556,7 +605,7 @@ func (cli *Client) DeleteLun(id string) error {
 }
 
 func (cli *Client) GetPoolByName(name string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/storagepool?filter=NAME::%s", name)
+	url := fmt.Sprintf("/storagepool?filter=NAME::%s&range=[0-100]", name)
 	resp, err := cli.get(url)
 	if err != nil {
 		return nil, err
@@ -663,7 +712,7 @@ func (cli *Client) UpdateHost(id string, alua map[string]interface{}) error {
 }
 
 func (cli *Client) GetHostByName(name string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/host?filter=NAME::%s", name)
+	url := fmt.Sprintf("/host?filter=NAME::%s&range=[0-100]", name)
 	resp, err := cli.get(url)
 	if err != nil {
 		return nil, err
@@ -1131,7 +1180,7 @@ func (cli *Client) DeleteFileSystem(id string) error {
 }
 
 func (cli *Client) GetFileSystemByName(name string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/filesystem?filter=NAME::%s", name)
+	url := fmt.Sprintf("/filesystem?filter=NAME::%s&range=[0-100]", name)
 	resp, err := cli.get(url)
 	if err != nil {
 		return nil, err
@@ -1809,7 +1858,7 @@ func (cli *Client) CreateLunSnapshot(name, lunID string) (map[string]interface{}
 }
 
 func (cli *Client) GetLunSnapshotByName(name string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/snapshot?filter=NAME::%s", name)
+	url := fmt.Sprintf("/snapshot?filter=NAME::%s&range=[0-100]", name)
 
 	resp, err := cli.get(url)
 	if err != nil {

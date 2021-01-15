@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	DORADO_V6_POOL_USAGE_TYPE = "0"
+	DORADO_V6_POOL_USAGE_TYPE     = "0"
 )
 
 type OceanstorPlugin struct {
@@ -56,8 +56,9 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 	}
 
 	vstoreName, _ := config["vstoreName"].(string)
+	parallelNum, _ := config["parallelNum"].(string)
 
-	cli := client.NewClient(urls, user, decrypted, vstoreName)
+	cli := client.NewClient(urls, user, decrypted, vstoreName, parallelNum)
 	err = cli.Login()
 	if err != nil {
 		return err

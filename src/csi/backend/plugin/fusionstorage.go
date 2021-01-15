@@ -39,7 +39,8 @@ func (p *FusionStoragePlugin) init(config map[string]interface{}, keepLogin bool
 		return err
 	}
 
-	cli := client.NewClient(url, user, decrypted)
+	parallelNum, _ := config["parallelNum"].(string)
+	cli := client.NewClient(url, user, decrypted, parallelNum)
 	err = cli.Login()
 	if err != nil {
 		return err

@@ -10,12 +10,18 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
+	"strconv"
+	"sync"
 	"time"
+	"utils"
 	"utils/log"
 )
 
 const (
+	NO_AUTHENTICATED        int64 = 10000003
 	VOLUME_NAME_NOT_EXIST   int64 = 50150005
+	DELETE_VOLUME_NOT_EXIST int64 = 32150005
+	QUERY_VOLUME_NOT_EXIST  int64 = 31000000
 	INITIATOR_NOT_EXIST     int64 = 50155103
 	HOSTNAME_ALREADY_EXIST  int64 = 50157019
 	INITIATOR_ALREADY_EXIST int64 = 50155102
@@ -24,6 +30,9 @@ const (
 	SNAPSHOT_NOT_EXIST      int64 = 50150006
 	FILE_SYSTEM_NOT_EXIST   int64 = 33564678
 	QUOTA_NOT_EXIST         int64 = 37767685
+	DEFAULT_PARALLEL_COUNT   int   = 50
+	MAX_PARALLEL_COUNT       int   = 1000
+	MIN_PARALLEL_COUNT       int   = 20
 )
 
 var (
@@ -36,6 +45,7 @@ var (
 			"/dsware/service/v1.3/storagePool": true,
 		},
 	}
+	clientSemaphore *utils.Semaphore
 )
 
 func logFilter(method, url string) bool {
@@ -49,9 +59,26 @@ type Client struct {
 	password  string
 	authToken string
 	client    *http.Client
+
+	reloginMutex sync.Mutex
 }
 
-func NewClient(url, user, password string) *Client {
+func NewClient(url, user, password, parallelNum string) *Client {
+	var err error
+	var parallelCount int
+
+	if len(parallelNum) > 0 {
+		parallelCount, err = strconv.Atoi(parallelNum)
+		if err != nil || parallelCount > MAX_PARALLEL_COUNT || parallelCount < MIN_PARALLEL_COUNT {
+			log.Warningf("The config parallelNum %d is invalid, set it to the default value %d", parallelCount, DEFAULT_PARALLEL_COUNT)
+			parallelCount = DEFAULT_PARALLEL_COUNT
+		}
+	} else {
+		parallelCount = DEFAULT_PARALLEL_COUNT
+	}
+
+	log.Infof("Init parallel count is %d", parallelCount)
+	clientSemaphore = utils.NewSemaphore(parallelCount)
 	return &Client{
 		url:      url,
 		user:     user,
@@ -157,13 +184,24 @@ func (cli *Client) doCall(method string, url string, data map[string]interface{}
 	req.Header.Set("Referer", cli.url)
 	req.Header.Set("Content-Type", "application/json")
 
-	if cli.authToken != "" {
-		req.Header.Set("X-Auth-Token", cli.authToken)
+	if url != "/dsware/service/v1.3/sec/login" && url != "/dsware/service/v1.3/sec/logout" {
+		cli.reloginMutex.Lock()
+		if cli.authToken != "" {
+			req.Header.Set("X-Auth-Token", cli.authToken)
+		}
+		cli.reloginMutex.Unlock()
+	} else {
+		if cli.authToken != "" {
+			req.Header.Set("X-Auth-Token", cli.authToken)
+		}
 	}
 
 	if !logFilter(method, url) {
 		log.Infof("Request method: %s, url: %s, body: %v", method, reqUrl, data)
 	}
+
+	clientSemaphore.Acquire()
+	defer clientSemaphore.Release()
 
 	resp, err := cli.client.Do(req)
 	if err != nil {
@@ -210,10 +248,16 @@ func (cli *Client) call(method string, url string, data map[string]interface{}) 
 		goto RETRY
 	}
 
+	// Compatible with FusionStorage 6.3
+	if errorCode, ok := body["errorCode"].(float64); ok && int64(errorCode) == NO_AUTHENTICATED {
+		log.Warningf("User offline, try to relogin %s", cli.url)
+		goto RETRY
+	}
+
 	return respHeader, body, nil
 
 RETRY:
-	err = cli.Login()
+	err = cli.reLogin()
 	if err == nil {
 		respHeader, respBody, err = cli.doCall(method, url, data)
 	}
@@ -229,6 +273,27 @@ RETRY:
 	}
 
 	return respHeader, body, nil
+}
+
+func (cli *Client) reLogin() error {
+	oldToken := cli.authToken
+
+	cli.reloginMutex.Lock()
+	defer cli.reloginMutex.Unlock()
+	if cli.authToken != "" && oldToken != cli.authToken {
+		// Coming here indicates other thread had already done relogin, so no need to relogin again
+		return nil
+	} else if cli.authToken != "" {
+		cli.Logout()
+	}
+
+	err := cli.Login()
+	if err != nil {
+		log.Errorf("Try to relogin error: %v", err)
+		return err
+	}
+
+	return nil
 }
 
 func (cli *Client) get(url string, data map[string]interface{}) (map[string]interface{}, error) {
@@ -287,6 +352,12 @@ func (cli *Client) GetVolumeByName(name string) (map[string]interface{}, error) 
 			return nil, nil
 		}
 
+		// Compatible with FusionStorage 6.3
+		if int64(errorCode) == QUERY_VOLUME_NOT_EXIST {
+			log.Warningf("Volume of name %s doesn't exist", name)
+			return nil, nil
+		}
+
 		return nil, fmt.Errorf("Get volume by name %s error: %d", name, int64(errorCode))
 	}
 
@@ -315,6 +386,12 @@ func (cli *Client) DeleteVolume(name string) error {
 
 		errorCode := int64(detail["errorCode"].(float64))
 		if errorCode == VOLUME_NAME_NOT_EXIST {
+			log.Warningf("Volume %s doesn't exist while deleting.", name)
+			return nil
+		}
+
+		// Compatible with FusionStorage 6.3
+		if errorCode == DELETE_VOLUME_NOT_EXIST {
 			log.Warningf("Volume %s doesn't exist while deleting.", name)
 			return nil
 		}
@@ -1266,8 +1343,8 @@ func (cli *Client) GetAssociateCountOfQoS(qosName string) (int, error) {
 
 func (cli *Client) getAssociateObjOfQoS(qosName, objType string, poolId int64) (map[string]interface{}, error) {
 	data := map[string]interface{}{
-		"qosName":   qosName,
-		"poolId":    poolId,
+		"qosName": qosName,
+		"poolId":  poolId,
 	}
 
 	resp, err := cli.post("/dsware/service/v1.3/qos/volume/list?type=associated", data)
@@ -1286,7 +1363,7 @@ func (cli *Client) getAssociateObjOfQoS(qosName, objType string, poolId int64) (
 
 func (cli *Client) getAssociatePoolOfQoS(qosName string) (map[string]interface{}, error) {
 	data := map[string]interface{}{
-		"qosName":   qosName,
+		"qosName": qosName,
 	}
 
 	resp, err := cli.post("/dsware/service/v1.3/qos/storagePool/list?type=associated", data)
