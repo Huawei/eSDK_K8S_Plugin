@@ -37,12 +37,13 @@ type NAS struct {
 	Base
 }
 
-func NewNAS(cli, metroRemoteCli, replicaRemoteCli *client.Client) *NAS {
+func NewNAS(cli, metroRemoteCli, replicaRemoteCli *client.Client, product string) *NAS {
 	return &NAS{
 		Base: Base{
 			cli:              cli,
 			metroRemoteCli:   metroRemoteCli,
 			replicaRemoteCli: replicaRemoteCli,
+			product:          product,
 		},
 	}
 }

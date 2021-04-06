@@ -18,7 +18,7 @@ spec:
       hostNetwork: true
       containers:
         - name: csi-provisioner
-          image: quay.io/k8scsi/csi-provisioner:v1.5.0
+          image: quay.io/k8scsi/csi-provisioner:v1.6.0
           args:
             - "--csi-address=$(ADDRESS)"
             - "--timeout=6h"
@@ -43,7 +43,7 @@ spec:
               mountPath: /var/lib/csi/sockets/pluginproxy/
 
         - name: csi-resizer
-          image: quay.io/k8scsi/csi-resizer:v0.5.0
+          image: quay.io/k8scsi/csi-resizer:v1.0.1
           args:
             - "--csi-address=$(ADDRESS)"
           env:
@@ -55,7 +55,7 @@ spec:
               mountPath: /var/lib/csi/sockets/pluginproxy/
 
         - name: csi-snapshotter
-          image: quay.io/k8scsi/csi-snapshotter:v2.1.0
+          image: quay.io/k8scsi/csi-snapshotter:v3.0.2
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
@@ -68,7 +68,7 @@ spec:
               name: socket-dir
 
         - name: snapshot-controller
-          image: quay.io/k8scsi/snapshot-controller:v2.1.0
+          image: quay.io/k8scsi/snapshot-controller:v3.0.2
           args:
             - "--v=5"
             - "--leader-election=false"
@@ -84,6 +84,7 @@ spec:
             - "--controller"
             - "--containerized"
             - "--backend-update-interval=120"
+            - "--driver-name=csi.huawei.com"
           env:
             - name: CSI_ENDPOINT
               value: /var/lib/csi/sockets/pluginproxy/csi.sock

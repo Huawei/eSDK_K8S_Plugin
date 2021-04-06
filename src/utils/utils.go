@@ -13,6 +13,7 @@ import (
 	"time"
 	"utils/log"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/sys/unix"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -335,5 +336,22 @@ func GetLunUniqueId(protocol string, lun map[string]interface{}) (string, error)
 		return tgtLunGuid, nil
 	} else {
 		return lun["WWN"].(string), nil
+	}
+}
+
+func GetAccessModeType(accessMode csi.VolumeCapability_AccessMode_Mode) string {
+	switch accessMode {
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER:
+		return "ReadWrite"
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY:
+		return "ReadOnly"
+	case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+		return "ReadOnly"
+	case csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER:
+		return "ReadWrite"
+	case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
+		return "ReadWrite"
+	default:
+		return ""
 	}
 }
