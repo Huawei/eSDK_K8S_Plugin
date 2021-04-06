@@ -17,7 +17,7 @@ spec:
       hostNetwork: true
       containers:
         - name: csi-node-driver-registrar
-          image: quay.io/k8scsi/csi-node-driver-registrar:v1.2.0
+          image: quay.io/k8scsi/csi-node-driver-registrar:v2.0.1
           args:
             - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.huawei.com/csi.sock"
@@ -33,6 +33,7 @@ spec:
           args:
             - "--endpoint=/csi/csi.sock"
             - "--containerized"
+            - "--driver-name=csi.huawei.com"
           securityContext:
             privileged: true
             capabilities:
@@ -85,7 +86,6 @@ spec:
         - name: iscsi-dir
           hostPath:
             path: /var/lib/iscsi
-            type: Directory
         - name: log-dir
           hostPath:
             path: /var/log/

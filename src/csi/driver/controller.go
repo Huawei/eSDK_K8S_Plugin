@@ -176,9 +176,9 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	backendName, volName := utils.SplitVolumeId(volumeId)
 	backend := backend.GetBackend(backendName)
 	if backend == nil {
-		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
-		log.Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
+			"CAUTION: volume %s need to manually detach from array.", backendName, volName)
+		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
 	var parameters map[string]interface{}
