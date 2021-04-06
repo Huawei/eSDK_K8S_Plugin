@@ -99,6 +99,9 @@ rules:
     resources: ["persistentvolumeclaims/status"]
     verbs: ["update", "patch"]
   - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
     resources: ["events"]
     verbs: ["list", "watch", "create", "update", "patch"]
 

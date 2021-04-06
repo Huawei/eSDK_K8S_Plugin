@@ -86,7 +86,7 @@ func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
 		replicaRemoteCli = p.replicaRemotePlugin.cli
 	}
 
-	return volume.NewSAN(p.cli, metroRemoteCli, replicaRemoteCli)
+	return volume.NewSAN(p.cli, metroRemoteCli, replicaRemoteCli, p.product)
 }
 
 func (p *OceanstorSanPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {

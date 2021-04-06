@@ -48,9 +48,9 @@ const (
 	REPLICATION_NOT_EXIST        int64 = 1077937923
 	HYPERMETRO_NOT_EXIST         int64 = 1077674242
 	SNAPSHOT_PARENT_NOT_EXIST    int64 = 1073754117
-	DEFAULT_PARALLEL_COUNT          int = 50
-	MAX_PARALLEL_COUNT              int = 1000
-	MIN_PARALLEL_COUNT              int = 20
+	DEFAULT_PARALLEL_COUNT       int   = 50
+	MAX_PARALLEL_COUNT           int   = 1000
+	MIN_PARALLEL_COUNT           int   = 20
 )
 
 var (
@@ -2776,6 +2776,34 @@ func (cli *Client) GetvStorePairByID(pairID string) (map[string]interface{}, err
 
 	pair := respData[0].(map[string]interface{})
 	return pair, nil
+}
+
+func (cli *Client) GetFSHyperMetroDomain(domainName string) (map[string]interface{}, error) {
+	url := "/FsHyperMetroDomain?RUNNINGSTATUS=0"
+	resp, err := cli.get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("get filesystem hyperMetro domain %s error: %d", domainName, code)
+	}
+	if resp.Data == nil {
+		log.Infof("hyperMetro domain %s does not exist", domainName)
+		return nil, nil
+	}
+
+	respData := resp.Data.([]interface{})
+	for _, d := range respData {
+		domain := d.(map[string]interface{})
+		if domain["NAME"].(string) == domainName {
+			return domain, nil
+		}
+	}
+
+	log.Infof("FileSystem hyperMetro domain %s does not exist or is not normal", domainName)
+	return nil, nil
 }
 
 func (cli *Client) GetRoCEInitiator(initiator string) (map[string]interface{}, error) {

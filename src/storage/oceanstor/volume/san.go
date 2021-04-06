@@ -34,12 +34,13 @@ type SAN struct {
 	Base
 }
 
-func NewSAN(cli, metroRemoteCli, replicaRemoteCli *client.Client) *SAN {
+func NewSAN(cli, metroRemoteCli, replicaRemoteCli *client.Client, product string) *SAN {
 	return &SAN{
 		Base: Base{
-			cli:            cli,
-			metroRemoteCli: metroRemoteCli,
+			cli:              cli,
+			metroRemoteCli:   metroRemoteCli,
 			replicaRemoteCli: replicaRemoteCli,
+			product:          product,
 		},
 	}
 }
@@ -84,7 +85,6 @@ func (p *SAN) Create(params map[string]interface{}) error {
 		taskflow.AddTask("Get-HyperMetro-Params", p.getHyperMetroParams, nil)
 	}
 
-	taskflow.AddTask("Get-System-Feature", p.getSystemDiffFeatures, nil)
 	taskflow.AddTask("Create-Local-LUN", p.createLocalLun, p.revertLocalLun)
 	taskflow.AddTask("Create-Local-QoS", p.createLocalQoS, p.revertLocalQoS)
 
@@ -558,8 +558,7 @@ func (p *SAN) createLunCopy(snapshotID, dstLunID string, cloneSpeed int, isDelet
 }
 
 func (p *SAN) clone(params map[string]interface{}, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	isSupportClonePair := taskResult["isSupportClonePair"].(bool)
-	if isSupportClonePair {
+	if p.product == "DoradoV6" {
 		return p.clonePair(params)
 	} else {
 		return p.lunCopy(params)
@@ -567,8 +566,7 @@ func (p *SAN) clone(params map[string]interface{}, taskResult map[string]interfa
 }
 
 func (p *SAN) createFromSnapshot(params map[string]interface{}, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	isSupportClonePair := taskResult["isSupportClonePair"].(bool)
-	if isSupportClonePair {
+	if p.product == "DoradoV6" {
 		return p.fromSnapshotByClonePair(params)
 	} else {
 		return p.fromSnapshotByLunCopy(params)
@@ -1008,20 +1006,6 @@ func (p *SAN) getHyperMetroParams(params, taskResult map[string]interface{}) (ma
 		"remotePoolID":  remotePoolID,
 		"remoteCli":     p.metroRemoteCli,
 		"metroDomainID": domain["ID"].(string),
-	}, nil
-}
-
-func (p *SAN) getSystemDiffFeatures(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	systemInfo, err := p.cli.GetSystem()
-	if err != nil {
-		log.Errorf("Get system info error: %v", err)
-		return nil, err
-	}
-
-	clonePairFlag := utils.IsDoradoV6(systemInfo)
-
-	return map[string]interface{}{
-		"isSupportClonePair": clonePairFlag,
 	}, nil
 }
 
