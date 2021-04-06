@@ -23,8 +23,8 @@
 | |OceanStor F V3/V3 V300R003/V300R006|
 
 
-## Version mappings among CSI, Huawei Distribute storage, and Kubernetes
-| Kubernetes |Huawei Enterprise storage|
+## Version mappings among CSI, Huawei Distributed storage, and Kubernetes
+| Kubernetes |Huawei Distributed storage|
 |---|---|
 |CSI|FusionStorage V100R006C30|
 | |FusionStorage Block 8.0.0/8.0.1|
@@ -56,8 +56,9 @@
 | |OceanStor F V3/V3 V300R003/V300R006|
 
 
-## Version mappings among CSI, Huawei Distribute storage, and Kubernetes
-| Kubernetes |Huawei Enterprise storage|
+
+## Version mappings among CSI, Huawei Distributed storage, and Kubernetes
+| Kubernetes |Huawei Distributed storage|
 |---|---|
 |CSI|FusionStorage V100R006C30|
 | |FusionStorage Block 8.0.0/8.0.1|
@@ -89,8 +90,8 @@
 | |OceanStor F V3/V3 V300R003/V300R006|
 
 
-## Version mappings among CSI, Huawei Distribute storage, and Kubernetes
-| Kubernetes |Huawei Enterprise storage|
+## Version mappings among CSI, Huawei Distributed storage, and Kubernetes
+| Kubernetes |Huawei Distributed storage|
 |---|---|
 |CSI|FusionStorage V100R006C30|
 | |FusionStorage Block 8.0.0/8.0.1|
@@ -121,8 +122,8 @@
 | |OceanStor F V3/V3 V300R003/V300R006|
 
 
-## Version mappings among CSI, Huawei Distribute storage, and Kubernetes
-| Kubernetes |Huawei Enterprise storage|
+## Version mappings among CSI, Huawei Distributed storage, and Kubernetes
+| Kubernetes |Huawei Distributed storage|
 |---|---|
 |CSI|FusionStorage V100R006C30|
 | |FusionStorage Block 8.0.0/8.0.1|
