@@ -26,6 +26,7 @@ type Base struct {
 	cli              *client.Client
 	metroRemoteCli   *client.Client
 	replicaRemoteCli *client.Client
+	product          string
 }
 
 func (p *Base) commonPreCreate(params map[string]interface{}) error {
