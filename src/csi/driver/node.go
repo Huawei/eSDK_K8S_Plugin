@@ -27,12 +27,26 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return nil, status.Error(codes.Internal, msg)
 	}
 
+	if req.GetVolumeCapability() == nil {
+		msg := fmt.Sprintf("There is no volume capability in request.")
+		log.Errorln(msg)
+		return nil, status.Error(codes.Internal, msg)
+	}
+
 	mnt := req.GetVolumeCapability().GetMount()
+
+	opts := mnt.GetMountFlags()
+	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().Mode)
+	log.Infof("The access mode of volume %s is %s", volumeId, accessMode)
+
+	if accessMode == "ReadOnly" {
+		opts = append(opts, "ro")
+	}
 
 	parameters := map[string]interface{}{
 		"targetPath": req.GetStagingTargetPath(),
 		"fsType":     mnt.GetFsType(),
-		"mountFlags": strings.Join(mnt.GetMountFlags(), ","),
+		"mountFlags": strings.Join(opts, ","),
 	}
 
 	err := backend.Plugin.StageVolume(volName, parameters)

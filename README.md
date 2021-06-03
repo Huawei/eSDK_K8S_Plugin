@@ -18,6 +18,8 @@ and provide a series of disaster recovery functions of storages for Kubernetes C
 |Restore|x|x|x|x|√|√|√|
 |Clone|x|x|x|x|√|√|√|
 
+More details [release doc](https://github.com/Huawei/eSDK_K8S_Plugin/blob/master/RELEASE.md)
+
 ## Compiling the Huawei CSI Driver
 This section describes the environmental requirements and steps of compiling Huawei CSI Driver
 

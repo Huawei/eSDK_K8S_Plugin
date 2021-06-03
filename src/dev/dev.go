@@ -57,6 +57,17 @@ func GetDev(wwn string) (string, error) {
 }
 
 func deleteDMDev(dm string) error {
+	mPath, err := utils.ExecShellCmd("ls -l /dev/mapper/ | grep -w %s | awk '{print $9}'", dm)
+	if err != nil {
+		log.Errorf("Get DM device %s error: %v", dm, mPath)
+		return err
+	}
+
+	if mPath == "" {
+		log.Infof("The DM device %s does not exist, return success.", dm)
+		return nil
+	}
+
 	output, err := utils.ExecShellCmd("for sd in $(ls /sys/block/%s/slaves/); do echo 1 > /sys/block/${sd}/device/delete; done", dm)
 	if err != nil {
 		log.Errorf("Delete DM device %s error: %v", dm, output)
@@ -65,10 +76,7 @@ func deleteDMDev(dm string) error {
 
 	time.Sleep(time.Second * 2)
 
-	output, _ = utils.ExecShellCmd("multipath -l | grep %s", dm)
-	if strings.TrimSpace(output) != "" {
-		utils.ExecShellCmd("multipath -F")
-	}
+	utils.ExecShellCmd("multipath -f %s", mPath)
 
 	return nil
 }

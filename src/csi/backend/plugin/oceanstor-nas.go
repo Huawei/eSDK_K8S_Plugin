@@ -13,6 +13,8 @@ import (
 const (
 	HYPER_METRO_VSTORE_PAIR_ACTIVE                = "0"
 	HYPER_METRO_VSTORE_PAIR_LINK_STATUS_CONNECTED = "1"
+	HYPER_METRO_DOMAIN_ACTIVE                     = "1"
+	HYPER_METRO_DOMAIN_RUNNING_STATUS_NORMAL      = "0"
 )
 
 type OceanstorNasPlugin struct {
@@ -60,7 +62,7 @@ func (p *OceanstorNasPlugin) getNasObj() *volume.NAS {
 		replicaRemoteCli = p.replicaRemotePlugin.cli
 	}
 
-	return volume.NewNAS(p.cli, metroRemoteCli, replicaRemoteCli)
+	return volume.NewNAS(p.cli, metroRemoteCli, replicaRemoteCli, p.product)
 }
 
 func (p *OceanstorNasPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
@@ -159,22 +161,62 @@ func (p *OceanstorNasPlugin) UpdateBackendCapabilities() (map[string]interface{}
 		return nil, err
 	}
 
-	if capabilities["SupportMetro"] == true {
-		if p.metroRemotePlugin == nil || p.vStorePairID == "" {
-			capabilities["SupportMetro"] = false
-		} else {
-			vStorePair, err := p.cli.GetvStorePairByID(p.vStorePairID)
-			if err != nil {
-				return nil, err
-			}
-			if vStorePair == nil ||
-				vStorePair["ACTIVEORPASSIVE"] != HYPER_METRO_VSTORE_PAIR_ACTIVE ||
-				vStorePair["LINKSTATUS"] != HYPER_METRO_VSTORE_PAIR_LINK_STATUS_CONNECTED ||
-				vStorePair["LOCALVSTORENAME"] != p.cli.GetvStoreName() {
-				capabilities["SupportMetro"] = false
-			}
-		}
+	err = p.updateHyperMetroCapability(capabilities)
+	if err != nil {
+		return nil, err
+	}
+
+	err = p.updateReplicationCapability(capabilities)
+	if err != nil {
+		return nil, err
 	}
 
 	return capabilities, nil
 }
+
+func (p *OceanstorNasPlugin) updateHyperMetroCapability(capabilities map[string]interface{}) error {
+	if capabilities["SupportMetro"] != true {
+		return nil
+	}
+
+	if p.metroRemotePlugin == nil || p.vStorePairID == "" {
+		capabilities["SupportMetro"] = false
+		return nil
+	}
+
+	vStorePair, err := p.cli.GetvStorePairByID(p.vStorePairID)
+	if err != nil {
+		return err
+	}
+
+	if p.product == "DoradoV6" && vStorePair != nil {
+		fsHyperMetroDomain, err := p.cli.GetFSHyperMetroDomain(vStorePair["DOMAINNAME"].(string))
+		if err != nil {
+			return err
+		}
+
+		if fsHyperMetroDomain == nil ||
+			fsHyperMetroDomain["CONFIGROLE"] != HYPER_METRO_DOMAIN_ACTIVE ||
+			fsHyperMetroDomain["RUNNINGSTATUS"] != HYPER_METRO_DOMAIN_RUNNING_STATUS_NORMAL ||
+			vStorePair["LOCALVSTORENAME"] != p.cli.GetvStoreName() {
+			capabilities["SupportMetro"] = false
+		}
+	} else {
+		if vStorePair == nil ||
+			vStorePair["ACTIVEORPASSIVE"] != HYPER_METRO_VSTORE_PAIR_ACTIVE ||
+			vStorePair["LINKSTATUS"] != HYPER_METRO_VSTORE_PAIR_LINK_STATUS_CONNECTED ||
+			vStorePair["LOCALVSTORENAME"] != p.cli.GetvStoreName() {
+			capabilities["SupportMetro"] = false
+		}
+	}
+
+	return nil
+}
+
+func (p *OceanstorNasPlugin) updateReplicationCapability(capabilities map[string]interface{}) error {
+	if capabilities["SupportReplication"] == true && p.replicaRemotePlugin == nil {
+		capabilities["SupportReplication"] = false
+	}
+	return nil
+}
+

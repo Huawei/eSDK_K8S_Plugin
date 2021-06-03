@@ -199,18 +199,29 @@ func addMultiParams(iscsiShareData *shareData, conn *connectorInfo) bool {
 	return wwnAdded
 }
 
-func findTgtMultiPath(lenIndex int, iscsiShareData *shareData, conn *connectorInfo) string {
+func findEachMultiPath(lenIndex int, iscsiShareData *shareData, conn *connectorInfo) (string, bool) {
 	var mPath string
+	mPath, err := findMultiPath(conn.tgtLunWWNs[0])
+	if err != nil {
+		log.Warningf("Can not find dm path, error: %s", err)
+	}
+
+	if (int64(lenIndex) == iscsiShareData.stoppedThreads && iscsiShareData.foundDevices == nil) || (
+		mPath != "" && int64(lenIndex) == iscsiShareData.numLogin+iscsiShareData.failedLogin) {
+		return mPath, true
+	}
+
+	return mPath, false
+}
+
+func findTgtMultiPath(lenIndex int, iscsiShareData *shareData, conn *connectorInfo) string {
 	var wwnAdded bool
 	var lastTryOn int64
-	for {
-		if (int64(lenIndex) == iscsiShareData.stoppedThreads && iscsiShareData.foundDevices == nil) || (mPath != "" && int64(lenIndex) == iscsiShareData.numLogin+iscsiShareData.failedLogin) {
-			break
-		}
 
-		mPath, err := findMultiPath(conn.tgtLunWWNs[0])
-		if err != nil {
-			log.Warningf("Can not find dm path, error: %s", err)
+	err := utils.WaitUntil(func() (bool, error) {
+		mPath, finished := findEachMultiPath(lenIndex, iscsiShareData, conn)
+		if finished {
+			return true, nil
 		}
 
 		if mPath == "" && !wwnAdded && iscsiShareData.foundDevices != nil {
@@ -218,19 +229,29 @@ func findTgtMultiPath(lenIndex int, iscsiShareData *shareData, conn *connectorIn
 		}
 
 		if mPath != "" {
-			return mPath
+			return true, nil
 		}
 
 		if lastTryOn == 0 && iscsiShareData.foundDevices != nil && int64(lenIndex) == iscsiShareData.stoppedThreads {
 			log.Infoln("All connection threads finished, giving 15 seconds for dm to appear.")
 			lastTryOn = time.Now().Unix() + 15
 		} else if lastTryOn != 0 && lastTryOn < time.Now().Unix() {
-			break
+			return true, nil
 		}
-		time.Sleep(1 * time.Second)
+
+		return false, nil
+	}, time.Second*120, time.Second*5)
+
+	if err != nil {
+		return ""
 	}
 
-	return ""
+	mPath, err := findMultiPath(conn.tgtLunWWNs[0])
+	if err != nil {
+		return ""
+	}
+
+	return mPath
 }
 
 func tryConnectVolume(connMap map[string]interface{}) (string, error) {
@@ -239,7 +260,6 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 		return "", err
 	}
 
-	// must ignore the error
 	allSessions, _ := utils.ExecShellCmd("iscsiadm -m session")
 
 	var mPath string

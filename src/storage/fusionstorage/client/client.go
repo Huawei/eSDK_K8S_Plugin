@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	fusionURL "net/url"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/src/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/src/utils/log"
@@ -38,11 +39,11 @@ const (
 
 var (
 	LOG_FILTER = map[string]map[string]bool{
-		"POST": map[string]bool{
+		"POST": {
 			"/dsware/service/v1.3/sec/login":     true,
 			"/dsware/service/v1.3/sec/keepAlive": true,
 		},
-		"GET": map[string]bool{
+		"GET": {
 			"/dsware/service/v1.3/storagePool": true,
 		},
 	}
@@ -935,10 +936,9 @@ func (cli *Client) CreateFileSystem(params map[string]interface{}) (map[string]i
 	data := map[string]interface{}{
 		"name":            params["name"].(string),
 		"storage_pool_id": params["poolId"].(int64),
-		"enable_compress": false,
-		"enable_dedup":    false,
+		"account_id":      0,
 	}
-	resp, err := cli.post("/api/v2/file_service/file_systems", data)
+	resp, err := cli.post("/api/v2/converged_service/namespaces", data)
 	if err != nil {
 		return nil, err
 	}
@@ -960,7 +960,7 @@ func (cli *Client) CreateFileSystem(params map[string]interface{}) (map[string]i
 }
 
 func (cli *Client) DeleteFileSystem(id string) error {
-	url := fmt.Sprintf("/api/v2/file_service/file_systems/%s", id)
+	url := fmt.Sprintf("/api/v2/converged_service/namespaces/%s", id)
 	resp, err := cli.delete(url, nil)
 	if err != nil {
 		return err
@@ -976,7 +976,7 @@ func (cli *Client) DeleteFileSystem(id string) error {
 }
 
 func (cli *Client) GetFileSystemByName(name string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/api/v2/file_service/file_systems?name=%s", name)
+	url := fmt.Sprintf("/api/v2/converged_service/namespaces?name=%s", name)
 	resp, err := cli.get(url, nil)
 	if err != nil {
 		return nil, err
@@ -1045,7 +1045,13 @@ func (cli *Client) DeleteNfsShare(id string) error {
 }
 
 func (cli *Client) GetNfsShareByPath(path string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/api/v2/nas_protocol/nfs_share_list")
+	bytesPath, err := json.Marshal([]map[string]string{{"share_path": path}})
+	if err != nil {
+		return nil, err
+	}
+
+	sharePath := fusionURL.QueryEscape(fmt.Sprintf("%s", bytesPath))
+	url := fmt.Sprintf("/api/v2/nas_protocol/nfs_share_list?filter=%s", sharePath)
 	resp, err := cli.get(url, nil)
 	if err != nil {
 		return nil, err

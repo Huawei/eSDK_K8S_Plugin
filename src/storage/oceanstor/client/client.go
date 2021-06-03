@@ -2779,6 +2779,34 @@ func (cli *Client) GetvStorePairByID(pairID string) (map[string]interface{}, err
 	return pair, nil
 }
 
+func (cli *Client) GetFSHyperMetroDomain(domainName string) (map[string]interface{}, error) {
+	url := "/FsHyperMetroDomain?RUNNINGSTATUS=0"
+	resp, err := cli.get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("get filesystem hyperMetro domain %s error: %d", domainName, code)
+	}
+	if resp.Data == nil {
+		log.Infof("hyperMetro domain %s does not exist", domainName)
+		return nil, nil
+	}
+
+	respData := resp.Data.([]interface{})
+	for _, d := range respData {
+		domain := d.(map[string]interface{})
+		if domain["NAME"].(string) == domainName {
+			return domain, nil
+		}
+	}
+
+	log.Infof("FileSystem hyperMetro domain %s does not exist or is not normal", domainName)
+	return nil, nil
+}
+
 func (cli *Client) GetRoCEInitiator(initiator string) (map[string]interface{}, error) {
 	id := URL.QueryEscape(strings.Replace(initiator, ":", "\\:", -1))
 	url := fmt.Sprintf("/NVMe_over_RoCE_initiator?filter=ID::%s", id)

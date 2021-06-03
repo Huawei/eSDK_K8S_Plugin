@@ -51,6 +51,7 @@ type Backend struct {
 
 	MetroDomain       string
 	MetrovStorePairID string
+	MetroBackendName  string
 	MetroBackend      *Backend
 
 	ReplicaBackendName string
@@ -117,6 +118,7 @@ func newBackend(backendName string, config map[string]interface{}) (*Backend, er
 	metroDomain, _ := config["hyperMetroDomain"].(string)
 	metrovStorePairID, _ := config["metrovStorePairID"].(string)
 	replicaBackend, _ := config["replicaBackend"].(string)
+	metroBackend, _ := config["metroBackend"].(string)
 
 	return &Backend{
 		Name:               backendName,
@@ -127,6 +129,7 @@ func newBackend(backendName string, config map[string]interface{}) (*Backend, er
 		MetroDomain:        metroDomain,
 		MetrovStorePairID:  metrovStorePairID,
 		ReplicaBackendName: replicaBackend,
+		MetroBackendName:   metroBackend,
 	}, nil
 }
 
@@ -169,7 +172,9 @@ func updateMetroBackends() {
 				continue
 			}
 
-			if (i.MetroDomain != "" && i.MetroDomain == j.MetroDomain) || (i.MetrovStorePairID != "" && i.MetrovStorePairID == j.MetrovStorePairID) {
+			if ((i.MetroDomain != "" && i.MetroDomain == j.MetroDomain) || (
+				i.MetrovStorePairID != "" && i.MetrovStorePairID == j.MetrovStorePairID)) && (
+					i.MetroBackendName == j.Name && j.MetroBackendName == i.Name) {
 				i.MetroBackend, j.MetroBackend = j, i
 				i.Plugin.UpdateMetroRemotePlugin(j.Plugin)
 				j.Plugin.UpdateMetroRemotePlugin(i.Plugin)
