@@ -8,15 +8,14 @@ import (
 
 var (
 	commonIV = []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f}
-	keyText  = []byte("********************************")
 )
 
 //加密
-func Encrypt(password string) (string, error) {
+func Encrypt(password, keyText string) (string, error) {
 	plaintext := []byte(password)
-
+	bytesText := []byte(keyText)
 	// 创建加密算法aes
-	c, err := aes.NewCipher(keyText)
+	c, err := aes.NewCipher(bytesText)
 	if err != nil {
 		return "", err
 	}
@@ -31,14 +30,15 @@ func Encrypt(password string) (string, error) {
 }
 
 //解密
-func Decrypt(code string) (string, error) {
+func Decrypt(code, keyText string) (string, error) {
 	ciphertext, err := hex.DecodeString(code)
 	if err != nil {
 		return "", err
 	}
 
+	bytesText := []byte(keyText)
 	// 创建加密算法aes
-	c, err := aes.NewCipher(keyText)
+	c, err := aes.NewCipher(bytesText)
 	if err != nil {
 		return "", err
 	}

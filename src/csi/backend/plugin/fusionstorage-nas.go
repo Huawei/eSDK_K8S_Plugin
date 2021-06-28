@@ -1,13 +1,10 @@
 package plugin
 
 import (
-	"dev"
 	"errors"
 	"fmt"
 	"net"
 	"storage/fusionstorage/volume"
-	"utils"
-	"utils/log"
 )
 
 type FusionStorageNasPlugin struct {
@@ -63,30 +60,11 @@ func (p *FusionStorageNasPlugin) DeleteVolume(name string) error {
 }
 
 func (p *FusionStorageNasPlugin) StageVolume(name string, parameters map[string]interface{}) error {
-	fsName := utils.GetFileSystemName(name)
-	exportPath := p.portal + ":/" + fsName
-
-	targetPath := parameters["targetPath"].(string)
-	mountFlags := parameters["mountFlags"].(string)
-
-	err := dev.MountFsDev(exportPath, targetPath, mountFlags)
-	if err != nil {
-		log.Errorf("Mount share %s to %s error: %v", exportPath, targetPath, err)
-		return err
-	}
-
-	return nil
+	return p.fsStageVolume(name, p.portal, parameters)
 }
 
 func (p *FusionStorageNasPlugin) UnstageVolume(name string, parameters map[string]interface{}) error {
-	targetPath := parameters["targetPath"].(string)
-	err := dev.Unmount(targetPath)
-	if err != nil {
-		log.Errorf("Unmount volume %s error: %v", name, err)
-		return err
-	}
-
-	return nil
+	return p.unstageVolume(name, parameters)
 }
 
 func (p *FusionStorageNasPlugin) NodeExpandVolume(string, string) error {

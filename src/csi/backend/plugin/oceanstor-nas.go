@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"dev"
 	"errors"
 	"storage/oceanstor/client"
 	"storage/oceanstor/volume"
@@ -45,7 +44,10 @@ func (p *OceanstorNasPlugin) Init(config, parameters map[string]interface{}, kee
 	}
 
 	p.portal = portal
-	p.vStorePairID, _ = config["metrovStorePairID"].(string)
+	p.vStorePairID, exist = config["metrovStorePairID"].(string)
+	if exist {
+		log.Infof("The metro vStorePair ID is %s", p.vStorePairID)
+	}
 
 	return nil
 }
@@ -88,30 +90,11 @@ func (p *OceanstorNasPlugin) ExpandVolume(name string, size int64) (bool, error)
 }
 
 func (p *OceanstorNasPlugin) StageVolume(name string, parameters map[string]interface{}) error {
-	fsName := utils.GetFileSystemName(name)
-	exportPath := p.portal + ":/" + fsName
-
-	targetPath := parameters["targetPath"].(string)
-	mountFlags := parameters["mountFlags"].(string)
-
-	err := dev.MountFsDev(exportPath, targetPath, mountFlags)
-	if err != nil {
-		log.Errorf("Mount share %s to %s error: %v", exportPath, targetPath, err)
-		return err
-	}
-
-	return nil
+	return p.fsStageVolume(name, p.portal, parameters)
 }
 
 func (p *OceanstorNasPlugin) UnstageVolume(name string, parameters map[string]interface{}) error {
-	targetPath := parameters["targetPath"].(string)
-	err := dev.Unmount(targetPath)
-	if err != nil {
-		log.Errorf("Unmount volume %s error: %v", name, err)
-		return err
-	}
-
-	return nil
+	return p.unstageVolume(name, parameters)
 }
 
 func (p *OceanstorNasPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {

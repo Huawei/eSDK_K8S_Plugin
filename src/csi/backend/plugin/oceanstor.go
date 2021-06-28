@@ -42,6 +42,11 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		return errors.New("password must be provided")
 	}
 
+	keyText, exist := config["keyText"].(string)
+	if !exist {
+		return errors.New("keyText must be provided")
+	}
+
 	product, exist := config["product"].(string)
 	if !exist {
 		return errors.New("product must be provided")
@@ -50,7 +55,7 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		return errors.New("product only support config: V3, V5, Dorado")
 	}
 
-	decrypted, err := pwd.Decrypt(password)
+	decrypted, err := pwd.Decrypt(password, keyText)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,9 @@
 package driver
 
 import (
+	"connector"
+	// init the nfs connector
+	_ "connector/nfs"
 	"context"
 	"csi/backend"
 	"encoding/json"
@@ -47,6 +50,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		"targetPath": req.GetStagingTargetPath(),
 		"fsType":     mnt.GetFsType(),
 		"mountFlags": strings.Join(opts, ","),
+		"volumeUseMultiPath": d.useMultiPath,
 	}
 
 	err := backend.Plugin.StageVolume(volName, parameters)
@@ -99,11 +103,18 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		opts = append(opts, "ro")
 	}
 
-	output, err := utils.ExecShellCmd("mount -o %s %s %s", strings.Join(opts, ","), sourcePath, targetPath)
+	connectInfo := map[string]interface{} {
+		"srcType": connector.MountFSType,
+		"sourcePath": sourcePath,
+		"targetPath": targetPath,
+		"mountFlags": strings.Join(opts, ","),
+	}
+
+	conn := connector.GetConnector(connector.NFSDriver)
+	_, err := conn.ConnectVolume(connectInfo)
 	if err != nil {
-		msg := fmt.Sprintf("Bind mount %s to %s error: %s", sourcePath, targetPath, output)
-		log.Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.Errorf("Mount share %s to %s error: %v", sourcePath, targetPath, err)
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	log.Infof("Volume %s is node published to %s", volumeId, targetPath)
@@ -128,6 +139,23 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 }
 
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	if d.isNeedMultiPath {
+		err := utils.TestMultiPathService()
+		if d.useMultiPath {
+			if err != nil {
+				log.Errorf("The multipath switch is on, but the multipath service is not running, error is %v", err)
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+		} else {
+			if err == nil {
+				log.Errorln("The multipath switch is off, but the multipath service is running, " +
+					"please stop the multipathd service")
+				return nil, status.Error(codes.Internal, "multipath service is running")
+			}
+		}
+		log.Infoln("If you want to change the multipath switch, please modify it in huawei-csi-node.yaml")
+	}
+
 	hostname, err := utils.GetHostName()
 	if err != nil {
 		log.Errorf("Cannot get current host's hostname")
@@ -271,6 +299,12 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 	volumePath := req.GetVolumePath()
 	if volumePath == "" {
 		return nil, status.Error(codes.InvalidArgument, "no volume path provided")
+	}
+
+	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().Mode)
+	if accessMode == "ReadOnly" {
+		log.Warningf("The access mode of volume %s is %s", volumeId, accessMode)
+		return &csi.NodeExpandVolumeResponse{}, nil
 	}
 
 	backendName, volName := utils.SplitVolumeId(volumeId)

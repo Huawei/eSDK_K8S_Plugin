@@ -103,11 +103,12 @@ func (p *OceanStorAttacher) attachRoCE(hostID string) error {
 	return err
 }
 
-func (p *OceanStorAttacher) ControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
+func (p *OceanStorAttacher) ControllerAttach(lunName string, parameters map[string]interface{}) (
+	map[string]interface{}, error) {
 	host, err := p.getHost(parameters, true)
 	if err != nil {
 		log.Errorf("Get host ID error: %v", err)
-		return "", err
+		return nil, err
 	}
 
 	hostID := host["ID"].(string)
@@ -123,16 +124,16 @@ func (p *OceanStorAttacher) ControllerAttach(lunName string, parameters map[stri
 
 	if err != nil {
 		log.Errorf("Attach %s connection error: %v", p.protocol, err)
-		return "", err
+		return nil, err
 	}
 
-	wwn, err := p.doMapping(hostID, lunName)
+	wwn, hostLunId, err := p.doMapping(hostID, lunName)
 	if err != nil {
 		log.Errorf("Mapping LUN %s to host %s error: %v", lunName, hostID, err)
-		return "", err
+		return nil, err
 	}
 
-	return wwn, nil
+	return p.getMappingProperties(wwn, hostLunId)
 }
 
 func (p *OceanStorAttacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {

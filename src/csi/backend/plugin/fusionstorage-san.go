@@ -1,7 +1,7 @@
 package plugin
 
 import (
-	"dev"
+	"connector"
 	"errors"
 	"fmt"
 	"net"
@@ -147,24 +147,12 @@ func (p *FusionStorageSanPlugin) StageVolume(name string, parameters map[string]
 		return err
 	}
 
-	targetPath := parameters["targetPath"].(string)
-	fsType := parameters["fsType"].(string)
-	mountFlags := parameters["mountFlags"].(string)
-
-	err = dev.MountLunDev(devPath, targetPath, fsType, mountFlags)
-	if err != nil {
-		log.Errorf("Mount device %s to %s error: %v", devPath, targetPath, err)
-		return err
-	}
-
-	return nil
+	return p.lunStageVolume(name, devPath, parameters)
 }
 
 func (p *FusionStorageSanPlugin) UnstageVolume(name string, parameters map[string]interface{}) error {
-	targetPath := parameters["targetPath"].(string)
-	err := dev.Unmount(targetPath)
+	err := p.unstageVolume(name, parameters)
 	if err != nil {
-		log.Errorf("Cannot unmount %s error: %v", targetPath, err)
 		return err
 	}
 
@@ -216,13 +204,13 @@ func (p *FusionStorageSanPlugin) NodeExpandVolume(name, volumePath string) error
 	}
 
 	wwn := lun["wwn"].(string)
-	err = dev.BlockResize(wwn)
+	err = connector.ResizeBlock(wwn)
 	if err != nil {
 		log.Errorf("Lun %s resize error: %v", wwn, err)
 		return err
 	}
 
-	err = dev.ResizeMountPath(volumePath)
+	err = connector.ResizeMountPath(volumePath)
 	if err != nil {
 		log.Errorf("MountPath %s resize error: %v", volumePath, err)
 		return err

@@ -1,7 +1,7 @@
 package plugin
 
 import (
-	"dev"
+	"connector"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -139,11 +139,11 @@ func (p *OceanstorSanPlugin) metroHandler(localCli *client.Client, lun, paramete
 	if method == "ControllerDetach" || method == "NodeUnstage" {
 		if pair["RUNNINGSTATUS"] != HYPERMETROPAIR_RUNNING_STATUS_NORMAL &&
 			pair["RUNNINGSTATUS"] != HYPERMETROPAIR_RUNNING_STATUS_PAUSE {
-			return nil, fmt.Errorf("hypermetro pair status of LUN %s is not normal or pause", localLunID)
+			log.Warningf("hypermetro pair status of LUN %s is not normal or pause", localLunID)
 		}
 	} else {
 		if pair["RUNNINGSTATUS"] != HYPERMETROPAIR_RUNNING_STATUS_NORMAL {
-			return nil, fmt.Errorf("hypermetro pair status of LUN %s is not normal", localLunID)
+			log.Warningf("hypermetro pair status of LUN %s is not normal", localLunID)
 		}
 	}
 
@@ -250,25 +250,12 @@ func (p *OceanstorSanPlugin) StageVolume(name string, parameters map[string]inte
 		return result.(error)
 	}
 
-	devPath := out[0].Interface().(string)
-	targetPath := parameters["targetPath"].(string)
-	fsType := parameters["fsType"].(string)
-	mountFlags := parameters["mountFlags"].(string)
-
-	err = dev.MountLunDev(devPath, targetPath, fsType, mountFlags)
-	if err != nil {
-		log.Errorf("Mount device %s to %s error: %v", devPath, targetPath, err)
-		return err
-	}
-
-	return nil
+	return p.lunStageVolume(name, out[0].Interface().(string), parameters)
 }
 
 func (p *OceanstorSanPlugin) UnstageVolume(name string, parameters map[string]interface{}) error {
-	targetPath := parameters["targetPath"].(string)
-	err := dev.Unmount(targetPath)
+	err := p.unstageVolume(name, parameters)
 	if err != nil {
-		log.Errorf("Cannot unmount %s error: %v", targetPath, err)
 		return err
 	}
 
@@ -344,13 +331,13 @@ func (p *OceanstorSanPlugin) NodeExpandVolume(name, volumePath string) error {
 		return err
 	}
 
-	err = dev.BlockResize(lunUniqueId)
+	err = connector.ResizeBlock(lunUniqueId)
 	if err != nil {
 		log.Errorf("Lun %s resize error: %v", lunUniqueId, err)
 		return err
 	}
 
-	err = dev.ResizeMountPath(volumePath)
+	err = connector.ResizeMountPath(volumePath)
 	if err != nil {
 		log.Errorf("MountPath %s resize error: %v", volumePath, err)
 		return err

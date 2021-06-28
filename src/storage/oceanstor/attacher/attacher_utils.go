@@ -11,25 +11,15 @@ import (
 	"utils/log"
 )
 
-func iSCSIControllerAttach(attacher AttacherPlugin, lunName string,
-	parameters map[string]interface{}, tgtPortals []string) (string, error) {
-	wwn, err := attacher.ControllerAttach(lunName, parameters)
+func iSCSIControllerAttach(attacher AttacherPlugin, lunName string, parameters map[string]interface{}) (string, error) {
+	connectInfo, err := attacher.ControllerAttach(lunName, parameters)
 	if err != nil {
 		return "", err
 	}
 
-	lenPortals := len(tgtPortals)
-	var tgtLunWWNs []string
-	for i := 0; i < lenPortals; i++ {
-		tgtLunWWNs = append(tgtLunWWNs, wwn)
-	}
-	connMap := map[string]interface{}{
-		"tgtPortals": tgtPortals,
-		"tgtLunWWNs":  tgtLunWWNs,
-	}
-
+	connectInfo["volumeUseMultiPath"] = parameters["volumeUseMultiPath"].(bool)
 	conn := connector.GetConnector(connector.ISCSIDriver)
-	devPath, err := conn.ConnectVolume(connMap)
+	devPath, err := conn.ConnectVolume(connectInfo)
 	if err != nil {
 		return "", err
 	}
@@ -39,17 +29,14 @@ func iSCSIControllerAttach(attacher AttacherPlugin, lunName string,
 
 func fcControllerAttach(attacher AttacherPlugin, lunName string,
 	parameters map[string]interface{}) (string, error) {
-	wwn, err := attacher.ControllerAttach(lunName, parameters)
+	connectInfo, err := attacher.ControllerAttach(lunName, parameters)
 	if err != nil {
 		return "", err
 	}
 
-	connMap := map[string]interface{}{
-		"tgtLunWWN": wwn,
-	}
-
+	connectInfo["volumeUseMultiPath"] = parameters["volumeUseMultiPath"].(bool)
 	conn := connector.GetConnector(connector.FCDriver)
-	devPath, err := conn.ConnectVolume(connMap)
+	devPath, err := conn.ConnectVolume(connectInfo)
 	if err != nil {
 		return "", err
 	}
@@ -57,25 +44,14 @@ func fcControllerAttach(attacher AttacherPlugin, lunName string,
 	return devPath, nil
 }
 
-func roceControllerAttach(attacher AttacherPlugin, lunName string,
-	parameters map[string]interface{}, tgtPortals []string) (string, error) {
-	lunGuid, err := attacher.ControllerAttach(lunName, parameters)
+func roceControllerAttach(attacher AttacherPlugin, lunName string, parameters map[string]interface{}) (string, error) {
+	connectInfo, err := attacher.ControllerAttach(lunName, parameters)
 	if err != nil {
 		return "", err
 	}
 
-	lenPortals := len(tgtPortals)
-	var tgtLunGuids []string
-	for i := 0; i < lenPortals; i++ {
-		tgtLunGuids = append(tgtLunGuids, lunGuid)
-	}
-	connMap := map[string]interface{}{
-		"tgtPortals": tgtPortals,
-		"tgtLunGuids": tgtLunGuids,
-	}
-
 	conn := connector.GetConnector(connector.RoCEDriver)
-	devPath, err := conn.ConnectVolume(connMap)
+	devPath, err := conn.ConnectVolume(connectInfo)
 	if err != nil {
 		return "", err
 	}
@@ -85,17 +61,13 @@ func roceControllerAttach(attacher AttacherPlugin, lunName string,
 
 func fcNVMeControllerAttach(attacher AttacherPlugin, lunName string,
 	parameters map[string]interface{}) (string, error) {
-	wwn, err := attacher.ControllerAttach(lunName, parameters)
+	connectInfo, err := attacher.ControllerAttach(lunName, parameters)
 	if err != nil {
 		return "", err
 	}
 
-	connMap := map[string]interface{}{
-		"tgtLunGuid": wwn,
-	}
-
 	conn := connector.GetConnector(connector.FCNVMeDriver)
-	devPath, err := conn.ConnectVolume(connMap)
+	devPath, err := conn.ConnectVolume(connectInfo)
 	if err != nil {
 		return "", err
 	}
@@ -131,19 +103,11 @@ func disConnectVolume(tgtLunWWN, protocol string) error {
 func connectVolume(attacher AttacherPlugin, lunName, protocol string, parameters map[string]interface{}) (string, error) {
 	switch protocol {
 	case "iscsi":
-		tgtPortals, err := attacher.getTargetISCSIPortals()
-		if err != nil {
-			return "", err
-		}
-		return iSCSIControllerAttach(attacher, lunName, parameters, tgtPortals)
+		return iSCSIControllerAttach(attacher, lunName, parameters)
 	case "fc":
 		return fcControllerAttach(attacher, lunName, parameters)
 	case "roce":
-		tgtPortals, err := attacher.getTargetRoCEPortals()
-		if err != nil {
-			return "", err
-		}
-		return roceControllerAttach(attacher, lunName, parameters, tgtPortals)
+		return roceControllerAttach(attacher, lunName, parameters)
 	case "fc-nvme":
 		return fcNVMeControllerAttach(attacher, lunName, parameters)
 	default:

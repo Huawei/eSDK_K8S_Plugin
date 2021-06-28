@@ -1,6 +1,8 @@
 package attacher
 
 import (
+	"errors"
+	"utils"
 	"utils/log"
 )
 
@@ -23,81 +25,123 @@ func (p *MetroAttacher) NodeStage(lunName string, parameters map[string]interfac
 }
 
 func (p *MetroAttacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
-	wwn, err := p.ControllerDetach(lunName, parameters)
+	lun, err := p.getLunInfo(lunName)
+	if lun == nil {
+		return err
+	}
+
+	lunUniqueID, err := utils.GetLunUniqueId(p.protocol, lun)
 	if err != nil {
 		return err
 	}
-	if wwn == "" {
-		log.Warningf("Cannot get WWN of LUN %s, the dev may leftover", lunName)
-		return nil
-	}
 
-	return disConnectVolume(wwn, p.protocol)
+	return disConnectVolume(lunUniqueID, p.protocol)
 }
 
-func (p *MetroAttacher) ControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
-	_, err := p.remoteAttacher.ControllerAttach(lunName, parameters)
-	if err != nil {
-		log.Errorf("Attach hypermetro remote volume %s error: %v", lunName, err)
-		return "", err
+func (p *MetroAttacher) mergeMappingInfo(localMapping, remoteMapping map[string]interface{}) (
+	map[string]interface{}, error) {
+	if localMapping == nil && remoteMapping == nil {
+		msg := "both storage site of HyperMetro are failed"
+		log.Errorln(msg)
+		return nil, errors.New(msg)
 	}
 
-	lunWWN, err := p.localAttacher.ControllerAttach(lunName, parameters)
-	if err != nil {
-		log.Errorf("Attach hypermetro local volume %s error: %v", lunName, err)
-		p.remoteAttacher.ControllerDetach(lunName, parameters)
-		return "", err
+	if localMapping == nil {
+		localMapping = remoteMapping
+	} else if remoteMapping != nil {
+		if p.protocol == "iscsi" {
+			localMapping["tgtPortals"] = append(localMapping["tgtPortals"].([]string),
+				remoteMapping["tgtPortals"].([]string)...)
+			localMapping["tgtIQNs"] = append(localMapping["tgtIQNs"].([]string),
+				remoteMapping["tgtIQNs"].([]string)...)
+			localMapping["tgtHostLUNs"] = append(localMapping["tgtHostLUNs"].([]string),
+				remoteMapping["tgtHostLUNs"].([]string)...)
+		}
 	}
 
-	return lunWWN, nil
+	return localMapping, nil
+}
+
+func (p *MetroAttacher) ControllerAttach(lunName string, parameters map[string]interface{}) (map[string]interface{}, error) {
+	remoteMapping, err := p.remoteAttacher.ControllerAttach(lunName, parameters)
+	if err != nil {
+		log.Warningf("Attach hypermetro remote volume %s error: %v", lunName, err)
+	}
+
+	localMapping, err := p.localAttacher.ControllerAttach(lunName, parameters)
+	if err != nil {
+		log.Warningf("Attach hypermetro local volume %s error: %v", lunName, err)
+	}
+
+	return p.mergeMappingInfo(localMapping, remoteMapping)
 }
 
 func (p *MetroAttacher) ControllerDetach(lunName string, parameters map[string]interface{}) (string, error) {
-	_, err := p.remoteAttacher.ControllerDetach(lunName, parameters)
+	rmtLunWWN, err := p.remoteAttacher.ControllerDetach(lunName, parameters)
 	if err != nil {
-		log.Errorf("Detach hypermetro remote volume %s error: %v", lunName, err)
-		return "", err
+		log.Warningf("Detach hypermetro remote volume %s error: %v", lunName, err)
 	}
 
-	lunWWN, err := p.localAttacher.ControllerDetach(lunName, parameters)
+	locLunWWN, err := p.localAttacher.ControllerDetach(lunName, parameters)
 	if err != nil {
-		log.Errorf("Detach hypermetro local volume %s error: %v", lunName, err)
-		return "", err
+		log.Warningf("Detach hypermetro local volume %s error: %v", lunName, err)
 	}
 
-	return lunWWN, nil
+	return p.mergeLunWWN(locLunWWN, rmtLunWWN)
 }
 
-func (p *MetroAttacher) getTargetISCSIPortals() ([]string, error) {
-	var availablePortals []string
-	localPortals, err := p.localAttacher.getTargetISCSIPortals()
-	if err != nil {
-		return nil, err
+func (p *MetroAttacher) mergeLunWWN(locLunWWN, rmtLunWWN string) (string, error) {
+	if rmtLunWWN == "" && locLunWWN == "" {
+		msg := "both storage site of HyperMetro are failed to get lun WWN"
+		log.Errorln(msg)
+		return "", errors.New(msg)
 	}
-	availablePortals = append(availablePortals, localPortals...)
 
-	remotePortals, err := p.remoteAttacher.getTargetISCSIPortals()
-	if err != nil {
-		return nil, err
+	if locLunWWN == "" {
+		locLunWWN = rmtLunWWN
 	}
-	availablePortals = append(availablePortals, remotePortals...)
-
-	return availablePortals, nil
+	return locLunWWN, nil
 }
 
 func (p *MetroAttacher) getTargetRoCEPortals() ([]string, error) {
 	var availablePortals []string
 	localPortals, err := p.localAttacher.getTargetRoCEPortals()
 	if err != nil {
-		return nil, err
+		log.Warningf("Get local roce portals error: %v", err)
 	}
 	availablePortals = append(availablePortals, localPortals...)
 
 	remotePortals, err := p.remoteAttacher.getTargetRoCEPortals()
 	if err != nil {
-		return nil, err
+		log.Warningf("Get remote roce portals error: %v", err)
 	}
 	availablePortals = append(availablePortals, remotePortals...)
 
 	return availablePortals, nil
+}
+
+func (p *MetroAttacher) getLunInfo(lunName string) (map[string]interface{}, error) {
+	rmtLun, err := p.remoteAttacher.getLunInfo(lunName)
+	if err != nil {
+		log.Warningf("Get hyperMetro remote volume %s error: %v", lunName, err)
+	}
+
+	locLun, err := p.localAttacher.getLunInfo(lunName)
+	if err != nil {
+		log.Warningf("Get hyperMetro local volume %s error: %v", lunName, err)
+	}
+	return p.mergeLunInfo(locLun, rmtLun)
+}
+
+func (p *MetroAttacher) mergeLunInfo(locLun, rmtLun map[string]interface{}) (map[string]interface{}, error) {
+	if rmtLun == nil && locLun == nil {
+		msg := "both storage site of HyperMetro are failed to get lun info"
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	if locLun == nil {
+		locLun = rmtLun
+	}
+	return locLun, nil
 }

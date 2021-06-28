@@ -1,5 +1,14 @@
 package plugin
 
+import (
+	"connector"
+	// init the nfs connector
+	_ "connector/nfs"
+	"errors"
+	"utils"
+	"utils/log"
+)
+
 type Plugin interface {
 	NewPlugin() Plugin
 	Init(map[string]interface{}, map[string]interface{}, bool) error
@@ -50,4 +59,56 @@ func (p *basePlugin) UpdateMetroRemotePlugin(Plugin) {
 }
 
 func (p *basePlugin) UpdateReplicaRemotePlugin(Plugin) {
+}
+
+func (p *basePlugin) stageVolume(connectInfo map[string]interface{}) error {
+	conn := connector.GetConnector(connector.NFSDriver)
+	_, err := conn.ConnectVolume(connectInfo)
+	if err != nil {
+		log.Errorf("Mount share %s to %s error: %v", connectInfo["sourcePath"].(string),
+			connectInfo["targetPath"].(string), err)
+		return err
+	}
+
+	return nil
+}
+
+func (p *basePlugin) fsStageVolume(name, portal string, parameters map[string]interface{}) error {
+	fsName := utils.GetFileSystemName(name)
+	connectInfo := map[string]interface{} {
+		"srcType": connector.MountFSType,
+		"sourcePath": portal + ":/" + fsName,
+		"targetPath": parameters["targetPath"].(string),
+		"mountFlags": parameters["mountFlags"].(string),
+	}
+
+	return p.stageVolume(connectInfo)
+}
+
+func (p *basePlugin) unstageVolume(name string, parameters map[string]interface{}) error {
+	targetPath, exist := parameters["targetPath"].(string)
+	if !exist {
+		return errors.New("unstageVolume parameter targetPath does not exist")
+	}
+
+	conn := connector.GetConnector(connector.NFSDriver)
+	err := conn.DisConnectVolume(targetPath)
+	if err != nil {
+		log.Errorf("Cannot unmount %s error: %v", name, err)
+		return err
+	}
+
+	return nil
+}
+
+func (p *basePlugin) lunStageVolume(name, devPath string, parameters map[string]interface{}) error {
+	connectInfo := map[string]interface{} {
+		"fsType": parameters["fsType"].(string),
+		"srcType": connector.MountBlockType,
+		"sourcePath": devPath,
+		"targetPath": parameters["targetPath"].(string),
+		"mountFlags": parameters["mountFlags"].(string),
+	}
+
+	return p.stageVolume(connectInfo)
 }

@@ -6,13 +6,18 @@ import (
 )
 
 const (
-	FCDriver     = "fibreChannel"
-	FCNVMeDriver = "FC-NVMe"
-	ISCSIDriver  = "iSCSI"
-	RoCEDriver   = "RoCE"
+	FCDriver       = "fibreChannel"
+	FCNVMeDriver   = "FC-NVMe"
+	ISCSIDriver    = "iSCSI"
+	RoCEDriver     = "RoCE"
+	LocalDriver    = "Local"
+	NFSDriver      = "NFS"
+	MountFSType    = "fs"
+	MountBlockType = "block"
 )
 
 var connectors = map[string]Connector{}
+const flushMultiPathInternal = 20
 
 type Connector interface {
 	ConnectVolume(map[string]interface{}) (string, error)

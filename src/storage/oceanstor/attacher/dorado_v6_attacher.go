@@ -50,11 +50,11 @@ func (p *DoradoV6Attacher) needUpdateHost(host map[string]interface{}, hostAlua 
 	return false
 }
 
-func (p *DoradoV6Attacher) ControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
+func (p *DoradoV6Attacher) ControllerAttach(lunName string, parameters map[string]interface{}) (map[string]interface{}, error) {
 	host, err := p.getHost(parameters, true)
 	if err != nil {
 		log.Errorf("Get host ID error: %v", err)
-		return "", err
+		return nil, err
 	}
 
 	hostID := host["ID"].(string)
@@ -64,7 +64,7 @@ func (p *DoradoV6Attacher) ControllerAttach(lunName string, parameters map[strin
 		err := p.cli.UpdateHost(hostID, hostAlua)
 		if err != nil {
 			log.Errorf("Update host %s error: %v", hostID, err)
-			return "", err
+			return nil, err
 		}
 	}
 
@@ -78,16 +78,16 @@ func (p *DoradoV6Attacher) ControllerAttach(lunName string, parameters map[strin
 
 	if err != nil {
 		log.Errorf("Attach %s connection error: %v", p.protocol, err)
-		return "", err
+		return nil, err
 	}
 
-	wwn, err := p.doMapping(hostID, lunName)
+	wwn, hostLunId, err := p.doMapping(hostID, lunName)
 	if err != nil {
 		log.Errorf("Mapping LUN %s to host %s error: %v", lunName, hostID, err)
-		return "", err
+		return nil, err
 	}
 
-	return wwn, nil
+	return p.getMappingProperties(wwn, hostLunId)
 }
 
 func (p *DoradoV6Attacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {

@@ -34,7 +34,12 @@ func (p *FusionStoragePlugin) init(config map[string]interface{}, keepLogin bool
 		return errors.New("password must be provided")
 	}
 
-	decrypted, err := pwd.Decrypt(password)
+	keyText, exist := config["keyText"].(string)
+	if !exist {
+		return errors.New("keyText must be provided")
+	}
+
+	decrypted, err := pwd.Decrypt(password, keyText)
 	if err != nil {
 		return err
 	}
