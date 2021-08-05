@@ -31,7 +31,7 @@ func (fc *FCNVMe) ConnectVolume(conn map[string]interface{}) (string, error) {
 
 	for i := 0; i < 5; i++ {
 		time.Sleep(time.Second * 3)
-		device, _ = connector.GetDevice(findDeviceMap, tgtLunGuid)
+		device, _ = connector.GetDevice(findDeviceMap, tgtLunGuid, true)
 		if device != "" {
 			break
 		}

@@ -46,7 +46,8 @@ func tryConnectVolume(tgtLunWWN string) (string, error) {
 		return "", nil
 	}
 
-	err := connector.WaitDeviceRW(tgtLunWWN, devPath)
+	err := connector.VerifySingleDevice(devPath, tgtLunWWN,
+		"volume device not found", false, tryDisConnectVolume)
 	if err != nil {
 		return "", err
 	}
@@ -54,10 +55,14 @@ func tryConnectVolume(tgtLunWWN string) (string, error) {
 	return devPath, nil
 }
 
-func tryDisConnectVolume(tgtLunWWN string) error {
-	device, err := connector.GetDevice(nil, tgtLunWWN)
+func tryDisConnectVolume(tgtLunWWN string, checkDeviceAvailable bool) error {
+	return connector.DisConnectVolume(tgtLunWWN, checkDeviceAvailable, tryToDisConnectVolume)
+}
+
+func tryToDisConnectVolume(tgtLunWWN string, checkDeviceAvailable bool) error {
+	device, err := connector.GetDevice(nil, tgtLunWWN, checkDeviceAvailable)
 	if err != nil {
-		log.Errorf("Get device of WWN %s error: %v", tgtLunWWN, err)
+		log.Warningf("Get device of WWN %s error: %v", tgtLunWWN, err)
 		return err
 	}
 

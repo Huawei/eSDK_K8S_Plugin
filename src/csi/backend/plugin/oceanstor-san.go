@@ -27,6 +27,8 @@ type OceanstorSanPlugin struct {
 
 	replicaRemotePlugin *OceanstorSanPlugin
 	metroRemotePlugin   *OceanstorSanPlugin
+	locStorageOnline    bool
+	rmtStorageOnline    bool
 }
 
 func init() {
@@ -71,6 +73,7 @@ func (p *OceanstorSanPlugin) Init(config, parameters map[string]interface{}, kee
 	}
 
 	p.protocol = protocol
+	p.locStorageOnline = true
 
 	return nil
 }
@@ -121,12 +124,8 @@ func (p *OceanstorSanPlugin) isHyperMetro(lun map[string]interface{}) bool {
 	return rss["HyperMetro"] == "TRUE"
 }
 
-func (p *OceanstorSanPlugin) metroHandler(localCli *client.Client, lun, parameters map[string]interface{},
+func (p *OceanstorSanPlugin) metroHandler(localCli, metroCli *client.Client, lun, parameters map[string]interface{},
 	method string) ([]reflect.Value, error) {
-	if p.metroRemotePlugin == nil {
-		return nil, errors.New("metro remote plugin is nil")
-	}
-
 	localLunID := lun["ID"].(string)
 	pair, err := localCli.GetHyperMetroPairByLocalObjID(localLunID)
 	if err != nil {
@@ -147,13 +146,6 @@ func (p *OceanstorSanPlugin) metroHandler(localCli *client.Client, lun, paramete
 		}
 	}
 
-	metroCli, err := p.metroRemotePlugin.duplicateClient()
-	if err != nil {
-		return nil, err
-	}
-
-	defer metroCli.Logout()
-
 	localAttacher := attacher.NewAttacher(p.product, localCli, p.protocol, "csi", p.portals, p.alua)
 	remoteAttacher := attacher.NewAttacher(p.metroRemotePlugin.product, metroCli, p.metroRemotePlugin.protocol,
 		"csi", p.metroRemotePlugin.portals, p.metroRemotePlugin.alua)
@@ -167,30 +159,52 @@ func (p *OceanstorSanPlugin) metroHandler(localCli *client.Client, lun, paramete
 
 func (p *OceanstorSanPlugin) localHandler(localCli *client.Client, lun, parameters map[string]interface{},
 	method string) ([]reflect.Value, error) {
-	localAttacher := attacher.NewAttacher(p.product, localCli, p.protocol, "csi", p.portals, p.alua)
+	var localAttacher attacher.AttacherPlugin
+	if p.rmtStorageOnline {
+		localAttacher = attacher.NewAttacher(p.metroRemotePlugin.product, localCli, p.metroRemotePlugin.protocol,
+			"csi", p.metroRemotePlugin.portals, p.metroRemotePlugin.alua)
+	} else {
+		localAttacher = attacher.NewAttacher(p.product, localCli, p.protocol, "csi", p.portals, p.alua)
+	}
 
 	lunName := lun["NAME"].(string)
 	out := utils.ReflectCall(localAttacher, method, lunName, parameters)
 	return out, nil
 }
 
-func (p *OceanstorSanPlugin) handler(localCli *client.Client, lun, parameters map[string]interface{},
+func (p *OceanstorSanPlugin) handler(localCli, metroCli *client.Client, lun, parameters map[string]interface{},
 	method string) ([]reflect.Value, error) {
 	var out []reflect.Value
 	var err error
 
-	if p.isHyperMetro(lun) {
-		out, err = p.metroHandler(localCli, lun, parameters, method)
-	} else {
+	if !p.isHyperMetro(lun) {
+		return p.localHandler(localCli, lun, parameters, method)
+	}
+
+	if p.locStorageOnline && p.rmtStorageOnline {
+		out, err = p.metroHandler(localCli, metroCli, lun, parameters, method)
+	} else if p.locStorageOnline {
+		log.Warningf("the lun %s is hyperMetro, but just the local storage is online", lun["NAME"].(string))
 		out, err = p.localHandler(localCli, lun, parameters, method)
+	} else if p.rmtStorageOnline {
+		log.Warningf("the lun %s is hyperMetro, but just the remote storage is online", lun["NAME"].(string))
+		out, err = p.localHandler(metroCli, lun, parameters, method)
 	}
 
 	return out, err
 }
 
 func (p *OceanstorSanPlugin) DetachVolume(name string, parameters map[string]interface{}) error {
+	cli, metroCli := p.getClient()
+	if p.locStorageOnline {
+		defer cli.Logout()
+	}
+	if p.rmtStorageOnline {
+		defer metroCli.Logout()
+	}
+
 	lunName := utils.GetLunName(name)
-	lun, err := p.cli.GetLunByName(lunName)
+	lun, err := p.getLunInfo(cli, metroCli, lunName)
 	if err != nil {
 		log.Errorf("Get lun %s error: %v", lunName, err)
 		return err
@@ -202,7 +216,7 @@ func (p *OceanstorSanPlugin) DetachVolume(name string, parameters map[string]int
 
 	var out []reflect.Value
 
-	out, err = p.handler(p.cli, lun, parameters, "ControllerDetach")
+	out, err = p.handler(p.cli, metroCli, lun, parameters, "ControllerDetach")
 	if err != nil {
 		return err
 	}
@@ -219,15 +233,16 @@ func (p *OceanstorSanPlugin) DetachVolume(name string, parameters map[string]int
 }
 
 func (p *OceanstorSanPlugin) StageVolume(name string, parameters map[string]interface{}) error {
-	cli, err := p.duplicateClient()
-	if err != nil {
-		return err
+	cli, metroCli := p.getClient()
+	if p.locStorageOnline {
+		defer cli.Logout()
+	}
+	if p.rmtStorageOnline {
+		defer metroCli.Logout()
 	}
 
-	defer cli.Logout()
-
 	lunName := utils.GetLunName(name)
-	lun, err := cli.GetLunByName(lunName)
+	lun, err := p.getLunInfo(cli, metroCli, lunName)
 	if err != nil {
 		return err
 	}
@@ -236,8 +251,7 @@ func (p *OceanstorSanPlugin) StageVolume(name string, parameters map[string]inte
 	}
 
 	var out []reflect.Value
-
-	out, err = p.handler(cli, lun, parameters, "NodeStage")
+	out, err = p.handler(cli, metroCli, lun, parameters, "NodeStage")
 	if err != nil {
 		return err
 	}
@@ -259,16 +273,16 @@ func (p *OceanstorSanPlugin) UnstageVolume(name string, parameters map[string]in
 		return err
 	}
 
-	cli := p.cli.DuplicateClient()
-	err = cli.Login()
-	if err != nil {
-		return err
+	cli, metroCli := p.getClient()
+	if p.locStorageOnline {
+		defer cli.Logout()
+	}
+	if p.rmtStorageOnline {
+		defer metroCli.Logout()
 	}
 
-	defer cli.Logout()
-
 	lunName := utils.GetLunName(name)
-	lun, err := cli.GetLunByName(lunName)
+	lun, err := p.getLunInfo(cli, metroCli, lunName)
 	if err != nil {
 		return err
 	}
@@ -278,7 +292,7 @@ func (p *OceanstorSanPlugin) UnstageVolume(name string, parameters map[string]in
 
 	var out []reflect.Value
 
-	out, err = p.handler(cli, lun, parameters, "NodeUnstage")
+	out, err = p.handler(cli, metroCli, lun, parameters, "NodeUnstage")
 	if err != nil {
 		return err
 	}
@@ -368,4 +382,62 @@ func (p *OceanstorSanPlugin) DeleteSnapshot(snapshotParentId, snapshotName strin
 	}
 
 	return nil
+}
+
+func (p *OceanstorSanPlugin) getClient() (*client.Client, *client.Client) {
+	cli, err := p.duplicateClient()
+	p.locStorageOnline = err == nil
+
+	var metroCli *client.Client
+	if p.metroRemotePlugin != nil {
+		metroCli, err = p.metroRemotePlugin.duplicateClient()
+		p.rmtStorageOnline = err == nil
+	}
+
+	return cli, metroCli
+}
+
+func (p *OceanstorSanPlugin) getLunInfo(localCli, remoteCli *client.Client, lunName string) (map[string]interface{}, error) {
+	var lun map[string]interface{}
+	var err error
+	if p.locStorageOnline {
+		lun, err = localCli.GetLunByName(lunName)
+	} else if p.rmtStorageOnline {
+		lun, err = remoteCli.GetLunByName(lunName)
+	} else {
+		return nil, errors.New("both the local and remote storage are not online")
+	}
+
+	return lun, err
+}
+
+// UpdateBackendCapabilities to update the block storage capabilities
+func (p *OceanstorSanPlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
+	capabilities, err := p.OceanstorPlugin.UpdateBackendCapabilities()
+	if err != nil {
+		p.locStorageOnline = false
+		return nil, err
+	}
+
+	p.locStorageOnline = true
+	p.updateHyperMetroCapability(capabilities)
+	p.updateReplicaCapability(capabilities)
+	return capabilities, nil
+}
+
+func (p *OceanstorSanPlugin) updateHyperMetroCapability(capabilities map[string]interface{}) {
+	if metroSupport, exist := capabilities["SupportMetro"]; !exist || metroSupport == false {
+		return
+	}
+
+	capabilities["SupportMetro"] = p.metroRemotePlugin != nil &&
+		p.locStorageOnline && p.metroRemotePlugin.locStorageOnline
+}
+
+func (p *OceanstorSanPlugin) updateReplicaCapability(capabilities map[string]interface{}) {
+	if metroReplica, exist := capabilities["SupportReplication"]; !exist || metroReplica == false {
+		return
+	}
+
+	capabilities["SupportReplication"] = p.replicaRemotePlugin != nil
 }

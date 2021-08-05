@@ -298,6 +298,7 @@ func (p *Attacher) getMappingProperties(wwn, hostLunId string) (map[string]inter
 		connectInfo["tgtPortals"] = tgtPortals
 		connectInfo["tgtIQNs"] = tgtIQNs
 		connectInfo["tgtHostLUNs"] = tgtHostLUNs
+		connectInfo["tgtLunWWN"] = wwn
 	} else if p.protocol == "fc" {
 		tgtWWNs, err := p.getTargetFCProperties()
 		if err != nil {
@@ -310,6 +311,7 @@ func (p *Attacher) getMappingProperties(wwn, hostLunId string) (map[string]inter
 			tgtHostLUNs = append(tgtHostLUNs, hostLunId)
 		}
 
+		connectInfo["tgtLunWWN"] = wwn
 		connectInfo["tgtWWNs"] = tgtWWNs
 		connectInfo["tgtHostLUNs"] = tgtHostLUNs
 	} else if p.protocol == "fc-nvme" {
@@ -320,6 +322,7 @@ func (p *Attacher) getMappingProperties(wwn, hostLunId string) (map[string]inter
 			return nil, err
 		}
 		connectInfo["tgtPortals"] = tgtPortals
+		connectInfo["tgtLunGuid"] = wwn
 	}
 
 	return connectInfo, nil

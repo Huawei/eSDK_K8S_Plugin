@@ -32,6 +32,7 @@ type deviceInfo struct {
 }
 
 type connectorInfo struct {
+	tgtLunWWN   string
 	tgtWWNs     []string
 	tgtHostLUNs []string
 	tgtTargets  []target
@@ -51,6 +52,13 @@ func scanHost() {
 }
 
 func parseFCInfo(connectionProperties map[string]interface{}) (*connectorInfo, error) {
+	tgtLunWWN, LunWWNExist := connectionProperties["tgtLunWWN"].(string)
+	if !LunWWNExist {
+		msg := "there is no target Lun WWN in the connection info"
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	tgtWWNs, WWNsExist := connectionProperties["tgtWWNs"].([]string)
 	if !WWNsExist {
 		msg := "there are no target WWNs in the connection info"
@@ -79,6 +87,7 @@ func parseFCInfo(connectionProperties map[string]interface{}) (*connectorInfo, e
 	}
 
 	var con connectorInfo
+	con.tgtLunWWN = tgtLunWWN
 	con.tgtWWNs = tgtWWNs
 	con.tgtHostLUNs = tgtHostLUNs
 	con.volumeUseMultiPath = volumeUseMultiPath
@@ -121,16 +130,26 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 	}
 
 	if !conn.volumeUseMultiPath {
-		err := connector.WaitDeviceRW(deviceWwn, devInfo.realDeviceName)
+		device := fmt.Sprintf("/dev/%s", devInfo.realDeviceName)
+		err := connector.VerifySingleDevice(device, conn.tgtLunWWN,
+			"NoFibreChannelVolumeDeviceFound", false, tryDisConnectVolume)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("/dev/%s", devInfo.realDeviceName), nil
+		return device, nil
 	}
 
+	// mPath: /dev/disk/by-id/dm-uuid-mpath-3<lun-wwn>
+	// realPath: dm-<id>
 	mPath := connector.FindMultiDevicePath(deviceWwn)
 	if mPath != "" {
-		err := connector.WaitDeviceRW(deviceWwn, mPath)
+		realPath, err := connector.RealPath(mPath)
+		if err != nil {
+			return "", err
+		}
+
+		_, err = connector.VerifyMultiPathDevice(realPath, conn.tgtLunWWN,
+			"NoFibreChannelVolumeDeviceFound", false, tryDisConnectVolume)
 		if err != nil {
 			return "", err
 		}
@@ -282,19 +301,8 @@ func getHostDevices(possibleDevices []rawDevice) []string {
 }
 
 func checkValidDevice(dev string) bool {
-	cmd := fmt.Sprintf("dd if=%s of=/dev/null count=1", dev)
-	output, err := utils.ExecShellCmd(cmd)
+	_, err := connector.ReadDevice(dev)
 	if err != nil {
-		log.Errorf("Failed to access the device on the path %s: %v", dev, err)
-		return false
-	}
-
-	if output == "" {
-		return false
-	}
-
-	if strings.Contains(output, "0+0 records in") {
-		log.Errorf("the size of %s may be zero, it is abnormal device.", dev)
 		return false
 	}
 
@@ -405,10 +413,14 @@ func scanFC(channelTargetLun []string, hostDevice string) {
 	}
 }
 
-func tryDisConnectVolume(tgtLunWWN string) error {
-	device, err := connector.GetDevice(nil, tgtLunWWN)
+func tryDisConnectVolume(tgtLunWWN string, checkDeviceAvailable bool) error {
+	return connector.DisConnectVolume(tgtLunWWN, checkDeviceAvailable, tryToDisConnectVolume)
+}
+
+func tryToDisConnectVolume(tgtLunWWN string, checkDeviceAvailable bool) error {
+	device, err := connector.GetDevice(nil, tgtLunWWN, checkDeviceAvailable)
 	if err != nil {
-		log.Errorf("Get device of WWN %s error: %v", tgtLunWWN, err)
+		log.Warningf("Get device of WWN %s error: %v", tgtLunWWN, err)
 		return err
 	}
 

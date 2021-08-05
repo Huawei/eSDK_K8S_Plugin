@@ -30,7 +30,7 @@ func normalConnect(conn map[string]interface{}) (string, error) {
 	var findDeviceMap map[string]string
 	for i := 0; i < 5; i++ {
 		time.Sleep(time.Second * 3)
-		device, _ = connector.GetDevice(findDeviceMap, tgtLunWWN)
+		device, _ = connector.GetDevice(findDeviceMap, tgtLunWWN, true)
 		if device != "" {
 			break
 		}
@@ -70,16 +70,17 @@ func (fc *FibreChannel) ConnectVolume(conn map[string]interface{}) (string, erro
 func (fc *FibreChannel) DisConnectVolume(tgtLunWWN string) error {
 	fc.mutex.Lock()
 	defer fc.mutex.Unlock()
-	log.Infof("Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
+	log.Infof("FC Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
 	for i := 0; i < 3; i++ {
-		err := tryDisConnectVolume(tgtLunWWN)
+		err := tryDisConnectVolume(tgtLunWWN, true)
 		if err == nil {
 			return nil
 		}
 		time.Sleep(time.Second * 2)
+		log.Errorf("Failed to delete device in %d time(s), err: %v", i, err)
 	}
 
-	msg := fmt.Sprintf("failed to delete volume %s.", tgtLunWWN)
+	msg := fmt.Sprintf("Failed to delete volume %s.", tgtLunWWN)
 	log.Errorln(msg)
 	return errors.New(msg)
 }

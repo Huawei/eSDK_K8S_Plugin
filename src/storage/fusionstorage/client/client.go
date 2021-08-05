@@ -119,7 +119,7 @@ func (cli *Client) Login() error {
 
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		return fmt.Errorf("Login %s error: %d", cli.url, result)
+		return fmt.Errorf("login %s error: %+v", cli.url, resp)
 	}
 
 	cli.authToken = respHeader["X-Auth-Token"][0]

@@ -21,11 +21,17 @@ func (p *FusionStorageNasPlugin) NewPlugin() Plugin {
 }
 
 func (p *FusionStorageNasPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
-	portal, exist := parameters["portal"].(string)
-	if !exist {
-		return errors.New("portal must be provided for fusionstorage-nas backend")
+	protocol, exist := parameters["protocol"].(string)
+	if !exist || protocol != "nfs" {
+		return errors.New("protocol must be provided and be nfs for fusionstorage-nas backend")
 	}
 
+	portals, exist := parameters["portals"].([]interface{})
+	if !exist || len(portals) != 1 {
+		return errors.New("portals must be provided for fusionstorage-nas backend and just support one portal")
+	}
+
+	portal := portals[0].(string)
 	ip := net.ParseIP(portal)
 	if ip == nil {
 		return fmt.Errorf("portal %s is invalid", portal)

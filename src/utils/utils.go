@@ -34,7 +34,8 @@ import (
 )
 
 const (
-	DoradoV6Version = "V600R003C00"
+	DoradoV6Version = "V600"
+	V5Version       = "V500"
 )
 
 var maskObject = []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
@@ -83,7 +84,7 @@ func ExecShellCmd(format string, args ...interface{}) (string, error) {
 	defer close(done)
 
 	go func() {
-		output, err = execShellCmd(format, done, args...)
+		output, err = execShellCmd(format, done, false, args...)
 	}()
 
 	select {
@@ -95,7 +96,27 @@ func ExecShellCmd(format string, args ...interface{}) (string, error) {
 	}
 }
 
-func execShellCmd(format string, ch chan string, args ...interface{}) (string, error) {
+// ExecShellCmdFilterLog execs the command and filters the result log
+func ExecShellCmdFilterLog(format string, args ...interface{}) (string, error) {
+	var output string
+	var err error
+	done := make(chan string)
+	defer close(done)
+
+	go func() {
+		output, err = execShellCmd(format, done, true, args...)
+	}()
+
+	select {
+	case do := <-done:
+		log.Debugf("Run shell cmd done %s.", do)
+		return output, err
+	case <-time.After(time.Duration(30) * time.Second):
+		return "", errors.New("timeout")
+	}
+}
+
+func execShellCmd(format string, ch chan string, logFilter bool, args ...interface{}) (string, error) {
 	cmd := fmt.Sprintf(format, args...)
 	log.Infof("Gonna run shell cmd \"%s\".", MaskSensitiveInfo(cmd))
 
@@ -112,7 +133,9 @@ func execShellCmd(format string, ch chan string, args ...interface{}) (string, e
 		return string(output), err
 	}
 
-	log.Infof("Shell cmd \"%s\" result:\n%s", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output))
+	if !logFilter {
+		log.Infof("Shell cmd \"%s\" result:\n%s", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output))
+	}
 	return string(output), nil
 }
 
@@ -299,9 +322,29 @@ func ReflectCall(obj interface{}, method string, args ...interface{}) []reflect.
 	return nil
 }
 
-func IsDoradoV6(SystemInfo map[string]interface{}) bool {
-	versionInfo := SystemInfo["PRODUCTVERSION"].(string)
-	return versionInfo >= DoradoV6Version
+// GetProductVersion is to get the oceanStorage version by get info from the system
+func GetProductVersion(SystemInfo map[string]interface{}) (string, error) {
+	productVersion, ok := SystemInfo["PRODUCTVERSION"].(string)
+	if !ok {
+		return "", errors.New("there is no PRODUCTVERSION field in system info")
+	}
+
+	if strings.HasPrefix(productVersion, DoradoV6Version) {
+		return "DoradoV6", nil
+	} else if strings.HasPrefix(productVersion, V5Version) {
+		return "V5", nil
+	}
+
+	productMode, ok := SystemInfo["PRODUCTMODE"].(string)
+	if !ok {
+		log.Warningln("There is no PRODUCTMODE field in system info")
+	}
+
+	if match, _ := regexp.MatchString(`8[0-9][0-9]`, productMode); match {
+		return "Dorado", nil
+	}
+
+	return "V3", nil
 }
 
 func IsSupportFeature(features map[string]int, feature string) bool {
@@ -450,18 +493,20 @@ func TestMultiPathService() error {
 func NeedMultiPath(backendConfigs []map[string]interface{}) bool {
 	var needMultiPath bool
 	for _, config := range backendConfigs {
-		storage, exist := config["storage"].(string)
-		if !exist {
-			return false
-		}
-
 		parameters, exist := config["parameters"].(map[string]interface{})
 		if !exist {
-			return false
+			log.Errorf("parameters must be configured in backend %v", config)
+			continue
 		}
 
-		_, exist = parameters["SCSI"].(interface{})
-		if (storage == "fusionstorage-san" || storage == "oceanstor-san") && !exist {
+		protocol, exist := parameters["protocol"].(string)
+		if !exist {
+			log.Errorf("protocol must be configured in parameters %v", config)
+			continue
+		}
+
+		if strings.ToLower(protocol) == "iscsi" || strings.ToLower(protocol) == "fc" ||
+			strings.ToLower(protocol) == "roce" {
 			needMultiPath = true
 			break
 		}

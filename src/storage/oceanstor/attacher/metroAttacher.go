@@ -56,6 +56,11 @@ func (p *MetroAttacher) mergeMappingInfo(localMapping, remoteMapping map[string]
 				remoteMapping["tgtIQNs"].([]string)...)
 			localMapping["tgtHostLUNs"] = append(localMapping["tgtHostLUNs"].([]string),
 				remoteMapping["tgtHostLUNs"].([]string)...)
+		} else if p.protocol == "fc" {
+			localMapping["tgtWWNs"] = append(localMapping["tgtWWNs"].([]string),
+				remoteMapping["tgtWWNs"].([]string)...)
+			localMapping["tgtHostLUNs"] = append(localMapping["tgtHostLUNs"].([]string),
+				remoteMapping["tgtHostLUNs"].([]string)...)
 		}
 	}
 
@@ -92,9 +97,8 @@ func (p *MetroAttacher) ControllerDetach(lunName string, parameters map[string]i
 
 func (p *MetroAttacher) mergeLunWWN(locLunWWN, rmtLunWWN string) (string, error) {
 	if rmtLunWWN == "" && locLunWWN == "" {
-		msg := "both storage site of HyperMetro are failed to get lun WWN"
-		log.Errorln(msg)
-		return "", errors.New(msg)
+		log.Infoln("both storage site of HyperMetro are failed to get lun WWN")
+		return "", nil
 	}
 
 	if locLunWWN == "" {

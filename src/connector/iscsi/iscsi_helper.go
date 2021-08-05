@@ -23,6 +23,7 @@ type chapInfo struct {
 }
 
 type connectorInfo struct {
+	tgtLunWWN   string
 	tgtPortals  []string
 	tgtIQNs     []string
 	tgtHostLUNs []string
@@ -49,7 +50,12 @@ const (
 )
 
 func parseISCSIInfo(connectionProperties map[string]interface{}) (*connectorInfo, error) {
-	var con connectorInfo
+	tgtLunWWN, LunWWNExist := connectionProperties["tgtLunWWN"].(string)
+	if !LunWWNExist {
+		msg := "there is no target Lun WWN in the connection info"
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
 
 	tgtPortals, portalExist := connectionProperties["tgtPortals"].([]string)
 	if !portalExist {
@@ -83,6 +89,8 @@ func parseISCSIInfo(connectionProperties map[string]interface{}) (*connectorInfo
 	authPassword, _ := connectionProperties["authPassword"].(string)
 	authMethod, _ := connectionProperties["authMethod"].(string)
 
+	var con connectorInfo
+	con.tgtLunWWN = tgtLunWWN
 	con.tgtPortals = tgtPortals
 	con.tgtIQNs = tgtIQNs
 	con.tgtHostLUNs = tgtHostLUNs
@@ -94,7 +102,7 @@ func parseISCSIInfo(connectionProperties map[string]interface{}) (*connectorInfo
 
 func runISCSIAdmin(tgtPortal, targetIQN string, iSCSICommand string, checkExitCode []string) error {
 	iSCSICmd := fmt.Sprintf("iscsiadm -m node -T %s -p %s %s", targetIQN, tgtPortal, iSCSICommand)
-	output, err := utils.ExecShellCmd(iSCSICmd)
+	output, err := utils.ExecShellCmdFilterLog(iSCSICmd)
 	if err != nil {
 		if err.Error() == "timeout" {
 			return err
@@ -113,7 +121,7 @@ func runISCSIAdmin(tgtPortal, targetIQN string, iSCSICommand string, checkExitCo
 
 func runISCSIBare(iSCSICommand string, checkExitCode []string) (string, error) {
 	iSCSICmd := fmt.Sprintf("iscsiadm %s", iSCSICommand)
-	output, err := utils.ExecShellCmd(iSCSICmd)
+	output, err := utils.ExecShellCmdFilterLog(iSCSICmd)
 	if err != nil {
 		if err.Error() == "timeout" {
 			return "", err
@@ -400,7 +408,7 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 	}
 
 	constructInfos := constructISCSIInfo(conn)
-	var mPath, wwn string
+	var mPath string
 	var wait sync.WaitGroup
 	var iSCSIShareData = new(shareData)
 	lenIndex := len(conn.tgtPortals)
@@ -411,7 +419,7 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 		tgtInfo := constructInfos[index]
 		wait.Add(1)
 
-		go func() {
+		go func(tgt singleConnectorInfo) {
 			defer func() {
 				wait.Done()
 				if r := recover(); r != nil {
@@ -422,12 +430,12 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 				log.Flush()
 			}()
 
-			connectVol(tgtInfo.tgtPortal, tgtInfo.tgtIQN, tgtInfo.tgtHostLun, conn.tgtChapInfo, iSCSIShareData)
-		}()
+			connectVol(tgt.tgtPortal, tgt.tgtIQN, tgt.tgtHostLun, conn.tgtChapInfo, iSCSIShareData)
+		}(tgtInfo)
 	}
 
 	if connMap["volumeUseMultiPath"].(bool) {
-		mPath, wwn = scanMultiPath(lenIndex, iSCSIShareData)
+		mPath, _ = scanMultiPath(lenIndex, iSCSIShareData)
 	} else {
 		scanSingle(iSCSIShareData)
 	}
@@ -435,34 +443,32 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 	iSCSIShareData.stopConnecting = true
 	wait.Wait()
 
-	if mPath != "" && connMap["volumeUseMultiPath"].(bool) {
-		err = connector.WaitDeviceRW(wwn, mPath)
-		if err != nil {
-			return "", err
-		}
-
-		mPath = fmt.Sprintf("/dev/%s", mPath)
-		log.Infof("Found the dm path %s", mPath)
-		return mPath, nil
-	} else if connMap["volumeUseMultiPath"].(bool) {
-		log.Errorln("no dm was created")
+	if iSCSIShareData.foundDevices == nil {
 		return "", errors.New("volume device not found")
 	}
 
-	if iSCSIShareData.foundDevices != nil {
-		dev := fmt.Sprintf("/dev/%s", iSCSIShareData.foundDevices[0])
-		log.Infof("Found the dev %s", iSCSIShareData.foundDevices[0])
-		err = connector.WaitDeviceRW(wwn, iSCSIShareData.foundDevices[0])
+	if !connMap["volumeUseMultiPath"].(bool) {
+		device := fmt.Sprintf("/dev/%s", iSCSIShareData.foundDevices[0])
+		err := connector.VerifySingleDevice(device, conn.tgtLunWWN,
+			"volume device not found", false, tryDisConnectVolume)
+		if err != nil {
+			return "", err
+		}
+		return device, nil
+	}
+
+	// mPath: dm-<id>
+	if mPath != "" {
+		dev, err := connector.VerifyMultiPathDevice(mPath, conn.tgtLunWWN,
+			"volume device not found", false, tryDisConnectVolume)
 		if err != nil {
 			return "", err
 		}
 		return dev, nil
 	}
 
-	msg := fmt.Sprintf("volume device not found, target portal is %s, target IQN is %s, lun is %s",
-		conn.tgtPortals, utils.MaskSensitiveInfo(conn.tgtIQNs), conn.tgtHostLUNs)
-	log.Errorln(msg)
-	return "", errors.New(msg)
+	log.Errorln("no dm was created")
+	return "", errors.New("volume device not found")
 }
 
 func scanSingle(iSCSIShareData *shareData) {
@@ -674,10 +680,14 @@ func disconnectSessions(devConnectorInfos []singleConnectorInfo) error {
 	return nil
 }
 
-func tryDisConnectVolume(tgtLunWWN string) error {
-	device, err := connector.GetDevice(nil, tgtLunWWN)
+func tryDisConnectVolume(tgtLunWWN string, checkDeviceAvailable bool) error {
+	return connector.DisConnectVolume(tgtLunWWN, checkDeviceAvailable, tryToDisConnectVolume)
+}
+
+func tryToDisConnectVolume(tgtLunWWN string, checkDeviceAvailable bool) error {
+	device, err := connector.GetDevice(nil, tgtLunWWN, checkDeviceAvailable)
 	if err != nil {
-		log.Errorf("Get device of WWN %s error: %v", tgtLunWWN, err)
+		log.Warningf("Get device of WWN %s error: %v", tgtLunWWN, err)
 		return err
 	}
 

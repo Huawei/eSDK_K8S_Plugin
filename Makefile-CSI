@@ -1,6 +1,6 @@
 PLATFORM=PLATFORM
 export GOPATH:=$(GOPATH):$(shell pwd)
-$(info ${GOPATH})
+
 all:COMMON_1 DIFF 
 
 COMMON_1:
@@ -9,10 +9,12 @@ COMMON_1:
 DIFF:
 ifeq (${PLATFORM}, X86)
 	go build -o ./bin/huawei-csi	  ./src/csi
-	go build -o ./bin/secretGenerate  ./src/tools/secretGenerate
+	go build -o ./${PACKAGE}/bin/secretGenerate  ./src/tools/secretGenerate
+	go build -o ./${PACKAGE}/bin/secretUpdate ./src/tools/secretUpdate
 endif
 
 ifeq (${PLATFORM}, ARM)
 	GOOS=linux GOARCH=arm64 go build -o ./bin/huawei-csi	  ./src/csi
-	GOOS=linux GOARCH=arm64 go build -o ./bin/secretGenerate  ./src/tools/secretGenerate
+	GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/secretGenerate ./src/tools/secretGenerate
+	GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/secretUpdate ./src/tools/secretUpdate
 endif

@@ -19,10 +19,12 @@ type FusionStoragePlugin struct {
 }
 
 func (p *FusionStoragePlugin) init(config map[string]interface{}, keepLogin bool) error {
-	url, exist := config["url"].(string)
-	if !exist {
-		return errors.New("url must be provided")
+	configUrls, exist := config["urls"].([]interface{})
+	if !exist || len(configUrls) <= 0 {
+		return errors.New("urls must be provided")
 	}
+
+	url := configUrls[0].(string)
 
 	user, exist := config["user"].(string)
 	if !exist {

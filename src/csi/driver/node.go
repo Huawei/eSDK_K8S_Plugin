@@ -39,7 +39,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	mnt := req.GetVolumeCapability().GetMount()
 
 	opts := mnt.GetMountFlags()
-	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().Mode)
+	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().GetMode())
 	log.Infof("The access mode of volume %s is %s", volumeId, accessMode)
 
 	if accessMode == "ReadOnly" {
@@ -301,7 +301,7 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		return nil, status.Error(codes.InvalidArgument, "no volume path provided")
 	}
 
-	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().Mode)
+	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().GetMode())
 	if accessMode == "ReadOnly" {
 		log.Warningf("The access mode of volume %s is %s", volumeId, accessMode)
 		return &csi.NodeExpandVolumeResponse{}, nil
@@ -319,5 +319,6 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 		log.Errorf("Node expand volume %s error: %v", volName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	log.Infof("Finish node expand volume %s", volumeId)
 	return &csi.NodeExpandVolumeResponse{}, nil
 }

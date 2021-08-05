@@ -2,18 +2,30 @@ package roce
 
 import (
 	"connector"
+	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"utils/log"
 )
 
-type RoCE struct{}
+type RoCE struct{
+	mutex sync.Mutex
+}
+
+const (
+	intNumTwo             = 2
+	intNumThree           = 3
+)
 
 func init() {
 	connector.RegisterConnector(connector.RoCEDriver, &RoCE{})
 }
 
 func (roce *RoCE) ConnectVolume(conn map[string]interface{}) (string, error) {
+	roce.mutex.Lock()
+	defer roce.mutex.Unlock()
 	log.Infof("RoCE Start to connect volume ==> connect info: %v", conn)
 
 	for i := 0; i < 3; i++ {
@@ -31,6 +43,20 @@ func (roce *RoCE) ConnectVolume(conn map[string]interface{}) (string, error) {
 }
 
 func (roce *RoCE) DisConnectVolume(tgtLunGuid string) error {
+	roce.mutex.Lock()
+	defer roce.mutex.Unlock()
 	log.Infof("RoCE Start to disconnect volume ==> Volume Guid info: %v", tgtLunGuid)
-	return connector.DeleteDevice(tgtLunGuid)
+	for i := 0; i < 3; i++ {
+		err := tryDisConnectVolume(tgtLunGuid, true)
+		if err == nil {
+			return nil
+		}
+
+		log.Errorf("Failed to delete device in %d time(s), err: %v", i, err)
+		time.Sleep(time.Second * intNumTwo)
+	}
+
+	msg := fmt.Sprintf("Failed to delete volume %s.", tgtLunGuid)
+	log.Errorln(msg)
+	return errors.New(msg)
 }

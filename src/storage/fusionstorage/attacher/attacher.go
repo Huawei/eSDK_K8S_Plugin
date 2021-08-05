@@ -303,13 +303,13 @@ func (p *Attacher) getMappingProperties(wwn, hostLunId string) (map[string]inter
 	}
 
 	lenPortals := len(tgtPortals)
-	var tgtLunWWNs, tgtHostLUNs []string
+	var tgtHostLUNs []string
 	for i := 0; i < lenPortals; i++ {
-		tgtLunWWNs = append(tgtLunWWNs, wwn)
 		tgtHostLUNs = append(tgtHostLUNs, hostLunId)
 	}
 
 	connectInfo := map[string]interface{}{
+		"tgtLunWWN": wwn,
 		"tgtPortals": tgtPortals,
 		"tgtIQNs": tgtIQNs,
 		"tgtHostLUNs": tgtHostLUNs,}

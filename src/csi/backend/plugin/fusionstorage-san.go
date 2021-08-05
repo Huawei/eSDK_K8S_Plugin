@@ -32,13 +32,20 @@ func (p *FusionStorageSanPlugin) NewPlugin() Plugin {
 }
 
 func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
-	scsi, scsiExist := parameters["SCSI"].(map[string]interface{})
-	iscsi, iscsiExist := parameters["ISCSI"].([]interface{})
-	if !scsiExist && !iscsiExist {
-		return errors.New("SCSI or ISCSI must be provided for fusionstorage-san")
-	} else if scsiExist && iscsiExist {
-		return errors.New("Provide only one of SCSI and ISCSI for fusionstorage-san")
-	} else if scsiExist {
+	protocol, exist := parameters["protocol"].(string)
+	if !exist {
+		log.Errorf("protocol must be configured in backend %v", parameters)
+		return errors.New("protocol must be configured")
+	}
+
+	portals, exist := parameters["portals"].([]interface{})
+	if !exist || len(portals) == 0 {
+		log.Errorf("portals must be configured in backend %v", parameters)
+		return errors.New("portals must be configured")
+	}
+
+	if strings.ToLower(protocol) == "scsi" {
+		scsi := portals[0].(map[string]interface{})
 		for k, v := range scsi {
 			manageIP := v.(string)
 			ip := net.ParseIP(manageIP)
@@ -50,8 +57,8 @@ func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{},
 		}
 
 		p.protocol = "scsi"
-	} else {
-		portals, err := proto.VerifyIscsiPortals(iscsi)
+	} else if strings.ToLower(protocol) == "iscsi"{
+		portals, err := proto.VerifyIscsiPortals(portals)
 		if err != nil {
 			return err
 		}
@@ -59,6 +66,10 @@ func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{},
 		p.portals = portals
 		p.protocol = "iscsi"
 		p.alua, _ = parameters["ALUA"].(map[string]interface{})
+	} else {
+		msg := fmt.Sprintf("protocol %s configured is error. Just support iscsi and scsi", protocol)
+		log.Errorln(msg)
+		return errors.New(msg)
 	}
 
 	err := p.init(config, keepLogin)

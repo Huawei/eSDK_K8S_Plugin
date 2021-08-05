@@ -296,7 +296,7 @@ func (cli *Client) Login() error {
 	cli.deviceid = ""
 	cli.token = ""
 	for i, url := range cli.urls {
-		cli.url = url
+		cli.url = url + "/deviceManager/rest"
 
 		log.Infof("Try to login %s", cli.url)
 		resp, err = cli.baseCall("POST", "/xx/sessions", data)
@@ -319,7 +319,7 @@ func (cli *Client) Login() error {
 
 	code := int64(resp.Error["code"].(float64))
 	if code != 0 {
-		msg := fmt.Sprintf("Login %s error: %d", cli.url, code)
+		msg := fmt.Sprintf("Login %s error: %+v", cli.url, resp)
 		return errors.New(msg)
 	}
 

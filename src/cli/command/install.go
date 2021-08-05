@@ -16,8 +16,14 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+// CSIConfig is to store the base config object
 type CSIConfig struct {
 	Backends []map[string]interface{} `json:"backends"`
+}
+
+// CSISecret is to store the secret object
+type CSISecret struct {
+	Secrets map[string]interface{}  `json:"secrets"`
 }
 
 const (
@@ -31,11 +37,12 @@ const (
 var (
 	client k8sClient.Interface
 	storageConfig CSIConfig
+	storageSecret CSISecret
 	storageNamespace string
 )
 
 func Init() {
-	if len(os.Args) >= 2 {
+	if len(os.Args) >= inputArgsLength {
 		storageNamespace = os.Args[1]
 	} else {
 		storageNamespace = HUAWEINamespace
@@ -79,7 +86,7 @@ func installSecret() {
 func initClient() (k8sClient.Interface, error) {
 	client, err := k8sClient.NewCliClient(storageNamespace, 180*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("could not new a Kubernetes client, err: %v", err)
+		return nil, fmt.Errorf("Could not new a Kubernetes client, err: %v", err)
 	}
 
 	return client, nil
@@ -145,6 +152,58 @@ func terminalInput(keyText, objectName string) (string, error) {
 	return plainText, nil
 }
 
+func getPassword(keyText, backendName string) string {
+	for {
+		fmt.Printf("Enter backend %s's password: \n", backendName)
+		inputPassword1, err := terminalInput(keyText, "password")
+		if err != nil {
+			msg := fmt.Sprintf("Input password error %v, try it again", err)
+			log.Errorln(msg)
+			continue
+		}
+
+		fmt.Println("Please enter the password again: ")
+		inputPassword2, err := terminalInput(keyText, "password")
+		if err != nil {
+			msg := fmt.Sprintf("Input password error %v, try it again", err)
+			log.Errorln(msg)
+			continue
+		}
+
+		if inputPassword1 != inputPassword2 {
+			msg := fmt.Sprintln("The two passwords are inconsistent. Please enter again.")
+			log.Errorln(msg)
+			fmt.Println(msg)
+		} else {
+			return inputPassword1
+		}
+	}
+}
+
+func generateSecret(backendName string) (map[string]string, error) {
+	keyText, err := generateKeyText()
+	if err != nil {
+		log.Errorf("Generate random string error %v", err)
+		return nil, err
+	}
+
+	fmt.Printf("Enter backend %s's user: ", backendName)
+	inputUser, err := terminalInput(keyText, "user")
+	if err != nil {
+		log.Errorf("Input user error %v", err)
+		return nil, err
+	}
+	fmt.Printf("%s\n", inputUser)
+
+	inputPassword := getPassword(keyText, backendName)
+	secretInfo := map[string]string{
+		"user":     inputUser,
+		"password": inputPassword,
+		"keyText": keyText,
+	}
+	return secretInfo, nil
+}
+
 func createSecret() error {
 	// step 1. query the configMap to get the all backend names
 	configMap, err := client.GetConfigMap(HUAWEICSIConfigMap)
@@ -175,30 +234,10 @@ func createSecret() error {
 		fmt.Println(msg)
 		log.Infoln(msg)
 
-		keyText, err := generateKeyText()
+		secretInfo, err := generateSecret(config["name"].(string))
 		if err != nil {
-			log.Errorf("Generate random string error %v", err)
+			recordErrorf("generate Secret info error: %v", err)
 			return err
-		}
-
-		fmt.Println("Enter backend user: ")
-		inputUser, err := terminalInput(keyText, "user")
-		if err != nil {
-			log.Errorf("Input user error %v", err)
-			return err
-		}
-
-		fmt.Println("Enter backend password: ")
-		inputPassword, err := terminalInput(keyText, "password")
-		if err != nil {
-			log.Errorf("Input password error %v", err)
-			return err
-		}
-
-		secretInfo := map[string]string{
-			"user":     inputUser,
-			"password": inputPassword,
-			"keyText": keyText,
 		}
 		secretBytes, _ := json.Marshal(secretInfo)
 		secretMap[config["name"].(string)] = string(secretBytes)
@@ -214,6 +253,6 @@ func createSecret() error {
 		log.Errorf("could not create Huawei CSI Secret; secret YAML: %s, err: %v", secretYAML, err)
 		return err
 	}
-	log.Infoln("Created Huawei csi secret.")
+	recordInfof("*********************Create CSI Secret Successful**********************\n")
 	return nil
 }

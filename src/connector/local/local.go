@@ -66,7 +66,7 @@ func (loc *Local) DisConnectVolume(tgtLunWWN string) error {
 	defer loc.mutex.Unlock()
 	log.Infof("Local Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
 	for i := 0; i < 3; i++ {
-		err := tryDisConnectVolume(tgtLunWWN)
+		err := tryDisConnectVolume(tgtLunWWN, true)
 		if err == nil {
 			return nil
 		}

@@ -60,7 +60,8 @@ spec:
               mountPath: /var/log
             - name: config-map
               mountPath: /etc/huawei
-
+            - name: secret
+              mountPath: /etc/huawei/secret
       volumes:
         - name: socket-dir
           emptyDir:
@@ -71,3 +72,6 @@ spec:
         - name: config-map
           configMap:
             name: huawei-csi-configmap
+        - name: secret
+          secret:
+            secretName: huawei-csi-secret

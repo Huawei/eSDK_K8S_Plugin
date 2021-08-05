@@ -8,11 +8,11 @@ data:
     {
         "backends": [
             {
-                "storage": "oceanstor-san",
+                "storage": "fusionstorage-nas",
                 "name": "***",
-                "urls": ["https://*.*.*.*:8088", "https://*.*.*.*:8088"],
+                "urls": ["https://*.*.*.*:28443"],
                 "pools": ["***", "***"],
-                "parameters": {"protocol": "roce", "portals": ["*.*.*.*", "*.*.*.*"]}
+                "parameters": {"protocol": "nfs", "portals": ["*.*.*.*"]}
             }
         ]
     }

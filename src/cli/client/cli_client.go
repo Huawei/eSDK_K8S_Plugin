@@ -71,6 +71,7 @@ type Interface interface {
 	GetConfigMap(configMapName string) (*v1.ConfigMap, error)
 	CheckConfigMapExists(configMapName string) (bool, error)
 	CreateObjectByYAML(yaml string) error
+	GetSecret(secretName string) (*v1.Secret, error)
 }
 
 func NewCliClient(namespace string, k8sTimeout time.Duration) (Interface, error) {
@@ -256,6 +257,29 @@ func (c *KubectlClient) getCurrentNamespace() (string, error) {
 	return namespace, nil
 }
 
+// GetSecret get secret object by name
+func (c *KubectlClient) GetSecret(secretName string) (*v1.Secret, error) {
+	cmdArgs := []string{"get", "secret", secretName, "--namespace", c.namespace, "-o=json"}
+	cmd := exec.Command(c.cli, cmdArgs...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	var createdSecret v1.Secret
+	if err := json.NewDecoder(stdout).Decode(&createdSecret); err != nil {
+		return nil, err
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, err
+	}
+
+	return &createdSecret, nil
+}
+
 func (c *KubectlClient) CheckSecretExists(secretName string) (bool, error) {
 	args := []string{"get", "secret", secretName, "--namespace", c.namespace, "--ignore-not-found"}
 	out, err := exec.Command(c.cli, args...).CombinedOutput()
@@ -341,7 +365,7 @@ func (c *KubectlClient) createObjectByYAML(yaml string) error {
 
 	go func() {
 		defer stdin.Close()
-		_, _ = stdin.Write([]byte(yaml)) //nolint
+		_, _ = stdin.Write([]byte(yaml)) // nolint
 	}()
 
 	out, err := cmd.CombinedOutput()
@@ -355,25 +379,20 @@ func (c *KubectlClient) createObjectByYAML(yaml string) error {
 }
 
 func (c *KubectlClient) updateObjectByYAML(yaml string) error {
-
 	args := []string{fmt.Sprintf("--namespace=%s", c.namespace), "apply", "-f", "-"}
 	cmd := exec.Command(c.cli, args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
 	}
-
 	go func() {
 		defer stdin.Close()
-		_, _ = stdin.Write([]byte(yaml)) //nolint
+		_, _ = stdin.Write([]byte(yaml)) // nolint
 	}()
-
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s; %v", string(out), err)
 	}
-
 	log.Debug("Applied changes to Kubernetes object by YAML.")
-
 	return nil
 }

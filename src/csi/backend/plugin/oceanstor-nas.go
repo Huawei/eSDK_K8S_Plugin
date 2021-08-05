@@ -33,9 +33,14 @@ func (p *OceanstorNasPlugin) NewPlugin() Plugin {
 }
 
 func (p *OceanstorNasPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
-	portal, exist := parameters["portal"].(string)
-	if !exist {
-		return errors.New("portal must be provided for oceanstor-nas backend")
+	protocol, exist := parameters["protocol"].(string)
+	if !exist || protocol != "nfs" {
+		return errors.New("protocol must be provided and be nfs for oceanstor-nas backend")
+	}
+
+	portals, exist := parameters["portals"].([]interface{})
+	if !exist || len(portals) == 0 {
+		return errors.New("portals must be provided for oceanstor-nas backend")
 	}
 
 	err := p.init(config, keepLogin)
@@ -43,7 +48,7 @@ func (p *OceanstorNasPlugin) Init(config, parameters map[string]interface{}, kee
 		return err
 	}
 
-	p.portal = portal
+	p.portal = portals[0].(string)
 	p.vStorePairID, exist = config["metrovStorePairID"].(string)
 	if exist {
 		log.Infof("The metro vStorePair ID is %s", p.vStorePairID)

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"strings"
 	"utils"
 	"utils/log"
@@ -80,6 +81,11 @@ func tryConnectVolume(connMap map[string]interface{}) error {
 
 	switch conn.srcType {
 	case "block":
+		_, err = connector.ReadDevice(conn.sourcePath)
+		if err != nil {
+			return err
+		}
+
 		err = mountDisk(conn.sourcePath, conn.targetPath, conn.fsType, conn.mntFlags)
 		if err != nil {
 			return err
@@ -95,9 +101,11 @@ func tryConnectVolume(connMap map[string]interface{}) error {
 	return nil
 }
 
-func preMount(sourcePath, targetPath string) error {
-	if _, err := os.Stat(sourcePath); err != nil && os.IsNotExist(err) {
-		return errors.New("source path does not exist")
+func preMount(sourcePath, targetPath string, checkSourcePath bool) error {
+	if checkSourcePath {
+		if _, err := os.Stat(sourcePath); err != nil && os.IsNotExist(err) {
+			return errors.New("source path does not exist")
+		}
 	}
 
 	if _, err := os.Stat(targetPath); err != nil && os.IsNotExist(err) {
@@ -109,7 +117,7 @@ func preMount(sourcePath, targetPath string) error {
 }
 
 func mountFS(sourcePath, targetPath, flags string) error {
-	return mountUnix(sourcePath, targetPath, flags)
+	return mountUnix(sourcePath, targetPath, flags, false)
 }
 
 func readMountPoints() (map[string]string, error) {
@@ -131,10 +139,10 @@ func readMountPoints() (map[string]string, error) {
 	return mountMap, nil
 }
 
-func mountUnix(sourcePath, targetPath, flags string) error {
+func mountUnix(sourcePath, targetPath, flags string, checkSourcePath bool) error {
 	var output string
 	var err error
-	err = preMount(sourcePath, targetPath)
+	err = preMount(sourcePath, targetPath, checkSourcePath)
 	if err != nil {
 		return err
 	}
@@ -162,17 +170,36 @@ func mountUnix(sourcePath, targetPath, flags string) error {
 	return nil
 }
 
-func isDevFormat(sourcePath string) (bool, error) {
-	output, err := utils.ExecShellCmd("blkid -o udev %s | grep ID_FS_UUID | cut -d = -f2", sourcePath)
-	if err != nil {
-		log.Errorf("Query fs of %s error: %s", sourcePath, output)
-		return false, err
+func getFSType(sourcePath string) (string, error) {
+	// the errorCode 2 means an unFormatted filesystem and the unavailable filesystem. So ensure the device is
+	// available before calling command blkid
+	if exist, err := utils.PathExist(sourcePath); !exist {
+		return "", fmt.Errorf("find the device %s failed before get filesystem info, error: %v", sourcePath, err)
 	}
 
-	if output == "" {
-		return false, nil
+	output, err := utils.ExecShellCmd("blkid -o udev %s", sourcePath)
+	if err != nil {
+		if errCode, ok := err.(*exec.ExitError); ok && errCode.ExitCode() == 2 {
+			log.Infof("Query fs of %s error: %s", sourcePath, output)
+			if formatted, err := connector.IsDeviceFormatted(sourcePath); err != nil {
+				return "", fmt.Errorf("check device %s formatted failed, error: %v", sourcePath, err)
+			} else if formatted {
+				return "", fmt.Errorf("the device %s is formatted, error: %v", sourcePath, err)
+			}
+
+			return "", nil
+		}
+		return "", err
 	}
-	return true, nil
+
+	for _, out := range strings.Split(output, "\n") {
+		fsInfo := strings.Split(out, "=")
+		if len(fsInfo) == 2 && fsInfo[0] == "ID_FS_TYPE" {
+			return fsInfo[1], nil
+		}
+	}
+
+	return "", errors.New("get fsType failed")
 }
 
 func formatDisk(sourcePath, fsType string) error {
@@ -186,23 +213,23 @@ func formatDisk(sourcePath, fsType string) error {
 
 func mountDisk(sourcePath, targetPath, fsType, flags string) error {
 	var err error
-	isDevFormat, err := isDevFormat(sourcePath)
+	existFsType, err := getFSType(sourcePath)
 	if err != nil {
 		return err
 	}
 
-	if !isDevFormat {
+	if existFsType == "" {
 		err = formatDisk(sourcePath, fsType)
 		if err != nil {
 			return err
 		}
 
-		err = mountUnix(sourcePath, targetPath, flags)
+		err = mountUnix(sourcePath, targetPath, flags, true)
 		if err != nil {
 			return err
 		}
 	} else {
-		err = mountUnix(sourcePath, targetPath, flags)
+		err = mountUnix(sourcePath, targetPath, flags, true)
 		if err != nil {
 			return err
 		}

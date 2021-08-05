@@ -50,6 +50,7 @@ func roceControllerAttach(attacher AttacherPlugin, lunName string, parameters ma
 		return "", err
 	}
 
+	connectInfo["volumeUseMultiPath"] = parameters["volumeUseMultiPath"].(bool)
 	conn := connector.GetConnector(connector.RoCEDriver)
 	devPath, err := conn.ConnectVolume(connectInfo)
 	if err != nil {

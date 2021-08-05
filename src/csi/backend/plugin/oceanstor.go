@@ -47,14 +47,6 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		return errors.New("keyText must be provided")
 	}
 
-	product, exist := config["product"].(string)
-	if !exist {
-		return errors.New("product must be provided")
-	}
-	if product != "V3" && product != "V5" && product != "Dorado" {
-		return errors.New("product only support config: V3, V5, Dorado")
-	}
-
 	decrypted, err := pwd.Decrypt(password, keyText)
 	if err != nil {
 		return err
@@ -75,8 +67,10 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		return err
 	}
 
-	if utils.IsDoradoV6(system) {
-		product = "DoradoV6"
+	product, err := utils.GetProductVersion(system)
+	if err != nil {
+		log.Errorf("Get product version error: %v", err)
+		return err
 	}
 
 	if !keepLogin {
@@ -85,7 +79,6 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 
 	p.cli = cli
 	p.product = product
-
 	return nil
 }
 
