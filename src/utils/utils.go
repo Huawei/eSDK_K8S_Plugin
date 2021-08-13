@@ -1,3 +1,18 @@
+/*
+ Copyright (c) Huawei Technologies Co., Ltd. 2021-2021. All rights reserved.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+      http://www.apache.org/licenses/LICENSE-2.0
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+*/
+
+// Package utils to provide utils for CSI
 package utils
 
 import (
@@ -19,8 +34,11 @@ import (
 )
 
 const (
-	DoradoV6Version = "V600R003C00"
+	DoradoV6Version = "V600"
+	V5Version       = "V500"
 )
+
+var maskObject = []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
 
 type VolumeMetrics struct {
 	Available *resource.Quantity
@@ -44,18 +62,80 @@ func PathExist(path string) (bool, error) {
 	return true, nil
 }
 
-func ExecShellCmd(format string, args ...interface{}) (string, error) {
-	cmd := fmt.Sprintf(format, args...)
-	log.Infof("Gonna run shell cmd \"%s\".", cmd)
+func MaskSensitiveInfo(info interface{}) string {
+	message := fmt.Sprintf("%s", info)
+	substitute := "***"
 
-	shCmd := exec.Command("/bin/sh", "-c", cmd)
+	for _, value := range maskObject {
+		if strings.Contains(strings.ToLower(message), strings.ToLower(value)) {
+			rePattern := fmt.Sprintf(`(?is)%s.*\s-p`, value)
+			re := regexp.MustCompile(rePattern)
+			message = re.ReplaceAllString(message, substitute)
+		}
+	}
+
+	return message
+}
+
+func ExecShellCmd(format string, args ...interface{}) (string, error) {
+	var output string
+	var err error
+	done := make(chan string)
+	defer close(done)
+
+	go func() {
+		output, err = execShellCmd(format, done, false, args...)
+	}()
+
+	select {
+	case do := <-done:
+		log.Debugf("Run shell cmd done %s.", do)
+		return output, err
+	case <-time.After(time.Duration(30) * time.Second):
+		return "", errors.New("timeout")
+	}
+}
+
+// ExecShellCmdFilterLog execs the command and filters the result log
+func ExecShellCmdFilterLog(format string, args ...interface{}) (string, error) {
+	var output string
+	var err error
+	done := make(chan string)
+	defer close(done)
+
+	go func() {
+		output, err = execShellCmd(format, done, true, args...)
+	}()
+
+	select {
+	case do := <-done:
+		log.Debugf("Run shell cmd done %s.", do)
+		return output, err
+	case <-time.After(time.Duration(30) * time.Second):
+		return "", errors.New("timeout")
+	}
+}
+
+func execShellCmd(format string, ch chan string, logFilter bool, args ...interface{}) (string, error) {
+	cmd := fmt.Sprintf(format, args...)
+	log.Infof("Gonna run shell cmd \"%s\".", MaskSensitiveInfo(cmd))
+
+	defer func() {
+		ch <- fmt.Sprintf("Shell cmd \"%s\" done", MaskSensitiveInfo(cmd))
+	}()
+
+	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "/bin/sh", "-c", cmd}
+	shCmd := exec.Command("nsenter", execCmd...)
+	time.AfterFunc(30*time.Second, func() { _ = shCmd.Process.Kill() })
 	output, err := shCmd.CombinedOutput()
 	if err != nil {
-		log.Warningf("Run shell cmd \"%s\" error: %s.", cmd, output)
+		log.Warningf("Run shell cmd \"%s\" error: %s.", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output))
 		return string(output), err
 	}
 
-	log.Infof("Shell cmd \"%s\" result:\n%s", cmd, output)
+	if !logFilter {
+		log.Infof("Shell cmd \"%s\" result:\n%s", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output))
+	}
 	return string(output), nil
 }
 
@@ -165,6 +245,7 @@ func MergeMap(args ...map[string]interface{}) map[string]interface{} {
 
 func WaitUntil(f func() (bool, error), timeout time.Duration, interval time.Duration) error {
 	done := make(chan error)
+	defer close(done)
 
 	go func() {
 		timeout := time.After(timeout)
@@ -241,9 +322,29 @@ func ReflectCall(obj interface{}, method string, args ...interface{}) []reflect.
 	return nil
 }
 
-func IsDoradoV6(SystemInfo map[string]interface{}) bool {
-	versionInfo := SystemInfo["PRODUCTVERSION"].(string)
-	return versionInfo >= DoradoV6Version
+// GetProductVersion is to get the oceanStorage version by get info from the system
+func GetProductVersion(SystemInfo map[string]interface{}) (string, error) {
+	productVersion, ok := SystemInfo["PRODUCTVERSION"].(string)
+	if !ok {
+		return "", errors.New("there is no PRODUCTVERSION field in system info")
+	}
+
+	if strings.HasPrefix(productVersion, DoradoV6Version) {
+		return "DoradoV6", nil
+	} else if strings.HasPrefix(productVersion, V5Version) {
+		return "V5", nil
+	}
+
+	productMode, ok := SystemInfo["PRODUCTMODE"].(string)
+	if !ok {
+		log.Warningln("There is no PRODUCTMODE field in system info")
+	}
+
+	if match, _ := regexp.MatchString(`8[0-9][0-9]`, productMode); match {
+		return "Dorado", nil
+	}
+
+	return "V3", nil
 }
 
 func IsSupportFeature(features map[string]int, feature string) bool {
@@ -325,7 +426,7 @@ func GetVolumeMetrics(path string) (*VolumeMetrics, error) {
 	return volumeMetrics, nil
 }
 
-func GetLunUniqueId(protocol string, lun map[string]interface{}) (string, error){
+func GetLunUniqueId(protocol string, lun map[string]interface{}) (string, error) {
 	if protocol == "roce" || protocol == "fc-nvme" {
 		tgtLunGuid, exist := lun["NGUID"].(string)
 		if !exist {
@@ -354,4 +455,62 @@ func GetAccessModeType(accessMode csi.VolumeCapability_AccessMode_Mode) string {
 	default:
 		return ""
 	}
+}
+
+func CheckExistCode(err error, checkExitCode []string) error {
+	for _, v := range checkExitCode {
+		if err.Error() == v {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func TestMultiPathService() error {
+	output, err := ExecShellCmd("systemctl status multipathd.service")
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "Active") {
+			activeLines := strings.Split(strings.TrimSpace(line), ":")
+			if len(activeLines) < 2 {
+				continue
+			}
+			if activeLines[0] == "Active" && strings.Contains(activeLines[1], "active (running)") {
+				return nil
+			}
+		}
+	}
+
+	return errors.New("multipathd service not running")
+}
+
+// NeedMultiPath to check whether the multipathing service is required based on the storage configuration.
+func NeedMultiPath(backendConfigs []map[string]interface{}) bool {
+	var needMultiPath bool
+	for _, config := range backendConfigs {
+		parameters, exist := config["parameters"].(map[string]interface{})
+		if !exist {
+			log.Errorf("parameters must be configured in backend %v", config)
+			continue
+		}
+
+		protocol, exist := parameters["protocol"].(string)
+		if !exist {
+			log.Errorf("protocol must be configured in parameters %v", config)
+			continue
+		}
+
+		if strings.ToLower(protocol) == "iscsi" || strings.ToLower(protocol) == "fc" ||
+			strings.ToLower(protocol) == "roce" {
+			needMultiPath = true
+			break
+		}
+	}
+
+	return needMultiPath
 }

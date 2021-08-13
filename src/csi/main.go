@@ -4,13 +4,16 @@ import (
 	"csi/backend"
 	"csi/driver"
 	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"time"
+	"utils"
 	"utils/log"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -20,11 +23,12 @@ import (
 
 const (
 	configFile        = "/etc/huawei/csi.json"
+	secretFile        = "/etc/huawei/secret/secret.json"
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "2.2.12"
+	csiVersion        = "2.2.13"
 	defaultDriverName = "csi.huawei.com"
 )
 
@@ -47,12 +51,20 @@ var (
 	backendUpdateInterval = flag.Int("backend-update-interval",
 		60,
 		"The interval seconds to update backends status. Default is 60 seconds")
+	volumeUseMultiPath = flag.Bool("volume-use-multipath",
+		true,
+		"Whether to use multipath when attach block volume")
 
 	config CSIConfig
+	secret CSISecret
 )
 
 type CSIConfig struct {
 	Backends []map[string]interface{} `json:"backends"`
+}
+
+type CSISecret struct {
+	Secrets map[string]interface{}  `json:"secrets"`
 }
 
 func init() {
@@ -73,6 +85,18 @@ func init() {
 		logrus.Fatalf("Must configure at least one backend")
 	}
 
+	secretData, err := ioutil.ReadFile(secretFile)
+	if err != nil {
+		logrus.Fatalf("Read config file %s error: %v", secretFile, err)
+	}
+
+	err = json.Unmarshal(secretData, &secret)
+	if err != nil {
+		logrus.Fatalf("Unmarshal config file %s error: %v", secretFile, err)
+	}
+
+	_ = mergeData(config, secret)
+
 	if *containerized {
 		*controllerFlagFile = ""
 	}
@@ -92,6 +116,33 @@ func init() {
 	if err != nil {
 		logrus.Fatalf("Init log error: %v", err)
 	}
+}
+
+func getSecret(backendSecret, backendConfig map[string]interface{}, secretKey string) {
+	if secretValue, exist := backendSecret[secretKey].(string); exist {
+		backendConfig[secretKey] = secretValue
+	} else {
+		msg := fmt.Sprintf("The key %s is not in secret %v.", secretKey, backendSecret)
+		logrus.Fatalln(msg)
+	}
+}
+
+func mergeData(config CSIConfig, secret CSISecret) error {
+	for _, backendConfig := range config.Backends {
+		backendName := backendConfig["name"].(string)
+		Secret, exist := secret.Secrets[backendName]
+		if !exist {
+			msg := fmt.Sprintf("The key %s is not in secret.", backendName)
+			logrus.Fatalln(msg)
+			return errors.New(msg)
+		}
+
+		backendSecret := Secret.(map[string]interface{})
+		getSecret(backendSecret, backendConfig, "user")
+		getSecret(backendSecret, backendConfig, "password")
+		getSecret(backendSecret, backendConfig, "keyText")
+	}
+	return nil
 }
 
 func updateBackendCapabilities() {
@@ -148,7 +199,8 @@ func main() {
 		log.Fatalf("Listen on %s error: %v", *endpoint, err)
 	}
 
-	d := driver.NewDriver(*driverName, csiVersion)
+	isNeedMultiPath := utils.NeedMultiPath(config.Backends)
+	d := driver.NewDriver(*driverName, csiVersion, *volumeUseMultiPath, isNeedMultiPath)
 	server := grpc.NewServer()
 
 	csi.RegisterIdentityServer(server, d)

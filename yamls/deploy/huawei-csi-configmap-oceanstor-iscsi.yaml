@@ -9,15 +9,10 @@ data:
         "backends": [
             {
                 "storage": "oceanstor-san",
-                "product": "***",
                 "name": "***",
-                "urls": [
-                    "https://*.*.*.*:8088/deviceManager/rest"
-                ],
-                "user": "***",
-                "password": "***",
-                "pools": ["***"],
-                "parameters": {"protocol": "iscsi", "portals": ["*.*.*.*"]}
+                "urls": ["https://*.*.*.*:8088", "https://*.*.*.*:8088"],
+                "pools": ["***", "***"],
+                "parameters": {"protocol": "iscsi", "portals": ["*.*.*.*", "*.*.*.*"]}
             }
         ]
     }

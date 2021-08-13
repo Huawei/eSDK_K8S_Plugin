@@ -119,7 +119,7 @@ func (cli *Client) Login() error {
 
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		return fmt.Errorf("Login %s error: %d", cli.url, result)
+		return fmt.Errorf("login %s error: %+v", cli.url, resp)
 	}
 
 	cli.authToken = respHeader["X-Auth-Token"][0]
@@ -1385,4 +1385,34 @@ func (cli *Client) getAssociatePoolOfQoS(qosName string) (map[string]interface{}
 	}
 
 	return resp, nil
+}
+
+func (cli *Client) GetHostLunId(hostName, lunName string) (string, error) {
+	data := map[string]interface{}{
+		"hostName": hostName,
+	}
+
+	resp, err := cli.post("/dsware/service/v1.3/host/lun/list", data)
+	if err != nil {
+		return "", err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		return "", fmt.Errorf("get hostLun of hostName %s error: %d", hostName, result)
+	}
+
+	hostLunList, exist := resp["hostLunList"].([]interface{})
+	if !exist {
+		log.Infof("Host %s does not exist", hostName)
+		return "", nil
+	}
+
+	for _, i := range hostLunList {
+		hostLun := i.(map[string]interface{})
+		if hostLun["lunName"].(string) == lunName {
+			return strconv.FormatInt(int64(hostLun["lunId"].(float64)), 10), nil
+		}
+	}
+	return "", nil
 }

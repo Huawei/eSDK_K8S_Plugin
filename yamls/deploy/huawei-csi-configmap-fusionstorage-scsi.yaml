@@ -10,11 +10,9 @@ data:
             {
                 "storage": "fusionstorage-san",
                 "name": "***",
-                "url": "https://*.*.*.*:28443",
-                "user": "***",
-                "password": "***",
-                "pools": ["***"],
-                "parameters": {"SCSI": {"***": "*.*.*.*"}}
+                "urls": ["https://*.*.*.*:28443"],
+                "pools": ["***", "***"],
+                "parameters": {"protocol": "scsi", "portals": [{"***": "*.*.*.*", "***": "*.*.*.*"}]}
             }
         ]
     }

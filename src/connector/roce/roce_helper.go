@@ -2,9 +2,13 @@ package roce
 
 import (
 	"connector"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math"
+	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -15,7 +19,7 @@ import (
 
 type connectorInfo struct {
 	tgtPortals []string
-	tgtLunGuids []string
+	tgtLunGUID string
 }
 
 type shareData struct {
@@ -24,8 +28,9 @@ type shareData struct {
 	failedLogin    int64
 	stoppedThreads int64
 	foundDevices   []string
-	findDeviceMap  map[string]string
+	justAddedDevices []string
 }
+const sleepInternal = 2
 
 func getNVMeInfo(connectionProperties map[string]interface{}) (*connectorInfo, error) {
 	var con connectorInfo
@@ -37,26 +42,20 @@ func getNVMeInfo(connectionProperties map[string]interface{}) (*connectorInfo, e
 		return nil, errors.New(msg)
 	}
 
-	tgtLunGuids, lunGuidExist := connectionProperties["tgtLunGuids"].([]string)
+	tgtLunGUID, lunGuidExist := connectionProperties["tgtLunGuid"].(string)
 	if !lunGuidExist {
 		msg := "there are no target lun guid in the connection info"
 		log.Errorln(msg)
 		return nil, errors.New(msg)
 	}
 
-	if tgtLunGuids == nil || len(tgtPortals) != len(tgtLunGuids) {
-		msg := "the num of tgtPortals and num of tgtLunGuids is not equal"
-		log.Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
 	con.tgtPortals = tgtPortals
-	con.tgtLunGuids = tgtLunGuids
+	con.tgtLunGUID = tgtLunGUID
 	return &con, nil
 }
 
-func buildNVMeSession(allSessions, tgtPortal string) (string, error) {
-	output, err := utils.ExecShellCmd("nvme discover -t rdma -a %s", tgtPortal)
+func getTargetNQN(tgtPortal string) (string, error) {
+	output, err := utils.ExecShellCmdFilterLog("nvme discover -t rdma -a %s", tgtPortal)
 	if err != nil {
 		log.Errorf("Cannot discover nvme target %s, reason: %v", tgtPortal, output)
 		return "", err
@@ -74,121 +73,261 @@ func buildNVMeSession(allSessions, tgtPortal string) (string, error) {
 		}
 	}
 
-	if strings.Contains(allSessions, tgtPortal) {
-		log.Infof("RoCE target %s has already login, no need login again", tgtPortal)
-		return tgtNqn, nil
-	} else {
-		output, err = utils.ExecShellCmd("nvme connect -t rdma -a %s -n %s", tgtPortal, tgtNqn)
-		if err != nil {
-			log.Errorf("Cannot login nvme target %s, reason: %v", tgtPortal, output)
-			return "", err
-		}
+	if tgtNqn == "" {
+		return "", errors.New("cannot find nvme target NQN")
 	}
-
 	return tgtNqn, nil
 }
 
-func singleConnectVolume(allSessions, tgtPortal, tgtLunGuid string, nvmeShareData *shareData) {
-	var device string
-
-	tgtNqn, err := buildNVMeSession(allSessions, tgtPortal)
-	if err != nil {
-		log.Errorf("build nvme session %s error, reason: %v", tgtPortal, err)
-		nvmeShareData.failedLogin += 1
-	} else {
-		nvmeShareData.numLogin += 1
-		connectInfo := map[string]interface{} {
-			"protocol": "iscsi",
-			"targetNqn": tgtNqn,
-		}
-		for i := 1; i < 4; i++ {
-			connector.ScanNVMe(connectInfo)
-			device, err = connector.GetDevice(nvmeShareData.findDeviceMap, tgtLunGuid)
-			if err != nil {
-				log.Errorf("Get device of guid %s error: %v", tgtLunGuid, err)
-				break
-			}
-			if device != "" {
-				break
-			}
-
-			if !nvmeShareData.stopConnecting {
-				time.Sleep(time.Second * time.Duration(math.Pow(2, float64(i))))
-			} else {
-				break
-			}
-		}
-
-		if device != "" {
-			nvmeShareData.foundDevices = append(nvmeShareData.foundDevices, device)
-			if nvmeShareData.findDeviceMap == nil {
-				nvmeShareData.findDeviceMap = map[string]string{
-					device: device,
-				}
-			} else {
-				nvmeShareData.findDeviceMap[device] = device
-			}
-		}
+func connectRoCEPortal(existSessions map[string]bool, tgtPortal, targetNQN string) error {
+	if value, exist := existSessions[tgtPortal]; exist && value {
+		log.Infof("RoCE target %s has already login, no need login again", tgtPortal)
+		return nil
 	}
 
+	checkExitCode := []string{"exit status 0", "exit status 70"}
+	iSCSICmd := fmt.Sprintf("nvme connect -t rdma -a %s -n %s", tgtPortal, targetNQN)
+	output, err := utils.ExecShellCmdFilterLog(iSCSICmd)
+	if strings.Contains(output, "Input/output error") {
+		log.Infof("RoCE target %s has already login, no need login again", tgtPortal)
+		return nil
+	}
+
+	if err != nil {
+		if err.Error() == "timeout" {
+			return err
+		}
+
+		err2 := utils.CheckExistCode(err, checkExitCode)
+		if err2 != nil {
+			log.Warningf("Run %s: output=%s, err=%v", utils.MaskSensitiveInfo(iSCSICmd),
+				utils.MaskSensitiveInfo(output), err2)
+			return err
+		}
+	}
+	return nil
+}
+
+func connectVol(existSessions map[string]bool, tgtPortal, tgtLunGUID string, nvmeShareData *shareData) {
+	targetNQN, err := getTargetNQN(tgtPortal)
+	if err != nil {
+		log.Errorf("Cannot discover nvme target %s, reason: %v", tgtPortal, err)
+		return
+	}
+
+	err = connectRoCEPortal(existSessions, tgtPortal, targetNQN)
+	if err != nil {
+		log.Errorf("connect roce protal  %s error, reason: %v", tgtPortal, err)
+		nvmeShareData.failedLogin += 1
+		nvmeShareData.stoppedThreads += 1
+		return
+	}
+
+	nvmeShareData.numLogin += 1
+	var device string
+	for i := 1; i < 4; i++ {
+		device, err = scanRoCEDevice(targetNQN, tgtPortal, tgtLunGUID)
+		if err != nil && err.Error() != "FindNoDevice" {
+			log.Errorf("Get device of guid %s error: %v", tgtLunGUID, err)
+			break
+		}
+		if device != "" || nvmeShareData.stopConnecting {
+			break
+		}
+
+		time.Sleep(time.Second * time.Duration(math.Pow(sleepInternal, float64(i))))
+	}
+
+	if device == "" {
+		log.Debugf("LUN %s on RoCE portal %s not found on sysfs after logging in.", tgtLunGUID, tgtPortal)
+	}
+
+	if device != "" {
+		nvmeShareData.foundDevices = append(nvmeShareData.foundDevices, device)
+		nvmeShareData.justAddedDevices = append(nvmeShareData.justAddedDevices, device)
+	}
 	nvmeShareData.stoppedThreads += 1
 	return
 }
 
-func findMultiPath(tgtLunWWN string) (string, error) {
-	output, err := utils.ExecShellCmd("multipath -l | grep %s", tgtLunWWN)
-	if err != nil {
-		if strings.Contains(output, "command not found") {
-			msg := fmt.Sprintf("run cmd multipath -l error, error: %s", output)
-			log.Errorln(msg)
-			return "", errors.New(msg)
-		}
-
-		return "", err
-	}
-
-	var mPath string
-	if output != "" {
-		multiLines := strings.Split(output, " ")
-		for _, line := range multiLines {
-			if strings.HasPrefix(line, "dm") {
-				mPath = line
-				break
+func scanMultiPath(lenIndex int, nvmeShareData *shareData) (string, string) {
+	var wwnAdded bool
+	var lastTryOn int64
+	var mPath, wwn string
+	var err error
+	for !((int64(lenIndex) == nvmeShareData.stoppedThreads && len(nvmeShareData.foundDevices) == 0) ||
+		(mPath != "" && int64(lenIndex) == nvmeShareData.numLogin+nvmeShareData.failedLogin)) {
+		if wwn == "" && len(nvmeShareData.foundDevices) != 0 {
+			wwn, err = getSYSfsWwn(nvmeShareData.foundDevices, mPath)
+			if err != nil {
+				continue
 			}
 		}
-	}
 
-	return mPath, nil
-}
-
-func findTgtMultiPath(lenIndex int, nvmeShareData *shareData, conn *connectorInfo) string {
-	var mPath string
-	var lastTryOn int64
-	for {
-		if (int64(lenIndex) == nvmeShareData.stoppedThreads && nvmeShareData.foundDevices == nil) || (
-			mPath != "" && int64(lenIndex) == nvmeShareData.numLogin+nvmeShareData.failedLogin) {
-			break
-		}
-
-		mPath, err := findMultiPath(conn.tgtLunGuids[0])
-		if err != nil {
-			log.Warningf("Can not find dm path, error: %s", err)
-		}
-
-		if mPath != "" {
-			return mPath
-		}
-
-		if lastTryOn == 0 && nvmeShareData.foundDevices != nil && int64(lenIndex) == nvmeShareData.stoppedThreads {
+		mPath, wwnAdded = scanMultiDevice(mPath, wwn, nvmeShareData, wwnAdded)
+		if lastTryOn == 0 && len(nvmeShareData.foundDevices) != 0 && int64(
+			lenIndex) == nvmeShareData.stoppedThreads {
 			log.Infoln("All connection threads finished, giving 15 seconds for dm to appear.")
 			lastTryOn = time.Now().Unix() + 15
 		} else if lastTryOn != 0 && lastTryOn < time.Now().Unix() {
 			break
 		}
-		time.Sleep(1 * time.Second)
+
+		time.Sleep(time.Second)
+	}
+	return mPath, wwn
+}
+
+func getSYSfsWwn(foundDevices []string, mPath string) (string, error) {
+	if mPath != "" {
+		dmFile := fmt.Sprintf("/sys/block/%s/dm/uuid", mPath)
+		data, err := ioutil.ReadFile(dmFile)
+		if err != nil {
+			msg := fmt.Sprintf("Read dm file %s error: %v", dmFile, err)
+			log.Errorln(msg)
+			return "", errors.New(msg)
+		}
+
+		if wwid := data[6:]; wwid != nil {
+			return string(wwid), nil
+		}
 	}
 
+	for _, device := range foundDevices {
+		deviceFile := fmt.Sprintf("/sys/block/%s/wwid", device)
+		data, err := ioutil.ReadFile(deviceFile)
+		if err != nil {
+			msg := fmt.Sprintf("Read device file %s error: %v", deviceFile, err)
+			log.Errorln(msg)
+			continue
+		}
+
+		return string(data), nil
+	}
+
+	msg := fmt.Sprintf("Cannot find device %s wwid", foundDevices)
+	log.Errorln(msg)
+	return "", errors.New(msg)
+}
+
+func scanMultiDevice(mPath, wwn string, nvmeShareData *shareData, wwnAdded bool) (string, bool) {
+	var err error
+	if mPath == "" && len(nvmeShareData.foundDevices) != 0 {
+		mPath = findSYSfsMultiPath(nvmeShareData.foundDevices)
+		if wwn != "" && !(mPath != "" || wwnAdded) {
+			wwnAdded, err = addMultiWWN(wwn)
+			if err != nil {
+				log.Warningf("Add multiPath wwn failed, error: %s", err)
+			}
+
+			mPath = tryScanMultiDevice(mPath, nvmeShareData)
+		}
+	}
+
+	return mPath, wwnAdded
+}
+
+func findSYSfsMultiPath(foundDevices []string) string {
+	for _, device := range foundDevices {
+		dmPath := fmt.Sprintf("/sys/block/%s/holders/dm-*", device)
+		paths, err := filepath.Glob(dmPath)
+		if err != nil {
+			continue
+		}
+		if paths != nil {
+			splitPath := strings.Split(paths[0], "/")
+			return splitPath[len(splitPath)-1]
+		}
+	}
 	return ""
+}
+
+func addMultiWWN(deviceWWN string) (bool, error) {
+	output, err := utils.ExecShellCmd("multipath -a %s", deviceWWN)
+	if err != nil {
+		if strings.TrimSpace(output) != fmt.Sprintf("wwid \"%s\" added", deviceWWN) {
+			return false, nil
+		}
+
+		msg := "run cmd multipath -a error"
+		log.Errorln(msg)
+		return false, errors.New(msg)
+	}
+
+	return true, nil
+}
+
+func tryScanMultiDevice(mPath string, nvmeShareData *shareData) string {
+	for mPath == "" && len(nvmeShareData.justAddedDevices) != 0 {
+		devicePath := "/dev/" + nvmeShareData.justAddedDevices[0]
+		nvmeShareData.justAddedDevices = nvmeShareData.justAddedDevices[1:]
+		err := addMultiPath(devicePath)
+		if err != nil {
+			log.Warningf("Add multiPath path failed, error: %s", err)
+		}
+
+		mPath = findSYSfsMultiPath(nvmeShareData.foundDevices)
+	}
+	return mPath
+}
+
+func addMultiPath(devPath string) error {
+	output, err := utils.ExecShellCmd("multipath add path %s", devPath)
+	if err != nil {
+		msg := "run cmd multipath add path error"
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+
+	if strings.TrimSpace(output) != "ok" {
+		log.Warningln("run cmd multiPath add path, output is not ok")
+	}
+	return nil
+}
+
+func scanSingle(nvmeShareData *shareData) {
+	for i := 0; i < 15; i++ {
+		if len(nvmeShareData.foundDevices) != 0 {
+			break
+		}
+		time.Sleep(time.Second * intNumTwo)
+	}
+}
+
+func getExistSessions() (map[string]bool, error) {
+	nvmeConnectInfo, err := getSubSysInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	subSystems, ok := nvmeConnectInfo["Subsystems"].([]interface{})
+	if !ok {
+		msg := "there are noSubsystems in the nvmeConnectInfo"
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	var allSubPaths []interface{}
+	for _, s := range subSystems {
+		subSystem, ok := s.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		subPaths, ok := subSystem["Paths"].([]interface{})
+		if !ok {
+			continue
+		}
+		allSubPaths = append(allSubPaths, subPaths...)
+	}
+
+	existPortals := make(map[string]bool)
+	for _, p := range allSubPaths {
+		portal, path := getSubPathInfo(p)
+		if portal != "" && path != "" {
+			existPortals[portal] = true
+		}
+	}
+	return existPortals, nil
 }
 
 func tryConnectVolume(connMap map[string]interface{}) (string, error) {
@@ -197,7 +336,7 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 		return "", err
 	}
 
-	allSessions, err := utils.ExecShellCmd("nvme list-subsys")
+	existSessions, err := getExistSessions()
 	if err != nil {
 		return "", err
 	}
@@ -206,13 +345,14 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 	var wait sync.WaitGroup
 	var nvmeShareData = new(shareData)
 	lenIndex := len(conn.tgtPortals)
+	if !connMap["volumeUseMultiPath"].(bool) {
+		lenIndex = 1
+	}
 	for index := 0; index < lenIndex; index++ {
 		tgtPortal := conn.tgtPortals[index]
-		tgtLunGuid := conn.tgtLunGuids[index]
-
 		wait.Add(1)
 
-		go func() {
+		go func(portal, lunGUID string) {
 			defer func() {
 				wait.Done()
 				if r := recover(); r != nil {
@@ -223,32 +363,263 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 				log.Flush()
 			}()
 
-			singleConnectVolume(allSessions, tgtPortal, tgtLunGuid, nvmeShareData)
-		}()
+			connectVol(existSessions, portal, lunGUID, nvmeShareData)
+		}(tgtPortal, conn.tgtLunGUID)
 	}
 
-	if lenIndex > 1 && mPath == "" {
-		mPath = findTgtMultiPath(lenIndex, nvmeShareData, conn)
+	if connMap["volumeUseMultiPath"].(bool) {
+		mPath, _ = scanMultiPath(lenIndex, nvmeShareData)
+	} else {
+		scanSingle(nvmeShareData)
 	}
 
 	nvmeShareData.stopConnecting = true
 	wait.Wait()
 
-	if mPath != "" {
-		mPath = fmt.Sprintf("/dev/%s", mPath)
-		log.Infof("Found the dm path %s", mPath)
-		return mPath, nil
-	} else {
-		log.Infoln("no dm was created, connection to volume is probably bad and will perform poorly")
+	return findDevice(nvmeShareData, connMap["volumeUseMultiPath"].(bool), mPath, conn.tgtLunGUID)
+}
+
+func findDevice(nvmeShareData *shareData, volumeUseMultiPath bool, mPath, tgtLunGUID string) (string, error) {
+	if nvmeShareData.foundDevices == nil {
+		return "", errors.New("volume device not found")
 	}
 
-	if nvmeShareData.foundDevices != nil {
-		dev := fmt.Sprintf("/dev/%s", nvmeShareData.foundDevices[0])
-		log.Infof("find the dev %s", nvmeShareData.foundDevices[0])
+	if !volumeUseMultiPath {
+		device := fmt.Sprintf("/dev/%s", nvmeShareData.foundDevices[0])
+		err := connector.VerifySingleDevice(device, tgtLunGUID,
+			"volume device not found", false, tryDisConnectVolume)
+		if err != nil {
+			return "", err
+		}
+		return device, nil
+	}
+
+	// mPath: dm-<id>
+	if mPath != "" {
+		dev, err := connector.VerifyMultiPathDevice(mPath, tgtLunGUID,
+			"volume device not found", false, tryDisConnectVolume)
+		if err != nil {
+			return "", err
+		}
 		return dev, nil
 	}
 
-	msg := fmt.Sprintf("volume device not found, lun is %s", conn.tgtLunGuids[0])
+	log.Errorln("no device was created")
+	return "", errors.New("volume device not found")
+}
+
+func getSubSysInfo() (map[string]interface{}, error) {
+	output, err := utils.ExecShellCmdFilterLog("nvme list-subsys -o json")
+	if err != nil {
+		log.Errorf("get exist nvme connect port error: %s", err)
+		return nil, errors.New("get nvme connect port failed")
+	}
+
+	var nvmeConnectInfo map[string]interface{}
+	if err = json.Unmarshal([]byte(output), &nvmeConnectInfo); err != nil {
+		return nil, errors.New("unmarshal nvme connect info failed")
+	}
+
+	return nvmeConnectInfo, nil
+}
+
+func getSubSysPaths(nvmeConnectInfo map[string]interface{}, targetNqn string) []interface{} {
+	subSystems, ok := nvmeConnectInfo["Subsystems"].([]interface{})
+	if !ok {
+		msg := "there are noSubsystems in the nvmeConnectInfo"
+		log.Errorln(msg)
+		return nil
+	}
+
+	var allSubPaths []interface{}
+	for _, s := range subSystems {
+		subSystem, ok := s.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if strings.Contains(subSystem["NQN"].(string), targetNqn) {
+			allSubPaths, ok = subSystem["Paths"].([]interface{})
+			if !ok {
+				continue
+			}
+			break
+		}
+	}
+
+	return allSubPaths
+}
+
+func getSubPathInfo(p interface{}) (string, string) {
+	path, ok := p.(map[string]interface{})
+	if !ok {
+		return "", ""
+	}
+
+	address, exist := path["Address"].(string)
+	if !exist {
+		return "", ""
+	}
+
+	splitAddress := strings.Split(address, " ")
+	if len(splitAddress) != intNumThree {
+		return "", ""
+	}
+
+	splitPortal := strings.Split(splitAddress[0], "=")
+	if len(splitPortal) != intNumTwo {
+		return "", ""
+	}
+	return splitPortal[1], path["Name"].(string)
+}
+
+func getSubSysPort(subPaths []interface{}, tgtPortal string) string {
+	for _, p := range subPaths {
+		portal, path := getSubPathInfo(p)
+		if portal != "" && portal == tgtPortal {
+			return path
+		}
+	}
+	return ""
+}
+
+func scanNVMeDevice(devicePort string) error {
+	output, err := utils.ExecShellCmd("nvme ns-rescan /dev/%s", devicePort)
+	if err != nil {
+		log.Errorf("scan nvme port error: %s", output)
+		return err
+	}
+	return nil
+}
+
+func getNVMeDevice(devicePort string, tgtLunGUID string) (string, error) {
+	nvmePortPath := fmt.Sprintf("/sys/devices/virtual/nvme-fabrics/ctl/%s/", devicePort)
+	if exist, _ := utils.PathExist(nvmePortPath); !exist {
+		msg := fmt.Sprintf("NVMe device path %s is not exist.", nvmePortPath)
+		log.Errorf(msg)
+		return "", errors.New(msg)
+	}
+
+	cmd := fmt.Sprintf("ls %s |grep nvme", nvmePortPath)
+	output, err := utils.ExecShellCmd(cmd)
+	if err != nil {
+		log.Errorf("get nvme device failed, error: %s", err)
+		return "", err
+	}
+
+	outputLines := strings.Split(output, "\n")
+	for _, dev := range outputLines {
+		if match, _ := regexp.MatchString(`nvme[0-9]+n[0-9]+`, dev); match {
+			uuid, err := getNVMeWWN(devicePort, dev)
+			if err != nil {
+				log.Warningf("get nvme device uuid failed, error: %s", err)
+				continue
+			}
+			if strings.Contains(uuid, tgtLunGUID) {
+				return dev, nil
+			}
+		}
+	}
+
+	msg := fmt.Sprintf("can not find device of lun %s", tgtLunGUID)
 	log.Errorln(msg)
 	return "", errors.New(msg)
+}
+
+func getNVMeWWN(devicePort, device string) (string, error) {
+	uuidFile := fmt.Sprintf("/sys/devices/virtual/nvme-fabrics/ctl/%s/%s/wwid", devicePort, device)
+	data, err := ioutil.ReadFile(uuidFile)
+	if err != nil {
+		msg := fmt.Sprintf("Read NVMe uuid file %s error: %v", uuidFile, err)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	if data != nil {
+		return string(data), nil
+	}
+
+	return "", errors.New("uuid is not exist")
+}
+
+func scanRoCEDevice(targetNqn, tgtPortal, tgtLunGUID string) (string, error) {
+	nvmeConnectInfo, err := getSubSysInfo()
+	if err != nil {
+		return "", err
+	}
+	subPaths := getSubSysPaths(nvmeConnectInfo, targetNqn)
+	devicePort := getSubSysPort(subPaths, tgtPortal)
+
+	if devicePort == "" {
+		msg := fmt.Sprintf("Cannot get nvme device port of portal %s", tgtPortal)
+		log.Warningln(msg)
+		return "", errors.New(msg)
+	}
+
+	err = scanNVMeDevice(devicePort)
+	if err != nil {
+		return "", err
+	}
+
+	return getNVMeDevice(devicePort, tgtLunGUID)
+}
+
+func tryDisConnectVolume(tgtLunWWN string, checkDeviceAvailable bool) error {
+	device, err := connector.GetDevice(nil, tgtLunWWN, checkDeviceAvailable)
+	if err != nil {
+		log.Warningf("Get device of WWN %s error: %v", tgtLunWWN, err)
+		return err
+	}
+
+	devices, multiPathName, err := connector.RemoveRoCEDevice(device)
+	if err != nil {
+		log.Errorf("Remove device %s error: %v", device, err)
+		return err
+	}
+
+	err = disconnectSessions(devices)
+	if err != nil {
+		log.Warningf("Disconnect RoCE controller %s error: %v", devices, err)
+		return err
+	}
+
+	if multiPathName != "" {
+		time.Sleep(time.Second * intNumThree)
+		err = connector.FlushDMDevice(device)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func disconnectSessions(devPaths []string) error {
+	for _, dev := range devPaths {
+		splitS := strings.Split(dev, "n")
+		if len(splitS) != intNumThree {
+			continue
+		}
+
+		nvmePort := fmt.Sprintf("n%s", splitS[1])
+		cmd := fmt.Sprintf("ls /sys/devices/virtual/nvme-fabrics/ctl/%s/ |grep nvme |wc -l |awk " +
+			"'{if($1>1) print 1; else print 0}'", nvmePort)
+		output, err := utils.ExecShellCmd(cmd)
+		if err != nil {
+			log.Infof("Disconnect RoCE target path %s failed, err: %v", dev, err)
+			return err
+		}
+		outputSplit := strings.Split(output, "\n")
+		if len(outputSplit) != 0 && outputSplit[0] == "0" {
+			disconnectRoCEController(nvmePort)
+		}
+	}
+	return nil
+}
+
+func disconnectRoCEController(devPath string) {
+	output, err := utils.ExecShellCmd("nvme disconnect -d %s", devPath)
+	if err != nil || output != "" {
+		log.Errorf("Disconnect controller %s error %v", devPath, err)
+	}
 }

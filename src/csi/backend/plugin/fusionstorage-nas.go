@@ -1,13 +1,10 @@
 package plugin
 
 import (
-	"dev"
 	"errors"
 	"fmt"
 	"net"
 	"storage/fusionstorage/volume"
-	"utils"
-	"utils/log"
 )
 
 type FusionStorageNasPlugin struct {
@@ -24,11 +21,17 @@ func (p *FusionStorageNasPlugin) NewPlugin() Plugin {
 }
 
 func (p *FusionStorageNasPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
-	portal, exist := parameters["portal"].(string)
-	if !exist {
-		return errors.New("portal must be provided for fusionstorage-nas backend")
+	protocol, exist := parameters["protocol"].(string)
+	if !exist || protocol != "nfs" {
+		return errors.New("protocol must be provided and be nfs for fusionstorage-nas backend")
 	}
 
+	portals, exist := parameters["portals"].([]interface{})
+	if !exist || len(portals) != 1 {
+		return errors.New("portals must be provided for fusionstorage-nas backend and just support one portal")
+	}
+
+	portal := portals[0].(string)
 	ip := net.ParseIP(portal)
 	if ip == nil {
 		return fmt.Errorf("portal %s is invalid", portal)
@@ -63,30 +66,11 @@ func (p *FusionStorageNasPlugin) DeleteVolume(name string) error {
 }
 
 func (p *FusionStorageNasPlugin) StageVolume(name string, parameters map[string]interface{}) error {
-	fsName := utils.GetFileSystemName(name)
-	exportPath := p.portal + ":/" + fsName
-
-	targetPath := parameters["targetPath"].(string)
-	mountFlags := parameters["mountFlags"].(string)
-
-	err := dev.MountFsDev(exportPath, targetPath, mountFlags)
-	if err != nil {
-		log.Errorf("Mount share %s to %s error: %v", exportPath, targetPath, err)
-		return err
-	}
-
-	return nil
+	return p.fsStageVolume(name, p.portal, parameters)
 }
 
 func (p *FusionStorageNasPlugin) UnstageVolume(name string, parameters map[string]interface{}) error {
-	targetPath := parameters["targetPath"].(string)
-	err := dev.Unmount(targetPath)
-	if err != nil {
-		log.Errorf("Unmount volume %s error: %v", name, err)
-		return err
-	}
-
-	return nil
+	return p.unstageVolume(name, parameters)
 }
 
 func (p *FusionStorageNasPlugin) NodeExpandVolume(string, string) error {

@@ -3,7 +3,7 @@ package attacher
 import (
 	"connector"
 	_ "connector/iscsi"
-	"dev"
+	_ "connector/local"
 	"errors"
 	"fmt"
 	"net"
@@ -114,15 +114,15 @@ func (p *Attacher) createIscsiHost(hostName string) error {
 	return err
 }
 
-func (p *Attacher) getTargetPortals() ([]string, error) {
+func (p *Attacher) getTargetPortals() ([]string, []string, error) {
 	nodeResultList, err := p.cli.QueryIscsiPortal()
 	if err != nil {
 		log.Errorf("Get ISCSI portals error: %v", err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	validIPs := map[string]bool{}
-
+	validIQNs := map[string]string{}
 	for _, i := range nodeResultList {
 		if i["status"] != "successful" {
 			continue
@@ -138,27 +138,32 @@ func (p *Attacher) getTargetPortals() ([]string, error) {
 			ip := p.parseISCSIPortal(iscsiPortal)
 			if len(ip) > 0 {
 				validIPs[ip] = true
+				validIQNs[ip] = iscsiPortal["targetName"].(string)
 			}
 		}
 	}
 
-	var availablePortals []string
+	var tgtPortals []string
+	var tgtIQNs []string
 	for _, portal := range p.portals {
 		ip := net.ParseIP(portal).String()
 		if !validIPs[ip] {
 			log.Warningf("Config ISCSI portal %s is not valid", ip)
 			continue
 		}
-		availablePortals = append(availablePortals, ip)
+
+		formatIP := fmt.Sprintf("%s:3260", ip)
+		tgtPortals = append(tgtPortals, formatIP)
+		tgtIQNs = append(tgtIQNs, validIQNs[ip])
 	}
 
-	if availablePortals == nil {
+	if tgtPortals == nil {
 		msg := fmt.Sprintf("All config portal %s is not valid", p.portals)
 		log.Errorln(msg)
-		return nil, errors.New(msg)
+		return nil, nil, errors.New(msg)
 	}
 
-	return availablePortals, nil
+	return tgtPortals, tgtIQNs, nil
 }
 
 func (p *Attacher) attachIscsiInitiatorToHost(hostName string) error {
@@ -259,14 +264,9 @@ func (p *Attacher) doMapping(lunName, hostName string) (string, error) {
 }
 
 func (p *Attacher) doUnmapping(lunName, hostName string) (string, error) {
-	lun, err := p.cli.GetVolumeByName(lunName)
-	if err != nil {
-		log.Errorf("Get lun %s error: %v", lunName, err)
-		return "", err
-	}
+	lun, err := p.getLunInfo(lunName)
 	if lun == nil {
-		log.Infof("LUN %s doesn't exist while detaching", lunName)
-		return "", nil
+		return "", err
 	}
 
 	if p.protocol == "iscsi" {
@@ -296,48 +296,75 @@ func (p *Attacher) doUnmapping(lunName, hostName string) (string, error) {
 	return lun["wwn"].(string), nil
 }
 
-func (p *Attacher) iSCSIControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
+func (p *Attacher) getMappingProperties(wwn, hostLunId string) (map[string]interface{}, error) {
+	tgtPortals, tgtIQNs, err := p.getTargetPortals()
+	if err != nil {
+		return nil, err
+	}
+
+	lenPortals := len(tgtPortals)
+	var tgtHostLUNs []string
+	for i := 0; i < lenPortals; i++ {
+		tgtHostLUNs = append(tgtHostLUNs, hostLunId)
+	}
+
+	connectInfo := map[string]interface{}{
+		"tgtLunWWN": wwn,
+		"tgtPortals": tgtPortals,
+		"tgtIQNs": tgtIQNs,
+		"tgtHostLUNs": tgtHostLUNs,}
+	return connectInfo, nil
+}
+
+
+func (p *Attacher) iSCSIControllerAttach(lunName string, parameters map[string]interface{}) (
+	map[string]interface{}, error) {
 	hostName, err := p.getHostName(parameters)
 	if err != nil {
 		log.Errorf("Get host name error: %v", err)
-		return "", err
+		return nil, err
 	}
 
 	err = p.createIscsiHost(hostName)
 	if err != nil {
-		log.Errorf("Create ISCSI host %s error: %v", hostName, err)
-		return "", err
+		log.Errorf("Create iSCSI host %s error: %v", hostName, err)
+		return nil, err
 	}
 
 	err = p.attachIscsiInitiatorToHost(hostName)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	lun, err := p.cli.GetVolumeByName(lunName)
 	if err != nil {
 		log.Errorf("Get lun %s error: %v", lunName, err)
-		return "", err
+		return nil, err
 	}
 	if lun == nil {
 		msg := fmt.Sprintf("Lun %s not exist for attaching", lunName)
 		log.Errorln(msg)
-		return "", errors.New(msg)
+		return nil, errors.New(msg)
 	}
 
 	isAdded, err := p.isVolumeAddToHost(lunName, hostName)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if !isAdded {
 		err := p.cli.AddLunToHost(lunName, hostName)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
-	return lun["wwn"].(string), nil
+	hostLunId, err := p.cli.GetHostLunId(hostName, lunName)
+	if err != nil {
+		return nil, err
+	}
+
+	return p.getMappingProperties(lun["wwn"].(string), hostLunId)
 }
 
 func (p *Attacher) SCSIControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
@@ -394,63 +421,63 @@ func (p *Attacher) ControllerDetach(lunName string, parameters map[string]interf
 func (p *Attacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
 	var devPath string
 	if p.protocol == "iscsi" {
-		tgtPortals, err := p.getTargetPortals()
+		connectInfo, err := p.iSCSIControllerAttach(lunName, parameters)
 		if err != nil {
 			return "", err
 		}
 
-		wwn, err := p.iSCSIControllerAttach(lunName, parameters)
-		if err != nil {
-			return "", err
-		}
-
-		lenPortals := len(tgtPortals)
-		var tgtLunWWNs []string
-		for i := 0; i < lenPortals; i++ {
-			tgtLunWWNs = append(tgtLunWWNs, wwn)
-		}
-		connMap := map[string]interface{}{
-			"tgtPortals": tgtPortals,
-			"tgtLunWWNs":  tgtLunWWNs,
-		}
-
+		connectInfo["volumeUseMultiPath"] = parameters["volumeUseMultiPath"].(bool)
 		conn := connector.GetConnector(connector.ISCSIDriver)
-		devPath, err = conn.ConnectVolume(connMap)
+		devPath, err = conn.ConnectVolume(connectInfo)
 		if err != nil {
 			return "", err
 		}
-
 	} else {
-		wwn, err := p.SCSIControllerAttach(lunName, parameters)
+		tgtLunWWN, err := p.SCSIControllerAttach(lunName, parameters)
 		if err != nil {
 			return "", err
 		}
 
-		devPath = fmt.Sprintf("/dev/disk/by-id/wwn-0x%s", wwn)
-		dev.WaitDevOnline(devPath)
+		conn := connector.GetConnector(connector.LocalDriver)
+		devPath, err = conn.ConnectVolume(map[string]interface{}{"tgtLunWWN": tgtLunWWN})
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return devPath, nil
 }
 
 func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
-	wwn, err := p.ControllerDetach(lunName, parameters)
-	if err != nil {
+	lun, err := p.getLunInfo(lunName)
+	if lun == nil {
 		return err
 	}
-	if wwn == "" {
-		log.Warningf("Cannot get WWN of LUN %s, the dev may leftover", lunName)
-		return nil
-	}
 
+	var conn connector.Connector
 	if p.protocol == "iscsi" {
-		conn := connector.GetConnector(connector.ISCSIDriver)
-		err := conn.DisConnectVolume(wwn)
-		if err != nil {
-			log.Errorf("Delete dev %s error: %v", wwn, err)
-			return err
-		}
+		conn = connector.GetConnector(connector.ISCSIDriver)
+	} else {
+		conn = connector.GetConnector(connector.LocalDriver)
 	}
 
+	err = conn.DisConnectVolume(lun["wwn"].(string))
+	if err != nil {
+		log.Errorf("Delete dev %s error: %v", lun["wwn"].(string), err)
+		return err
+	}
 	return nil
+}
+
+func (p *Attacher) getLunInfo(lunName string) (map[string]interface{}, error) {
+	lun, err := p.cli.GetVolumeByName(lunName)
+	if err != nil {
+		log.Errorf("Get lun %s error: %v", lunName, err)
+		return nil, err
+	}
+	if lun == nil {
+		log.Infof("LUN %s doesn't exist while detaching", lunName)
+		return nil, nil
+	}
+	return lun, nil
 }

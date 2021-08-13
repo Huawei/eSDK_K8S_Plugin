@@ -2,19 +2,25 @@ package iscsi
 
 import (
 	"connector"
-	"dev"
+	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"utils/log"
 )
 
-type iSCSI struct{}
+type iSCSI struct {
+	mutex sync.Mutex
+}
 
 func init() {
 	connector.RegisterConnector(connector.ISCSIDriver, &iSCSI{})
 }
 
 func (isc *iSCSI) ConnectVolume(conn map[string]interface{}) (string, error) {
+	isc.mutex.Lock()
+	defer isc.mutex.Unlock()
 	log.Infof("iSCSI Start to connect volume ==> connect info: %v", conn)
 
 	for i := 0; i < 3; i++ {
@@ -27,11 +33,24 @@ func (isc *iSCSI) ConnectVolume(conn map[string]interface{}) (string, error) {
 		}
 	}
 
-	log.Errorln("final found no device.")
+	log.Errorln("Final found no device.")
 	return "", nil
 }
 
 func (isc *iSCSI) DisConnectVolume(tgtLunWWN string) error {
-	log.Infof("Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
-	return dev.DeleteDev(tgtLunWWN)
+	isc.mutex.Lock()
+	defer isc.mutex.Unlock()
+	log.Infof("iSCSI Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
+	for i := 0; i < 3; i++ {
+		err := tryDisConnectVolume(tgtLunWWN, true)
+		if err == nil {
+			return nil
+		}
+		time.Sleep(time.Second * 2)
+		log.Errorf("Failed to delete device in %d time(s), err: %v", i, err)
+	}
+
+	msg := fmt.Sprintf("Failed to delete volume %s.", tgtLunWWN)
+	log.Errorln(msg)
+	return errors.New(msg)
 }

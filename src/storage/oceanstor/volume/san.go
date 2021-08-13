@@ -752,9 +752,7 @@ func (p *SAN) waitClonePairFinish(clonePairID string) error {
 
 func (p *SAN) waitCloneFinish(lun map[string]interface{}, taskResult map[string]interface{}) error {
 	lunID := lun["ID"].(string)
-
-	isSupportClonePair := taskResult["isSupportClonePair"].(bool)
-	if isSupportClonePair {
+	if p.product == "DoradoV6" {
 		// ID of clone pair is the same as destination LUN ID
 		err := p.waitClonePairFinish(lunID)
 		if err != nil {

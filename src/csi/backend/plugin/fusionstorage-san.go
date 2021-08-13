@@ -1,7 +1,7 @@
 package plugin
 
 import (
-	"dev"
+	"connector"
 	"errors"
 	"fmt"
 	"net"
@@ -32,13 +32,20 @@ func (p *FusionStorageSanPlugin) NewPlugin() Plugin {
 }
 
 func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
-	scsi, scsiExist := parameters["SCSI"].(map[string]interface{})
-	iscsi, iscsiExist := parameters["ISCSI"].([]interface{})
-	if !scsiExist && !iscsiExist {
-		return errors.New("SCSI or ISCSI must be provided for fusionstorage-san")
-	} else if scsiExist && iscsiExist {
-		return errors.New("Provide only one of SCSI and ISCSI for fusionstorage-san")
-	} else if scsiExist {
+	protocol, exist := parameters["protocol"].(string)
+	if !exist {
+		log.Errorf("protocol must be configured in backend %v", parameters)
+		return errors.New("protocol must be configured")
+	}
+
+	portals, exist := parameters["portals"].([]interface{})
+	if !exist || len(portals) == 0 {
+		log.Errorf("portals must be configured in backend %v", parameters)
+		return errors.New("portals must be configured")
+	}
+
+	if strings.ToLower(protocol) == "scsi" {
+		scsi := portals[0].(map[string]interface{})
 		for k, v := range scsi {
 			manageIP := v.(string)
 			ip := net.ParseIP(manageIP)
@@ -50,8 +57,8 @@ func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{},
 		}
 
 		p.protocol = "scsi"
-	} else {
-		portals, err := proto.VerifyIscsiPortals(iscsi)
+	} else if strings.ToLower(protocol) == "iscsi"{
+		portals, err := proto.VerifyIscsiPortals(portals)
 		if err != nil {
 			return err
 		}
@@ -59,6 +66,10 @@ func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{},
 		p.portals = portals
 		p.protocol = "iscsi"
 		p.alua, _ = parameters["ALUA"].(map[string]interface{})
+	} else {
+		msg := fmt.Sprintf("protocol %s configured is error. Just support iscsi and scsi", protocol)
+		log.Errorln(msg)
+		return errors.New(msg)
 	}
 
 	err := p.init(config, keepLogin)
@@ -147,24 +158,12 @@ func (p *FusionStorageSanPlugin) StageVolume(name string, parameters map[string]
 		return err
 	}
 
-	targetPath := parameters["targetPath"].(string)
-	fsType := parameters["fsType"].(string)
-	mountFlags := parameters["mountFlags"].(string)
-
-	err = dev.MountLunDev(devPath, targetPath, fsType, mountFlags)
-	if err != nil {
-		log.Errorf("Mount device %s to %s error: %v", devPath, targetPath, err)
-		return err
-	}
-
-	return nil
+	return p.lunStageVolume(name, devPath, parameters)
 }
 
 func (p *FusionStorageSanPlugin) UnstageVolume(name string, parameters map[string]interface{}) error {
-	targetPath := parameters["targetPath"].(string)
-	err := dev.Unmount(targetPath)
+	err := p.unstageVolume(name, parameters)
 	if err != nil {
-		log.Errorf("Cannot unmount %s error: %v", targetPath, err)
 		return err
 	}
 
@@ -216,13 +215,13 @@ func (p *FusionStorageSanPlugin) NodeExpandVolume(name, volumePath string) error
 	}
 
 	wwn := lun["wwn"].(string)
-	err = dev.BlockResize(wwn)
+	err = connector.ResizeBlock(wwn)
 	if err != nil {
 		log.Errorf("Lun %s resize error: %v", wwn, err)
 		return err
 	}
 
-	err = dev.ResizeMountPath(volumePath)
+	err = connector.ResizeMountPath(volumePath)
 	if err != nil {
 		log.Errorf("MountPath %s resize error: %v", volumePath, err)
 		return err

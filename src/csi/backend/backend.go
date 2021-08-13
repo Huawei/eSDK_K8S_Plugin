@@ -119,6 +119,12 @@ func newBackend(backendName string, config map[string]interface{}) (*Backend, er
 	replicaBackend, _ := config["replicaBackend"].(string)
 	metroBackend, _ := config["metroBackend"].(string)
 
+	// while config hyperMetro, the metroBackend must config, hyperMetroDomain or metrovStorePairID should be config
+	if ((metroDomain != "" || metrovStorePairID != "") && metroBackend == "") ||
+		((metroDomain == "" && metrovStorePairID == "") && metroBackend != "") {
+		return nil, fmt.Errorf("hyperMetro configuration in backend %s is incorrect", backendName)
+	}
+
 	return &Backend{
 		Name:               backendName,
 		Storage:            storage,
@@ -266,6 +272,10 @@ func selectOnePool(requestSize int64,
 		key, filter := i[0].(string), i[1].(func(string, []*StoragePool) []*StoragePool)
 		value, _ := parameters[key].(string)
 		filterPools = filter(value, filterPools)
+		if len(filterPools) == 0 {
+			return nil, fmt.Errorf("failed to select pool, the last filter field: %s, parameters %v",
+				key, parameters)
+		}
 	}
 
 	for _, pool := range filterPools {

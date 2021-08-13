@@ -9,15 +9,10 @@ data:
         "backends": [
             {
                 "storage": "oceanstor-nas",
-                "product": "***",
                 "name": "***",
-                "urls": [
-                    "https://*.*.*.*:8088/deviceManager/rest"
-                ],
-                "user": "***",
-                "password": "***",
-                "pools": ["***"],
-                "parameters": {"portal": "*.*.*.*"}
+                "urls": ["https://*.*.*.*:8088", "https://*.*.*.*:8088"],
+                "pools": ["***", "***"],
+                "parameters": {"protocol": "nfs", "portals": ["*.*.*.*"]}
             }
         ]
     }

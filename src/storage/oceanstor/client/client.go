@@ -296,7 +296,7 @@ func (cli *Client) Login() error {
 	cli.deviceid = ""
 	cli.token = ""
 	for i, url := range cli.urls {
-		cli.url = url
+		cli.url = url + "/deviceManager/rest"
 
 		log.Infof("Try to login %s", cli.url)
 		resp, err = cli.baseCall("POST", "/xx/sessions", data)
@@ -319,7 +319,7 @@ func (cli *Client) Login() error {
 
 	code := int64(resp.Error["code"].(float64))
 	if code != 0 {
-		msg := fmt.Sprintf("Login %s error: %d", cli.url, code)
+		msg := fmt.Sprintf("Login %s error: %+v", cli.url, resp)
 		return errors.New(msg)
 	}
 
@@ -2915,4 +2915,62 @@ func (cli *Client) GetRoCEPortalByIP(tgtPortal string) (map[string]interface{}, 
 
 	portal := respData[0].(map[string]interface{})
 	return portal, nil
+}
+
+func (cli *Client) GetHostLunId(hostID, lunID string) (string, error) {
+	hostLunId := "1"
+	url := fmt.Sprintf("/lun/associate?TYPE=11&ASSOCIATEOBJTYPE=21&ASSOCIATEOBJID=%s", hostID)
+	resp, err := cli.get(url)
+	if err != nil {
+		return "", err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return "", fmt.Errorf("get hostLunId of host %s, lun %s error: %d", hostID, lunID, code)
+	}
+
+	respData := resp.Data.([]interface{})
+	for _, i := range respData {
+		hostLunInfo := i.(map[string]interface{})
+		if hostLunInfo["ID"].(string) == lunID {
+			var associateData map[string]interface{}
+			associateDataBytes := []byte(hostLunInfo["ASSOCIATEMETADATA"].(string))
+			err := json.Unmarshal(associateDataBytes, &associateData)
+			if err != nil {
+				return "", nil
+			}
+			hostLunId = strconv.FormatInt(int64(associateData["HostLUNID"].(float64)), 10)
+			break
+		}
+	}
+
+	return hostLunId, nil
+}
+
+func (cli *Client) GetFCTargetWWNs(initiatorWWN string) ([]string, error) {
+	url := fmt.Sprintf("/host_link?INITIATOR_TYPE=223&INITIATOR_PORT_WWN=%s", initiatorWWN)
+	resp, err := cli.get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("get FC target wwns of initiator %s error: %d", initiatorWWN, code)
+	}
+
+	if resp.Data == nil {
+		log.Infof("There is no FC target wwn of host initiator wwn %s", initiatorWWN)
+		return nil, nil
+	}
+
+	var tgtWWNs []string
+	respData := resp.Data.([]interface{})
+	for _, tgt := range respData {
+		tgtPort := tgt.(map[string]interface{})
+		tgtWWNs = append(tgtWWNs, tgtPort["TARGET_PORT_WWN"].(string))
+	}
+
+	return tgtWWNs, nil
 }

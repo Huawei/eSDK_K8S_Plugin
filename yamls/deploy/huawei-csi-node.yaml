@@ -14,6 +14,7 @@ spec:
         app: huawei-csi-node
     spec:
       serviceAccountName: huawei-csi-node
+      hostPID: true
       hostNetwork: true
       containers:
         - name: csi-node-driver-registrar
@@ -34,6 +35,7 @@ spec:
             - "--endpoint=/csi/csi.sock"
             - "--containerized"
             - "--driver-name=csi.huawei.com"
+            - "--volume-use-multipath=true"
           securityContext:
             privileged: true
             capabilities:
@@ -61,7 +63,8 @@ spec:
               mountPath: /var/lib/iscsi
             - name: config-map
               mountPath: /etc/huawei
-
+            - name: secret
+              mountPath: /etc/huawei/secret
       volumes:
         - name: plugin-dir
           hostPath:
@@ -93,3 +96,6 @@ spec:
         - name: config-map
           configMap:
             name: huawei-csi-configmap
+        - name: secret
+          secret:
+            secretName: huawei-csi-secret

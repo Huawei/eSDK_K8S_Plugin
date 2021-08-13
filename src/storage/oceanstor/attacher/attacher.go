@@ -12,12 +12,12 @@ import (
 )
 
 type AttacherPlugin interface {
-	ControllerAttach(string, map[string]interface{}) (string, error)
+	ControllerAttach(string, map[string]interface{}) (map[string]interface{}, error)
 	ControllerDetach(string, map[string]interface{}) (string, error)
 	NodeStage(string, map[string]interface{}) (string, error)
 	NodeUnstage(string, map[string]interface{}) error
-	getTargetISCSIPortals() ([]string, error)
 	getTargetRoCEPortals() ([]string, error)
+	getLunInfo(lunName string) (map[string]interface{}, error)
 }
 
 type Attacher struct {
@@ -282,23 +282,70 @@ func (p *Attacher) needUpdateInitiatorAlua(initiator map[string]interface{}) boo
 	return false
 }
 
-func (p *Attacher) getTargetISCSIPortals() ([]string, error) {
+func (p *Attacher) getMappingProperties(wwn, hostLunId string) (map[string]interface{}, error) {
+	connectInfo := make(map[string]interface{})
+	if p.protocol == "iscsi" {
+		tgtPortals, tgtIQNs, err := p.getTargetISCSIProperties()
+		if err != nil {
+			return nil, err
+		}
+
+		lenPortals := len(tgtPortals)
+		var tgtHostLUNs []string
+		for i := 0; i < lenPortals; i++ {
+			tgtHostLUNs = append(tgtHostLUNs, hostLunId)
+		}
+		connectInfo["tgtPortals"] = tgtPortals
+		connectInfo["tgtIQNs"] = tgtIQNs
+		connectInfo["tgtHostLUNs"] = tgtHostLUNs
+		connectInfo["tgtLunWWN"] = wwn
+	} else if p.protocol == "fc" {
+		tgtWWNs, err := p.getTargetFCProperties()
+		if err != nil {
+			return nil, err
+		}
+
+		lenWWNs := len(tgtWWNs)
+		var tgtHostLUNs []string
+		for i := 0; i < lenWWNs; i++ {
+			tgtHostLUNs = append(tgtHostLUNs, hostLunId)
+		}
+
+		connectInfo["tgtLunWWN"] = wwn
+		connectInfo["tgtWWNs"] = tgtWWNs
+		connectInfo["tgtHostLUNs"] = tgtHostLUNs
+	} else if p.protocol == "fc-nvme" {
+		connectInfo["tgtLunGuid"] = wwn
+	} else if p.protocol == "roce" {
+		tgtPortals, err := p.getTargetRoCEPortals()
+		if err != nil {
+			return nil, err
+		}
+		connectInfo["tgtPortals"] = tgtPortals
+		connectInfo["tgtLunGuid"] = wwn
+	}
+
+	return connectInfo, nil
+}
+
+func (p *Attacher) getTargetISCSIProperties() ([]string, []string, error) {
 	ports, err := p.cli.GetIscsiTgtPort()
 	if err != nil {
-		log.Errorf("Get ISCSI tgt port error: %v", err)
-		return nil, err
+		log.Errorf("Get iSCSI tgt port error: %v", err)
+		return nil, nil, err
 	}
 	if ports == nil {
-		msg := "No ISCSI tgt port exist"
+		msg := "no iSCSI tgt port exist"
 		log.Errorln(msg)
-		return nil, errors.New(msg)
+		return nil, nil, errors.New(msg)
 	}
 
 	validIPs := map[string]bool{}
+	validIQNs := map[string]string{}
 	for _, i := range ports {
 		port := i.(map[string]interface{})
 		portID := port["ID"].(string)
-		portIqn := strings.Split(portID, ",")[0]
+		portIqn := strings.Split(strings.Split(portID, ",")[0], "+")[1]
 		splitIqn := strings.Split(portIqn, ":")
 
 		if len(splitIqn) < 6 {
@@ -306,25 +353,30 @@ func (p *Attacher) getTargetISCSIPortals() ([]string, error) {
 		}
 
 		validIPs[splitIqn[5]] = true
+		validIQNs[splitIqn[5]] = portIqn
 	}
 
-	var availablePortals []string
+	var tgtPortals []string
+	var tgtIQNs []string
 	for _, portal := range p.portals {
 		ip := net.ParseIP(portal).String()
 		if !validIPs[ip] {
 			log.Warningf("ISCSI portal %s is not valid", ip)
 			continue
 		}
-		availablePortals = append(availablePortals, ip)
+
+		formatIP := fmt.Sprintf("%s:3260", ip)
+		tgtPortals = append(tgtPortals, formatIP)
+		tgtIQNs = append(tgtIQNs, validIQNs[ip])
 	}
 
-	if availablePortals == nil {
+	if tgtPortals == nil {
 		msg := fmt.Sprintf("All config portal %s is not valid", p.portals)
 		log.Errorln(msg)
-		return nil, errors.New(msg)
+		return nil, nil, errors.New(msg)
 	}
 
-	return availablePortals, nil
+	return tgtPortals, tgtIQNs, nil
 }
 
 func (p *Attacher) getTargetRoCEPortals() ([]string, error) {
@@ -364,6 +416,43 @@ func (p *Attacher) getTargetRoCEPortals() ([]string, error) {
 	}
 
 	return availablePortals, nil
+}
+
+func (p *Attacher) getTargetFCProperties() ([]string, error) {
+	fcInitiators, err := proto.GetFCInitiator()
+	if err != nil {
+		log.Errorf("Get fc initiator error: %v", err)
+		return nil, err
+	}
+
+	validTgtWWNs := make(map[string]bool)
+	for _, wwn := range fcInitiators {
+		tgtWWNs, err := p.cli.GetFCTargetWWNs(wwn)
+		if err != nil {
+			return nil, err
+		}
+
+		if tgtWWNs == nil {
+			continue
+		}
+
+		for _, tgtWWN := range tgtWWNs {
+			validTgtWWNs[tgtWWN] = true
+		}
+	}
+
+	var tgtWWNs []string
+	for tgtWWN := range validTgtWWNs {
+		tgtWWNs = append(tgtWWNs, tgtWWN)
+	}
+
+	if tgtWWNs == nil {
+		msg := fmt.Sprintf("There is no alaivable target wwn of host initiators %v in storage.", fcInitiators)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	return tgtWWNs, nil
 }
 
 func (p *Attacher) attachISCSI(hostID string) (map[string]interface{}, error) {
@@ -496,16 +585,16 @@ func (p *Attacher) attachRoCE(hostID string) (map[string]interface{}, error) {
 	return initiator, nil
 }
 
-func (p *Attacher) doMapping(hostID, lunName string) (string, error) {
+func (p *Attacher) doMapping(hostID, lunName string) (string, string, error) {
 	lun, err := p.cli.GetLunByName(lunName)
 	if err != nil {
 		log.Errorf("Get lun %s error: %v", lunName, err)
-		return "", err
+		return "", "", err
 	}
 	if lun == nil {
 		msg := fmt.Sprintf("Lun %s not exist for attaching", lunName)
 		log.Errorln(msg)
-		return "", errors.New(msg)
+		return "", "", errors.New(msg)
 	}
 
 	lunID := lun["ID"].(string)
@@ -513,26 +602,32 @@ func (p *Attacher) doMapping(hostID, lunName string) (string, error) {
 	mappingID, err := p.createMapping(hostID)
 	if err != nil {
 		log.Errorf("Create mapping for host %s error: %v", hostID, err)
-		return "", err
+		return "", "", err
 	}
 
 	err = p.createHostGroup(hostID, mappingID)
 	if err != nil {
 		log.Errorf("Create host group for host %s error: %v", hostID, err)
-		return "", err
+		return "", "", err
 	}
 
 	err = p.createLunGroup(lunID, hostID, mappingID)
 	if err != nil {
 		log.Errorf("Create lun group for host %s error: %v", hostID, err)
-		return "", err
+		return "", "", err
 	}
 
 	lunUniqueId, err := utils.GetLunUniqueId(p.protocol, lun)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return lunUniqueId, nil
+
+	hostLunId, err := p.cli.GetHostLunId(hostID, lunID)
+	if err != nil {
+		return "", "", err
+	}
+
+	return lunUniqueId, hostLunId, nil
 }
 
 func (p *Attacher) doUnmapping(hostID, lunName string) (string, error) {
@@ -576,16 +671,17 @@ func (p *Attacher) doUnmapping(hostID, lunName string) (string, error) {
 }
 
 func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
-	wwn, err := p.ControllerDetach(lunName, parameters)
+	lun, err := p.getLunInfo(lunName)
+	if lun == nil {
+		return err
+	}
+
+	lunUniqueId, err := utils.GetLunUniqueId(p.protocol, lun)
 	if err != nil {
 		return err
 	}
-	if wwn == "" {
-		log.Warningf("Cannot get WWN of LUN %s, the dev may leftover", lunName)
-		return nil
-	}
 
-	return disConnectVolume(wwn, p.protocol)
+	return disConnectVolume(lunUniqueId, p.protocol)
 }
 
 func (p *Attacher) ControllerDetach(lunName string, parameters map[string]interface{}) (string, error) {
@@ -607,4 +703,17 @@ func (p *Attacher) ControllerDetach(lunName string, parameters map[string]interf
 	}
 
 	return wwn, nil
+}
+
+func (p *Attacher) getLunInfo(lunName string) (map[string]interface{}, error) {
+	lun, err := p.cli.GetLunByName(lunName)
+	if err != nil {
+		log.Errorf("Get lun %s info error: %v", lunName, err)
+		return nil, err
+	}
+	if lun == nil {
+		log.Infof("LUN %s doesn't exist while detaching", lunName)
+		return nil, nil
+	}
+	return lun, nil
 }
