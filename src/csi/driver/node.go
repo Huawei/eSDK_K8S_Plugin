@@ -8,6 +8,7 @@ import (
 	"csi/backend"
 	"encoding/json"
 	"fmt"
+    "os"
 	"strings"
 	"utils"
 	"utils/log"
@@ -37,20 +38,31 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	mnt := req.GetVolumeCapability().GetMount()
+    blk := req.GetVolumeCapability().GetBlock()
 
-	opts := mnt.GetMountFlags()
-	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().GetMode())
-	log.Infof("The access mode of volume %s is %s", volumeId, accessMode)
+	var parameters = nil
 
-	if accessMode == "ReadOnly" {
-		opts = append(opts, "ro")
-	}
+	if blk == nil {
+	    log.Infof("The request is to create volume of type filesystem")
+		opts := mnt.GetMountFlags()
+		accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().GetMode())
+		log.Infof("The access mode of volume %s is %s", volumeId, accessMode)
 
-	parameters := map[string]interface{}{
-		"targetPath": req.GetStagingTargetPath(),
-		"fsType":     mnt.GetFsType(),
-		"mountFlags": strings.Join(opts, ","),
-		"volumeUseMultiPath": d.useMultiPath,
+		if accessMode == "ReadOnly" {
+			opts = append(opts, "ro")
+		}
+
+		parameters = map[string]interface{}{
+			"targetPath": req.GetStagingTargetPath(),
+			"fsType":     mnt.GetFsType(),
+			"mountFlags": strings.Join(opts, ","),
+			"volumeUseMultiPath": d.useMultiPath,
+		}
+	} else {
+		parameters = map[string]interface{}{
+			"stagingPath": req.GetStagingTargetPath(),
+			"volumeUseMultiPath": d.useMultiPath,
+			"volumeMode": "Block",
 	}
 
 	err := backend.Plugin.StageVolume(volName, parameters)
@@ -97,6 +109,21 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	targetPath := req.GetTargetPath()
 
 	log.Infof("Start to node publish volume %s to %s", volumeId, targetPath)
+	if req.GetVolumeCapability().GetBlock() != nil {
+		// If the request is to publish raw block device then
+		// create sysmlink of the device from the staging area
+		// to publish. Note that it cannot be mounted because of 
+		// RBD request and also, the fs is not created
+		log.Infof("Creating symlink for the staged device on the node to publish")
+		err := os.Symlink(sourcePath, targetPath)
+		if err != nil {
+			log.Errorf("Failed to create symlink for the staging path [%v] to target path [%v]",
+					sourcePath, targetPath)
+			return nil, err
+		}
+		log.Infof("Successfully published raw block volume [%s] to [%s]", volumeId, targetPath)
+		return &csi.NodePublishVolumeResponse{}, nil 
+	}
 
 	opts := []string{"bind"}
 	if req.GetReadonly() {
