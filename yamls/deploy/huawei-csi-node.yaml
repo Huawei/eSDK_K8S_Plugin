@@ -36,6 +36,12 @@ spec:
             - "--containerized"
             - "--driver-name=csi.huawei.com"
             - "--volume-use-multipath=true"
+          env:
+            - name: CSI_NODENAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
           securityContext:
             privileged: true
             capabilities:
