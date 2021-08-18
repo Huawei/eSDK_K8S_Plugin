@@ -264,6 +264,33 @@ func (p *OceanstorSanPlugin) StageVolume(name string, parameters map[string]inte
 		return result.(error)
 	}
 
+	// If the request to stage is for volumeDevice of type Block and the devicePath
+	// is provided then do not format and create FS and mount it.
+    // Simply create a symlink to the devpath on the staging area
+	if parameters["volumeMode"].(string) == "Block" {
+		log.Infof("The request to stage raw block device")
+		mountpoint := parameters["stagingPath"].(string)
+		// First check if File exists in the staging area, then remove the mount
+		// and then create a symlink to the devpath
+		_, err := os.Lstat(mountpoint)
+		if nil != err && os.IsNotExist(err) {
+			log.Infof("Mountpoint [%v] does not exist", mountpoint)
+		} else {
+			// delete the mount. The mountpoint deleted here is folder or soft link
+			_, err := utils.ExecShellCmd("rm -rf %s", mountpoint)
+			if nil != err {
+				log.Errorf("Failed to delete the mountpoint [%v] while staging rbd", mountpoint)
+				return err
+			}
+		}
+		devpath := out[0].Interface().(string)
+		err = os.Symlink(devpath, mountpoint)
+		if nil != err {
+			log.Errorf("Failed to create a link for devpath [%v] to stagingpath [%v]",
+					devpath, mountpoint)
+			return err
+		}
+	}
 	return p.lunStageVolume(name, out[0].Interface().(string), parameters)
 }
 
