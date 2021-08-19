@@ -63,6 +63,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 			"stagingPath": req.GetStagingTargetPath(),
 			"volumeUseMultiPath": d.useMultiPath,
 			"volumeMode": "Block",
+		}
 	}
 
 	err := backend.Plugin.StageVolume(volName, parameters)
@@ -153,20 +154,17 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	targetPath := req.GetTargetPath()
 
 	log.Infof("Start to node unpublish volume %s from %s", volumeId, targetPath)
-	if req.GetVolumeCapability().GetBlock() != nil {
-		//remove the target path. basically deleting the symlink created during publish
-		_, clierr := utils.ExecShellCmd("rm -rf %s", target)
-		if nil != clierr {
-			log.Errorf("Failed to delete the mountpoint [%v] while staging rbd", target)
-			return clierr
+	// Currently NodeUnpublishVolumeRequest does not give the capability, if the
+	// volume is Block or Mount. So check if it's symlink (which may get created for RBD)
+	//  and delete the symlink
+	symErr := utils.RemoveSymlink(targetPath)
+	if symErr != nil && !strings.Contains(symErr.Error(), "not a symbolic link") {
+		output, err := utils.ExecShellCmd("umount %s", targetPath)
+		if err != nil && !strings.Contains(output, "not mounted") {
+			msg := fmt.Sprintf("umount %s for volume %s error: %s", targetPath, volumeId, output)
+			log.Errorln(msg)
+			return nil, status.Error(codes.Internal, msg)
 		}
-		return &csi.NodeUnpublishVolumeResponse{}, nil
-	}
-	output, err := utils.ExecShellCmd("umount %s", targetPath)
-	if err != nil && !strings.Contains(output, "not mounted") {
-		msg := fmt.Sprintf("umount %s for volume %s error: %s", targetPath, volumeId, output)
-		log.Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
 	}
 
 	log.Infof("Volume %s is node unpublished from %s", volumeId, targetPath)

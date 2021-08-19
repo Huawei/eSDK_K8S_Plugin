@@ -524,9 +524,9 @@ func CreateSymlink(source string, target string) error {
 		log.Infof("Mountpoint [%v] does not exist", target)
 	} else {
 		// delete the mount. The mountpoint deleted here is folder or soft link
-		_, err := utils.ExecShellCmd("rm -rf %s", target)
+		_, err := ExecShellCmd("rm -rf %s", target)
 		if nil != err {
-			log.Errorf("Failed to delete the mountpoint [%v] while staging rbd", target)
+			log.Errorf("Failed to delete the target [%v]", target)
 			return err
 		}
 	}
@@ -535,6 +535,29 @@ func CreateSymlink(source string, target string) error {
 		log.Errorf("Failed to create a link for [%v] to  [%v]",
 				source, target)
 		return err
+	}
+	return nil
+}
+
+// Remove symlink
+func RemoveSymlink(target string) error {
+	finfo, err := os.Lstat(target)
+	if nil != err && os.IsNotExist(err) {
+		log.Infof("target symlink [%v] does not exist", target)
+		return err
+	}
+	// If the file is symlink delete it
+	if finfo.Mode()&os.ModeSymlink == os.ModeSymlink {
+		_, clierr := ExecShellCmd("rm -rf %s", target)
+		if nil != clierr {
+			log.Errorf("Failed to delete the target [%v]", target)
+			return clierr
+		} else {
+			log.Infof("Successfully deleted the target [%v]", target)
+		}
+	} else {
+		msg := fmt.Sprint("not a symbolic link")
+		return errors.New(msg)
 	}
 	return nil
 }
