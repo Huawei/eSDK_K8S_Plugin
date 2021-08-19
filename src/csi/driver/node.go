@@ -8,7 +8,6 @@ import (
 	"csi/backend"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"utils"
 	"utils/log"
@@ -38,9 +37,9 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	mnt := req.GetVolumeCapability().GetMount()
-    blk := req.GetVolumeCapability().GetBlock()
+	blk := req.GetVolumeCapability().GetBlock()
 
-	var parameters = nil
+	var parameters = map[string]interface{}{}
 
 	if blk == nil {
 	    log.Infof("The request is to create volume of type filesystem")
