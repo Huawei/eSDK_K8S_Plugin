@@ -514,3 +514,27 @@ func NeedMultiPath(backendConfigs []map[string]interface{}) bool {
 
 	return needMultiPath
 }
+
+// Create a symlink
+func CreateSymlink(source string, target string) error {
+	// First check if File exists in the staging area, then remove the mount
+	// and then create a symlink to the devpath
+	_, err := os.Lstat(target)
+	if nil != err && os.IsNotExist(err) {
+		log.Infof("Mountpoint [%v] does not exist", target)
+	} else {
+		// delete the mount. The mountpoint deleted here is folder or soft link
+		_, err := utils.ExecShellCmd("rm -rf %s", target)
+		if nil != err {
+			log.Errorf("Failed to delete the mountpoint [%v] while staging rbd", target)
+			return err
+		}
+	}
+	err = os.Symlink(source, target)
+	if nil != err {
+		log.Errorf("Failed to create a link for [%v] to  [%v]",
+				source, target)
+		return err
+	}
+	return nil
+}

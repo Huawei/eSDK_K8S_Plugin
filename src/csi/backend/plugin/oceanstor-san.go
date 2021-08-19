@@ -270,24 +270,10 @@ func (p *OceanstorSanPlugin) StageVolume(name string, parameters map[string]inte
 	if parameters["volumeMode"].(string) == "Block" {
 		log.Infof("The request to stage raw block device")
 		mountpoint := parameters["stagingPath"].(string)
-		// First check if File exists in the staging area, then remove the mount
-		// and then create a symlink to the devpath
-		_, err := os.Lstat(mountpoint)
-		if nil != err && os.IsNotExist(err) {
-			log.Infof("Mountpoint [%v] does not exist", mountpoint)
-		} else {
-			// delete the mount. The mountpoint deleted here is folder or soft link
-			_, err := utils.ExecShellCmd("rm -rf %s", mountpoint)
-			if nil != err {
-				log.Errorf("Failed to delete the mountpoint [%v] while staging rbd", mountpoint)
-				return err
-			}
-		}
 		devpath := out[0].Interface().(string)
-		err = os.Symlink(devpath, mountpoint)
+		err := utils.CreateSymlink(devpath, mountpoint)
 		if nil != err {
-			log.Errorf("Failed to create a link for devpath [%v] to stagingpath [%v]",
-					devpath, mountpoint)
+			log.Errorf("Error in staging device")
 			return err
 		}
 	}

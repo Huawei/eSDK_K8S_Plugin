@@ -8,7 +8,7 @@ import (
 	"csi/backend"
 	"encoding/json"
 	"fmt"
-    "os"
+	"os"
 	"strings"
 	"utils"
 	"utils/log"
@@ -111,18 +111,18 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 	log.Infof("Start to node publish volume %s to %s", volumeId, targetPath)
 	if req.GetVolumeCapability().GetBlock() != nil {
 		// If the request is to publish raw block device then
-		// create sysmlink of the device from the staging area
+		// create symlink of the device from the staging area
 		// to publish. Note that it cannot be mounted because of 
 		// RBD request and also, the fs is not created
 		log.Infof("Creating symlink for the staged device on the node to publish")
-		err := os.Symlink(sourcePath, targetPath)
+		err := utils.CreateSymlink(sourcePath, targetPath)//os.Symlink(sourcePath, targetPath)
 		if err != nil {
 			log.Errorf("Failed to create symlink for the staging path [%v] to target path [%v]",
 					sourcePath, targetPath)
 			return nil, err
 		}
 		log.Infof("Successfully published raw block volume [%s] to [%s]", volumeId, targetPath)
-		return &csi.NodePublishVolumeResponse{}, nil 
+		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
 	opts := []string{"bind"}
@@ -153,7 +153,15 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	targetPath := req.GetTargetPath()
 
 	log.Infof("Start to node unpublish volume %s from %s", volumeId, targetPath)
-
+	if req.GetVolumeCapability().GetBlock() != nil {
+		//remove the target path. basically deleting the symlink created during publish
+		_, clierr := utils.ExecShellCmd("rm -rf %s", target)
+		if nil != clierr {
+			log.Errorf("Failed to delete the mountpoint [%v] while staging rbd", target)
+			return clierr
+		}
+		return &csi.NodeUnpublishVolumeResponse{}, nil
+	}
 	output, err := utils.ExecShellCmd("umount %s", targetPath)
 	if err != nil && !strings.Contains(output, "not mounted") {
 		msg := fmt.Sprintf("umount %s for volume %s error: %s", targetPath, volumeId, output)
