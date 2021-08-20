@@ -1,0 +1,15 @@
+kind: Pod
+apiVersion: v1
+metadata:
+  name: mypod
+spec:
+  containers:
+    - name: mycontainer
+      image: ******
+      volumeDevices:
+        - name: mypv
+          devicePath: "/dev/xvda"
+  volumes:
+    - name: mypv
+      persistentVolumeClaim:
+        claimName: mypvc
