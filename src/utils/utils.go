@@ -530,6 +530,7 @@ func CreateSymlink(source string, target string) error {
 			return err
 		}
 	}
+	log.Infof("Creating symlink for [%s] to [%s]", source, target)
 	err = os.Symlink(source, target)
 	if nil != err {
 		log.Errorf("Failed to create a link for [%v] to  [%v]",
