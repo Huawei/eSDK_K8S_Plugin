@@ -158,6 +158,20 @@ func (p *FusionStorageSanPlugin) StageVolume(name string, parameters map[string]
 		return err
 	}
 
+	// If the request to stage is for volumeDevice of type Block and the devicePath
+	// is provided then do not format and create FS and mount it.
+	// Simply create a symlink to the devpath on the staging area
+	if parameters["volumeMode"].(string) == "Block" {
+		log.Infof("The request to stage raw block device")
+		mountpoint := parameters["stagingPath"].(string)
+		err := utils.CreateSymlink(devPath, mountpoint)
+		if nil != err {
+			log.Errorf("Error in staging device")
+			return err
+		}
+		return nil
+	}
+
 	return p.lunStageVolume(name, devPath, parameters)
 }
 

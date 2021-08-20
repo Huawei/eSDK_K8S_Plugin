@@ -276,6 +276,7 @@ func (p *OceanstorSanPlugin) StageVolume(name string, parameters map[string]inte
 			log.Errorf("Error in staging device")
 			return err
 		}
+		return nil
 	}
 	return p.lunStageVolume(name, out[0].Interface().(string), parameters)
 }
