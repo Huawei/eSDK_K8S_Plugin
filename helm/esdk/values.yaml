@@ -14,6 +14,6 @@ images:
     attacher: quay.io/k8scsi/csi-attacher:v1.2.1
     provisioner: quay.io/k8scsi/csi-provisioner:v1.6.0
     registrar: quay.io/k8scsi/csi-node-driver-registrar:v2.0.1
-  huaweiCsiControllerService: <image:tag>
-  huaweiCsiNodeService: <image:tag>
+  huaweiCsiControllerService: huawei-csi:test
+  huaweiCsiNodeService: huawei-csi:test
 imagePullPolicy: "IfNotPresent"
