@@ -1,0 +1,137 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: huawei-csi-node
+  namespace: kube-system
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: huawei-csi-driver-registrar-runner
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: huawei-csi-driver-registrar-role
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-node
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: huawei-csi-driver-registrar-runner
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: huawei-csi-node
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: huawei-csi-node
+  template:
+    metadata:
+      labels:
+        app: huawei-csi-node
+    spec:
+      serviceAccountName: huawei-csi-node
+      hostPID: true
+      hostNetwork: true
+      containers:
+        - name: csi-node-driver-registrar
+          image: {{ .Values.images.sidecar.registrar }}
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.huawei.com/csi.sock"
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+        - name: huawei-csi-driver
+          image: {{ required "Must provide the CSI controller service node image." .Values.images.huaweiCsiNodeService }}
+          args:
+            - "--endpoint=/csi/csi.sock"
+            - "--containerized"
+            - "--driver-name=csi.huawei.com"
+            - "--volume-use-multipath=true"
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          imagePullPolicy: "IfNotPresent"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
+          env:
+            - name: CSI_ESDK_NODENAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: pods-dir
+              mountPath: /var/lib/kubelet
+              mountPropagation: "Bidirectional"
+            - name: etc-dir
+              mountPath: /etc
+            - name: log-dir
+              mountPath: /var/log
+            - name: dev-dir
+              mountPath: /dev
+              mountPropagation: "HostToContainer"
+            - name: iscsi-dir
+              mountPath: /var/lib/iscsi
+            - name: config-map
+              mountPath: /etc/huawei
+            - name: secret
+              mountPath: /etc/huawei/secret
+      volumes:
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.huawei.com
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+        - name: pods-dir
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: etc-dir
+          hostPath:
+            path: /etc
+            type: Directory
+        - name: dev-dir
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: iscsi-dir
+          hostPath:
+            path: /var/lib/iscsi
+        - name: log-dir
+          hostPath:
+            path: /var/log/
+            type: Directory
+        - name: config-map
+          configMap:
+            name: huawei-csi-configmap
+        - name: secret
+          secret:
+            secretName: huawei-csi-secret

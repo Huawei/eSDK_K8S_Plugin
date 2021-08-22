@@ -1,0 +1,19 @@
+backends:
+  - storage: "fusionstorage-san"
+    name: "test-esdk-deployment"
+    urls: 
+      - "https://1.2.3.4:28443"
+    pools:
+      - "StoragePool001"
+    parameters: 
+      protocol: "iscsi"
+      portals: 
+        - "1.2.3.4"
+images:
+  sidecar:
+    attacher: quay.io/k8scsi/csi-attacher:v1.2.1
+    provisioner: quay.io/k8scsi/csi-provisioner:v1.6.0
+    registrar: quay.io/k8scsi/csi-node-driver-registrar:v2.0.1
+  huaweiCsiControllerService: <image:tag>
+  huaweiCsiNodeService: <image:tag>
+imagePullPolicy: "IfNotPresent"

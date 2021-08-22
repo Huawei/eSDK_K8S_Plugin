@@ -1,0 +1,117 @@
+---
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: huawei-csi-controller
+  namespace: kube-system
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: huawei-csi-provisioner-runner
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents"]
+    verbs: ["get", "list", "watch", "create", "delete", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots/status"]
+    verbs: ["update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csinodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: huawei-csi-controller
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: huawei-csi-controller
+  template:
+    metadata:
+      labels:
+        app: huawei-csi-controller
+    spec:
+      serviceAccount: huawei-csi-controller
+      hostNetwork: true
+      containers:
+        - name: csi-provisioner
+          image: {{ .Values.images.sidecar.provisioner }}
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=6h"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+
+        - name: csi-attacher
+          image: {{ .Values.images.sidecar.attacher }}
+          args:
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+        - name: huawei-csi-driver
+          image: {{ required "Must provide the CSI controller service container image." .Values.images.huaweiCsiControllerService }}
+          args:
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--controller"
+            - "--containerized"
+            - "--backend-update-interval=120"
+            - "--driver-name=csi.huawei.com"
+          env:
+            - name: CSI_ENDPOINT
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+            - name: log
+              mountPath: /var/log
+            - name: config-map
+              mountPath: /etc/huawei
+            - name: secret
+              mountPath: /etc/huawei/secret
+      volumes:
+        - name: socket-dir
+          emptyDir:
+        - name: log
+          hostPath:
+            path: /var/log/
+            type: Directory
+        - name: config-map
+          configMap:
+            name: huawei-csi-configmap
+        - name: secret
+          secret:
+            secretName: huawei-csi-secret

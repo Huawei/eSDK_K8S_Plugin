@@ -1,0 +1,10 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: huawei-csi-configmap
+  namespace: kube-system
+data:
+  csi.json: |
+    {{ $length := len .Values.backends }} {{ if gt $length 0 }} { {{ end }}
+      "backends": {{ .Values.backends | toJson }} 
+    {{ $length := len .Values.backends }} {{ if gt $length 0 }} } {{ end }}
