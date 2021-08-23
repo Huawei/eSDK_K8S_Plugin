@@ -6,5 +6,5 @@ metadata:
 data:
   csi.json: |
     {{ $length := len .Values.backends }} {{ if gt $length 0 }} { {{ end }}
-      "backends": {{ .Values.backends | toJson }} 
+      "backends": {{ .Values.backends | toPrettyJson | nindent 8 }} 
     {{ $length := len .Values.backends }} {{ if gt $length 0 }} } {{ end }}
