@@ -53,14 +53,14 @@ spec:
           args:
             - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.huawei.com/csi.sock"
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
             - name: registration-dir
               mountPath: /registration
         - name: huawei-csi-driver
-          image: {{ required "Must provide the CSI controller service node image." .Values.images.huaweiCsiNodeService }}
+          image: {{ required "Must provide the CSI node service node image." .Values.images.huaweiCsiNodeService }}
           args:
             - "--endpoint=/csi/csi.sock"
             - "--containerized"
@@ -71,17 +71,12 @@ spec:
             capabilities:
               add: ["SYS_ADMIN"]
             allowPrivilegeEscalation: true
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
           lifecycle:
             preStop:
               exec:
                 command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
           env:
-            - name: CSI_ESDK_NODENAME
-              valueFrom:
-                fieldRef:
-                  apiVersion: v1
-                  fieldPath: spec.nodeName
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
@@ -135,3 +130,4 @@ spec:
         - name: secret
           secret:
             secretName: huawei-csi-secret
+

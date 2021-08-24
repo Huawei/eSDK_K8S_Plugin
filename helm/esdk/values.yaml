@@ -1,3 +1,4 @@
+# An array of storages with the access info
 backends:
   - storage: "fusionstorage-san"
     name: "test-esdk-deployment"
@@ -10,10 +11,15 @@ backends:
       portals: 
         - "1.2.3.4"
 images:
+  # The image name and tag for the attacher, provisioner and registrar sidecars. These must match the appropriate Kubernetes version.
   sidecar:
     attacher: quay.io/k8scsi/csi-attacher:v1.2.1
     provisioner: quay.io/k8scsi/csi-provisioner:v1.6.0
     registrar: quay.io/k8scsi/csi-node-driver-registrar:v2.0.1
+  # The image name and tag for the Huawei CSI controller service container
   huaweiCsiControllerService: huawei-csi:test
+  # The image name and tag for the Huawei CSI node service container
   huaweiCsiNodeService: huawei-csi:test
+# Default image pull policy for container images
 imagePullPolicy: "IfNotPresent"
+
