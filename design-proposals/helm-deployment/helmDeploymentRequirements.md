@@ -81,7 +81,7 @@ Helm is a de-facto standard for managing Kubernetes packages and deployments. To
 - Keep username and password secure
 
 ##### Other Non Functional Requirements (Scalability, HA etc…)
-- Image size should be be large.
+- Image size should not be large.
 - Multi-architecture support
 - Ensure deployment of single esdk instance in a Kubernetes cluster
 
@@ -126,16 +126,12 @@ N/A
 
 - This folder contains samples with some examples of basic deployments
 
-### Helm repository
-<!-- - If time permits and required -->
 
 ### Configuration Management
-Helm uses a packaging format called charts. A chart is a collection of files that describe a related set of Kubernetes 
-resources. Charts are created as files laid out in a particular directory tree. They can be packaged into versioned 
-archives to be deployed.
+Helm uses a packaging format called charts. A chart is a collection of files that describe a related set of Kubernetes resources. Charts are created as files laid out in a particular directory tree. The same directory tree can be archived and used for deployment.
 
 eSDK chart file structure:
-```text
+```yaml
     esdk_K8S_Plugin/
        helm/
          esdk/
@@ -162,7 +158,7 @@ Following section explain about each file and directory in esdk helm.
 
 #### Charts.yaml
 
-```text
+```yaml
 apiVersion: v2 (The apiVersion field should be v2 for Helm charts that require at least Helm 3)
 name: esdk
 version: 0.1.0 # A SemVer 2 version
@@ -200,7 +196,7 @@ Operators wishes to upgrade or delete CRDs are encouraged to do this manually an
 #### values.yaml
 The file maintains default values of different configurable attributes in templates files.
 
-```text
+```yaml
 backends:
   - storage: "oceanstor-san",
     name: "***",
@@ -263,7 +259,7 @@ eSDK Controller plugin are deployd with following scenario:
 High availability support of controller plugin will be part of future work.
 
 Sample:
-```text
+```yaml
 ---
 kind: ServiceAccount
 apiVersion: v1
@@ -636,7 +632,7 @@ Following are kubernetes resources maintained in template file for a node servic
 - ClusterRoleBinding
 
 Sample:
-```text
+```yaml
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -700,7 +696,7 @@ spec:
               mountPath: /registration
 
         - name: huawei-csi-driver
-          image: {{ required "Must provide the CSI controller service node image." .Values.images.huaweiCsiNodeService }}
+          image: {{ required "Must provide the CSI Node service image." .Values.images.huaweiCsiNodeService }}
           args:
             - "--endpoint=/csi/csi.sock"
             - "--containerized"
@@ -773,7 +769,7 @@ spec:
 ```
 
 ##### huawei.csi.configmap.yaml
-```text
+```yaml
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -943,16 +939,6 @@ NA
 //All raw inputs or discussion points or etc can be added here
 https://github.com/jsafrane/community/blob/master/contributors/design-proposals/storage/container-storage-interface.md#recommended-mechanism-for-deploying-csi-drivers-on-kubernetes
 
-#### Multiarchitecture images with docker
-https://www.docker.com/blog/multi-arch-build-and-images-the-simple-way/
-
-https://github.com/docker-library/official-images#architectures-other-than-amd64
-
-https://medium.com/@artur.klauser/building-multi-architecture-docker-images-with-buildx-27d80f7e2408
-
-#### Dell powermax CSI Helm deployment
-https://github.com/dell/csi-powermax/tree/master/helm
-
 
 #### K8S Secrets
 https://kubernetes.io/docs/concepts/configuration/secret/
@@ -964,14 +950,6 @@ https://helm.sh/docs/topics/architecture/
 https://rafay.co/the-kubernetes-current/helm-chart-hooks-tutorial/
 
 
-**Open Points**
-- Check for default values for different attributes
-- Updated CSI user guide required
-- Check standards for different resource deployment in K8S
-- Need analysis with different competitor (trident, powermax)
-- post install checks 
-- upgrade strategies
-- 
 ---
 ## Default Values
 ---
