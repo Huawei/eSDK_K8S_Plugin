@@ -28,8 +28,8 @@ Helm is a de-facto standard for managing Kubernetes packages and deployments. To
 
 - This document assumes Kubernetes as the orchestrator.
 - For the intitial design of the Helm deployment, the current state of the eSDK plugin will be considered.
-- Adapting the deployments of new features should be taken care by the feature owners.
-- eSDK container images should be made available through image repository (local or remote) or should be available locally on the node.
+- Adapting the deployments of new features should be taken care of by the feature owners.
+- eSDK container images should be made available through image repository (local or remote) or locally on the node.
 - Helm3 does not support rollback or upgrade of CRDs.
   
 ## Requirement Analysis
