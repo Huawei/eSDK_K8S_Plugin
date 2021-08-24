@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 	"utils/log"
+	"sync"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/sys/unix"
@@ -36,6 +37,11 @@ import (
 const (
 	DoradoV6Version = "V600"
 	V5Version       = "V500"
+)
+
+var (
+	createSymLock	sync.Mutex
+	removeSymLock	sync.Mutex
 )
 
 var maskObject = []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
@@ -519,11 +525,22 @@ func NeedMultiPath(backendConfigs []map[string]interface{}) bool {
 func CreateSymlink(source string, target string) error {
 	// First check if File exists in the staging area, then remove the mount
 	// and then create a symlink to the devpath
-	_, err := os.Lstat(target)
+	// Serialize symlink request
+	createSymLock.Lock()
+	defer createSymLock.Unlock()
+
+	log.Infof("Create symlink called for [%s] to [%s]", source, target)
+
+	finfo, err := os.Lstat(target)
 	if nil != err && os.IsNotExist(err) {
 		log.Infof("Mountpoint [%v] does not exist", target)
 	} else {
-		// delete the mount. The mountpoint deleted here is folder or soft link
+		if finfo.Mode()&os.ModeSymlink == os.ModeSymlink {
+			log.Infof("Path symlink already exists")
+			return nil
+		}
+		// As the file exists but no symlink created,
+		// delete the path. The path deleted here is folder or soft link
 		_, err := ExecShellCmd("rm -rf %s", target)
 		if nil != err {
 			log.Errorf("Failed to delete the target [%v]", target)
@@ -542,6 +559,11 @@ func CreateSymlink(source string, target string) error {
 
 // Remove symlink
 func RemoveSymlink(target string) error {
+	log.Infof("Remove symlink called for [%s]", target)
+
+	removeSymLock.Lock()
+	defer removeSymLock.Unlock()
+
 	finfo, err := os.Lstat(target)
 	if nil != err && os.IsNotExist(err) {
 		log.Infof("target symlink [%v] does not exist", target)
@@ -556,9 +578,7 @@ func RemoveSymlink(target string) error {
 		} else {
 			log.Infof("Successfully deleted the target [%v]", target)
 		}
-	} else {
-		msg := fmt.Sprint("not a symbolic link")
-		return errors.New(msg)
+		return nil
 	}
-	return nil
+	return err
 }

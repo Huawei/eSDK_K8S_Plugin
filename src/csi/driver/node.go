@@ -157,7 +157,7 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	// volume is Block or Mount. So check if it's symlink (which may get created for RBD)
 	//  and delete the symlink
 	symErr := utils.RemoveSymlink(targetPath)
-	if symErr != nil && !strings.Contains(symErr.Error(), "not a symbolic link") {
+	if symErr != nil {
 		output, err := utils.ExecShellCmd("umount %s", targetPath)
 		if err != nil && !strings.Contains(output, "not mounted") {
 			msg := fmt.Sprintf("umount %s for volume %s error: %s", targetPath, volumeId, output)
