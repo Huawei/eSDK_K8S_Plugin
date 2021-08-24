@@ -76,7 +76,6 @@ spec:
             preStop:
               exec:
                 command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
-          env:
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
