@@ -56,6 +56,33 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	}
 
+	// Get topology requirements
+	accessibleTopology := req.GetAccessibilityRequirements()
+	if accessibleTopology != nil {
+		var requisiteTopologies = make([]map[string]string, 0)
+		for _, requisite := range accessibleTopology.GetRequisite() {
+			requirement := make(map[string]string)
+			for k, v := range requisite.GetSegments() {
+				requirement[k] = v
+			}
+			requisiteTopologies = append(requisiteTopologies, requirement)
+		}
+
+		var preferredTopologies = make([]map[string]string, 0)
+		for _, preferred := range accessibleTopology.GetPreferred() {
+			preference := make(map[string]string)
+			for k, v := range preferred.GetSegments() {
+				preference[k] = v
+			}
+			preferredTopologies = append(preferredTopologies, preference)
+		}
+
+		parameters[backend.TopologyRequirement] = backend.AccessibleTopology{
+			RequisiteTopologies: requisiteTopologies,
+			PreferredTopologies: preferredTopologies,
+		}
+	}
+
 	localPool, remotePool, err := backend.SelectStoragePool(size, parameters)
 	if err != nil {
 		log.Errorf("Cannot select pool for volume creation: %v", err)

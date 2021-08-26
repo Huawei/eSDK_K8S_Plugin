@@ -23,6 +23,7 @@ spec:
             - "--csi-address=$(ADDRESS)"
             - "--timeout=6h"
             - "--enable-leader-election"
+            - "--feature-gates=Topology=true"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
