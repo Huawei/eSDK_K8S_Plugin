@@ -4,11 +4,19 @@ import (
 	"connector"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 	"utils/log"
 )
 
-type FCNVMe struct{}
+type FCNVMe struct {
+	mutex sync.Mutex
+}
+
+const (
+	intNumTwo   = 2
+	intNumThree = 3
+)
 
 func init() {
 	connector.RegisterConnector(connector.FCNVMeDriver, &FCNVMe{})
@@ -22,7 +30,7 @@ func (fc *FCNVMe) ConnectVolume(conn map[string]interface{}) (string, error) {
 		log.Errorln(msg)
 		return "", errors.New(msg)
 	}
-	connectInfo := map[string]interface{} {
+	connectInfo := map[string]interface{}{
 		"protocol": "fc",
 	}
 	connector.ScanNVMe(connectInfo)
@@ -48,6 +56,20 @@ func (fc *FCNVMe) ConnectVolume(conn map[string]interface{}) (string, error) {
 }
 
 func (fc *FCNVMe) DisConnectVolume(tgtLunGuid string) error {
+	fc.mutex.Lock()
+	defer fc.mutex.Unlock()
 	log.Infof("FC-NVMe Start to disconnect volume ==> Volume Guid info: %v", tgtLunGuid)
-	return connector.DeleteDevice(tgtLunGuid)
+	for i := 0; i < 3; i++ {
+		err := tryDisConnectVolume(tgtLunGuid, true)
+		if err == nil {
+			return nil
+		}
+
+		log.Errorf("Failed to delete device in %d time(s), err: %v", i, err)
+		time.Sleep(time.Second * intNumTwo)
+	}
+
+	msg := fmt.Sprintf("Failed to delete volume %s.", tgtLunGuid)
+	log.Errorln(msg)
+	return errors.New(msg)
 }
