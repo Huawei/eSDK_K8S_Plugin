@@ -948,3 +948,26 @@ func RemoveRoCEDevice(device string) ([]string, string, error) {
 
 	return devices, multiPathName, nil
 }
+
+// RemoveNvmeFcDevice remove dm device if present
+func RemoveNvmeFcDevice(device string) (string, error) {
+	var multiPathName string
+	var err error
+	if strings.HasPrefix(device, "dm") {
+		multiPathName = device
+		// devices: nvme0n1, nvme2n1,
+		_, err = getDeviceFromDM(multiPathName)
+		if err != nil {
+			log.Warningf("Get the devices from the multipath %s error: %v", multiPathName, err)
+		}
+
+		// just flush the dm path. no need to delete device on host, when delete the storage mapping
+		// the device will be automatically deleted.
+		err := FlushDMDevice(multiPathName)
+		if err == nil {
+			multiPathName = ""
+		}
+	}
+
+	return multiPathName, nil
+}
