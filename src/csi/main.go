@@ -14,6 +14,7 @@ import (
 	"runtime/debug"
 	"time"
 	"utils"
+	"utils/k8sutils"
 	"utils/log"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -30,6 +31,8 @@ const (
 
 	csiVersion        = "2.2.13"
 	defaultDriverName = "csi.huawei.com"
+
+	nodeNameEnv = "CSI_NODENAME"
 )
 
 var (
@@ -54,6 +57,12 @@ var (
 	volumeUseMultiPath = flag.Bool("volume-use-multipath",
 		true,
 		"Whether to use multipath when attach block volume")
+	kubeconfig = flag.String("kubeconfig",
+		"",
+		"absolute path to the kubeconfig file")
+	nodeName = flag.String("nodename",
+		os.Getenv(nodeNameEnv),
+		"absolute path to the kubeconfig file")
 
 	config CSIConfig
 	secret CSISecret
@@ -64,7 +73,7 @@ type CSIConfig struct {
 }
 
 type CSISecret struct {
-	Secrets map[string]interface{}  `json:"secrets"`
+	Secrets map[string]interface{} `json:"secrets"`
 }
 
 func init() {
@@ -96,6 +105,10 @@ func init() {
 	}
 
 	_ = mergeData(config, secret)
+
+	if "" == *nodeName {
+		logrus.Warning("Node name is empty. Topology aware volume provisioning feature may not behave normal")
+	}
 
 	if *containerized {
 		*controllerFlagFile = ""
@@ -199,10 +212,15 @@ func main() {
 		log.Fatalf("Listen on %s error: %v", *endpoint, err)
 	}
 
-	isNeedMultiPath := utils.NeedMultiPath(config.Backends)
-	d := driver.NewDriver(*driverName, csiVersion, *volumeUseMultiPath, isNeedMultiPath)
-	server := grpc.NewServer()
+	k8sUtils, err := k8sutils.NewK8SUtils(*kubeconfig)
+	if err != nil {
+		log.Fatalf("Kubernetes client initialization failed  %v", err)
+	}
 
+	isNeedMultiPath := utils.NeedMultiPath(config.Backends)
+	d := driver.NewDriver(*driverName, csiVersion, *volumeUseMultiPath, isNeedMultiPath, k8sUtils, *nodeName)
+
+	server := grpc.NewServer()
 	csi.RegisterIdentityServer(server, d)
 	csi.RegisterControllerServer(server, d)
 	csi.RegisterNodeServer(server, d)

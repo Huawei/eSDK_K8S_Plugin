@@ -171,10 +171,26 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		log.Errorf("Marshal node info of %s error: %v", nodeBytes, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
 	log.Infof("Get NodeId %s", nodeBytes)
+
+	if d.nodeName == "" {
+		return &csi.NodeGetInfoResponse{
+			NodeId: string(nodeBytes),
+		}, nil
+	}
+
+	// Get topology info from Node labels
+	topology, err := d.k8sUtils.GetNodeTopology(d.nodeName)
+	if err != nil {
+		log.Errorln(err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
 	return &csi.NodeGetInfoResponse{
 		NodeId: string(nodeBytes),
+		AccessibleTopology: &csi.Topology{
+			Segments: topology,
+		},
 	}, nil
 }
 
