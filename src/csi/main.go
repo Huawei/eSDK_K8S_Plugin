@@ -62,7 +62,7 @@ var (
 		"absolute path to the kubeconfig file")
 	nodeName = flag.String("nodename",
 		os.Getenv(nodeNameEnv),
-		"absolute path to the kubeconfig file")
+		"node name in kubernetes cluster")
 
 	config CSIConfig
 	secret CSISecret
@@ -182,14 +182,14 @@ func main() {
 	}()
 
 	if *controller || *controllerFlagFile != "" {
-		err := backend.RegisterBackend(config.Backends, true)
+		err := backend.RegisterBackend(config.Backends, true, *driverName)
 		if err != nil {
 			log.Fatalf("Register backends error: %v", err)
 		}
 
 		go updateBackendCapabilities()
 	} else {
-		err := backend.RegisterBackend(config.Backends, false)
+		err := backend.RegisterBackend(config.Backends, false, *driverName)
 		if err != nil {
 			log.Fatalf("Register backends error: %v", err)
 		}

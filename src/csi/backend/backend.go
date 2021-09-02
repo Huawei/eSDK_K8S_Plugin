@@ -8,12 +8,15 @@ import (
 	"regexp"
 	"sync"
 	"utils"
+	"utils/k8sutils"
 	"utils/log"
 )
 
 const (
+	// TopologyRequirement constant for topology filter function
 	TopologyRequirement = "topologyRequirement"
-	SupportedTopologies = "supportedTopologies"
+	// supported topology key in CSI plugin configuration
+	supportedTopologiesKey = "supportedTopologies"
 )
 
 var (
@@ -39,6 +42,7 @@ var (
 	}
 )
 
+// AccessibleTopology represents selected node topology
 type AccessibleTopology struct {
 	RequisiteTopologies []map[string]string
 	PreferredTopologies []map[string]string
@@ -122,26 +126,10 @@ func newBackend(backendName string, config map[string]interface{}) (*Backend, er
 		return nil, errors.New("parameters must be configured for backend")
 	}
 
-	supportedTopologies := make([]map[string]string, 0)
-	if topologies, exist := config[SupportedTopologies]; exist {
-		topologyArray, ok := topologies.([]interface{})
-		if !ok {
-			return nil, errors.New("invalid supported topologies configuration")
-		}
-		for _, topologyArrElem := range topologyArray {
-			topologyMap, ok := topologyArrElem.(map[string]interface{})
-			if !ok {
-				return nil, errors.New("invalid supported topologies configuration")
-			}
-			tempMap := make(map[string]string, 0)
-			for topologyKey, value := range topologyMap {
-				if topologyValue, ok := value.(string); ok {
-					tempMap[topologyKey] = topologyValue
-				}
-			}
-
-			supportedTopologies = append(supportedTopologies, tempMap)
-		}
+	// Get supported topologies for backend
+	supportedTopologies, err := getSupportedTopologies(config)
+	if err != nil {
+		return nil, err
 	}
 
 	plugin := plugin.GetPlugin(storage)
@@ -172,6 +160,50 @@ func newBackend(backendName string, config map[string]interface{}) (*Backend, er
 		ReplicaBackendName:  replicaBackend,
 		MetroBackendName:    metroBackend,
 	}, nil
+}
+
+func getSupportedTopologies(config map[string]interface{}) ([]map[string]string, error) {
+	supportedTopologies := make([]map[string]string, 0)
+
+	topologies, exist := config[supportedTopologiesKey]
+	if !exist {
+		return supportedTopologies, nil
+	}
+
+	// populate configured topologies
+	topologyArray, ok := topologies.([]interface{})
+	if !ok {
+		return nil, errors.New("invalid supported topologies configuration")
+	}
+	for _, topologyArrElem := range topologyArray {
+		topologyMap, ok := topologyArrElem.(map[string]interface{})
+		if !ok {
+			return nil, errors.New("invalid supported topologies configuration")
+		}
+		tempMap := make(map[string]string, 0)
+		for topologyKey, value := range topologyMap {
+			if topologyValue, ok := value.(string); ok {
+				tempMap[topologyKey] = topologyValue
+			}
+		}
+		supportedTopologies = append(supportedTopologies, tempMap)
+	}
+
+	return supportedTopologies, nil
+}
+
+// addProtocolTopology add up protocol specific topological support
+func addProtocolTopology(backend *Backend, driverName string) {
+	proto, protocolAvailable := backend.Parameters["protocol"]
+	if protocol, isString := proto.(string); protocolAvailable && isString {
+		backend.SupportedTopologies = append(backend.SupportedTopologies, map[string]string{
+			k8sutils.TopologyPrefix + "/protocol." + protocol: driverName,
+		})
+		return
+	}
+
+	log.Warningf("supported topology for protocol may not work as protocol is miss configured " +
+		"in backend configuration")
 }
 
 func analyzeBackend(config map[string]interface{}) (*Backend, error) {
@@ -245,7 +277,7 @@ func updateReplicaBackends() {
 	}
 }
 
-func RegisterBackend(backendConfigs []map[string]interface{}, keepLogin bool) error {
+func RegisterBackend(backendConfigs []map[string]interface{}, keepLogin bool, driverName string) error {
 	for _, i := range backendConfigs {
 		backend, err := analyzeBackend(i)
 		if err != nil {
@@ -258,6 +290,18 @@ func RegisterBackend(backendConfigs []map[string]interface{}, keepLogin bool) er
 			log.Errorf("Init backend plugin error: %v", err)
 			return err
 		}
+
+		// Note: Protocol is considered as special topological parameter. The protocol topology
+		// 	is populated internally by plugin using protocol name.
+		//	If configured protocol for backend is "iscsi", CSI plugin internally add
+		//	topology.kubernetes.io/protocol.iscsi = csi.huawei.com in supportedTopologies.
+		//
+		//	Now users can opt to provision volumes based on protocol by
+		//	1. Labeling kubernetes nodes with protocol specific label (ie topology.kubernetes.io/protocol.iscsi = csi.huawei.com)
+		//	2. Configure topology support in plugin
+		//	3. Configure protocol topology in allowedTopologies fo Storage class
+		// addProtocolTopology is called after backend plugin init as init takes care of protocol validation
+		addProtocolTopology(backend, driverName)
 
 		csiBackends[backend.Name] = backend
 	}
@@ -585,20 +629,23 @@ func filterPoolsOnTopology(candidatePools []*StoragePool, requisiteTopologies []
 	}
 
 	for _, pool := range candidatePools {
+		// mutex lock acquired in pool selection
 		backend, exist := csiBackends[pool.Parent]
 		if !exist {
 			continue
 		}
 
-		if len(backend.SupportedTopologies) > 0 {
-			for _, topology := range requisiteTopologies {
-				if isTopologySupportedByBackend(backend, topology) {
-					filteredPools = append(filteredPools, pool)
-					break
-				}
-			}
-		} else {
+		// when backend is not configured with supported topology
+		if len(backend.SupportedTopologies) == 0 {
 			filteredPools = append(filteredPools, pool)
+			continue
+		}
+
+		for _, topology := range requisiteTopologies {
+			if isTopologySupportedByBackend(backend, topology) {
+				filteredPools = append(filteredPools, pool)
+				break
+			}
 		}
 	}
 
@@ -649,4 +696,16 @@ func sortPoolsByPreferredTopologies(candidatePools []*StoragePool, preferredTopo
 		remainingPools[i], remainingPools[j] = remainingPools[j], remainingPools[i]
 	})
 	return append(orderedPools, remainingPools...)
+}
+
+func (pool *StoragePool) GetSupportedTopologies() []map[string]string {
+	mutex.Lock()
+	defer mutex.Unlock()
+	backend, exist := csiBackends[pool.Parent]
+	if !exist {
+		log.Warningf("Backend [%v] does not exist in CSI backend pool", pool.Parent)
+		return make([]map[string]string, 0)
+	}
+
+	return backend.SupportedTopologies
 }
