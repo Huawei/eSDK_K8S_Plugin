@@ -22,6 +22,7 @@ spec:
           args:
             - "--csi-address=$(ADDRESS)"
             - "--timeout=6h"
+            - "--feature-gates=Topology=true"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
@@ -88,6 +89,11 @@ spec:
           env:
             - name: CSI_ENDPOINT
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
+            - name: CSI_NODENAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - name: socket-dir
