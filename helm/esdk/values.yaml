@@ -22,4 +22,6 @@ images:
   huaweiCsiNodeService: huawei-csi:test
 # Default image pull policy for container images
 imagePullPolicy: "IfNotPresent"
+multipath:
+  enable: false
 

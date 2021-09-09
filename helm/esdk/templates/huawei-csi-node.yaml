@@ -65,7 +65,7 @@ spec:
             - "--endpoint=/csi/csi.sock"
             - "--containerized"
             - "--driver-name=csi.huawei.com"
-            - "--volume-use-multipath=true"
+            - "--volume-use-multipath={{ .Values.multipath.enable }}"
           securityContext:
             privileged: true
             capabilities:
