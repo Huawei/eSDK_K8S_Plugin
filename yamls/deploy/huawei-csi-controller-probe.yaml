@@ -52,7 +52,7 @@ spec:
               mountPath: /var/lib/csi/sockets/pluginproxy/
 
         - name: huawei-csi-driver
-          image: huawei-csi:pravin-test
+          image: huawei-csi:*.*.*
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--controller"
