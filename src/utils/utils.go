@@ -38,15 +38,24 @@ const (
 	V5Version       = "V500"
 )
 
+var bootstrap bool
 var maskObject = []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
 
 type VolumeMetrics struct {
-	Available *resource.Quantity
-	Capacity *resource.Quantity
+	Available  *resource.Quantity
+	Capacity   *resource.Quantity
 	InodesUsed *resource.Quantity
-	Inodes *resource.Quantity
+	Inodes     *resource.Quantity
 	InodesFree *resource.Quantity
-	Used *resource.Quantity
+	Used       *resource.Quantity
+}
+
+func GetBootStrap() bool {
+	return bootstrap
+}
+
+func SetBootStrap(value bool) {
+	bootstrap = value
 }
 
 func PathExist(path string) (bool, error) {
