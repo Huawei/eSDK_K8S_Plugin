@@ -2,9 +2,12 @@ package driver
 
 import (
 	"context"
+	"fmt"
+	"utils"
 	"utils/log"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/golang/protobuf/ptypes/wrappers"
 )
 
 func (d *Driver) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
@@ -32,6 +35,17 @@ func (d *Driver) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCa
 }
 
 func (d *Driver) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
-	log.Infof("Probe plugin %v", *d)
-	return &csi.ProbeResponse{}, nil
+
+	log.Infof("Probe the csi-driver plugin %v", *d)
+	bootstrap := utils.GetBootStrap()
+
+	if !bootstrap {
+		return &csi.ProbeResponse{}, fmt.Errorf("Bootstarp is false")
+	}
+	resp := &csi.ProbeResponse{
+		Ready: &wrappers.BoolValue{Value: bootstrap},
+	}
+
+	return resp, nil
+
 }

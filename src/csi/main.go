@@ -64,7 +64,7 @@ type CSIConfig struct {
 }
 
 type CSISecret struct {
-	Secrets map[string]interface{}  `json:"secrets"`
+	Secrets map[string]interface{} `json:"secrets"`
 }
 
 func init() {
@@ -208,6 +208,10 @@ func main() {
 	csi.RegisterNodeServer(server, d)
 
 	log.Infof("Starting Huawei CSI driver, listening on %s", *endpoint)
+
+	// set the bootstarp value as true bcz here csi driver would be ready
+	utils.SetBootStrap(true)
+
 	if err := server.Serve(listener); err != nil {
 		log.Fatalf("Start Huawei CSI driver error: %v", err)
 	}
