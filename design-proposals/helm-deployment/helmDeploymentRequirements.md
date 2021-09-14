@@ -46,21 +46,24 @@ Helm is a de-facto standard for managing Kubernetes packages and deployments. To
 #### Requirement Analysis
 
 - Host eSDK container images over image repository
-    - Only support Huawei image repository (Internal)
-    - Images should be made public.  
-- Helm/Chart package will be placed in eSDK public repository. Users can clone the same and use for deployments.
+    - **Users will only need to use the container images from the public repository and need not clone and build the images**  
+    - With every eSDK release the respective container images should be built and pushed to the image repository  
+    - Only support Huawei image repository  
+    - Images should be made public  
+    
+- Helm/Chart package will be placed in eSDK public repository. 
+    - **Users can clone the same and use for deployments.** 
 - Support for Helm features like:
     - Install
     - Upgrade
     - Rollback 
-    - Uninstall
+    - Delete
 - Support configuration management using Helm
 - High availability controller plugin support (leader election)
     - In this release no support for HA of controller plugin.
     - The design for the same will be proposed in a different design document.
 - Secret configuration management of backend storage
-    - Currently the username and password are sensitive information for storage backend and are visible in plain text.
-    - They will be made available to the controller and node plugins using the Secrets resource of Kubernetes.
+    - Currently the  the controller and node plugins using the Secrets resource of Kubernetes.
     - Use Helm for secret create and update
 - Based on the Kubernetes version, configure standard sidecars for controller + node plugin. 
     - Make sidecar configurable based on Kubernetes version
@@ -217,6 +220,9 @@ resizer:
 # Flag to enable or disable snapshot (Optional)
 snapshot: 
   enable: false
+# Flag to enable or disable volume multipath access
+multipath:
+  enable: false
 
 images:
   # The image name and tag for the attacher, provisioner and registrar sidecars. These must match the appropriate Kubernetes version.
@@ -232,7 +238,7 @@ images:
   # The image name and tag for the Huawei CSI node service container
   huaweiCsiNodeService: huawei-csi:1.2.3
 # Default image pull policy for container images
-imagePullPolicy: {{ .Values.imagePullPolicy }}
+imagePullPolicy: IfNotPresent
 ```
 
 
@@ -299,6 +305,53 @@ rules:
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: huawei-csi-provisioner-role
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-controller
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: huawei-csi-provisioner-runner
+  apiGroup: rbac.authorization.k8s.io
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: huawei-csi-attacher-runner
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csinodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: huawei-csi-attacher-role
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-controller
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: huawei-csi-attacher-runner
+  apiGroup: rbac.authorization.k8s.io
     
 {{ if .Values.resizer.enable }}    
 ---
@@ -362,20 +415,6 @@ subjects:
 roleRef:
   kind: Role
   name: huawei-csi-resizer-cfg
-  apiGroup: rbac.authorization.k8s.io
-
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: huawei-csi-provisioner-role
-subjects:
-  - kind: ServiceAccount
-    name: huawei-csi-controller
-    namespace: kube-system
-roleRef:
-  kind: ClusterRole
-  name: huawei-csi-provisioner-runner
   apiGroup: rbac.authorization.k8s.io
 {{ end }}
 {{ if .Values.snapshot.enable }}    
@@ -701,7 +740,7 @@ spec:
             - "--endpoint=/csi/csi.sock"
             - "--containerized"
             - "--driver-name=csi.huawei.com"
-            - "--volume-use-multipath=true"
+            - "--volume-use-multipath={{ .Values.multipath.enable }}"
           securityContext:
             privileged: true
             capabilities:
@@ -789,6 +828,8 @@ eSDK CSI plugin ensure it by providing cli tool to receive sensitive information
 
 With helm support [Chart plugin](https://helm.sh/docs/topics/plugins/) to add custom command to run custom tool with helm.
 
+Currently the secrets are to be generated or updated manually by running the `secretGenerate` or `secretUpdate` binary. We will explore the possibility of using the post-install lifecycle events and actions of Helm to automate this process.
+
 
 ### Deployment Management
 An application in Kubernetes typically consists of at least two resource types: a deployment resource, which describes a set of pods to be deployed together, and a services resource, which defines endpoints for accessing the APIs in those pods. The application can also include ConfigMaps, Secrets, and Ingress.
@@ -802,6 +843,8 @@ Helm installs charts into Kubernetes, creating a new release for each installati
 
 Please note:   
 **We are considering only esdk deployment using Helm charts placed in the esdk GitHub repository.**
+
+### **Helm Install**
 
 Helm can make deployments easier and repeatable because all resources for an application are deployed by running one command:  
 
@@ -840,7 +883,10 @@ After it connects to your cluster, you use Helm installation commands to specify
 - Get the details about a release:  
     `$ helm get sample-esdk`  
 
-- Upgrade a release:  
+- Get all helm installations
+  `$ helm list`
+
+### **Upgrade a release**
 This command upgrades a release to a new version of a chart. The upgrade arguments must be a release and chart. 
 
 If the deployed Chart version is v0.1.0 and the deployed application version is 2.2.3.
@@ -868,29 +914,93 @@ snapshot:
 ```
 To override values in a chart, use either the '--values' flag and pass in a file or use the '--set' flag and pass configuration from the command line, to force string values, use '--set-string'. In case a value is large use '--set-file' to read the single large value from file.
 
-  ```
+  ```bash
   helm upgrade --set snapshot.enable=true sample-esdk 
   ```
-You can specify the '--values'/'-f' flag multiple times. The priority will be given to the last (right-most) file specified. For example, if both myvalues.yaml and override.yaml contained a key called 'Test', the value set in override.yaml would take precedence:  
+You can specify the '--values'/'-f' flag to specify the updated values. The priority will be given to the last (right-most) file specified. 
 
-    `$ helm upgrade -f myvalues.yaml -f override.yaml sample-esdk`  
+For example, consider an updated values file with another storage backend. The file would look something like this:
 
+```yaml
+backends:
+  - storage: "oceanstor-san",
+    name: "storage-1",
+    urls: 
+      - "https://1.2.3.4:8088"
+    pools:
+      - StoragePool001
+    parameters: 
+      protocol: iscsi
+      portals: 
+        - 1.2.3.4
+  - storage: "oceanstor-nas",
+    name: "storage-2",
+    urls: 
+      - "https://5.6.7.8:8088"
+    pools:
+      - StoragePool002
+    parameters: 
+      protocol: nfs
+      portals: 
+        - 5.6.7.8
+images:
+  # The image name and tag for the attacher, provisioner and registrar sidecars. These must match the appropriate Kubernetes version.
+  sidecar:
+    attacher: quay.io/k8scsi/csi-attacher:v1.2.1
+    provisioner: quay.io/k8scsi/csi-provisioner:v1.6.0
+    registrar: quay.io/k8scsi/csi-node-driver-registrar:v2.0.1
+    resizer: quay.io/k8scsi/csi-resizer:v1.0.1
+    snapshotter: quay.io/k8scsi/csi-snapshotter:v3.0.2
+    snapshotController: quay.io/k8scsi/snapshot-controller:v3.0.2
+  # The image name and tag for the Huawei CSI controller service container. 
+  huaweiCsiControllerService: huawei-csi:1.2.3
+  # The image name and tag for the Huawei CSI node service container
+  huaweiCsiNodeService: huawei-csi:1.2.3
+# Default image pull policy for container images
+imagePullPolicy: IfNotPresent
+```
 
-- Roll back a release:  
-    `$ helm rollback sample-esdk <revision>`  
+The user can just updated the existing installation by running the following command:
 
-- Delete a release:  
-    `$ helm delete sample-esdk`  
+  `$ helm upgrade -f values.yaml sample-esdk`  
+
+After an existing installation is upgraded the revision number of the release is incremented by 1.
+
+### **Rollback a release**
+
+To rollback a release user can check the current revision and specify the specific revision to which they wish to rollback.
+
+  `$ helm list`
+  ```
+  NAME                  REVISION    UPDATED                     STATUS      CHART                      APP VERSION       NAMESPACE
+  sample-esdk           3           Sat Sep 11 15:12:16 2021    DEPLOYED    esdk-0.1.0                 2.3.3             kube-system
+  ```
+  
+Use the command below to rollback to the revision 2 changes.
+  `$ helm rollback sample-esdk 2`  
+
+### **Delete a release**
+To delete a helm release just use the command below. This will take care of deleting all the deployments, daemonsets and the configmaps that are deployed with the helm install command.
+
+  `$ helm delete sample-esdk`  
 
 
 
 ### Use case View
 
-
-
-
 #### List of Typical Usecases
 
+#### **Install eSDK using Helm**
+
+![Helm Install](use_case_helm_install.jpg)
+
+#### **Upgrade existing eSDK installation using Helm**
+
+![Helm Upgrade](use_case_helm_upgrade.jpg)
+
+#### **Rollback the current installation to a previous version using Helm**
+
+![Helm Rollback](use_case_helm_rollback.jpg)
 
  
 
