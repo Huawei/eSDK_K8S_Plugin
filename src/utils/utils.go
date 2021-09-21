@@ -127,7 +127,7 @@ func execShellCmd(format string, logFilter bool, args ...interface{}) (string, b
 	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "/bin/sh", "-c", cmd}
 	shCmd := exec.Command("nsenter", execCmd...)
 	var timeOut bool
-	if strings.Contains(cmd, "mkfs") || strings.Contains(cmd, "resize2fs") {
+	if strings.Contains(cmd, "mkfs") || strings.Contains(cmd, "resize2fs" ||  strings.Contains(cmd, "xfs_growfs" ) {
 		time.AfterFunc(longTimeout*time.Second, func() {
 			timeOut = true
 		})

@@ -245,18 +245,22 @@ func getFSType(sourcePath string) (string, error) {
 
 func formatDisk(sourcePath, fsType, diskSizeType string) error {
 	var cmd string
-	switch diskSizeType {
-	case "default":
-		cmd = fmt.Sprintf("mkfs -t %s -F %s", fsType, sourcePath)
-	case "big":
-		cmd = fmt.Sprintf("mkfs -t %s -T big -F %s", fsType, sourcePath)
-	case "huge":
-		cmd = fmt.Sprintf("mkfs -t %s -T huge -F %s", fsType, sourcePath)
-	case "large":
-		cmd = fmt.Sprintf("mkfs -t %s -T largefile -F %s", fsType, sourcePath)
-	case "veryLarge":
-		cmd = fmt.Sprintf("mkfs -t %s -T largefile4 -F %s", fsType, sourcePath)
-	}
+	switch fsType {
+	case "xfs":
+		cmd = fmt.Sprintf("mkfs.xfs -f %s", sourcePath)
+        default:
+		switch diskSizeType {
+		case "default":
+			cmd = fmt.Sprintf("mkfs -t %s -F %s", fsType, sourcePath)
+		case "big":
+			cmd = fmt.Sprintf("mkfs -t %s -T big -F %s", fsType, sourcePath)
+		case "huge":
+			cmd = fmt.Sprintf("mkfs -t %s -T huge -F %s", fsType, sourcePath)
+		case "large":
+			cmd = fmt.Sprintf("mkfs -t %s -T largefile -F %s", fsType, sourcePath)
+		case "veryLarge":
+			cmd = fmt.Sprintf("mkfs -t %s -T largefile4 -F %s", fsType, sourcePath)
+		}
 	output, err := utils.ExecShellCmd(cmd)
 	if err != nil {
 		if strings.Contains(output, "in use by the system") {
@@ -267,6 +271,7 @@ func formatDisk(sourcePath, fsType, diskSizeType string) error {
 		log.Errorf("Couldn't mkfs %s to %s: %s", sourcePath, fsType, output)
 		return err
 	}
+
 	return nil
 }
 
