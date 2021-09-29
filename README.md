@@ -5,18 +5,18 @@ Huawei Container Storage Interface (CSI) Driver is used to provision LUN, recycl
 and provide a series of disaster recovery functions of storages for Kubernetes Containers.
 
 ## Compatibility Matrix
-| Features | 1.13|1.14|1.15|1.16|1.17|1.18|1.19|
-|---|---|---|---|---|---|---|---|
-|Create PVC|√|√|√|√|√|√|√|
-|Delete PVC|√|√|√|√|√|√|√|
-|Create POD|√|√|√|√|√|√|√|
-|Delete POD|√|√|√|√|√|√|√|
-|Offline Resize|x|x|x|√|√|√|√|
-|Online Resize|x|x|x|√|√|√|√|
-|Create Snapshot|x|x|x|x|√|√|√|
-|Delete Snapshot|x|x|x|x|√|√|√|
-|Restore|x|x|x|x|√|√|√|
-|Clone|x|x|x|x|√|√|√|
+| Features | 1.13|1.14|1.15|1.16|1.17|1.18|1.19|1.20|1.21|
+|---|---|---|---|---|---|---|---|---|---|
+|Create PVC|√|√|√|√|√|√|√|√|√|
+|Delete PVC|√|√|√|√|√|√|√|√|√|
+|Create POD|√|√|√|√|√|√|√|√|√|
+|Delete POD|√|√|√|√|√|√|√|√|√|
+|Offline Resize|x|x|x|√|√|√|√|√|√|
+|Online Resize|x|x|x|√|√|√|√|√|√|
+|Create Snapshot|x|x|x|x|√|√|√|√|√|
+|Delete Snapshot|x|x|x|x|√|√|√|√|√|
+|Restore|x|x|x|x|√|√|√|√|√|
+|Clone|x|x|x|x|√|√|√|√|√|
 
 More details [release doc](https://github.com/Huawei/eSDK_K8S_Plugin/blob/master/RELEASE.md)
 
@@ -26,7 +26,7 @@ This section describes the environmental requirements and steps of compiling Hua
 ### Compiler Environment
 | System | Go Version |
 |---|---|
-|Linux|    >=1.10|
+|Linux|    >=1.14|
 
 ### Compilation steps
 Step 1. Download the package and **cd** into the package, the structure is as follows:
@@ -36,7 +36,7 @@ Step 1. Download the package and **cd** into the package, the structure is as fo
       - zh
     - src
       - csi
-      - dev
+      - connector
       - proto
       - storage
       - tools
@@ -46,22 +46,18 @@ Step 1. Download the package and **cd** into the package, the structure is as fo
       - deploy
       - example
 
-step 2. Change the [keyText](https://github.com/Huawei/eSDK_K8S_Plugin/blob/master/src/utils/pwd/pwd.go#L11) 
-to a private value to prevent hacking. The length of the keyText is 32 characters. Such as:
-
-    keyText  = []byte("astaxie1279dkjajzmknm.ahkjkljl;k")
-
-Step 3. Run following command to compile the Huawei CSI Driver
+Step 2. Run following command to compile the Huawei CSI Driver
 
     make -f Makefile-CSI PLATFORM=[X86|ARM]
  
-Step 4. After the compilation is finished, a bin directory will be created in the current 
+Step 3. After the compilation is finished, a bin directory will be created in the current 
 directory, the structure is as follows:
 
     - bin
       - huawei-csi
-      - passwdEncrypt
- 
+      - secretGenerate
+      - secretUpdate
+
 In addition, we also provide a way to directly download the installation package, 
 click Release to obtain the 
 corresponding version of the plug-in package
@@ -91,7 +87,11 @@ Fill in the appropriate mirror version in [huawei-csi-rbac.yaml](https://github.
 Fill in the appropriate mirror version in [huawei-csi-configmap.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/master/yamls/deploy/huawei-csi-configmap-oceanstor-iscsi.yaml), and then create the Huawei CSI Configmap
 
     kubectl create -f huawei-csi-configmap.yaml
-    
+
+### Input the user and password of the storage device
+    chmod +x secretGenerate
+	./secretGenerate
+   
 ### Deploy the huawei-csi-controller
 Fill in the appropriate mirror version in [huawei-csi-controller.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/master/yamls/deploy/huawei-csi-controller.yaml), and then create the Huawei CSI Controller service
 

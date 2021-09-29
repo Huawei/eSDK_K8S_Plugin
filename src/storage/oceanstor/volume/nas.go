@@ -71,6 +71,10 @@ func (p *NAS) preCreate(params map[string]interface{}) error {
 		params["clonefrom"] = utils.GetFileSystemName(v)
 	}
 
+	err = p.setWorkLoadID(p.cli, params)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -112,6 +116,9 @@ func (p *NAS) Create(params map[string]interface{}) error {
 
 	_, err = taskflow.Run(params)
 	if err != nil {
+		// In order to prevent residue from being left in the event of a creation failure (If the deletion
+		// operation fails for the first time and the deletion operation is delivered for the second time,
+		// the CSI does not receive the deletion request, but the storage create)
 		taskflow.Revert()
 		return err
 	}
@@ -335,7 +342,6 @@ func (p *NAS) revertLocalFS(taskResult map[string]interface{}) error {
 	if !exist || fsID == "" {
 		return nil
 	}
-
 	return p.cli.DeleteFileSystem(fsID)
 }
 
@@ -365,7 +371,6 @@ func (p *NAS) revertLocalQoS(taskResult map[string]interface{}) error {
 	if !fsIDExist || !qosIDExist {
 		return nil
 	}
-
 	smartX := smartx.NewSmartX(p.cli)
 	return smartX.DeleteQos(qosID, fsID, "fs")
 }
@@ -397,7 +402,6 @@ func (p *NAS) revertRemoteQoS(taskResult map[string]interface{}) error {
 	if !fsIDExist || !qosIDExist {
 		return nil
 	}
-
 	remoteCli := taskResult["remoteCli"].(*client.Client)
 	smartX := smartx.NewSmartX(remoteCli)
 	return smartX.DeleteQos(qosID, fsID, "fs")
@@ -436,7 +440,6 @@ func (p *NAS) revertShare(taskResult map[string]interface{}) error {
 	if !exist || len(shareID) == 0 {
 		return nil
 	}
-
 	return p.cli.DeleteNfsShare(shareID)
 }
 
@@ -619,8 +622,9 @@ func (p *NAS) Expand(name string, newSize int64) error {
 
 	curSize, _ := strconv.ParseInt(fs["CAPACITY"].(string), 10, 64)
 	if newSize <= curSize {
-		log.Warningf("Filesystem %s newSize %d must be greater than curSize %d", fsName, newSize, curSize)
-		return nil
+		msg := fmt.Sprintf("Filesystem %s newSize %d must be greater than curSize %d", fsName, newSize, curSize)
+		log.Errorln(msg)
+		return errors.New(msg)
 	}
 
 	var replicationIDs []string
@@ -788,6 +792,11 @@ func (p *NAS) createRemoteFS(params, taskResult map[string]interface{}) (map[str
 	}
 
 	if fs == nil {
+		err = p.setWorkLoadID(remoteCli, params)
+		if err != nil {
+			return nil, err
+		}
+
 		params["parentid"] = taskResult["remotePoolID"].(string)
 		fs, err = remoteCli.CreateFileSystem(params)
 		if err != nil {
@@ -806,7 +815,6 @@ func (p *NAS) revertRemoteFS(taskResult map[string]interface{}) error {
 	if !exist || fsID == "" {
 		return nil
 	}
-
 	remoteCli := taskResult["remoteCli"].(*client.Client)
 	return remoteCli.DeleteFileSystem(fsID)
 }
@@ -1010,24 +1018,15 @@ func (p *NAS) preExpandCheckRemoteCapacity(params, taskResult map[string]interfa
 		return nil, errors.New(msg)
 	}
 
-	remoteParentName := remoteFs["PARENTNAME"].(string)
 	newSize := params["size"].(int64)
 	curSize, err := strconv.ParseInt(remoteFs["CAPACITY"].(string), 10, 64)
 	if err != nil {
 		return nil, err
 	}
 
-	pool, err := cli.GetPoolByName(remoteParentName)
-	if err != nil || pool == nil {
-		msg := fmt.Sprintf("Get storage pool %s info error: %v", remoteParentName, err)
-		log.Errorf(msg)
-		return nil, errors.New(msg)
-	}
-
-	freeCapacity, _ := strconv.ParseInt(pool["USERFREECAPACITY"].(string), 10, 64)
-	if freeCapacity < newSize-curSize {
-		msg := fmt.Sprintf("storage pool %s free capacity %s is not enough to expand to %v",
-			remoteParentName, pool["USERFREECAPACITY"], newSize-curSize)
+	if newSize < curSize {
+		msg := fmt.Sprintf("Remote Filesystem %s newSize %d must be greater than curSize %d",
+			remoteFsName, newSize, curSize)
 		log.Errorln(msg)
 		return nil, errors.New(msg)
 	}

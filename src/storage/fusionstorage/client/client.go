@@ -29,6 +29,8 @@ const (
 	INITIATOR_ALREADY_EXIST int64 = 50155102
 	INITIATOR_ADDED_TO_HOST int64 = 50157021
 	OFF_LINE_CODE                 = "1077949069"
+	OFF_LINE_CODE_INT       int64 = 1077949069
+	CLIENT_ALREADY_EXIST    int64 = 1077939727
 	SNAPSHOT_NOT_EXIST      int64 = 50150006
 	FILE_SYSTEM_NOT_EXIST   int64 = 33564678
 	QUOTA_NOT_EXIST         int64 = 37767685
@@ -250,6 +252,12 @@ func (cli *Client) call(method string, url string, data map[string]interface{}) 
 		goto RETRY
 	}
 
+	// Compatible with int error code 1077949069
+	if errorCode, ok := body["errorCode"].(float64); ok && int64(errorCode) == OFF_LINE_CODE_INT {
+		log.Warningf("User offline, try to relogin %s", cli.url)
+		goto RETRY
+	}
+
 	// Compatible with FusionStorage 6.3
 	if errorCode, ok := body["errorCode"].(float64); ok && int64(errorCode) == NO_AUTHENTICATED {
 		log.Warningf("User offline, try to relogin %s", cli.url)
@@ -383,10 +391,28 @@ func (cli *Client) DeleteVolume(name string) error {
 
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		details := resp["detail"].([]interface{})
-		detail := details[0].(map[string]interface{})
+		details, ok := resp["detail"].([]interface{})
+		if !ok || len(details) == 0 {
+			msg := fmt.Sprintf("There is no detail info in response %v.", resp)
+			log.Errorln(msg)
+			return errors.New(msg)
+		}
 
-		errorCode := int64(detail["errorCode"].(float64))
+		detail, ok := details[0].(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The format of detail info %v is not map[string]interface{}.", details)
+			log.Errorln(msg)
+			return errors.New(msg)
+		}
+
+		floatCode, ok := detail["errorCode"].(float64)
+		if !ok {
+			msg := fmt.Sprintf("There is no error code in detail %v.", detail)
+			log.Errorln(msg)
+			return errors.New(msg)
+		}
+
+		errorCode := int64(floatCode)
 		if errorCode == VOLUME_NAME_NOT_EXIST {
 			log.Warningf("Volume %s doesn't exist while deleting.", name)
 			return nil
@@ -415,14 +441,18 @@ func (cli *Client) AttachVolume(name, ip string) error {
 		return err
 	}
 
-	result := resp[name].([]interface{})
-	if len(result) == 0 {
+	result, ok := resp[name].([]interface{})
+	if !ok || len(result) == 0 {
 		return fmt.Errorf("Attach volume %s to %s error", name, ip)
 	}
 
-	attachResult := result[0].(map[string]interface{})
-	errorCode := attachResult["errorCode"].(string)
-	if errorCode != "0" {
+	attachResult, ok := result[0].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("attach volume %s to %s error", name, ip)
+	}
+
+	errorCode, exist := attachResult["errorCode"].(string)
+	if !exist || errorCode != "0" {
 		return fmt.Errorf("Attach volume %s to %s error: %s", name, ip, errorCode)
 	}
 
@@ -440,14 +470,18 @@ func (cli *Client) DetachVolume(name, ip string) error {
 		return err
 	}
 
-	result := resp["volumeInfo"].([]interface{})
-	if len(result) == 0 {
+	result, ok := resp["volumeInfo"].([]interface{})
+	if !ok || len(result) == 0 {
 		return fmt.Errorf("Detach volume %s from %s error", name, ip)
 	}
 
-	detachResult := result[0].(map[string]interface{})
-	errorCode := detachResult["errorCode"].(string)
-	if errorCode != "0" {
+	detachResult, ok := result[0].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("detach volume %s from %s error", name, ip)
+	}
+
+	errorCode, exist := detachResult["errorCode"].(string)
+	if !exist || errorCode != "0" {
 		return fmt.Errorf("Detach volume %s from %s error: %s", name, ip, errorCode)
 	}
 
@@ -471,7 +505,13 @@ func (cli *Client) GetPoolByName(poolName string) (map[string]interface{}, error
 	}
 
 	for _, p := range storagePools {
-		pool := p.(map[string]interface{})
+		pool, ok := p.(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The pool %v's format is not map[string]interface{}", p)
+			log.Errorln(msg)
+			return nil, errors.New(msg)
+		}
+
 		if pool["poolName"].(string) == poolName {
 			return pool, nil
 		}
@@ -498,7 +538,13 @@ func (cli *Client) GetPoolById(poolId int64) (map[string]interface{}, error) {
 	}
 
 	for _, p := range storagePools {
-		pool := p.(map[string]interface{})
+		pool, ok := p.(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The pool %v's format is not map[string]interface{}", p)
+			log.Errorln(msg)
+			return nil, errors.New(msg)
+		}
+
 		if int64(pool["poolId"].(float64)) == poolId {
 			return pool, nil
 		}
@@ -526,7 +572,12 @@ func (cli *Client) GetAllPools() (map[string]interface{}, error) {
 	pools := make(map[string]interface{})
 
 	for _, p := range storagePools {
-		pool := p.(map[string]interface{})
+		pool, ok := p.(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The pool %v's format is not map[string]interface{}", p)
+			log.Errorln(msg)
+			return nil, errors.New(msg)
+		}
 		name := pool["poolName"].(string)
 		pools[name] = pool
 	}
@@ -639,7 +690,12 @@ func (cli *Client) GetHostByName(hostName string) (map[string]interface{}, error
 	}
 
 	for _, i := range hostList {
-		host := i.(map[string]interface{})
+		host, ok := i.(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The host %v's format is not map[string]interface{}", i)
+			log.Errorln(msg)
+			return nil, errors.New(msg)
+		}
 		if host["hostName"] == hostName {
 			return host, nil
 		}
@@ -903,7 +959,12 @@ func (cli *Client) checkErrorCode(resp map[string]interface{}, errorCode int64) 
 	}
 
 	for _, i := range details {
-		detail := i.(map[string]interface{})
+		detail, ok := i.(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The detail %v's format is not map[string]interface{}", i)
+			log.Errorln(msg)
+			return false
+		}
 		detailErrorCode := int64(detail["errorCode"].(float64))
 		if detailErrorCode != errorCode {
 			return false
@@ -943,7 +1004,13 @@ func (cli *Client) CreateFileSystem(params map[string]interface{}) (map[string]i
 		return nil, err
 	}
 
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		msg := fmt.Sprintf("Create filesystem %v error: %d", data, errorCode)
@@ -951,7 +1018,12 @@ func (cli *Client) CreateFileSystem(params map[string]interface{}) (map[string]i
 		return nil, errors.New(msg)
 	}
 
-	respData := resp["data"].(map[string]interface{})
+	respData, ok := resp["data"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The data of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
 	if respData != nil {
 		return respData, nil
 	}
@@ -965,7 +1037,13 @@ func (cli *Client) DeleteFileSystem(id string) error {
 	if err != nil {
 		return err
 	}
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		msg := fmt.Sprintf("Delete filesystem %v error: %d", id, errorCode)
@@ -981,7 +1059,12 @@ func (cli *Client) GetFileSystemByName(name string) (map[string]interface{}, err
 	if err != nil {
 		return nil, err
 	}
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
 	errorCode := int64(result["code"].(float64))
 	if errorCode == FILE_SYSTEM_NOT_EXIST {
 		return nil, nil
@@ -993,7 +1076,12 @@ func (cli *Client) GetFileSystemByName(name string) (map[string]interface{}, err
 		return nil, errors.New(msg)
 	}
 
-	respData := resp["data"].(map[string]interface{})
+	respData, ok := resp["data"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The data of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
 	if respData != nil {
 		return respData, nil
 	}
@@ -1012,7 +1100,13 @@ func (cli *Client) CreateNfsShare(params map[string]interface{}) (map[string]int
 		return nil, err
 	}
 
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		msg := fmt.Sprintf("Create nfs share %v error: %d", data, errorCode)
@@ -1020,7 +1114,13 @@ func (cli *Client) CreateNfsShare(params map[string]interface{}) (map[string]int
 		return nil, errors.New(msg)
 	}
 
-	respData := resp["data"].(map[string]interface{})
+	respData, ok := resp["data"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The data of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	if respData != nil {
 		return respData, nil
 	}
@@ -1034,7 +1134,13 @@ func (cli *Client) DeleteNfsShare(id string) error {
 		return err
 	}
 
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		msg := fmt.Sprintf("Delete NFS share %v error: %d", id, errorCode)
@@ -1057,7 +1163,13 @@ func (cli *Client) GetNfsShareByPath(path string) (map[string]interface{}, error
 		return nil, err
 	}
 
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		msg := fmt.Sprintf("Get NFS share path %s error: %d", path, errorCode)
@@ -1065,9 +1177,21 @@ func (cli *Client) GetNfsShareByPath(path string) (map[string]interface{}, error
 		return nil, errors.New(msg)
 	}
 
-	respData := resp["data"].([]interface{})
+	respData, ok := resp["data"].([]interface{})
+	if !ok {
+		msg := fmt.Sprintf("There is no data info in response %v.", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	for _, s := range respData {
-		share := s.(map[string]interface{})
+		share, ok := s.(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+			log.Errorln(msg)
+			return nil, errors.New(msg)
+		}
+
 		if share["share_path"].(string) == path {
 			return share, nil
 		}
@@ -1090,9 +1214,19 @@ func (cli *Client) AllowNfsShareAccess(params map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	result := resp["result"].(map[string]interface{})
+
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+
 	errorCode := int64(result["code"].(float64))
-	if errorCode != 0 {
+	if errorCode == CLIENT_ALREADY_EXIST {
+		log.Warningf("The nfs share auth client %s is already exist.", params["name"].(string))
+		return nil
+	} else if errorCode != 0 {
 		msg := fmt.Sprintf("Allow nfs share %v access error: %d", data, errorCode)
 		log.Errorln(msg)
 		return errors.New(msg)
@@ -1106,7 +1240,13 @@ func (cli *Client) DeleteNfsShareAccess(accessID string) error {
 	if err != nil {
 		return err
 	}
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		msg := fmt.Sprintf("Delete nfs share %v access error: %d", accessID, errorCode)
@@ -1122,14 +1262,25 @@ func (cli *Client) GetNfsShareAccess(shareID string) (map[string]interface{}, er
 	if err != nil {
 		return nil, err
 	}
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		msg := fmt.Sprintf("Get nfs share %v access error: %d", shareID, errorCode)
 		log.Errorln(msg)
 		return nil, errors.New(msg)
 	}
-	respData := resp["data"].(map[string]interface{})
+	respData, ok := resp["data"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The data of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
 	if respData != nil {
 		return respData, nil
 	}
@@ -1142,7 +1293,12 @@ func (cli *Client) CreateQuota(params map[string]interface{}) error {
 		return err
 	}
 
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		msg := fmt.Sprintf("Failed to create quota %v, error: %d", params, errorCode)
@@ -1160,7 +1316,12 @@ func (cli *Client) GetQuotaByFileSystem(fsID string) (map[string]interface{}, er
 		return nil, err
 	}
 
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		return nil, fmt.Errorf("get quota by filesystem id %s error: %d", fsID, errorCode)
@@ -1172,7 +1333,12 @@ func (cli *Client) GetQuotaByFileSystem(fsID string) (map[string]interface{}, er
 	}
 
 	for _, q := range fsQuotas {
-		quota := q.(map[string]interface{})
+		quota, ok := q.(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The fsQuota %v's format is not map[string]interface{}", q)
+			log.Errorln(msg)
+			return nil, errors.New(msg)
+		}
 		return quota, nil
 	}
 	return nil, nil
@@ -1185,7 +1351,12 @@ func (cli *Client) DeleteQuota(quotaID string) error {
 		return err
 	}
 
-	result := resp["result"].(map[string]interface{})
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
 	errorCode := int64(result["code"].(float64))
 	if errorCode != 0 {
 		if errorCode == QUOTA_NOT_EXIST {
@@ -1298,19 +1469,30 @@ func (cli *Client) GetQoSNameByVolume(volName string) (string, error) {
 	return qosName, nil
 }
 
-func (cli *Client) GetAssociateCountOfQoS(qosName string) (int, error) {
+func (cli *Client) getAllPools() ([]interface{}, error) {
 	resp, err := cli.get("/dsware/service/v1.3/storagePool", nil)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		return 0, fmt.Errorf("get all pools error: %d", result)
+		return nil, fmt.Errorf("get all pools error: %d", result)
 	}
 
 	storagePools, exist := resp["storagePools"].([]interface{})
 	if !exist || len(storagePools) <= 0 {
+		return nil, nil
+	}
+	return storagePools, nil
+}
+
+func (cli *Client) GetAssociateCountOfQoS(qosName string) (int, error) {
+	storagePools, err := cli.getAllPools()
+	if err != nil {
+		return 0, err
+	}
+	if storagePools == nil {
 		return 0, nil
 	}
 
@@ -1319,11 +1501,21 @@ func (cli *Client) GetAssociateCountOfQoS(qosName string) (int, error) {
 		log.Errorf("Get associate snapshot of QoS %s error: %v", qosName, err)
 		return 0, err
 	}
-	pools := associatePools["pools"].([]interface{})
+	pools, ok := associatePools["pools"].([]interface{})
+	if !ok {
+		msg := fmt.Sprintf("There is no pools info in response %v.", associatePools)
+		log.Errorln(msg)
+		return 0, errors.New(msg)
+	}
 	storagePoolsCount := len(pools)
 
 	for _, p := range storagePools {
-		pool := p.(map[string]interface{})
+		pool, ok := p.(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The storage pool %v's format is not map[string]interface{}", p)
+			log.Errorln(msg)
+			return 0, errors.New(msg)
+		}
 		poolId := int64(pool["poolId"].(float64))
 		volumes, err := cli.getAssociateObjOfQoS(qosName, "volume", poolId)
 		if err != nil {
@@ -1409,7 +1601,12 @@ func (cli *Client) GetHostLunId(hostName, lunName string) (string, error) {
 	}
 
 	for _, i := range hostLunList {
-		hostLun := i.(map[string]interface{})
+		hostLun, ok := i.(map[string]interface{})
+		if !ok {
+			msg := fmt.Sprintf("The hostlun %v's format is not map[string]interface{}", i)
+			log.Errorln(msg)
+			return "", errors.New(msg)
+		}
 		if hostLun["lunName"].(string) == lunName {
 			return strconv.FormatInt(int64(hostLun["lunId"].(float64)), 10), nil
 		}

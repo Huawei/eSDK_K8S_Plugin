@@ -200,7 +200,6 @@ func (p *SAN) revertLun(taskResult map[string]interface{}) error {
 	if !exist || volName == "" {
 		return nil
 	}
-
 	err := p.cli.DeleteVolume(volName)
 	return err
 }
@@ -267,8 +266,9 @@ func (p *SAN) Expand(name string, newSize int64) (bool, error) {
 	isAttached := int64(lun["volType"].(float64)) == SCSITYPE || int64(lun["volType"].(float64)) == ISCSITYPE
 	curSize := int64(lun["volSize"].(float64))
 	if newSize <= curSize {
-		log.Warningf("Lun %s newSize %d must be greater than curSize %d", name, newSize, curSize)
-		return isAttached, nil
+		msg := fmt.Sprintf("Lun %s newSize %d must be greater than curSize %d", name, newSize, curSize)
+		log.Errorln(msg)
+		return false, errors.New(msg)
 	}
 
 	expandTask := taskflow.NewTaskFlow("Expand-LUN-Volume")
@@ -288,19 +288,10 @@ func (p *SAN) Expand(name string, newSize int64) (bool, error) {
 func (p *SAN) preExpandCheckCapacity(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	// check the local pool
 	localParentId := params["localParentId"].(int64)
-	expandSize := params["expandSize"].(int64)
 	pool, err := p.cli.GetPoolById(localParentId)
 	if err != nil || pool == nil {
 		log.Errorf("Get storage pool %s info error: %v", localParentId, err)
 		return nil, err
-	}
-	totalCapacity := int64(pool["totalCapacity"].(float64))
-	usedCapacity := int64(pool["usedCapacity"].(float64))
-	if totalCapacity-usedCapacity < expandSize {
-		msg := fmt.Sprintf("storage pool %d free capacity %d is not enough to expand to %v",
-			localParentId, totalCapacity-usedCapacity, expandSize)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
 	}
 
 	return nil, nil

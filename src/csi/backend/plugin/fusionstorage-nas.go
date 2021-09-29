@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"storage/fusionstorage/volume"
+	"utils"
+	"utils/log"
 )
 
 type FusionStorageNasPlugin struct {
@@ -46,6 +48,13 @@ func (p *FusionStorageNasPlugin) Init(config, parameters map[string]interface{},
 }
 
 func (p *FusionStorageNasPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
+	size, ok := parameters["size"].(int64)
+	if !ok || !utils.IsCapacityAvailable(size, CAPACITY_UNIT) {
+		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of %d.",
+			size, CAPACITY_UNIT)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
 	params, err := p.getParams(name, parameters)
 	if err != nil {
 		return "", err

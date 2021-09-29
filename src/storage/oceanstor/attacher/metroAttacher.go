@@ -70,12 +70,14 @@ func (p *MetroAttacher) mergeMappingInfo(localMapping, remoteMapping map[string]
 func (p *MetroAttacher) ControllerAttach(lunName string, parameters map[string]interface{}) (map[string]interface{}, error) {
 	remoteMapping, err := p.remoteAttacher.ControllerAttach(lunName, parameters)
 	if err != nil {
-		log.Warningf("Attach hypermetro remote volume %s error: %v", lunName, err)
+		log.Errorf("Attach hypermetro remote volume %s error: %v", lunName, err)
+		return nil, err
 	}
 
 	localMapping, err := p.localAttacher.ControllerAttach(lunName, parameters)
 	if err != nil {
-		log.Warningf("Attach hypermetro local volume %s error: %v", lunName, err)
+		log.Errorf("Attach hypermetro local volume %s error: %v", lunName, err)
+		return nil, err
 	}
 
 	return p.mergeMappingInfo(localMapping, remoteMapping)
@@ -84,12 +86,14 @@ func (p *MetroAttacher) ControllerAttach(lunName string, parameters map[string]i
 func (p *MetroAttacher) ControllerDetach(lunName string, parameters map[string]interface{}) (string, error) {
 	rmtLunWWN, err := p.remoteAttacher.ControllerDetach(lunName, parameters)
 	if err != nil {
-		log.Warningf("Detach hypermetro remote volume %s error: %v", lunName, err)
+		log.Errorf("Detach hypermetro remote volume %s error: %v", lunName, err)
+		return "", err
 	}
 
 	locLunWWN, err := p.localAttacher.ControllerDetach(lunName, parameters)
 	if err != nil {
-		log.Warningf("Detach hypermetro local volume %s error: %v", lunName, err)
+		log.Errorf("Detach hypermetro local volume %s error: %v", lunName, err)
+		return "", err
 	}
 
 	return p.mergeLunWWN(locLunWWN, rmtLunWWN)

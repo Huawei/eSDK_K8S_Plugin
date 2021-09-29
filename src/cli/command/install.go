@@ -23,21 +23,21 @@ type CSIConfig struct {
 
 // CSISecret is to store the secret object
 type CSISecret struct {
-	Secrets map[string]interface{}  `json:"secrets"`
+	Secrets map[string]interface{} `json:"secrets"`
 }
 
 const (
 	KubernetesCSIVersionMin = "v1.13.0"
 
-	HUAWEICSIConfigMap      = "huawei-csi-configmap"
-	HUAWEICSISecret         = "huawei-csi-secret"
-	HUAWEINamespace         = "kube-system"
+	HUAWEICSIConfigMap = "huawei-csi-configmap"
+	HUAWEICSISecret    = "huawei-csi-secret"
+	HUAWEINamespace    = "kube-system"
 )
 
 var (
-	client k8sClient.Interface
-	storageConfig CSIConfig
-	storageSecret CSISecret
+	client           k8sClient.Interface
+	storageConfig    CSIConfig
+	storageSecret    CSISecret
 	storageNamespace string
 )
 
@@ -52,7 +52,6 @@ func Init() {
 	processInstallationArguments()
 	installSecret()
 }
-
 
 func installSecret() {
 	exist, err := client.CheckConfigMapExists(HUAWEICSIConfigMap)
@@ -97,10 +96,7 @@ func initInstallerLogging() {
 	logging.SetOutput(os.Stdout)
 	logging.SetFormatter(&logging.TextFormatter{DisableTimestamp: true})
 
-	err := log.Init(map[string]string{
-		"logFilePrefix": "huawei-csi-install",
-		"logDebug":      "info",
-	})
+	err := log.InitLogging("huawei-csi-install")
 	if err != nil {
 		logging.WithField("error", err).Fatal("Failed to initialize logging.")
 	}
@@ -125,7 +121,7 @@ func generateKeyText() (string, error) {
 	cmd := "head -c32 /dev/urandom | base64"
 	shCmd := exec.Command("/bin/sh", "-c", cmd)
 	output, err := shCmd.CombinedOutput()
-	if err != nil{
+	if err != nil {
 		fmt.Printf("Generate random string error: %v", err)
 		return "", err
 	}
@@ -199,7 +195,7 @@ func generateSecret(backendName string) (map[string]string, error) {
 	secretInfo := map[string]string{
 		"user":     inputUser,
 		"password": inputPassword,
-		"keyText": keyText,
+		"keyText":  keyText,
 	}
 	return secretInfo, nil
 }

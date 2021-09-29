@@ -10,6 +10,7 @@ import (
 	"storage/oceanstor/attacher"
 	"storage/oceanstor/client"
 	"storage/oceanstor/volume"
+	"sync"
 	"utils"
 	"utils/log"
 )
@@ -27,8 +28,9 @@ type OceanstorSanPlugin struct {
 
 	replicaRemotePlugin *OceanstorSanPlugin
 	metroRemotePlugin   *OceanstorSanPlugin
-	locStorageOnline    bool
-	rmtStorageOnline    bool
+	storageOnline       bool
+	clientCount         int
+	clientMutex         sync.Mutex
 }
 
 func init() {
@@ -73,7 +75,7 @@ func (p *OceanstorSanPlugin) Init(config, parameters map[string]interface{}, kee
 	}
 
 	p.protocol = protocol
-	p.locStorageOnline = true
+	p.storageOnline = true
 
 	return nil
 }
@@ -93,6 +95,13 @@ func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
 }
 
 func (p *OceanstorSanPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
+	size, ok := parameters["size"].(int64)
+	if !ok || !utils.IsCapacityAvailable(size, SectorSize) {
+		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", size)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+
 	params := p.getParams(name, parameters)
 	san := p.getSanObj()
 
@@ -110,6 +119,11 @@ func (p *OceanstorSanPlugin) DeleteVolume(name string) error {
 }
 
 func (p *OceanstorSanPlugin) ExpandVolume(name string, size int64) (bool, error) {
+	if !utils.IsCapacityAvailable(size, SectorSize) {
+		msg := fmt.Sprintf("Expand Volume: the capacity %d is not an integer multiple of 512.", size)
+		log.Errorln(msg)
+		return false, errors.New(msg)
+	}
 	san := p.getSanObj()
 	newSize := utils.TransVolumeCapacity(size, 512)
 	isAttach, err := san.Expand(name, newSize)
@@ -157,18 +171,16 @@ func (p *OceanstorSanPlugin) metroHandler(localCli, metroCli *client.Client, lun
 	return out, nil
 }
 
-func (p *OceanstorSanPlugin) localHandler(localCli *client.Client, lun, parameters map[string]interface{},
+func (p *OceanstorSanPlugin) commonHandler(plugin *OceanstorSanPlugin, lun, parameters map[string]interface{},
 	method string) ([]reflect.Value, error) {
-	var localAttacher attacher.AttacherPlugin
-	if p.rmtStorageOnline {
-		localAttacher = attacher.NewAttacher(p.metroRemotePlugin.product, localCli, p.metroRemotePlugin.protocol,
-			"csi", p.metroRemotePlugin.portals, p.metroRemotePlugin.alua)
-	} else {
-		localAttacher = attacher.NewAttacher(p.product, localCli, p.protocol, "csi", p.portals, p.alua)
-	}
+	commonAttacher := attacher.NewAttacher(plugin.product, plugin.cli, plugin.protocol, "csi",
+		plugin.portals, plugin.alua)
 
-	lunName := lun["NAME"].(string)
-	out := utils.ReflectCall(localAttacher, method, lunName, parameters)
+	lunName, ok := lun["NAME"].(string)
+	if !ok {
+		return nil, errors.New("there is no NAME in lun info")
+	}
+	out := utils.ReflectCall(commonAttacher, method, lunName, parameters)
 	return out, nil
 }
 
@@ -178,33 +190,34 @@ func (p *OceanstorSanPlugin) handler(localCli, metroCli *client.Client, lun, par
 	var err error
 
 	if !p.isHyperMetro(lun) {
-		return p.localHandler(localCli, lun, parameters, method)
+		return p.commonHandler(p, lun, parameters, method)
 	}
 
-	if p.locStorageOnline && p.rmtStorageOnline {
+	if p.storageOnline && p.metroRemotePlugin != nil && p.metroRemotePlugin.storageOnline {
 		out, err = p.metroHandler(localCli, metroCli, lun, parameters, method)
-	} else if p.locStorageOnline {
+	} else if p.storageOnline {
 		log.Warningf("the lun %s is hyperMetro, but just the local storage is online", lun["NAME"].(string))
-		out, err = p.localHandler(localCli, lun, parameters, method)
-	} else if p.rmtStorageOnline {
+		out, err = p.commonHandler(p, lun, parameters, method)
+	} else if p.metroRemotePlugin != nil && p.metroRemotePlugin.storageOnline {
 		log.Warningf("the lun %s is hyperMetro, but just the remote storage is online", lun["NAME"].(string))
-		out, err = p.localHandler(metroCli, lun, parameters, method)
+		out, err = p.commonHandler(p.metroRemotePlugin, lun, parameters, method)
 	}
 
 	return out, err
 }
 
 func (p *OceanstorSanPlugin) DetachVolume(name string, parameters map[string]interface{}) error {
-	cli, metroCli := p.getClient()
-	if p.locStorageOnline {
-		defer cli.Logout()
+	var localCli, metroCli *client.Client
+	if p.storageOnline {
+		localCli = p.cli
 	}
-	if p.rmtStorageOnline {
-		defer metroCli.Logout()
+
+	if p.metroRemotePlugin != nil && p.metroRemotePlugin.storageOnline {
+		metroCli = p.metroRemotePlugin.cli
 	}
 
 	lunName := utils.GetLunName(name)
-	lun, err := p.getLunInfo(cli, metroCli, lunName)
+	lun, err := p.getLunInfo(localCli, metroCli, lunName)
 	if err != nil {
 		log.Errorf("Get lun %s error: %v", lunName, err)
 		return err
@@ -216,7 +229,7 @@ func (p *OceanstorSanPlugin) DetachVolume(name string, parameters map[string]int
 
 	var out []reflect.Value
 
-	out, err = p.handler(p.cli, metroCli, lun, parameters, "ControllerDetach")
+	out, err = p.handler(localCli, metroCli, lun, parameters, "ControllerDetach")
 	if err != nil {
 		return err
 	}
@@ -232,14 +245,28 @@ func (p *OceanstorSanPlugin) DetachVolume(name string, parameters map[string]int
 	return nil
 }
 
+func (p *OceanstorSanPlugin) mutexReleaseClient(plugin *OceanstorSanPlugin, cli *client.Client) {
+	plugin.clientMutex.Lock()
+	defer plugin.clientMutex.Unlock()
+	plugin.clientCount --
+	if plugin.clientCount == 0 {
+		cli.Logout()
+	}
+}
+
+func (p *OceanstorSanPlugin) releaseClient(cli, metroCli *client.Client) {
+	if p.storageOnline {
+		defer p.mutexReleaseClient(p, cli)
+	}
+
+	if p.metroRemotePlugin != nil && p.metroRemotePlugin.storageOnline {
+		defer p.mutexReleaseClient(p.metroRemotePlugin, metroCli)
+	}
+}
+
 func (p *OceanstorSanPlugin) StageVolume(name string, parameters map[string]interface{}) error {
 	cli, metroCli := p.getClient()
-	if p.locStorageOnline {
-		defer cli.Logout()
-	}
-	if p.rmtStorageOnline {
-		defer metroCli.Logout()
-	}
+	defer p.releaseClient(cli, metroCli)
 
 	lunName := utils.GetLunName(name)
 	lun, err := p.getLunInfo(cli, metroCli, lunName)
@@ -274,12 +301,7 @@ func (p *OceanstorSanPlugin) UnstageVolume(name string, parameters map[string]in
 	}
 
 	cli, metroCli := p.getClient()
-	if p.locStorageOnline {
-		defer cli.Logout()
-	}
-	if p.rmtStorageOnline {
-		defer metroCli.Logout()
-	}
+	defer p.releaseClient(cli, metroCli)
 
 	lunName := utils.GetLunName(name)
 	lun, err := p.getLunInfo(cli, metroCli, lunName)
@@ -321,15 +343,11 @@ func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(remote Plugin) {
 }
 
 func (p *OceanstorSanPlugin) NodeExpandVolume(name, volumePath string) error {
-	cli := p.cli.DuplicateClient()
-	err := cli.Login()
-	if err != nil {
-		return err
-	}
-	defer cli.Logout()
+	cli, metroCli := p.getClient()
+	defer p.releaseClient(cli, metroCli)
 
 	lunName := utils.GetLunName(name)
-	lun, err := cli.GetLunByName(lunName)
+	lun, err := p.getLunInfo(cli, metroCli, lunName)
 	if err != nil {
 		log.Errorf("Get lun %s error: %v", lunName, err)
 		return err
@@ -384,14 +402,30 @@ func (p *OceanstorSanPlugin) DeleteSnapshot(snapshotParentId, snapshotName strin
 	return nil
 }
 
-func (p *OceanstorSanPlugin) getClient() (*client.Client, *client.Client) {
-	cli, err := p.duplicateClient()
-	p.locStorageOnline = err == nil
+func (p *OceanstorSanPlugin) mutexGetClient() *client.Client {
+	var cli *client.Client
+	var err error
+	p.clientMutex.Lock()
+	defer p.clientMutex.Unlock()
+	if !p.storageOnline || p.clientCount == 0 {
+		cli, err = p.duplicateClient()
+		p.storageOnline = err == nil
+		if err == nil {
+			p.clientCount ++
+		}
+	} else {
+		cli = p.cli
+		p.clientCount ++
+	}
 
+	return cli
+}
+
+func (p *OceanstorSanPlugin) getClient() (*client.Client, *client.Client) {
+	cli := p.mutexGetClient()
 	var metroCli *client.Client
 	if p.metroRemotePlugin != nil {
-		metroCli, err = p.metroRemotePlugin.duplicateClient()
-		p.rmtStorageOnline = err == nil
+		metroCli = p.metroRemotePlugin.mutexGetClient()
 	}
 
 	return cli, metroCli
@@ -400,9 +434,9 @@ func (p *OceanstorSanPlugin) getClient() (*client.Client, *client.Client) {
 func (p *OceanstorSanPlugin) getLunInfo(localCli, remoteCli *client.Client, lunName string) (map[string]interface{}, error) {
 	var lun map[string]interface{}
 	var err error
-	if p.locStorageOnline {
+	if p.storageOnline {
 		lun, err = localCli.GetLunByName(lunName)
-	} else if p.rmtStorageOnline {
+	} else if p.metroRemotePlugin != nil && p.metroRemotePlugin.storageOnline {
 		lun, err = remoteCli.GetLunByName(lunName)
 	} else {
 		return nil, errors.New("both the local and remote storage are not online")
@@ -415,11 +449,11 @@ func (p *OceanstorSanPlugin) getLunInfo(localCli, remoteCli *client.Client, lunN
 func (p *OceanstorSanPlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
 	capabilities, err := p.OceanstorPlugin.UpdateBackendCapabilities()
 	if err != nil {
-		p.locStorageOnline = false
+		p.storageOnline = false
 		return nil, err
 	}
 
-	p.locStorageOnline = true
+	p.storageOnline = true
 	p.updateHyperMetroCapability(capabilities)
 	p.updateReplicaCapability(capabilities)
 	return capabilities, nil
@@ -431,7 +465,7 @@ func (p *OceanstorSanPlugin) updateHyperMetroCapability(capabilities map[string]
 	}
 
 	capabilities["SupportMetro"] = p.metroRemotePlugin != nil &&
-		p.locStorageOnline && p.metroRemotePlugin.locStorageOnline
+		p.storageOnline && p.metroRemotePlugin.storageOnline
 }
 
 func (p *OceanstorSanPlugin) updateReplicaCapability(capabilities map[string]interface{}) {

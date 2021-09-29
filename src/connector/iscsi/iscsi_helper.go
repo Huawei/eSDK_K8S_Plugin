@@ -205,6 +205,9 @@ func getAllISCSISession() [][]string {
 
 func connectISCSIPortal(tgtPortal, targetIQN string, tgtChapInfo chapInfo) (string, bool) {
 	checkExitCode := []string{"exit status 0", "exit status 21", "exit status 255"}
+	// If the host already discovery the target, we do not need to run --op new.
+	// Therefore, we check to see if the target exists, and if we get 255(Not Found), should run --op new.
+	// It will return 21 for No records Found after version 2.0-871
 	err := runISCSIAdmin(tgtPortal, targetIQN, "", checkExitCode)
 	if err != nil {
 		if err.Error() == "timeout" {
@@ -221,8 +224,9 @@ func connectISCSIPortal(tgtPortal, targetIQN string, tgtChapInfo chapInfo) (stri
 	var manualScan bool
 	err = updateISCSIAdmin(tgtPortal, targetIQN, "node.session.scan", "manual")
 	if err != nil {
-		manualScan = true
+		log.Warningf("Update node session scan mode to manual error, reason: %v", tgtPortal, err)
 	}
+	manualScan = err == nil
 
 	err = updateChapInfo(tgtPortal, targetIQN, tgtChapInfo)
 	if err != nil {
@@ -234,6 +238,7 @@ func connectISCSIPortal(tgtPortal, targetIQN string, tgtChapInfo chapInfo) (stri
 		sessions := getAllISCSISession()
 		for _, s := range sessions {
 			if s[0] == "tcp:" && strings.ToLower(tgtPortal) == strings.ToLower(s[2]) && targetIQN == s[4] {
+				log.Infof("Login iSCSI session success. Session: %s, manualScan: %s", s[1], manualScan)
 				return s[1], manualScan
 			}
 		}

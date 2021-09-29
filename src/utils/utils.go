@@ -36,6 +36,8 @@ import (
 const (
 	DoradoV6Version = "V600"
 	V5Version       = "V500"
+	defaultTimeout  = 30
+	longTimeout     = 60
 )
 
 var maskObject = []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
@@ -77,66 +79,75 @@ func MaskSensitiveInfo(info interface{}) string {
 	return message
 }
 
-func ExecShellCmd(format string, args ...interface{}) (string, error) {
+func execShellCmdTimeout(fun func(string, bool, ...interface{})(string, bool, error), format string, logFilter bool, args ...interface{}) (string, error) {
 	var output string
 	var err error
+	var timeOut bool
 	done := make(chan string)
-	defer close(done)
+	timeCh := make(chan bool)
+	defer func() {
+		close(done)
+		close(timeCh)
+	}()
 
 	go func() {
-		output, err = execShellCmd(format, done, false, args...)
+		output, timeOut, err = fun(format, logFilter, args...)
+		if !timeOut {
+			done <- "run command done"
+		} else {
+			timeCh <- timeOut
+		}
+		if err != nil {
+			log.Infoln("Run shell cmd failed.")
+		}
 	}()
 
 	select {
-	case do := <-done:
-		log.Debugf("Run shell cmd done %s.", do)
+	case <-done:
 		return output, err
-	case <-time.After(time.Duration(30) * time.Second):
+	case <-timeCh:
 		return "", errors.New("timeout")
 	}
+}
+
+// ExecShellCmd execs the command without filters the result log
+func ExecShellCmd(format string, args ...interface{}) (string, error) {
+	return execShellCmdTimeout(execShellCmd, format, false, args...)
 }
 
 // ExecShellCmdFilterLog execs the command and filters the result log
 func ExecShellCmdFilterLog(format string, args ...interface{}) (string, error) {
-	var output string
-	var err error
-	done := make(chan string)
-	defer close(done)
-
-	go func() {
-		output, err = execShellCmd(format, done, true, args...)
-	}()
-
-	select {
-	case do := <-done:
-		log.Debugf("Run shell cmd done %s.", do)
-		return output, err
-	case <-time.After(time.Duration(30) * time.Second):
-		return "", errors.New("timeout")
-	}
+	return execShellCmdTimeout(execShellCmd, format, true, args...)
 }
 
-func execShellCmd(format string, ch chan string, logFilter bool, args ...interface{}) (string, error) {
+func execShellCmd(format string, logFilter bool, args ...interface{}) (string, bool, error) {
 	cmd := fmt.Sprintf(format, args...)
 	log.Infof("Gonna run shell cmd \"%s\".", MaskSensitiveInfo(cmd))
 
-	defer func() {
-		ch <- fmt.Sprintf("Shell cmd \"%s\" done", MaskSensitiveInfo(cmd))
-	}()
-
 	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "/bin/sh", "-c", cmd}
 	shCmd := exec.Command("nsenter", execCmd...)
-	time.AfterFunc(30*time.Second, func() { _ = shCmd.Process.Kill() })
+	var timeOut bool
+	if strings.Contains(cmd, "mkfs") || strings.Contains(cmd, "resize2fs") {
+		time.AfterFunc(longTimeout*time.Second, func() {
+			timeOut = true
+		})
+	} else {
+		time.AfterFunc(defaultTimeout*time.Second, func() {
+			_ = shCmd.Process.Kill()
+			timeOut = true
+		})
+	}
 	output, err := shCmd.CombinedOutput()
 	if err != nil {
-		log.Warningf("Run shell cmd \"%s\" error: %s.", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output))
-		return string(output), err
+		log.Warningf("Run shell cmd \"%s\" output: %s, error: %v", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output),
+			MaskSensitiveInfo(err))
+		return string(output), timeOut, err
 	}
 
 	if !logFilter {
 		log.Infof("Shell cmd \"%s\" result:\n%s", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output))
 	}
-	return string(output), nil
+	return string(output), timeOut, nil
 }
 
 func GetLunName(name string) string {
@@ -457,6 +468,7 @@ func GetAccessModeType(accessMode csi.VolumeCapability_AccessMode_Mode) string {
 	}
 }
 
+// CheckExistCode if the error code exist in ExitCode, return err
 func CheckExistCode(err error, checkExitCode []string) error {
 	for _, v := range checkExitCode {
 		if err.Error() == v {
@@ -465,6 +477,17 @@ func CheckExistCode(err error, checkExitCode []string) error {
 	}
 
 	return nil
+}
+
+// IgnoreExistCode if the error code exist in ExitCode, return nil
+func IgnoreExistCode(err error, checkExitCode []string) error {
+	for _, v := range checkExitCode {
+		if err.Error() == v {
+			return nil
+		}
+	}
+
+	return err
 }
 
 func TestMultiPathService() error {
@@ -513,4 +536,9 @@ func NeedMultiPath(backendConfigs []map[string]interface{}) bool {
 	}
 
 	return needMultiPath
+}
+
+// IsCapacityAvailable indicates whether the volume size is an integer multiple of 512.
+func IsCapacityAvailable(volumeSizeBytes int64, allocationUnitBytes int64) bool {
+	return volumeSizeBytes % allocationUnitBytes == 0
 }

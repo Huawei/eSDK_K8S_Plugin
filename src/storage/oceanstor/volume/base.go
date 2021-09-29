@@ -135,18 +135,10 @@ func (p *Base) getRemotePoolID(params map[string]interface{}, remoteCli *client.
 func (p *Base) preExpandCheckCapacity(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	// check the local pool
 	localParentName := params["localParentName"].(string)
-	expandSize := params["expandSize"].(int64)
 	pool, err := p.cli.GetPoolByName(localParentName)
 	if err != nil || pool == nil {
 		msg := fmt.Sprintf("Get storage pool %s info error: %v", localParentName, err)
 		log.Errorf(msg)
-		return nil, errors.New(msg)
-	}
-	freeCapacity, _ := strconv.ParseInt(pool["USERFREECAPACITY"].(string), 10, 64)
-	if freeCapacity < expandSize {
-		msg := fmt.Sprintf("storage pool %s free capacity %s is not enough to expand to %v",
-			localParentName, pool["USERFREECAPACITY"], expandSize)
-		log.Errorln(msg)
 		return nil, errors.New(msg)
 	}
 
@@ -235,4 +227,29 @@ func (p *Base) getRemoteDeviceID(deviceSN string) (string, error) {
 	}
 
 	return remoteDevice["ID"].(string), nil
+}
+
+func (p *Base) getWorkLoadIDByName(cli *client.Client, workloadTypeName string) (string, error) {
+	workloadTypeID, err := cli.GetApplicationTypeByName(workloadTypeName)
+	if err != nil {
+		log.Errorf("Get application types returned error: %v", err)
+		return "", err
+	}
+	if workloadTypeID == "" {
+		msg := fmt.Sprintf("The workloadType %s does not exist on storage", workloadTypeName)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+	return workloadTypeID, nil
+}
+
+func (p *Base) setWorkLoadID(cli *client.Client, params map[string]interface{}) error {
+	if val, ok := params["applicationtype"].(string); ok {
+		workloadTypeID, err := p.getWorkLoadIDByName(cli, val)
+		if err != nil {
+			return err
+		}
+		params["workloadTypeID"] = workloadTypeID
+	}
+	return nil
 }

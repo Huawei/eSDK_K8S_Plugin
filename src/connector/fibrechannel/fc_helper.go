@@ -41,6 +41,7 @@ type connectorInfo struct {
 
 const (
 	deviceScanAttemptsDefault int = 3
+	intNumTwo                 int = 2
 )
 
 func scanHost() {
@@ -159,60 +160,144 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 	return "", errors.New("NoFibreChannelVolumeDeviceFound")
 }
 
-func getFcHBAs() ([]map[string]string, error) {
-	if !supportFC() {
-		return nil, errors.New("no Fibre Channel support detected on system")
+func getHostInfo(host, portAttr string) (string, error) {
+	output, err := utils.ExecShellCmd("cat /sys/class/fc_host/%s/%s", host, portAttr)
+	if err != nil {
+		log.Errorf("Get host %s FC initiator Attr %s output: %s", host, portAttr, output)
+		return "", err
 	}
 
-	output, err := utils.ExecShellCmd("systool -c fc_host -v")
-	if err != nil && strings.Contains(err.Error(), "command not found") {
-		return nil, err
-	}
-
-	var hbas []map[string]string
-	hba := make(map[string]string)
-	lastLine := "defaultLine"
-	lines := strings.Split(output, "\n")[2:]
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" && lastLine == "" {
-			if len(hba) > 0 {
-				hbas = append(hbas, hba)
-				hba = make(map[string]string)
-			}
-		} else {
-			val := strings.Split(line, "=")
-			if len(val) == 2 {
-				key := strings.Replace(strings.TrimSpace(val[0]), " ", "", -1)
-				value := strings.Replace(strings.TrimSpace(val[1]), "\"", "", -1)
-				hba[key] = value
-			}
-		}
-		lastLine = line
-	}
-
-	return hbas, nil
+	return output, nil
 }
 
-func getFcHBAsInfo() ([]map[string]string, error) {
-	hbas, err := getFcHBAs()
+func getHostAttrName(host, portAttr string) (string, error) {
+	nodeName, err := getHostInfo(host, portAttr)
+	if err != nil {
+		return "", err
+	}
+
+	lines := strings.Split(nodeName, "\n")
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "0x") {
+			continue
+		}
+		attrWwn := line[2:]
+		return attrWwn, nil
+	}
+
+	msg := fmt.Sprintf("Can not find the %s of host %s", portAttr, host)
+	log.Errorln(msg)
+	return "", errors.New(msg)
+}
+
+func isPortOnline(host string) (bool, error) {
+	output, err := utils.ExecShellCmd("cat /sys/class/fc_host/%s/port_state", host)
+	if err != nil {
+		return false, err
+	}
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		return line == "Online", nil
+	}
+
+	return false, errors.New("check port state error")
+}
+
+func getClassDevicePath(host string) (string, error) {
+	hostPath := fmt.Sprintf("/sys/class/fc_host/%s", host)
+	classDevicePath, err := filepath.EvalSymlinks(hostPath)
+	if err != nil || classDevicePath == "" {
+		msg := fmt.Sprintf("Get host %s class device path failed.", host)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	return classDevicePath, nil
+}
+
+func getAllFcHosts() ([]string, error) {
+	output, err := utils.ExecShellCmd("ls /sys/class/fc_host/")
 	if err != nil {
 		return nil, err
 	}
 
-	var hbaInfos []map[string]string
-	for _, hba := range hbas {
-		wwpn := strings.Replace(hba["port_name"], "0x", "", -1)
-		wwnn := strings.Replace(hba["node_name"], "0x", "", -1)
-		hbaInfo := map[string]string{
-			"port_name":   wwpn,
-			"node_name":   wwnn,
-			"host_device": hba["ClassDevice"],
-			"device_path": hba["ClassDevicepath"],
-		}
-		hbaInfos = append(hbaInfos, hbaInfo)
+	var hosts []string
+	hostLines := strings.Fields(output)
+	for _, h := range hostLines {
+		host := strings.TrimSpace(h)
+		hosts = append(hosts, host)
 	}
-	return hbaInfos, nil
+
+	return hosts, nil
+}
+
+func getAvailableFcHBAsInfo() ([]map[string]string, error) {
+	allFcHosts, err := getAllFcHosts()
+	if err != nil {
+		return nil, err
+	}
+	if allFcHosts == nil {
+		return nil, errors.New("there is no fc host")
+	}
+
+	var hbas []map[string]string
+	for _, h := range allFcHosts {
+		hbaInfo, err := getFcHbaInfo(h)
+		if err != nil {
+			log.Warningf("Get Fc HBA info error %v", err)
+			continue
+		}
+		hbas = append(hbas, hbaInfo)
+	}
+	log.Infof("Get available hbas are %v", hbas)
+	return hbas, nil
+}
+
+func getFcHbaInfo(host string) (map[string]string, error) {
+	online, err := isPortOnline(host)
+	if err != nil || !online {
+		return nil, errors.New("the port state is not available")
+	}
+
+	portName, err := getHostAttrName(host, "port_name")
+	if err != nil {
+		return nil, errors.New("the port name is not available")
+	}
+
+	nodeName, err := getHostAttrName(host, "node_name")
+	if err != nil {
+		return nil, errors.New("the node name is not available")
+	}
+
+	classDevicePath, err := getClassDevicePath(host)
+	if err != nil {
+		return nil, errors.New("the device path is not available")
+	}
+
+	hba := map[string]string{
+		"port_name":   portName,
+		"node_name":   nodeName,
+		"host_device": host,
+		"device_path": classDevicePath,
+	}
+	return hba, nil
+}
+
+func getFcHBAsInfo() ([]map[string]string, error) {
+	if !supportFC() {
+		return nil, errors.New("no Fibre Channel support detected on system")
+	}
+
+	hbas, err := getAvailableFcHBAsInfo()
+	if err != nil || hbas == nil {
+		return nil, errors.New("there is no available port")
+	}
+
+	return hbas, nil
 }
 
 func supportFC() bool {
@@ -389,9 +474,29 @@ func rescanHosts(hbas []map[string]string, targets []target, volumeUseMultiPath 
 	}
 
 	for _, p := range process {
-		pro := p.([]interface{})
+		pro, ok := p.([]interface{})
+		if !ok {
+			log.Errorf("the %v is not interface", p)
+			return
+		}
+
+		if len(pro) != intNumTwo {
+			log.Errorf("the length of %s not equal 2", pro)
+			return
+		}
+
 		hba := pro[0].(map[string]string)
+		if !ok {
+			log.Errorf("the %v is not map[string]string", pro[0])
+			return
+		}
+
 		ctls := pro[1].([][]string)
+		if !ok {
+			log.Errorf("the %v is not [][]string", pro[1])
+			return
+		}
+
 		for _, c := range ctls {
 			scanFC(c, hba["host_device"])
 			if !volumeUseMultiPath {

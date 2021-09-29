@@ -96,13 +96,15 @@ func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, e
 	supportQoS := utils.IsSupportFeature(features, "SmartQoS")
 	supportMetro := utils.IsSupportFeature(features, "HyperMetro")
 	supportReplication := utils.IsSupportFeature(features, "HyperReplication")
+	supportApplicationType := p.product == "DoradoV6"
 
 	capabilities := map[string]interface{}{
-		"SupportThin":        supportThin,
-		"SupportThick":       supportThick,
-		"SupportQoS":         supportQoS,
-		"SupportMetro":       supportMetro,
-		"SupportReplication": supportReplication,
+		"SupportThin":        		supportThin,
+		"SupportThick":       		supportThick,
+		"SupportQoS":         		supportQoS,
+		"SupportMetro":       		supportMetro,
+		"SupportReplication": 		supportReplication,
+		"SupportApplicationType":	supportApplicationType,
 	}
 
 	return capabilities, nil
@@ -127,6 +129,7 @@ func (p *OceanstorPlugin) getParams(name string, parameters map[string]interface
 		"sourceSnapshotName",
 		"sourceVolumeName",
 		"snapshotParentId",
+		"applicationType",
 	}
 
 	for _, key := range paramKeys {
@@ -205,11 +208,10 @@ func (p *OceanstorPlugin) analyzePoolsCapacity(pools []map[string]interface{}) m
 }
 
 func (p *OceanstorPlugin) duplicateClient() (*client.Client, error) {
-	cli := p.cli.DuplicateClient()
-	err := cli.Login()
+	err := p.cli.Login()
 	if err != nil {
 		return nil, err
 	}
 
-	return cli, nil
+	return p.cli, nil
 }

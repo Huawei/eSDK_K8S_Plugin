@@ -29,7 +29,15 @@ type NFS struct {
 	mutex sync.Mutex
 }
 
-const waitInternal = 2
+const (
+	waitInternal             = 2
+	formatWaitInternal       = 10
+	halfTiSizeBytes    int64 = 549755813888
+	oneTiSizeBytes     int64 = 1099511627776
+	tenTiSizeBytes     int64 = 10995116277760
+	hundredTiSizeBytes int64 = 109951162777600
+	halfPiSizeBytes    int64 = 562949953421312
+)
 
 func init() {
 	connector.RegisterConnector(connector.NFSDriver, &NFS{})

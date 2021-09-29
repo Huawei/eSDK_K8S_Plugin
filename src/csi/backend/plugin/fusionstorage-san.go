@@ -105,6 +105,13 @@ func (p *FusionStorageSanPlugin) getParams(name string, parameters map[string]in
 }
 
 func (p *FusionStorageSanPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
+	size, ok := parameters["size"].(int64)
+	if !ok || !utils.IsCapacityAvailable(size, CAPACITY_UNIT) {
+		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of %d.",
+			size, CAPACITY_UNIT)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
 	params, err := p.getParams(name, parameters)
 	if err != nil {
 		return "", err
@@ -125,6 +132,11 @@ func (p *FusionStorageSanPlugin) DeleteVolume(name string) error {
 }
 
 func (p *FusionStorageSanPlugin) ExpandVolume(name string, size int64) (bool, error) {
+	if !utils.IsCapacityAvailable(size, SectorSize) {
+		msg := fmt.Sprintf("Expand Volume: the capacity %d is not an integer multiple of 512.", size)
+		log.Errorln(msg)
+		return false, errors.New(msg)
+	}
 	san := volume.NewSAN(p.cli)
 	newSize := utils.TransVolumeCapacity(size, CAPACITY_UNIT)
 	isAttach, err := san.Expand(name, newSize)

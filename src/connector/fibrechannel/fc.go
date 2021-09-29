@@ -4,6 +4,7 @@ import (
 	"connector"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 	"utils/log"
@@ -17,36 +18,6 @@ func init() {
 	connector.RegisterConnector(connector.FCDriver, &FibreChannel{})
 }
 
-func normalConnect(conn map[string]interface{}) (string, error) {
-	tgtLunWWN, exist := conn["tgtLunWWN"].(string)
-	if !exist {
-		msg := "there is no Lun WWN in connect info"
-		log.Errorln(msg)
-		return "", errors.New(msg)
-	}
-
-	scanHost()
-	var device string
-	var findDeviceMap map[string]string
-	for i := 0; i < 5; i++ {
-		time.Sleep(time.Second * 3)
-		device, _ = connector.GetDevice(findDeviceMap, tgtLunWWN, true)
-		if device != "" {
-			break
-		}
-
-		log.Warningf("Device of WWN %s wasn't found yet, will wait and check again", tgtLunWWN)
-	}
-
-	if device == "" {
-		msg := fmt.Sprintf("Cannot detect device %s", tgtLunWWN)
-		log.Errorln(msg)
-		return "", errors.New(msg)
-	}
-
-	return fmt.Sprintf("/dev/%s", device), nil
-}
-
 func (fc *FibreChannel) ConnectVolume(conn map[string]interface{}) (string, error) {
 	fc.mutex.Lock()
 	defer fc.mutex.Unlock()
@@ -54,8 +25,8 @@ func (fc *FibreChannel) ConnectVolume(conn map[string]interface{}) (string, erro
 
 	for i := 0; i < 3; i++ {
 		device, err := tryConnectVolume(conn)
-		if err != nil && err.Error() == "command not found" {
-			break
+		if err != nil && strings.Contains(err.Error(), "command not found") {
+			return "", err
 		} else if err != nil && err.Error() == "NoFibreChannelVolumeDeviceFound" {
 			time.Sleep(time.Second * 3)
 			continue
@@ -64,7 +35,8 @@ func (fc *FibreChannel) ConnectVolume(conn map[string]interface{}) (string, erro
 		}
 	}
 
-	return normalConnect(conn)
+	log.Errorln("Final found no device.")
+	return "", nil
 }
 
 func (fc *FibreChannel) DisConnectVolume(tgtLunWWN string) error {

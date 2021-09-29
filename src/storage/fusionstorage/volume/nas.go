@@ -78,7 +78,13 @@ func (p *NAS) Create(params map[string]interface{}) error {
 }
 
 func (p *NAS) createFS(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	fsName := params["name"].(string)
+	fsName, ok := params["name"].(string)
+	if !ok {
+		msg := fmt.Sprintf("Parameter %v does not contain name field.", params)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	fs, err := p.cli.GetFileSystemByName(fsName)
 	if err != nil {
 		log.Errorf("Get filesystem %s error: %v", fsName, err)
@@ -118,7 +124,6 @@ func (p *NAS) revertFS(taskResult map[string]interface{}) error {
 	if !exist {
 		return nil
 	}
-
 	return p.deleteFS(fsID)
 }
 
@@ -132,7 +137,13 @@ func (p *NAS) deleteFS(fsID string) error {
 }
 
 func (p *NAS) createQuota(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	fsID, _ := taskResult["fsID"].(string)
+	fsID, ok := taskResult["fsID"].(string)
+	if !ok {
+		msg := fmt.Sprintf("Task %v does not contain fsID field.", taskResult)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	quota, err := p.cli.GetQuotaByFileSystem(fsID)
 	if err != nil {
 		log.Errorf("Get filesystem %s quota error: %v", fsID, err)
@@ -164,7 +175,6 @@ func (p *NAS) revertQuota(taskResult map[string]interface{}) error {
 	if !exist {
 		return nil
 	}
-
 	return p.deleteQuota(fsID)
 }
 
@@ -176,7 +186,13 @@ func (p *NAS) deleteQuota(fsID string) error {
 	}
 
 	if quota != nil {
-		quotaId := quota["id"].(string)
+		quotaId, ok := quota["id"].(string)
+		if !ok {
+			msg := fmt.Sprintf("Quota %v does not contain id field.", quota)
+			log.Errorln(msg)
+			return errors.New(msg)
+		}
+
 		err := p.cli.DeleteQuota(quotaId)
 		if err != nil {
 			log.Errorf("Delete filesystem quota %s error: %v", quotaId, err)
@@ -188,7 +204,13 @@ func (p *NAS) deleteQuota(fsID string) error {
 }
 
 func (p *NAS) createShare(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	fsName := params["name"].(string)
+	fsName, ok := params["name"].(string)
+	if !ok {
+		msg := fmt.Sprintf("Parameter %v does not contain name field.", params)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	sharePath := utils.GetFSSharePath(fsName)
 	share, err := p.cli.GetNfsShareByPath(sharePath)
 
@@ -235,7 +257,6 @@ func (p *NAS) revertShare(taskResult map[string]interface{}) error {
 	if !exist {
 		return nil
 	}
-
 	return p.deleteShare(shareID)
 }
 

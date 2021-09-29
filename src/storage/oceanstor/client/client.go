@@ -48,9 +48,13 @@ const (
 	REPLICATION_NOT_EXIST        int64 = 1077937923
 	HYPERMETRO_NOT_EXIST         int64 = 1077674242
 	SNAPSHOT_PARENT_NOT_EXIST    int64 = 1073754117
+	SMARTQOS_ALREADY_EXIST       int64 = 1077948993
+	SYSTEM_BUSY                  int64 = 1077949006
+	MSG_TIME_OUT                 int64 = 1077949001
 	DEFAULT_PARALLEL_COUNT       int   = 50
 	MAX_PARALLEL_COUNT           int   = 1000
 	MIN_PARALLEL_COUNT           int   = 20
+	GET_INFO_WAIT_INTERNAL             = 10
 )
 
 var (
@@ -568,6 +572,9 @@ func (cli *Client) CreateLun(params map[string]interface{}) (map[string]interfac
 		"CAPACITY":    params["capacity"].(int64),
 		"DESCRIPTION": params["description"].(string),
 		"ALLOCTYPE":   params["alloctype"].(int),
+	}
+	if val, ok := params["workloadTypeID"].(string); ok {
+		data["WORKLOADTYPEID"] = val
 	}
 
 	resp, err := cli.post("/lun", data)
@@ -1144,12 +1151,33 @@ func (cli *Client) CreateFileSystem(params map[string]interface{}) (map[string]i
 		"ISSHOWSNAPDIR": false,
 	}
 
+	if val, ok := params["workloadTypeID"].(string); ok {
+		res, err := strconv.ParseUint(val, 0, 32)
+		if err != nil {
+			return nil, fmt.Errorf("cannot convert workloadtype to int32: %v", err)
+		}
+
+		data["workloadTypeId"] = uint32(res)
+	}
 	resp, err := cli.post("/filesystem", data)
 	if err != nil {
 		return nil, err
 	}
 
 	code := int64(resp.Error["code"].(float64))
+	if code == SYSTEM_BUSY || code == MSG_TIME_OUT {
+		for i := 0; i < 10; i++ {
+			time.Sleep(time.Second * GET_INFO_WAIT_INTERNAL)
+			log.Infof("Create filesystem timeout, try to get info. The %d time", i+1)
+			fsInfo, err := cli.GetFileSystemByName(params["name"].(string))
+			if err != nil || fsInfo == nil {
+				log.Warningf("get filesystem error, fs: %v, error: %v", fsInfo, err)
+				continue
+			}
+			return fsInfo, nil
+		}
+	}
+
 	if code != 0 {
 		msg := fmt.Sprintf("Create filesystem %v error: %d", data, code)
 		return nil, errors.New(msg)
@@ -1243,6 +1271,20 @@ func (cli *Client) CreateNfsShare(params map[string]interface{}) (map[string]int
 		share, err := cli.GetNfsShareByPath(sharePath)
 		return share, err
 	}
+
+	if code == SYSTEM_BUSY || code == MSG_TIME_OUT {
+		for i := 0; i < 10; i++ {
+			time.Sleep(time.Second * GET_INFO_WAIT_INTERNAL)
+			log.Infof("Create nfs share timeout, try to get info. The %d time", i+1)
+			share, err := cli.GetNfsShareByPath(params["sharepath"].(string))
+			if err != nil || share == nil {
+				log.Warningf("get nfs share error, share: %v, error: %v", share, err)
+				continue
+			}
+			return share, nil
+		}
+	}
+
 	if code != 0 {
 		return nil, fmt.Errorf("Create nfs share %v error: %d", data, code)
 	}
@@ -1582,6 +1624,46 @@ func (cli *Client) GetLicenseFeature() (map[string]int, error) {
 	return result, nil
 }
 
+// GetApplicationTypeByName function to get the Application type ID to set the I/O size
+// while creating Volume
+func (cli *Client) GetApplicationTypeByName(appType string) (string, error) {
+	result := ""
+	appType = URL.QueryEscape(appType)
+	url := fmt.Sprintf("/workload_type?filter=NAME::%s", appType)
+	resp, err := cli.get(url)
+	if err != nil {
+		return result, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return result, fmt.Errorf("Get application types returned error: %d", code)
+	}
+
+	if resp.Data == nil {
+		return result, nil
+	}
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return result, errors.New("application types response is not valid")
+	}
+	// This should be just one elem. But the return is an array with single value
+	for _, i := range respData {
+		applicationTypes, ok := i.(map[string]interface{})
+		if !ok {
+			return result, errors.New("Data in response is not valid")
+		}
+		// From the map we need the application type ID
+		// This will be used for param to create LUN
+		val, ok := applicationTypes["ID"].(string)
+		if !ok {
+			return result, fmt.Errorf("application type is not valid")
+		}
+		result = val
+	}
+	return result, nil
+}
+
 func (cli *Client) GetSystem() (map[string]interface{}, error) {
 	resp, err := cli.get("/system/")
 	if err != nil {
@@ -1654,7 +1736,10 @@ func (cli *Client) CreateQos(name, objID, objType string, params map[string]int)
 	}
 
 	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
+	if code == SMARTQOS_ALREADY_EXIST {
+		log.Warningf("The QoS %s is already exist.", name)
+		return cli.GetQosByName(name)
+	} else if code != 0 {
 		return nil, fmt.Errorf("Create qos %v error: %d", data, code)
 	}
 

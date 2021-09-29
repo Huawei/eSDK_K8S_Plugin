@@ -32,6 +32,11 @@ var (
 	plugins = map[string]Plugin{}
 )
 
+const (
+	// SectorSize means Sector size
+	SectorSize    int64 = 512
+)
+
 func RegPlugin(storageType string, plugin Plugin) {
 	plugins[storageType] = plugin
 }

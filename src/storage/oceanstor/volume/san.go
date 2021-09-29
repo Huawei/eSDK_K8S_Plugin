@@ -62,6 +62,11 @@ func (p *SAN) preCreate(params map[string]interface{}) error {
 		params["clonefrom"] = utils.GetLunName(v)
 	}
 
+	err = p.setWorkLoadID(p.cli, params)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -172,8 +177,9 @@ func (p *SAN) Expand(name string, newSize int64) (bool, error) {
 	isAttached := lun["EXPOSEDTOINITIATOR"] == "true"
 	curSize, _ := strconv.ParseInt(lun["CAPACITY"].(string), 10, 64)
 	if newSize <= curSize {
-		log.Infof("Lun %s newSize %d must be greater than curSize %d", lunName, newSize, curSize)
-		return isAttached, nil
+		msg := fmt.Sprintf("Lun %s newSize %d must be greater than curSize %d", lunName, newSize, curSize)
+		log.Errorln(msg)
+		return false, errors.New(msg)
 	}
 
 	rssStr := lun["HASRSSOBJECT"].(string)
@@ -578,7 +584,6 @@ func (p *SAN) revertLocalLun(taskResult map[string]interface{}) error {
 	if !exist || lunID == "" {
 		return nil
 	}
-
 	err := p.cli.DeleteLun(lunID)
 	return err
 }
@@ -616,7 +621,6 @@ func (p *SAN) revertLocalQoS(taskResult map[string]interface{}) error {
 	if !lunIDExist || !qosIDExist {
 		return nil
 	}
-
 	smartX := smartx.NewSmartX(p.cli)
 	err := smartX.DeleteQos(qosID, lunID, "lun")
 	return err
@@ -786,8 +790,12 @@ func (p *SAN) createRemoteLun(params, taskResult map[string]interface{}) (map[st
 	}
 
 	if lun == nil {
-		params["parentid"] = taskResult["remotePoolID"].(string)
+		err = p.setWorkLoadID(remoteCli, params)
+		if err != nil {
+			return nil, err
+		}
 
+		params["parentid"] = taskResult["remotePoolID"].(string)
 		lun, err = remoteCli.CreateLun(params)
 		if err != nil {
 			log.Errorf("Create remote LUN %s error: %v", lunName, err)
@@ -805,7 +813,6 @@ func (p *SAN) revertRemoteLun(taskResult map[string]interface{}) error {
 	if !exist {
 		return nil
 	}
-
 	remoteCli := taskResult["remoteCli"].(*client.Client)
 	return remoteCli.DeleteLun(lunID)
 }
@@ -845,7 +852,6 @@ func (p *SAN) revertRemoteQoS(taskResult map[string]interface{}) error {
 	if !lunIDExist || !qosIDExist {
 		return nil
 	}
-
 	remoteCli := taskResult["remoteCli"].(*client.Client)
 	smartX := smartx.NewSmartX(remoteCli)
 	return smartX.DeleteQos(qosID, lunID, "lun")
@@ -960,12 +966,10 @@ func (p *SAN) revertHyperMetro(taskResult map[string]interface{}) error {
 	if !exist {
 		return nil
 	}
-
 	err := p.cli.StopHyperMetroPair(hyperMetroPairID)
 	if err != nil {
 		log.Warningf("Stop hypermetro pair %s error: %v", hyperMetroPairID, err)
 	}
-
 	return p.cli.DeleteHyperMetroPair(hyperMetroPairID)
 }
 
@@ -1112,23 +1116,15 @@ func (p *SAN) preExpandCheckRemoteCapacity(params map[string]interface{}, cli *c
 		return "", errors.New(msg)
 	}
 
-	remoteParentName := remoteLun["PARENTNAME"].(string)
 	newSize := params["size"].(int64)
 	curSize, err := strconv.ParseInt(remoteLun["CAPACITY"].(string), 10, 64)
 	if err != nil {
 		return "", err
 	}
 
-	pool, err := cli.GetPoolByName(remoteParentName)
-	if err != nil || pool == nil {
-		log.Errorf("Get storage pool %s info error: %v", remoteParentName, err)
-		return "", err
-	}
-
-	freeCapacity, _ := strconv.ParseInt(pool["USERFREECAPACITY"].(string), 10, 64)
-	if freeCapacity < newSize-curSize {
-		msg := fmt.Sprintf("storage pool %s free capacity %s is not enough to expand to %v",
-			remoteParentName, pool["USERFREECAPACITY"], newSize-curSize)
+	if newSize < curSize {
+		msg := fmt.Sprintf("Remote Lun %s newSize %d must be greater than curSize %d",
+			remoteLunName, newSize, curSize)
 		log.Errorln(msg)
 		return "", errors.New(msg)
 	}
@@ -1362,13 +1358,11 @@ func (p *SAN) waitSnapshotReady(snapshotName string) error {
 
 func (p *SAN) revertSnapshot(taskResult map[string]interface{}) error {
 	snapshotID := taskResult["snapshotId"].(string)
-
 	err := p.cli.DeleteLunSnapshot(snapshotID)
 	if err != nil {
 		log.Errorf("Delete snapshot %s error: %v", snapshotID, err)
 		return err
 	}
-
 	return nil
 }
 
@@ -1381,17 +1375,6 @@ func (p *SAN) activateSnapshot(params, taskResult map[string]interface{}) (map[s
 		return nil, err
 	}
 	return nil, nil
-}
-
-func (p *SAN) revertActivateSnapshot(taskResult map[string]interface{}) error {
-	snapshotID := taskResult["snapshotId"].(string)
-
-	err := p.cli.DeactivateLunSnapshot(snapshotID)
-	if err != nil {
-		log.Errorf("Deactivate snapshot %s error: %v", snapshotID, err)
-		return err
-	}
-	return nil
 }
 
 func (p *SAN) deleteSnapshot(params, taskResult map[string]interface{}) (map[string]interface{}, error) {

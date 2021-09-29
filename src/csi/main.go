@@ -4,7 +4,6 @@ import (
 	"csi/backend"
 	"csi/driver"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -14,6 +13,7 @@ import (
 	"runtime/debug"
 	"time"
 	"utils"
+	"utils/k8sutils"
 	"utils/log"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -28,8 +28,10 @@ const (
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "2.2.13"
+	csiVersion        = "2.2.14"
 	defaultDriverName = "csi.huawei.com"
+
+	nodeNameEnv = "CSI_NODENAME"
 )
 
 var (
@@ -54,6 +56,12 @@ var (
 	volumeUseMultiPath = flag.Bool("volume-use-multipath",
 		true,
 		"Whether to use multipath when attach block volume")
+	kubeconfig = flag.String("kubeconfig",
+		"",
+		"absolute path to the kubeconfig file")
+	nodeName = flag.String("nodename",
+		os.Getenv(nodeNameEnv),
+		"node name in kubernetes cluster")
 
 	config CSIConfig
 	secret CSISecret
@@ -64,57 +72,42 @@ type CSIConfig struct {
 }
 
 type CSISecret struct {
-	Secrets map[string]interface{}  `json:"secrets"`
+	Secrets map[string]interface{} `json:"secrets"`
 }
 
-func init() {
-	_ = flag.Set("log_dir", "/var/log/huawei")
-	flag.Parse()
-
+func parseConfig() {
 	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		logrus.Fatalf("Read config file %s error: %v", configFile, err)
+		log.Fatalf("Read config file %s error: %v", configFile, err)
 	}
 
 	err = json.Unmarshal(data, &config)
 	if err != nil {
-		logrus.Fatalf("Unmarshal config file %s error: %v", configFile, err)
+		log.Fatalf("Unmarshal config file %s error: %v", configFile, err)
 	}
 
 	if len(config.Backends) <= 0 {
-		logrus.Fatalf("Must configure at least one backend")
+		log.Fatalln("Must configure at least one backend")
 	}
 
 	secretData, err := ioutil.ReadFile(secretFile)
 	if err != nil {
-		logrus.Fatalf("Read config file %s error: %v", secretFile, err)
+		log.Fatalf("Read config file %s error: %v", secretFile, err)
 	}
 
 	err = json.Unmarshal(secretData, &secret)
 	if err != nil {
-		logrus.Fatalf("Unmarshal config file %s error: %v", secretFile, err)
+		log.Fatalf("Unmarshal config file %s error: %v", secretFile, err)
 	}
 
-	_ = mergeData(config, secret)
-
-	if *containerized {
-		*controllerFlagFile = ""
-	}
-
-	var logFilePrefix string
-	if len(*controllerFlagFile) > 0 {
-		logFilePrefix = csiLogFile
-	} else if *controller {
-		logFilePrefix = controllerLogFile
-	} else {
-		logFilePrefix = nodeLogFile
-	}
-
-	err = log.Init(map[string]string{
-		"logFilePrefix": logFilePrefix,
-	})
+	err = mergeData(config, secret)
 	if err != nil {
-		logrus.Fatalf("Init log error: %v", err)
+		log.Fatalf("Merge configs error: %v", err)
+	}
+
+	// nodeName flag is only considered for node plugin
+	if "" == *nodeName && !*controller {
+		log.Warningln("Node name is empty. Topology aware volume provisioning feature may not behave normal")
 	}
 }
 
@@ -122,8 +115,7 @@ func getSecret(backendSecret, backendConfig map[string]interface{}, secretKey st
 	if secretValue, exist := backendSecret[secretKey].(string); exist {
 		backendConfig[secretKey] = secretValue
 	} else {
-		msg := fmt.Sprintf("The key %s is not in secret %v.", secretKey, backendSecret)
-		logrus.Fatalln(msg)
+		log.Fatalln(fmt.Sprintf("The key %s is not in secret %v.", secretKey, backendSecret))
 	}
 }
 
@@ -132,9 +124,7 @@ func mergeData(config CSIConfig, secret CSISecret) error {
 		backendName := backendConfig["name"].(string)
 		Secret, exist := secret.Secrets[backendName]
 		if !exist {
-			msg := fmt.Sprintf("The key %s is not in secret.", backendName)
-			logrus.Fatalln(msg)
-			return errors.New(msg)
+			return fmt.Errorf("the key %s is not in secret", backendName)
 		}
 
 		backendSecret := Secret.(map[string]interface{})
@@ -157,33 +147,57 @@ func updateBackendCapabilities() {
 	}
 }
 
+func getLogFileName() string {
+	// check log file name
+	logFileName := nodeLogFile
+	if len(*controllerFlagFile) > 0 {
+		logFileName = csiLogFile
+	} else if *controller {
+		logFileName = controllerLogFile
+	}
+
+	return logFileName
+}
+
+func ensureRuntimePanicLogging() {
+	if r := recover(); r != nil {
+		log.Errorf("Runtime error caught in main routine: %v", r)
+		log.Errorf("%s", debug.Stack())
+	}
+
+	log.Flush()
+	log.Close()
+}
+
 func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Errorf("Runtime error caught in main routine: %v", r)
-			log.Errorf("%s", debug.Stack())
-		}
+	// parse command line flags
+	flag.Parse()
 
-		log.Flush()
-		log.Close()
-	}()
+	// ensure flags status
+	if *containerized {
+		*controllerFlagFile = ""
+	}
 
-	if *controller || *controllerFlagFile != "" {
-		err := backend.RegisterBackend(config.Backends, true)
-		if err != nil {
-			log.Fatalf("Register backends error: %v", err)
-		}
+	err := log.InitLogging(getLogFileName())
+	if err != nil {
+		logrus.Fatalf("Init log error: %v", err)
+	}
+	defer ensureRuntimePanicLogging()
 
+	// parse configurations
+	parseConfig()
+
+	keepLogin := *controller || *controllerFlagFile != ""
+	err = backend.RegisterBackend(config.Backends, keepLogin, *driverName)
+	if err != nil {
+		log.Fatalf("Register backends error: %v", err)
+	}
+	if keepLogin {
 		go updateBackendCapabilities()
-	} else {
-		err := backend.RegisterBackend(config.Backends, false)
-		if err != nil {
-			log.Fatalf("Register backends error: %v", err)
-		}
 	}
 
 	endpointDir := filepath.Dir(*endpoint)
-	_, err := os.Stat(endpointDir)
+	_, err = os.Stat(endpointDir)
 	if err != nil && os.IsNotExist(err) {
 		os.Mkdir(endpointDir, 0755)
 	} else {
@@ -199,10 +213,15 @@ func main() {
 		log.Fatalf("Listen on %s error: %v", *endpoint, err)
 	}
 
-	isNeedMultiPath := utils.NeedMultiPath(config.Backends)
-	d := driver.NewDriver(*driverName, csiVersion, *volumeUseMultiPath, isNeedMultiPath)
-	server := grpc.NewServer()
+	k8sUtils, err := k8sutils.NewK8SUtils(*kubeconfig)
+	if err != nil {
+		log.Fatalf("Kubernetes client initialization failed  %v", err)
+	}
 
+	isNeedMultiPath := utils.NeedMultiPath(config.Backends)
+	d := driver.NewDriver(*driverName, csiVersion, *volumeUseMultiPath, isNeedMultiPath, k8sUtils, *nodeName)
+
+	server := grpc.NewServer()
 	csi.RegisterIdentityServer(server, d)
 	csi.RegisterControllerServer(server, d)
 	csi.RegisterNodeServer(server, d)

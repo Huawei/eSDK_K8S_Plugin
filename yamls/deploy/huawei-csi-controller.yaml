@@ -17,11 +17,20 @@ spec:
       serviceAccount: huawei-csi-controller
       hostNetwork: true
       containers:
+        - name: liveness-probe
+          image: k8s.gcr.io/sig-storage/livenessprobe:v2.4.0
+          args:
+          - --csi-address=/var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+          - mountPath: /var/lib/csi/sockets/pluginproxy/
+            name: socket-dir
         - name: csi-provisioner
           image: quay.io/k8scsi/csi-provisioner:v1.6.0
           args:
             - "--csi-address=$(ADDRESS)"
             - "--timeout=6h"
+            - "--feature-gates=Topology=true"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
@@ -53,6 +62,18 @@ spec:
             - name: CSI_ENDPOINT
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
           imagePullPolicy: "IfNotPresent"
+          ports:
+          - containerPort: 9808
+            name: healthz
+            protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 60
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"utils"
@@ -585,33 +586,30 @@ func ResizeBlock(tgtLunWWN string) error {
 
 func getDeviceInfo(dev string) map[string]string {
 	device := "/dev/" + dev
-	devInfo := map[string]string {
-		"device": device,
-		"host": "",
-		"channel": "",
-		"id": "",
-		"lun": "",
-	}
-
-	output, _ := utils.ExecShellCmd("lsscsi")
-	if output == "" || strings.Contains(output, "command not found"){
-		return devInfo
+	output, err := utils.ExecShellCmd("lsblk -n -S %s -o HCTL", device)
+	if err != nil {
+		log.Warningf("Failed to get device %s hctl", device)
+		return nil
 	}
 
 	devLines := strings.Split(output, "\n")
 	for _, d := range devLines {
-		devStrings := strings.Fields(d)
-		dev := devStrings[len(devStrings) - 1]
-		if dev == device {
-			hostChannelInfo := strings.Split(strings.Trim(devStrings[0], "[]"), ":")
-			devInfo["host"] = hostChannelInfo[0]
-			devInfo["channel"] = hostChannelInfo[1]
-			devInfo["id"] = hostChannelInfo[2]
-			devInfo["lun"] = hostChannelInfo[3]
-			break
+		devString := strings.TrimSpace(d)
+		hostChannelInfo := strings.Split(devString, ":")
+		if len(hostChannelInfo) != intNumFour {
+			continue
 		}
+
+		devInfo := map[string]string {
+			"device": device,
+			"host": hostChannelInfo[0],
+			"channel": hostChannelInfo[1],
+			"id": hostChannelInfo[2],
+			"lun": hostChannelInfo[3],
+		}
+		return devInfo
 	}
-	return devInfo
+	return nil
 }
 
 func getDeviceSize(dev string) (string, error) {
@@ -671,6 +669,10 @@ func extendDMBlock(device string) error {
 
 func extendSCSIBlock(device string) error {
 	devInfo := getDeviceInfo(device)
+	if devInfo == nil {
+		return errors.New("can not get device info")
+	}
+
 	oldSize, err := getDeviceSize(device)
 	if err != nil {
 		return err
@@ -727,7 +729,7 @@ func ResizeMountPath(volumePath string) error {
 }
 
 func extResize(devicePath string) error {
-	output, err := utils.ExecShellCmd("resize2fs %s", devicePath)
+	output, err := utils.ExecShellCmd("resize2fs -p %s", devicePath)
 	if err != nil {
 		log.Errorf("Resize %s error: %s", devicePath, output)
 		return err
@@ -947,4 +949,49 @@ func RemoveRoCEDevice(device string) ([]string, string, error) {
 	}
 
 	return devices, multiPathName, nil
+}
+
+// GetDeviceSize to get the device size in bytes
+func GetDeviceSize(hostDevice string) (int64, error) {
+	// hostDevice is the symbol, such as /dev/sdb, /dev/dm-5, /dev/mapper/mpatha .etc
+	output, err := utils.ExecShellCmd("blockdev --getsize64 %s", hostDevice)
+	if err != nil {
+		log.Errorf("Failed to get device %s, err is %v", hostDevice, err)
+		return 0, err
+	}
+
+	outputLines := strings.Split(output, "\n")
+	for _, line := range outputLines {
+		if line == "" {
+			continue
+		}
+		size, err := strconv.ParseInt(line, 10, 64)
+		if err != nil {
+			log.Errorf("Failed to get device size %s, err is %v", line, err)
+			return 0, err
+		}
+		return size, nil
+	}
+
+	return 0, errors.New("failed to get device size")
+}
+
+// IsInFormatting is to check the device whether in formatting
+func IsInFormatting(sourcePath, fsType string) (bool, error) {
+	var cmd string
+	if fsType != "ext2" && fsType != "ext3" && fsType != "ext4" {
+		msg := fmt.Sprintf("Do not support the type %s.", fsType)
+		log.Errorln(msg)
+		return false, errors.New(msg)
+	}
+
+	cmd = fmt.Sprintf("ps -aux | grep mkfs | grep -w %s | wc -l |awk '{if($1>1) print 1; else print 0}'",
+		sourcePath)
+	output, err := utils.ExecShellCmd(cmd)
+	if err != nil {
+		return false, err
+	}
+
+	outputSplit := strings.Split(output, "\n")
+	return len(outputSplit) != 0 && outputSplit[0] == "1", nil
 }

@@ -22,7 +22,9 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 	"utils"
 	"utils/log"
 )
@@ -139,6 +141,36 @@ func readMountPoints() (map[string]string, error) {
 	return mountMap, nil
 }
 
+func compareMountPath(sourcePath, mountSourcePath string) error {
+	// the mount source path is like: /dev/mapper/mpath<x> or /dev/sd<x>
+	// but the source path is like: /dev/dm-<n> or /dev/sd<n>.
+	// The relationship of these two path as follows:
+	//     lrwxrwxrwx 1 root root 7 Aug 1 17:13 /dev/mapper/mpathc -> ../dm-3
+	_, err := connector.ReadDevice(mountSourcePath)
+	if err != nil {
+		return err
+	}
+
+	mountRealPath, err := filepath.EvalSymlinks(mountSourcePath)
+	if err != nil {
+		return err
+	}
+
+	sourceRealPath, err := filepath.EvalSymlinks(sourcePath)
+	if err != nil {
+		return err
+	}
+
+	if sourceRealPath != mountRealPath {
+		msg := fmt.Sprintf("The source path is %s, the real path is %s",
+			sourcePath, mountRealPath)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+
+	return nil
+}
+
 func mountUnix(sourcePath, targetPath, flags string, checkSourcePath bool) error {
 	var output string
 	var err error
@@ -149,11 +181,20 @@ func mountUnix(sourcePath, targetPath, flags string, checkSourcePath bool) error
 
 	mountMap, err := readMountPoints()
 	value, exist := mountMap[targetPath]
-	if exist && value != sourcePath {
-		msg := fmt.Sprintf("The mount %s is already exist, but the source path is not %s",
-			targetPath, sourcePath)
-		log.Errorln(msg)
-		return errors.New(msg)
+	if exist {
+		if checkSourcePath {
+			err := compareMountPath(sourcePath, value)
+			if err != nil {
+				return err
+			}
+			log.Infof("%s is already mount to %s", sourcePath, targetPath)
+			return nil
+		} else if value != sourcePath {
+			msg := fmt.Sprintf("The mount %s is already exist, but the source path is not %s",
+				targetPath, sourcePath)
+			log.Errorln(msg)
+			return errors.New(msg)
+		}
 	}
 
 	if flags != "" {
@@ -180,7 +221,7 @@ func getFSType(sourcePath string) (string, error) {
 	output, err := utils.ExecShellCmd("blkid -o udev %s", sourcePath)
 	if err != nil {
 		if errCode, ok := err.(*exec.ExitError); ok && errCode.ExitCode() == 2 {
-			log.Infof("Query fs of %s error: %s", sourcePath, output)
+			log.Infof("Query fs of %s, output: %s, error: %s", sourcePath, output, err)
 			if formatted, err := connector.IsDeviceFormatted(sourcePath); err != nil {
 				return "", fmt.Errorf("check device %s formatted failed, error: %v", sourcePath, err)
 			} else if formatted {
@@ -202,13 +243,55 @@ func getFSType(sourcePath string) (string, error) {
 	return "", errors.New("get fsType failed")
 }
 
-func formatDisk(sourcePath, fsType string) error {
-	output, err := utils.ExecShellCmd("mkfs -t %s -F %s", fsType, sourcePath)
+func formatDisk(sourcePath, fsType, diskSizeType string) error {
+	var cmd string
+	switch diskSizeType {
+	case "default":
+		cmd = fmt.Sprintf("mkfs -t %s -F %s", fsType, sourcePath)
+	case "big":
+		cmd = fmt.Sprintf("mkfs -t %s -T big -F %s", fsType, sourcePath)
+	case "huge":
+		cmd = fmt.Sprintf("mkfs -t %s -T huge -F %s", fsType, sourcePath)
+	case "large":
+		cmd = fmt.Sprintf("mkfs -t %s -T largefile -F %s", fsType, sourcePath)
+	case "veryLarge":
+		cmd = fmt.Sprintf("mkfs -t %s -T largefile4 -F %s", fsType, sourcePath)
+	}
+	output, err := utils.ExecShellCmd(cmd)
 	if err != nil {
+		if strings.Contains(output, "in use by the system") {
+			log.Infof("The disk %s is in formatting, wait for 10 second", sourcePath)
+			time.Sleep(time.Second * formatWaitInternal)
+			return errors.New("the disk is in formatting, please wait")
+		}
 		log.Errorf("Couldn't mkfs %s to %s: %s", sourcePath, fsType, output)
 		return err
 	}
 	return nil
+}
+
+func getDiskSizeType(sourcePath string) (string, error) {
+	size, err := connector.GetDeviceSize(sourcePath)
+	if err != nil {
+		log.Errorf("Failed to get size from %s, error is %s", sourcePath, err)
+		return "", err
+	}
+
+	log.Infof("Get disk %s's size: %d", sourcePath, size)
+	if size <= halfTiSizeBytes {
+		return "default", nil
+	} else if size > halfTiSizeBytes && size <= oneTiSizeBytes {
+		return  "big", nil
+	} else if size > oneTiSizeBytes && size <= tenTiSizeBytes {
+		return  "huge", nil
+	} else if size > tenTiSizeBytes && size <= hundredTiSizeBytes {
+		return "large", nil
+	} else if size > hundredTiSizeBytes && size <= halfPiSizeBytes {
+		return "veryLarge", nil
+	}
+
+	// if the size bigger than 512TiB, mark it is a large disk, more info: /etc/mke2fs.conf
+	return "", errors.New("the disk size does not support")
 }
 
 func mountDisk(sourcePath, targetPath, fsType, flags string) error {
@@ -219,7 +302,24 @@ func mountDisk(sourcePath, targetPath, fsType, flags string) error {
 	}
 
 	if existFsType == "" {
-		err = formatDisk(sourcePath, fsType)
+		// check this disk is in formatting
+		inFormatting, err := connector.IsInFormatting(sourcePath, fsType)
+		if err != nil {
+			return err
+		}
+
+		if inFormatting {
+			log.Infof("Device %s is in formatting, no need format again. Wait 10 seconds", sourcePath)
+			time.Sleep(time.Second * formatWaitInternal)
+			return errors.New("the disk is in formatting, please wait")
+		}
+
+		diskSizeType, err := getDiskSizeType(sourcePath)
+		if err != nil {
+			return err
+		}
+
+		err = formatDisk(sourcePath, fsType, diskSizeType)
 		if err != nil {
 			return err
 		}
