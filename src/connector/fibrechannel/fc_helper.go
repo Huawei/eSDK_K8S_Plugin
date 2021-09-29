@@ -376,7 +376,7 @@ func rescanHosts(hbas []map[string]string, targets []target, volumeUseMultiPath 
 		if ctls != nil {
 			process = append(process, []interface{}{hba, ctls})
 		} else if process == nil {
-			var lunInfo []interface{}
+			var lunInfo [][]string
 			for _, lun := range lunWildCards {
 				lunInfo = append(lunInfo, []string{"-", "-", lun})
 			}

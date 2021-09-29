@@ -111,12 +111,12 @@ func initInstallerLogging() {
 func processInstallationArguments() {
 	var err error
 	if client, err = initClient(); err != nil {
-		log.Fatalf("could not initialize Kubernetes client; %v", err)
+		recordErrorf("could not initialize Kubernetes client; %v", err)
 	}
 
 	minOptionalCSIVersion := utils.MustParseSemantic(KubernetesCSIVersionMin)
 	if client.ServerVersion().LessThan(minOptionalCSIVersion) {
-		log.Fatalf("CSI OceanStor requires Kubernetes %s or later.",
+		recordErrorf("CSI OceanStor requires Kubernetes %s or later.",
 			minOptionalCSIVersion.ShortString())
 	}
 }
