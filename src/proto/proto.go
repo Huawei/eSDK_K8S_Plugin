@@ -3,6 +3,7 @@ package proto
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"strings"
 	"utils"
@@ -10,19 +11,35 @@ import (
 )
 
 func GetISCSIInitiator() (string, error) {
-	output, err := utils.ExecShellCmd("awk 'BEGIN{FS=\"=\";ORS=\"\"}/^InitiatorName=/{print $2}' /etc/iscsi/initiatorname.iscsi")
+
+	initiatornameBuf, err := ioutil.ReadFile("/etc/iscsi/initiatorname.iscsi")
+
+	var initiatorname string;
 	if err != nil {
-		if strings.Contains(output, "cannot open file") {
-			msg := "No ISCSI initiator exist"
+		msg := "Error reading file /etc/iscsi/initiatorname.iscsi"
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	for _, line := range strings.Split(string(initiatornameBuf), "\n") {
+		if strings.TrimSpace(line) != "" {
+			splitValue := strings.Split(line, "=")
+			if len(splitValue) == 2 {
+				initiatorname = string(splitValue[1])
+			} else {
+				msg := "bad content for file /etc/iscsi/initiatorname.iscsi"
+				log.Errorln(msg)
+				return "", errors.New(msg)
+			}
+			break
+		} else {
+			msg := "empty file /etc/iscsi/initiatorname.iscsi"
 			log.Errorln(msg)
 			return "", errors.New(msg)
 		}
-
-		log.Errorf("Get ISCSI initiator error: %v", output)
-		return "", err
 	}
 
-	return output, nil
+	return initiatorname, nil
 }
 
 func GetFCInitiator() ([]string, error) {
