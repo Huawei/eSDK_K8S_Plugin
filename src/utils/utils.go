@@ -18,6 +18,7 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -186,12 +187,13 @@ func GetFSSharePath(name string) string {
 }
 
 func GetHostName() (string, error) {
-	hostname, err := ExecShellCmd("hostname | xargs echo -n")
+	hostnameBuf, err := ioutil.ReadFile("/etc/hostname")
 	if err != nil {
 		return "", err
 	}
+	hostname := strings.Split(string(hostnameBuf), "\n")[0]
 
-	return hostname, nil
+	return string(hostname), nil
 }
 
 func GetPathTail(device string) string {
