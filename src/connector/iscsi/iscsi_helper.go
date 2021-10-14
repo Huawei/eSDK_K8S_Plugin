@@ -101,8 +101,9 @@ func parseISCSIInfo(connectionProperties map[string]interface{}) (*connectorInfo
 }
 
 func runISCSIAdmin(tgtPortal, targetIQN string, iSCSICommand string, checkExitCode []string) error {
-	iSCSICmd := fmt.Sprintf("iscsiadm -m node -T %s -p %s %s", targetIQN, tgtPortal, iSCSICommand)
-	output, err := utils.ExecShellCmdFilterLog(iSCSICmd)
+	iSCSICmd := fmt.Sprintf("-m node -T %s -p %s %s", targetIQN, tgtPortal, iSCSICommand)
+	splitCmd := strings.Split(iSCSICmd, " ")
+	output, err := utils.ExecCmdIscsiFilterLog("/sbin/iscsiadm", splitCmd)
 	if err != nil {
 		if err.Error() == "timeout" {
 			return err
@@ -119,9 +120,11 @@ func runISCSIAdmin(tgtPortal, targetIQN string, iSCSICommand string, checkExitCo
 	return nil
 }
 
-func runISCSIBare(iSCSICommand string, checkExitCode []string) (string, error) {
-	iSCSICmd := fmt.Sprintf("iscsiadm %s", iSCSICommand)
-	output, err := utils.ExecShellCmdFilterLog(iSCSICmd)
+func runISCSIBare(args string, checkExitCode []string) (string, error) {
+	//iSCSICmd := fmt.Sprintf("/sbin/iscsiadm %s", iSCSICommand)
+	iSCSICmd := "/sbin/iscsiadm"
+	splitArgs := strings.Split(args, " ")
+	output, err := utils.ExecCmdIscsiFilterLog(iSCSICmd, splitArgs)
 	if err != nil {
 		if err.Error() == "timeout" {
 			return "", err

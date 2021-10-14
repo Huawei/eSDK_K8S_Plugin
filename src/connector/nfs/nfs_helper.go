@@ -192,7 +192,12 @@ func getFSType(sourcePath string) (string, error) {
 		return "", err
 	}
 
-	for _, out := range strings.Split(output, "\n") {
+	linesBlkid := strings.Split(output, "\n")
+	if len(linesBlkid) <= 1 {
+		return "", nil
+	}
+
+	for _, out := range linesBlkid {
 		fsInfo := strings.Split(out, "=")
 		if len(fsInfo) == 2 && fsInfo[0] == "ID_FS_TYPE" {
 			return fsInfo[1], nil

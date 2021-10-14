@@ -117,6 +117,48 @@ func ExecShellCmdFilterLog(format string, args ...interface{}) (string, error) {
 	}
 }
 
+// ExecCmdIscsiFilterLog execs the command and filters the result log
+func ExecCmdIscsiFilterLog(format string, args []string) (string, error) {
+	var output string
+	var err error
+	done := make(chan string)
+	defer close(done)
+
+	go func() {
+		output, err = execIscsiCmd(format, done, true, args)
+	}()
+
+	select {
+	case do := <-done:
+		log.Debugf("Run iscsi cmd done %s.", do)
+		return output, err
+	case <-time.After(time.Duration(30) * time.Second):
+		return "", errors.New("timeout")
+	}
+}
+
+func execIscsiCmd(command string, ch chan string, logFilter bool, args []string) (string, error) {
+
+	//log.Infof("Gonna run iscsi cmd \"%s\".",cmd)
+
+	defer func() {
+		ch <- fmt.Sprintf("Iscsi cmd \"%s\" done", command)
+	}()
+
+	iscsiCmd := exec.Command(command, args...)
+	time.AfterFunc(30*time.Second, func() { _ = iscsiCmd.Process.Kill() })
+	output, err := iscsiCmd.CombinedOutput()
+	if err != nil {
+		log.Warningf("Run iscsi cmd \"%s\" error: %s.", command, err)
+		return string(output), err
+	}
+
+	if !logFilter {
+		log.Infof("Iscsi cmd \"%s\" result:\n%s", command, output)
+	}
+	return string(output), nil
+}
+
 func execShellCmd(format string, ch chan string, logFilter bool, args ...interface{}) (string, error) {
 	cmd := fmt.Sprintf(format, args...)
 	log.Infof("Gonna run shell cmd \"%s\".", MaskSensitiveInfo(cmd))
@@ -125,8 +167,10 @@ func execShellCmd(format string, ch chan string, logFilter bool, args ...interfa
 		ch <- fmt.Sprintf("Shell cmd \"%s\" done", MaskSensitiveInfo(cmd))
 	}()
 
-	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "/bin/sh", "-c", cmd}
-	shCmd := exec.Command("nsenter", execCmd...)
+	//execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "/bin/sh", "-c", cmd}
+	//shCmd := exec.Command("nsenter", execCmd...)
+	execCmd := []string{"-c", cmd}
+	shCmd := exec.Command("/bin/sh", execCmd...)
 	time.AfterFunc(30*time.Second, func() { _ = shCmd.Process.Kill() })
 	output, err := shCmd.CombinedOutput()
 	if err != nil {
