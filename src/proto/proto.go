@@ -21,25 +21,25 @@ func GetISCSIInitiator() (string, error) {
 		return "", errors.New(msg)
 	}
 
+
 	for _, line := range strings.Split(string(initiatornameBuf), "\n") {
-		if strings.TrimSpace(line) != "" {
+		if strings.TrimSpace(line) != "" && strings.HasPrefix(line,"InitiatorName=") {
 			splitValue := strings.Split(line, "=")
 			if len(splitValue) == 2 {
 				initiatorname = string(splitValue[1])
+				return initiatorname, nil
 			} else {
 				msg := "bad content for file /etc/iscsi/initiatorname.iscsi"
 				log.Errorln(msg)
 				return "", errors.New(msg)
 			}
 			break
-		} else {
-			msg := "empty file /etc/iscsi/initiatorname.iscsi"
-			log.Errorln(msg)
-			return "", errors.New(msg)
 		}
 	}
 
-	return initiatorname, nil
+	msg := "initiatorname not found"
+	log.Errorln(msg)
+	return "", errors.New(msg)
 }
 
 func GetFCInitiator() ([]string, error) {
