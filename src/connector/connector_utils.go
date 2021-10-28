@@ -723,7 +723,10 @@ func ResizeMountPath(volumePath string) error {
 	switch fsType {
 	case "ext2", "ext3", "ext4":
 		return extResize(devicePath)
+	case "xfs":
+		return xfsResize(devicePath)
 	}
+
 
 	return fmt.Errorf("resize of format %s is not supported for device %s", fsType, devicePath)
 }
@@ -736,6 +739,17 @@ func extResize(devicePath string) error {
 	}
 
 	log.Infof("Resize success for device path : %v", devicePath)
+	return nil
+}
+
+func xfsResize(devicePath string) error {
+	output, err := utils.ExecShellCmd("xfs_growfs %s", devicePath)
+	if err != nil {
+		log.Errorf("xfs Resize %s error: %s", devicePath, output)
+		return err
+	}
+
+	log.Infof("xfs Resize success for device path : %v", devicePath)
 	return nil
 }
 
