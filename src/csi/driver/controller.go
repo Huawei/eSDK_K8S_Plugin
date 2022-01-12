@@ -57,13 +57,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		parameters["remoteStoragePool"] = remotePool.Name
 	}
 
-	volName, err := localPool.Plugin.CreateVolume(name, parameters)
+	vol, err := localPool.Plugin.CreateVolume(name, parameters)
 	if err != nil {
 		log.Errorf("Create volume %s error: %v", name, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	volume, err := d.getCreatedVolume(req, volName, localPool)
+	volume, err := d.getCreatedVolume(req, vol, localPool)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -73,7 +73,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}, nil
 }
 
-func (d *Driver) getCreatedVolume(req *csi.CreateVolumeRequest, volName string, pool *backend.StoragePool) (*csi.Volume, error) {
+func (d *Driver) getCreatedVolume(req *csi.CreateVolumeRequest, vol utils.Volume, pool *backend.StoragePool) (*csi.Volume, error) {
 	contentSource := req.GetVolumeContentSource()
 	size := req.GetCapacityRange().GetRequiredBytes()
 
@@ -88,26 +88,28 @@ func (d *Driver) getCreatedVolume(req *csi.CreateVolumeRequest, volName string, 
 		}
 	}
 
-	if contentSource != nil {
-		attributes := map[string]string{
-			"backend": pool.Parent,
-			"name":    volName,
-		}
+	volName := vol.GetVolumeName()
 
-		return &csi.Volume{
-			VolumeId:           pool.Parent + "." + volName,
-			CapacityBytes:      size,
-			VolumeContext:      attributes,
-			ContentSource:      contentSource,
-			AccessibleTopology: accessibleTopologies,
-		}, nil
+	attributes := map[string]string{
+		"backend": pool.Parent,
+		"name": volName,
 	}
 
-	return &csi.Volume{
+	if lunWWN, err := vol.GetLunWWN(); err == nil {
+		attributes["lunWWN"] = lunWWN
+	}
+
+	csiVolume := &csi.Volume{
 		VolumeId:           pool.Parent + "." + volName,
 		CapacityBytes:      size,
+		VolumeContext:      attributes,
 		AccessibleTopology: accessibleTopologies,
-	}, nil
+	}
+	if contentSource != nil {
+		csiVolume.ContentSource = contentSource
+	}
+
+	return csiVolume, nil
 }
 
 func (d *Driver) processVolumeContentSource(req *csi.CreateVolumeRequest, parameters map[string]interface{}) error {
@@ -231,6 +233,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 
 func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	// Volume attachment will be done at node stage process
+	log.Infof("Run controller publish volume %s from node %s", req.GetVolumeId(), req.GetNodeId())
 	return &csi.ControllerPublishVolumeResponse{}, nil
 }
 

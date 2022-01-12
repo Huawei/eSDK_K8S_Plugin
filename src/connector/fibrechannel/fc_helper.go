@@ -1,7 +1,6 @@
 package fibrechannel
 
 import (
-	"connector"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"connector"
 	"utils"
 	"utils/log"
 )
@@ -32,10 +33,10 @@ type deviceInfo struct {
 }
 
 type connectorInfo struct {
-	tgtLunWWN   string
-	tgtWWNs     []string
-	tgtHostLUNs []string
-	tgtTargets  []target
+	tgtLunWWN          string
+	tgtWWNs            []string
+	tgtHostLUNs        []string
+	tgtTargets         []target
 	volumeUseMultiPath bool
 }
 
@@ -121,15 +122,11 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 	}
 
 	if devInfo.realDeviceName == "" {
+		log.Warningln("No FibreChannel volume device found")
 		return "", errors.New("NoFibreChannelVolumeDeviceFound")
 	}
 
-	log.Infof("Found Fibre Channel volume %v (after %d rescans.)", devInfo, devInfo.tries + 1)
-	deviceWwn, err := connector.GetSCSIWwn(devInfo.hostDevice)
-	if err != nil {
-		return "", err
-	}
-
+	log.Infof("Found Fibre Channel volume %v (after %d rescans.)", devInfo, devInfo.tries+1)
 	if !conn.volumeUseMultiPath {
 		device := fmt.Sprintf("/dev/%s", devInfo.realDeviceName)
 		err := connector.VerifySingleDevice(device, conn.tgtLunWWN,
@@ -140,23 +137,19 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 		return device, nil
 	}
 
-	// mPath: /dev/disk/by-id/dm-uuid-mpath-3<lun-wwn>
 	// realPath: dm-<id>
-	mPath := connector.FindMultiDevicePath(deviceWwn)
+	log.Infof("Start to find the dm multiapth of device %s", devInfo.realDeviceName)
+	mPath := connector.FindAvailableMultiPath([]string{devInfo.realDeviceName})
 	if mPath != "" {
-		realPath, err := connector.RealPath(mPath)
-		if err != nil {
-			return "", err
-		}
-
-		_, err = connector.VerifyMultiPathDevice(realPath, conn.tgtLunWWN,
+		dev, err := connector.VerifyMultiPathDevice(mPath, conn.tgtLunWWN,
 			"NoFibreChannelVolumeDeviceFound", false, tryDisConnectVolume)
 		if err != nil {
 			return "", err
 		}
-		return mPath, nil
+		return dev, nil
 	}
 
+	log.Warningf("can not find device for lun", conn.tgtLunWWN)
 	return "", errors.New("NoFibreChannelVolumeDeviceFound")
 }
 
@@ -398,6 +391,7 @@ func waitDeviceDiscovery(hbas []map[string]string, hostDevices []string, targets
 	deviceInfo, error) {
 	var info deviceInfo
 	err := utils.WaitUntil(func() (bool, error) {
+		rescanHosts(hbas, targets, volumeUseMultiPath)
 		for _, dev := range hostDevices {
 			if exist, _ := utils.PathExist(dev); exist && checkValidDevice(dev) {
 				info.hostDevice = dev
@@ -413,7 +407,6 @@ func waitDeviceDiscovery(hbas []map[string]string, hostDevices []string, targets
 			return false, errors.New("NoFibreChannelVolumeDeviceFound")
 		}
 
-		rescanHosts(hbas, targets, volumeUseMultiPath)
 		info.tries += 1
 		return false, nil
 	}, time.Second*60, time.Second*2)

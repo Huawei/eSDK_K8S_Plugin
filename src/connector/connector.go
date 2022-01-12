@@ -2,6 +2,7 @@ package connector
 
 import (
 	"fmt"
+
 	"utils/log"
 )
 
@@ -16,6 +17,8 @@ const (
 	MountBlockType         = "block"
 	flushMultiPathInternal = 20
 	intNumFour             = 4
+	deviceWWidLength       = 4
+	halfMiDataLength       = 524288
 )
 
 var connectors = map[string]Connector{}
@@ -23,6 +26,18 @@ var connectors = map[string]Connector{}
 type Connector interface {
 	ConnectVolume(map[string]interface{}) (string, error)
 	DisConnectVolume(string) error
+}
+
+// DisConnectInfo defines the fields of disconnect volume
+type DisConnectInfo struct {
+	Conn   Connector
+	TgtLun string
+}
+
+// ConnectInfo defines the fields of connect volume
+type ConnectInfo struct {
+	Conn        Connector
+	MappingInfo map[string]interface{}
 }
 
 func GetConnector(cType string) Connector {

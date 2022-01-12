@@ -4,14 +4,38 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"storage/oceanstor/client"
 	"strings"
 	"time"
+	"utils"
 	"utils/log"
 )
 
+type qosParameterValidators map[string]func(int) bool
+type qosParameterList map[string]struct{}
+
 var (
-	VALID_QOS_KEY = map[string]func(int) bool{
+	oceanStorQosValidators = map[string]qosParameterValidators{
+		utils.OceanStorDoradoV6: doradoV6ParameterValidators,
+		utils.OceanStorDorado:   doradoParameterValidators,
+		utils.OceanStorV3:       oceanStorV3V5ParameterValidators,
+		utils.OceanStorV5:       oceanStorV3V5ParameterValidators,
+	}
+
+	doradoParameterValidators = map[string]func(int) bool{
+		"IOTYPE": func(value int) bool {
+			return value == 2
+		},
+		"MAXBANDWIDTH": func(value int) bool {
+			return value > 0
+		},
+		"MAXIOPS": func(value int) bool {
+			return value > 99
+		},
+	}
+
+	oceanStorV3V5ParameterValidators = map[string]func(int) bool{
 		"IOTYPE": func(value int) bool {
 			return value == 0 || value == 1 || value == 2
 		},
@@ -31,29 +55,93 @@ var (
 			return value > 0
 		},
 	}
-)
 
-func VerifyQos(qosConfig string) (map[string]int, error) {
-	var msg string
-	var lowerLimit, upperLimit bool
-	var params map[string]int
+	doradoV6ParameterValidators = map[string]func(int) bool{
+		"IOTYPE": func(value int) bool {
+			return value == 2
+		},
+		"MAXBANDWIDTH": func(value int) bool {
+			return value > 0 && value <= 999999999
 
-	err := json.Unmarshal([]byte(qosConfig), &params)
-	if err != nil {
-		log.Errorf("Unmarshal %s error: %v", qosConfig, err)
-		return nil, err
+		},
+		"MINBANDWIDTH": func(value int) bool {
+			return value > 0 && value <= 999999999
+
+		},
+		"MAXIOPS": func(value int) bool {
+			return value > 99 && value <= 999999999
+
+		},
+		"MINIOPS": func(value int) bool {
+			return value > 99 && value <= 999999999
+
+		},
+		"LATENCY": func(value int) bool {
+			// User request Latency values in millisecond but during extraction values are converted in microsecond
+			// as required in OceanStor DoradoV6 QoS create interface
+			return value == 500 || value == 1500
+		},
 	}
 
-	for k, v := range params {
-		f, exist := VALID_QOS_KEY[k]
+	oceanStorCommonParameters = qosParameterList{
+		"MAXBANDWIDTH": struct{}{},
+		"MINBANDWIDTH": struct{}{},
+		"MAXIOPS":      struct{}{},
+		"MINIOPS":      struct{}{},
+		"LATENCY":      struct{}{},
+	}
+
+	// one of parameter is mandatory for respective products
+	oceanStorQoSMandatoryParameters = map[string]qosParameterList{
+		utils.OceanStorDoradoV6: oceanStorCommonParameters,
+		utils.OceanStorDorado: {
+			"MAXBANDWIDTH": struct{}{},
+			"MAXIOPS":      struct{}{},
+		},
+		utils.OceanStorV3: oceanStorCommonParameters,
+		utils.OceanStorV5: oceanStorCommonParameters,
+	}
+)
+
+// CheckQoSParameterSupport verify QoS supported parameters and value validation
+func CheckQoSParameterSupport(product, qosConfig string) error {
+	qosParam, err := ExtractQoSParameters(product, qosConfig)
+	if err != nil {
+		return err
+	}
+
+	err = validateQoSParametersSupport(product, qosParam)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateQoSParametersSupport(product string, qosParam map[string]float64) error {
+	var lowerLimit, upperLimit bool
+
+	// decide validators based on product
+	validator, ok := oceanStorQosValidators[product]
+	if !ok {
+		msg := fmt.Sprintf("QoS is currently not supported for OceanStor %s", product)
+		log.Errorf(msg)
+		return errors.New(msg)
+	}
+
+	// validate QoS parameters and parameter ranges
+	for k, v := range qosParam {
+		f, exist := validator[k]
 		if !exist {
-			msg = fmt.Sprintf("%s is a invalid key for QoS", k)
-			goto ERROR
+			err := fmt.Errorf("%s is a invalid key for OceanStor %s QoS", k, product)
+			log.Errorln(err.Error())
+			return err
 		}
 
-		if !f(v) {
-			msg = fmt.Sprintf("%s of qos specs is invalid", k)
-			goto ERROR
+		if !f(int(v)) { // silently ignoring decimal number
+			err := fmt.Errorf("%s of qos parameter has invalid value", k)
+			log.Errorln(err.Error())
+			return err
 		}
 
 		if strings.HasPrefix(k, "MIN") || strings.HasPrefix(k, "LATENCY") {
@@ -63,16 +151,80 @@ func VerifyQos(qosConfig string) (map[string]int, error) {
 		}
 	}
 
-	if lowerLimit && upperLimit {
-		msg = fmt.Sprintf("Cannot specify both lower and upper limits for qos")
-		goto ERROR
+	if product != utils.OceanStorDoradoV6 && lowerLimit && upperLimit {
+		err := fmt.Errorf("Cannot specify both lower and upper limits in qos for OceanStor %s", product)
+		log.Errorln(err.Error())
+		return err
+	}
+
+	return nil
+}
+
+// ExtractQoSParameters unmarshal QoS configuration parameters
+func ExtractQoSParameters(product string, qosConfig string) (map[string]float64, error) {
+	var unmarshalParams map[string]interface{}
+	params := make(map[string]float64)
+
+	err := json.Unmarshal([]byte(qosConfig), &unmarshalParams)
+	if err != nil {
+		log.Errorf("Failed to unmarshal qos parameters[ %s ] error: %v", qosConfig, err)
+		return nil, err
+	}
+
+	// translate values based on OceanStor product's QoS create interface
+	for key, val := range unmarshalParams {
+		// all numbers are unmarshalled as float64 in unmarshalParams
+		// assert for other than number
+		value, ok := val.(float64)
+		if !ok {
+			msg := fmt.Sprintf("Invalid QoS parameter [%s] with value type [%T] for OceanStor %s",
+				key, val, product)
+			log.Errorln(msg)
+			return nil, errors.New(msg)
+		}
+		if product == utils.OceanStorDoradoV6 && key == "LATENCY" {
+			// convert OceanStoreDoradoV6 Latency from millisecond to microsecond
+			params[key] = value * 1000
+			continue
+		}
+
+		params[key] = value
 	}
 
 	return params, nil
+}
 
-ERROR:
-	log.Errorln(msg)
-	return nil, errors.New(msg)
+// ValidateQoSParameters check QoS parameters
+func ValidateQoSParameters(product string, qosParam map[string]float64) (map[string]int, error) {
+	// ensure at least one parameter
+	params := oceanStorQoSMandatoryParameters[product]
+	paramExist := false
+	for param := range params {
+		if _, exist := qosParam[param]; exist {
+			paramExist = true
+			break
+		}
+	}
+	if !paramExist {
+		optionalParam := make([]string, 0)
+		for param := range params {
+			optionalParam = append(optionalParam, param)
+		}
+		return nil, fmt.Errorf("missing one of QoS parameter %v ", optionalParam)
+	}
+
+	// validate QoS param value
+	validatedParameters := make(map[string]int)
+	for key, value := range qosParam {
+		// check if not integer
+		if !big.NewFloat(value).IsInt() {
+			return nil, fmt.Errorf("QoS parameter %s has invalid value type [%T]. "+
+				"It should be integer", key, value)
+		}
+		validatedParameters[key] = int(value)
+	}
+
+	return validatedParameters, nil
 }
 
 type SmartX struct {
@@ -124,9 +276,16 @@ func (p *SmartX) CreateQos(objID, objType string, params map[string]int) (string
 		return "", err
 	}
 
-	qosID := qos["ID"].(string)
+	qosID, ok := qos["ID"].(string)
+	if !ok {
+		return "", errors.New("qos ID is expected as string")
+	}
 
-	qosStatus := qos["ENABLESTATUS"].(string)
+	qosStatus, ok := qos["ENABLESTATUS"].(string)
+	if !ok {
+		return "", errors.New("ENABLESTATUS parameter is expected as string")
+	}
+
 	if qosStatus == "false" {
 		err := p.cli.ActivateQos(qosID)
 		if err != nil {
@@ -145,17 +304,18 @@ func (p *SmartX) DeleteQos(qosID, objID, objType string) error {
 		return err
 	}
 
-	var listObj string
-	var listStr string
 	var objList []string
 
+	listObj := "LUNLIST"
 	if objType == "fs" {
 		listObj = "FSLIST"
-	} else {
-		listObj = "LUNLIST"
 	}
 
-	listStr = qos[listObj].(string)
+	listStr, ok := qos[listObj].(string)
+	if !ok {
+		return errors.New("qos volume list is expected as marshaled string")
+	}
+
 	err = json.Unmarshal([]byte(listStr), &objList)
 	if err != nil {
 		log.Errorf("Unmarshal %s error: %v", listStr, err)
@@ -205,7 +365,10 @@ func (p *SmartX) CreateLunSnapshot(name, srcLunID string) (map[string]interface{
 		return nil, err
 	}
 
-	snapshotID := snapshot["ID"].(string)
+	snapshotID, ok := snapshot["ID"].(string)
+	if !ok {
+		return nil, errors.New("snapshot ID is expected as string")
+	}
 	err = p.cli.ActivateLunSnapshot(snapshotID)
 	if err != nil {
 		log.Errorf("Activate snapshot %s error: %v", snapshotID, err)
@@ -239,7 +402,10 @@ func (p *SmartX) CreateFSSnapshot(name, srcFSID string) (string, error) {
 		return "", err
 	}
 
-	snapshotID := snapshot["ID"].(string)
+	snapshotID, ok := snapshot["ID"].(string)
+	if !ok {
+		return "", errors.New("snapshot ID is expected as string")
+	}
 	return snapshotID, nil
 }
 

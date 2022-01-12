@@ -2,6 +2,8 @@ package attacher
 
 import (
 	"errors"
+
+	"connector"
 	"utils"
 	"utils/log"
 )
@@ -20,19 +22,21 @@ func NewMetroAttacher(localAttacher, remoteAttacher AttacherPlugin, protocol str
 	}
 }
 
-func (p *MetroAttacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
+func (p *MetroAttacher) NodeStage(lunName string, parameters map[string]interface{}) (*connector.ConnectInfo, error) {
 	return connectVolume(p, lunName, p.protocol, parameters)
 }
 
-func (p *MetroAttacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
+// NodeUnstage to get the lun unique ID for disconnect volume
+func (p *MetroAttacher) NodeUnstage(lunName string, parameters map[string]interface{}) (
+	*connector.DisConnectInfo, error) {
 	lun, err := p.getLunInfo(lunName)
 	if lun == nil {
-		return err
+		return nil, err
 	}
 
 	lunUniqueID, err := utils.GetLunUniqueId(p.protocol, lun)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	return disConnectVolume(lunUniqueID, p.protocol)

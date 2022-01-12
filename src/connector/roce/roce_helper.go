@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
-	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -156,7 +155,7 @@ func connectVol(existSessions map[string]bool, tgtPortal, tgtLunGUID string, nvm
 	return
 }
 
-func scanMultiPath(lenIndex int, nvmeShareData *shareData) (string, string) {
+func scanMultiPath(lenIndex int, LunGUID string, nvmeShareData *shareData) (string, string) {
 	var wwnAdded bool
 	var lastTryOn int64
 	var mPath, wwn string
@@ -166,7 +165,11 @@ func scanMultiPath(lenIndex int, nvmeShareData *shareData) (string, string) {
 		if wwn == "" && len(nvmeShareData.foundDevices) != 0 {
 			wwn, err = getSYSfsWwn(nvmeShareData.foundDevices, mPath)
 			if err != nil {
-				continue
+				break
+			}
+
+			if wwn == "" {
+				wwn = LunGUID
 			}
 		}
 
@@ -213,13 +216,13 @@ func getSYSfsWwn(foundDevices []string, mPath string) (string, error) {
 
 	msg := fmt.Sprintf("Cannot find device %s wwid", foundDevices)
 	log.Errorln(msg)
-	return "", errors.New(msg)
+	return "", nil
 }
 
 func scanMultiDevice(mPath, wwn string, nvmeShareData *shareData, wwnAdded bool) (string, bool) {
 	var err error
 	if mPath == "" && len(nvmeShareData.foundDevices) != 0 {
-		mPath = findSYSfsMultiPath(nvmeShareData.foundDevices)
+		mPath = connector.FindAvailableMultiPath(nvmeShareData.foundDevices)
 		if wwn != "" && !(mPath != "" || wwnAdded) {
 			wwnAdded, err = addMultiWWN(wwn)
 			if err != nil {
@@ -231,21 +234,6 @@ func scanMultiDevice(mPath, wwn string, nvmeShareData *shareData, wwnAdded bool)
 	}
 
 	return mPath, wwnAdded
-}
-
-func findSYSfsMultiPath(foundDevices []string) string {
-	for _, device := range foundDevices {
-		dmPath := fmt.Sprintf("/sys/block/%s/holders/dm-*", device)
-		paths, err := filepath.Glob(dmPath)
-		if err != nil {
-			continue
-		}
-		if paths != nil {
-			splitPath := strings.Split(paths[0], "/")
-			return splitPath[len(splitPath)-1]
-		}
-	}
-	return ""
 }
 
 func addMultiWWN(deviceWWN string) (bool, error) {
@@ -272,7 +260,7 @@ func tryScanMultiDevice(mPath string, nvmeShareData *shareData) string {
 			log.Warningf("Add multiPath path failed, error: %s", err)
 		}
 
-		mPath = findSYSfsMultiPath(nvmeShareData.foundDevices)
+		mPath = connector.FindAvailableMultiPath(nvmeShareData.foundDevices)
 	}
 	return mPath
 }
@@ -377,7 +365,7 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 	}
 
 	if connMap["volumeUseMultiPath"].(bool) {
-		mPath, _ = scanMultiPath(lenIndex, nvmeShareData)
+		mPath, _ = scanMultiPath(lenIndex, conn.tgtLunGUID, nvmeShareData)
 	} else {
 		scanSingle(nvmeShareData)
 	}

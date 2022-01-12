@@ -114,7 +114,7 @@ func (cli *Client) Login() error {
 		"password": cli.password,
 	}
 
-	respHeader, resp, err := cli.call("POST", "/dsware/service/v1.3/sec/login", data)
+	respHeader, resp, err := cli.baseCall("POST", "/dsware/service/v1.3/sec/login", data)
 	if err != nil {
 		return err
 	}
@@ -139,8 +139,7 @@ func (cli *Client) Logout() {
 	if cli.client == nil {
 		return
 	}
-
-	resp, err := cli.post("/dsware/service/v1.3/sec/logout", nil)
+	_, resp, err := cli.baseCall("POST", "/dsware/service/v1.3/sec/logout", nil)
 	if err != nil {
 		log.Warningf("Logout %s error: %v", cli.url, err)
 		return
@@ -226,6 +225,24 @@ func (cli *Client) doCall(method string, url string, data map[string]interface{}
 	}
 
 	return resp.Header, respBody, nil
+}
+
+func (cli *Client) baseCall(method string, url string, data map[string]interface{}) (http.Header,
+	map[string]interface{}, error) {
+	var body map[string]interface{}
+
+	respHeader, respBody, err := cli.doCall(method, url, data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = json.Unmarshal(respBody, &body)
+	if err != nil {
+		log.Errorf("Unmarshal response body %s error: %v", respBody, err)
+		return nil, nil, err
+	}
+
+	return respHeader, body, nil
 }
 
 func (cli *Client) call(method string, url string, data map[string]interface{}) (http.Header, map[string]interface{}, error) {

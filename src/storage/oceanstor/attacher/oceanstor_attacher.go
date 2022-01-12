@@ -1,6 +1,7 @@
 package attacher
 
 import (
+	"connector"
 	"storage/oceanstor/client"
 	"utils"
 	"utils/log"
@@ -136,6 +137,8 @@ func (p *OceanStorAttacher) ControllerAttach(lunName string, parameters map[stri
 	return p.getMappingProperties(wwn, hostLunId)
 }
 
-func (p *OceanStorAttacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
+// NodeStage to do storage mapping and get the connector
+func (p *OceanStorAttacher) NodeStage(lunName string, parameters map[string]interface{}) (
+	*connector.ConnectInfo, error) {
 	return connectVolume(p, lunName, p.protocol, parameters)
 }

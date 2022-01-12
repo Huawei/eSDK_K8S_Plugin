@@ -71,23 +71,40 @@ func (p *SAN) preCreate(params map[string]interface{}) error {
 	return nil
 }
 
-func (p *SAN) Create(params map[string]interface{}) error {
+func (p *SAN) Create(params map[string]interface{}) (utils.Volume, error) {
 	err := p.preCreate(params)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	taskflow := taskflow.NewTaskFlow("Create-FusionStorage-LUN-Volume")
 	taskflow.AddTask("Create-LUN", p.createLun, p.revertLun)
 	taskflow.AddTask("Create-QoS", p.createQoS, nil)
 
-	_, err = taskflow.Run(params)
+	res, err := taskflow.Run(params)
 	if err != nil {
 		taskflow.Revert()
-		return err
+		return nil, err
 	}
 
-	return nil
+	volObj := p.prepareVolObj(params, res)
+	return volObj, nil
+}
+
+func (p *SAN) prepareVolObj(params, res map[string]interface{}) utils.Volume {
+	volName, isStr := params["name"].(string)
+	if !isStr {
+		// Not expecting this error to happen
+		log.Warningf("Expecting string for volume name, received type %T", params["name"])
+	}
+
+	volObj := utils.NewVolume(volName)
+
+	if lunWWN, ok := res["lunWWN"].(string); ok{
+		volObj.SetLunWWN(lunWWN)
+	}
+
+	return volObj
 }
 
 func (p *SAN) createLun(params, taskResult map[string]interface{}) (map[string]interface{}, error) {

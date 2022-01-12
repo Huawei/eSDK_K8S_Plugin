@@ -16,16 +16,12 @@
 package command
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"strings"
-	"utils/log"
 
-	k8sClient "cli/client"
-	"golang.org/x/crypto/ssh/terminal"
+	"utils/log"
 )
+
 const inputArgsLength = 2
 
 // Update is to update the secret info for CSI
@@ -64,156 +60,16 @@ func update() {
 		recordErrorf("Could not find csi secret. Error: %v", err)
 	} else if !exist {
 		recordInfof("The secret %s does not exist. Now to create a new secret object.\n", HUAWEICSISecret)
-		if err := createSecret(); err != nil {
+		if err := applySecret(exist); err != nil {
 			recordErrorf("Create secret object error %v. See /var/log/huawei/huawei-csi-install for details.", err)
 		}
 	} else {
-		if err := updateSecret(); err != nil {
+		if err := applySecret(exist); err != nil {
 			recordErrorf("Update secret object error %v. See /var/log/huawei/huawei-csi-install for details.", err)
 		}
 	}
 }
 
-func getExistSecret(secret CSISecret, backendName string) (map[string]string, error) {
-	secrets, exist := secret.Secrets[backendName]
-	if !exist {
-		msg := fmt.Sprintf("The key %s is not in secret.", backendName)
-		log.Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
-	backendSecret, ok := secrets.(map[string]interface{})
-	if !ok {
-		return nil, errors.New("converting the secret to map failed")
-	}
-
-	user, err := getSecret(backendSecret, "user")
-	if err != nil {
-		return nil, errors.New("get user from secret failed")
-	}
-
-	password, err := getSecret(backendSecret, "password")
-	if err != nil {
-		return nil, errors.New("get password from secret failed")
-	}
-
-	keyText, err := getSecret(backendSecret, "keyText")
-	if err != nil {
-		return nil, errors.New("get keyText from secret failed")
-	}
-
-	secretInfo := map[string]string{
-		"user":     user,
-		"password": password,
-		"keyText":  keyText,
-	}
-	return secretInfo, nil
-}
-
-func getSecret(backendSecret map[string]interface{}, secretKey string) (string, error) {
-	if secretValue, exist := backendSecret[secretKey].(string); exist {
-		return secretValue, nil
-	}
-	recordErrorf("The key %s is not in secret.", secretKey)
-	return "", errors.New("secret is not normal")
-}
-
-func getSecretMap(storageConfig CSIConfig) (map[string]string, error) {
-	secretMap := make(map[string]string)
-	var url interface{}
-	var exist bool
-	for index, config := range storageConfig.Backends {
-		if url, exist = config["urls"].([]interface{}); !exist {
-			url, exist = config["url"].(interface{})
-			if !exist {
-				recordErrorf("There is no backend urls info")
-			}
-		}
-		backendName, ok := config["name"].(string)
-		if !ok {
-			recordErrorf("There is no backend name info")
-		}
-
-		recordInfof("The %d backend name is: %s\tbackend url is: %s\n",
-			index+1, backendName, url)
-		fmt.Println("Do you want to update it? Y/N")
-		input, err := terminal.ReadPassword(0)
-		if err != nil {
-			recordErrorf("Input error: %v", err)
-			return nil, err
-		}
-
-		var secretInfo map[string]string
-		if strings.TrimSpace(strings.ToUpper(string(input))) != "Y" &&
-			strings.TrimSpace(strings.ToUpper(string(input))) != "YES" {
-			fmt.Println("The secret is no need to update.")
-			secretInfo, err = getExistSecret(storageSecret, backendName)
-		} else {
-			secretInfo, err = generateSecret(backendName)
-		}
-
-		if err != nil {
-			recordErrorf("get Secret info error: %v", err)
-			return nil, err
-		}
-		secretBytes, err := json.Marshal(secretInfo)
-		if err != nil {
-			recordErrorf("Unmarshal secret info failed, error: %v", err)
-		}
-		secretMap[backendName] = string(secretBytes)
-		fmt.Printf("\n")
-	}
-	return secretMap, nil
-}
-
 func updateSecret() error {
-	// step 1. query the configMap to get the all backend names
-	configMap, err := client.GetConfigMap(HUAWEICSIConfigMap)
-	if err != nil {
-		recordErrorf("failed to get configmap %s. Err: %v", HUAWEICSIConfigMap, err)
-		return err
-	}
-
-	err = json.Unmarshal([]byte(configMap.Data["csi.json"]), &storageConfig)
-	if err != nil {
-		log.Errorf("Unmarshal csi.json %s of config file failed: %v", configMap.Data["csi.json"], err)
-		return err
-	}
-
-	// step 2. query the secret object to get the origin secret info
-	secret, err := client.GetSecret(HUAWEICSISecret)
-	if err != nil {
-		recordErrorf("failed to get secret %s. Err: %v", HUAWEICSISecret, err)
-		return err
-	}
-
-	err = json.Unmarshal([]byte(secret.Data["secret.json"]), &storageSecret)
-	if err != nil {
-		log.Errorf("Unmarshal secret %s error: %v", HUAWEICSISecret, err)
-		return err
-	}
-	fmt.Printf("**************************All Secret Info****************************\n"+
-		"%+v\n"+
-		"*********************************************************************\n",
-		storageSecret)
-
-	// step 3. get the update secret info
-	recordInfof("**************************All Backend Info***************************\n")
-	secretMap, err := getSecretMap(storageConfig)
-	if err != nil {
-		log.Errorf("get secret info failed, err: %v", err)
-		return err
-	}
-
-	// step 4. construct the yaml of the secret
-	newSecretYAML := k8sClient.GetSecretYAML(HUAWEICSISecret, storageNamespace, nil, secretMap)
-
-	// step 5. create the secret
-	err = client.CreateObjectByYAML(newSecretYAML)
-	if err != nil {
-		log.Errorf("could not update CSI Secret, err: %v", err)
-		return err
-	}
-	recordInfof("********************Update CSI Secret Successful*********************\n")
-	return nil
+	return applySecret(true)
 }

@@ -28,7 +28,7 @@ const (
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "2.2.14"
+	csiVersion        = "2.2.15"
 	defaultDriverName = "csi.huawei.com"
 
 	nodeNameEnv = "CSI_NODENAME"
@@ -62,6 +62,12 @@ var (
 	nodeName = flag.String("nodename",
 		os.Getenv(nodeNameEnv),
 		"node name in kubernetes cluster")
+	kubeletRootDir = flag.String("kubeletRootDir",
+		"/var/lib",
+		"kubelet root directory")
+	deviceCleanupTimeout = flag.Int("deviceCleanupTimeout",
+		300,
+		"Timeout interval in seconds for stale device cleanup")
 
 	config CSIConfig
 	secret CSISecret
@@ -78,31 +84,31 @@ type CSISecret struct {
 func parseConfig() {
 	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		log.Fatalf("Read config file %s error: %v", configFile, err)
+		raisePanic("Read config file %s error: %v", configFile, err)
 	}
 
 	err = json.Unmarshal(data, &config)
 	if err != nil {
-		log.Fatalf("Unmarshal config file %s error: %v", configFile, err)
+		raisePanic("Unmarshal config file %s error: %v", configFile, err)
 	}
 
 	if len(config.Backends) <= 0 {
-		log.Fatalln("Must configure at least one backend")
+		raisePanic("Must configure at least one backend")
 	}
 
 	secretData, err := ioutil.ReadFile(secretFile)
 	if err != nil {
-		log.Fatalf("Read config file %s error: %v", secretFile, err)
+		raisePanic("Read config file %s error: %v", secretFile, err)
 	}
 
 	err = json.Unmarshal(secretData, &secret)
 	if err != nil {
-		log.Fatalf("Unmarshal config file %s error: %v", secretFile, err)
+		raisePanic("Unmarshal config file %s error: %v", secretFile, err)
 	}
 
 	err = mergeData(config, secret)
 	if err != nil {
-		log.Fatalf("Merge configs error: %v", err)
+		raisePanic("Merge configs error: %v", err)
 	}
 
 	// nodeName flag is only considered for node plugin
@@ -138,7 +144,7 @@ func mergeData(config CSIConfig, secret CSISecret) error {
 func updateBackendCapabilities() {
 	err := backend.SyncUpdateCapabilities()
 	if err != nil {
-		log.Fatalf("Update backend capabilities error: %v", err)
+		raisePanic("Update backend capabilities error: %v", err)
 	}
 
 	ticker := time.NewTicker(time.Second * time.Duration(*backendUpdateInterval))
@@ -169,6 +175,18 @@ func ensureRuntimePanicLogging() {
 	log.Close()
 }
 
+func releaseStorageClient(keepLogin bool) {
+	if keepLogin {
+		backend.LogoutBackend()
+	}
+}
+
+func raisePanic(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	log.Errorln(msg)
+	panic(msg)
+}
+
 func main() {
 	// parse command line flags
 	flag.Parse()
@@ -178,19 +196,21 @@ func main() {
 		*controllerFlagFile = ""
 	}
 
+	keepLogin := *controller || *controllerFlagFile != ""
 	err := log.InitLogging(getLogFileName())
 	if err != nil {
 		logrus.Fatalf("Init log error: %v", err)
 	}
-	defer ensureRuntimePanicLogging()
+	defer func() {
+		ensureRuntimePanicLogging()
+		releaseStorageClient(keepLogin)
+	}()
 
 	// parse configurations
 	parseConfig()
-
-	keepLogin := *controller || *controllerFlagFile != ""
 	err = backend.RegisterBackend(config.Backends, keepLogin, *driverName)
 	if err != nil {
-		log.Fatalf("Register backends error: %v", err)
+		raisePanic("Register backends error: %v", err)
 	}
 	if keepLogin {
 		go updateBackendCapabilities()
@@ -208,14 +228,23 @@ func main() {
 		}
 	}
 
-	listener, err := net.Listen("unix", *endpoint)
-	if err != nil {
-		log.Fatalf("Listen on %s error: %v", *endpoint, err)
-	}
-
 	k8sUtils, err := k8sutils.NewK8SUtils(*kubeconfig)
 	if err != nil {
-		log.Fatalf("Kubernetes client initialization failed  %v", err)
+		raisePanic("Kubernetes client initialization failed  %v", err)
+	}
+
+	// For device cleanup before bootup only in node plugin
+	if !keepLogin {
+		triggerGarbageCollector(k8sUtils)
+	}
+
+	registerServer(k8sUtils)
+}
+
+func registerServer(k8sUtils k8sutils.Interface) {
+	listener, err := net.Listen("unix", *endpoint)
+	if err != nil {
+		raisePanic("Listen on %s error: %v", *endpoint, err)
 	}
 
 	isNeedMultiPath := utils.NeedMultiPath(config.Backends)
@@ -228,6 +257,33 @@ func main() {
 
 	log.Infof("Starting Huawei CSI driver, listening on %s", *endpoint)
 	if err := server.Serve(listener); err != nil {
-		log.Fatalf("Start Huawei CSI driver error: %v", err)
+		raisePanic("Start Huawei CSI driver error: %v", err)
 	}
+}
+
+func triggerGarbageCollector(k8sUtils k8sutils.Interface) {
+	// Trigger stale device clean up and exit after cleanup completion or during timeout
+	cleanupReport := make(chan error, 1)
+
+	defer func() {
+		close(cleanupReport)
+	}()
+
+	go func(ch chan error) {
+		res := nodeStaleDeviceCleanup(k8sUtils, *kubeletRootDir, *driverName, *nodeName)
+		ch <- res
+	}(cleanupReport)
+
+	timeoutInterval := time.Second * time.Duration(*deviceCleanupTimeout)
+	select {
+	case report := <-cleanupReport:
+		if nil == report {
+			log.Infof("Successfully completed stale device garbage collection")
+		} else {
+			log.Infof("Stale device garbage collection exited with error %s", report)
+		}
+	case <-time.After(timeoutInterval):
+		log.Infof("Stale device garbage collection incomplete, exited due to timeout")
+	}
+	return
 }

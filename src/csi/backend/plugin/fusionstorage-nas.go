@@ -47,26 +47,44 @@ func (p *FusionStorageNasPlugin) Init(config, parameters map[string]interface{},
 	return nil
 }
 
-func (p *FusionStorageNasPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
-	size, ok := parameters["size"].(int64)
-	if !ok || !utils.IsCapacityAvailable(size, CAPACITY_UNIT) {
-		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of %d.",
-			size, CAPACITY_UNIT)
+func (p *FusionStorageNasPlugin) updateNasCapacity(params, parameters map[string]interface{}) error {
+	size, exist := parameters["size"].(int64)
+	if !exist {
+		msg := fmt.Sprintf("the size does not exist in parameters %v", parameters)
 		log.Errorln(msg)
-		return "", errors.New(msg)
+		return errors.New(msg)
+	}
+	params["capacity"] = utils.RoundUpSize(size, fileCapacityUnit)
+	return nil
+}
+
+func (p *FusionStorageNasPlugin) CreateVolume(name string, parameters map[string]interface{}) (utils.Volume, error) {
+	size, ok := parameters["size"].(int64)
+	// for fusionStorage filesystem, the unit is KiB
+	if !ok || !utils.IsCapacityAvailable(size, fileCapacityUnit) {
+		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of %d.",
+			size, fileCapacityUnit)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
 	}
 	params, err := p.getParams(name, parameters)
 	if err != nil {
-		return "", err
+		return nil, err
+	}
+
+	// last step get the capacity is MiB, but need trans to KiB
+	err = p.updateNasCapacity(params, parameters)
+	if err != nil {
+		return nil, err
 	}
 
 	nas := volume.NewNAS(p.cli)
-	err = nas.Create(params)
+	volObj, err := nas.Create(params)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return params["name"].(string), nil
+	return volObj, nil
 }
 
 func (p *FusionStorageNasPlugin) DeleteVolume(name string) error {
@@ -80,6 +98,19 @@ func (p *FusionStorageNasPlugin) StageVolume(name string, parameters map[string]
 
 func (p *FusionStorageNasPlugin) UnstageVolume(name string, parameters map[string]interface{}) error {
 	return p.unstageVolume(name, parameters)
+}
+
+// UpdateBackendCapabilities to update the backend capabilities, such as thin, thick, qos and etc.
+func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
+	capabilities := map[string]interface{}{
+		"SupportThin":  true,
+		"SupportThick": false,
+		"SupportQoS":   false,
+		"SupportQuota": true,
+		"SupportClone": false,
+	}
+
+	return capabilities, nil
 }
 
 func (p *FusionStorageNasPlugin) NodeExpandVolume(string, string) error {

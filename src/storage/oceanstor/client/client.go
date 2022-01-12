@@ -55,6 +55,9 @@ const (
 	MAX_PARALLEL_COUNT           int   = 1000
 	MIN_PARALLEL_COUNT           int   = 20
 	GET_INFO_WAIT_INTERNAL             = 10
+	exceedFSCapacityUpper        int64 = 1073844377
+	lessFSCapacityLower          int64 = 1073844376
+	parameterIncorrect           int64 = 50331651
 )
 
 var (
@@ -583,6 +586,11 @@ func (cli *Client) CreateLun(params map[string]interface{}) (map[string]interfac
 	}
 
 	code := int64(resp.Error["code"].(float64))
+	if code == parameterIncorrect {
+		return nil, fmt.Errorf("create Lun error. ErrorCode: %d. Reason: The input parameter is incorrect. "+
+			"Suggestion: delete current PVC and check the parameter of the storageClass and PVC and try again", code)
+	}
+
 	if code != 0 {
 		return nil, fmt.Errorf("Create volume %v error: %d", data, code)
 	}
@@ -1141,52 +1149,6 @@ func (cli *Client) GetLunCountOfMapping(mappingID string) (int64, error) {
 	return count, nil
 }
 
-func (cli *Client) CreateFileSystem(params map[string]interface{}) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"NAME":          params["name"].(string),
-		"PARENTID":      params["parentid"].(string),
-		"CAPACITY":      params["capacity"].(int64),
-		"DESCRIPTION":   params["description"].(string),
-		"ALLOCTYPE":     params["alloctype"].(int),
-		"ISSHOWSNAPDIR": false,
-	}
-
-	if val, ok := params["workloadTypeID"].(string); ok {
-		res, err := strconv.ParseUint(val, 0, 32)
-		if err != nil {
-			return nil, fmt.Errorf("cannot convert workloadtype to int32: %v", err)
-		}
-
-		data["workloadTypeId"] = uint32(res)
-	}
-	resp, err := cli.post("/filesystem", data)
-	if err != nil {
-		return nil, err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code == SYSTEM_BUSY || code == MSG_TIME_OUT {
-		for i := 0; i < 10; i++ {
-			time.Sleep(time.Second * GET_INFO_WAIT_INTERNAL)
-			log.Infof("Create filesystem timeout, try to get info. The %d time", i+1)
-			fsInfo, err := cli.GetFileSystemByName(params["name"].(string))
-			if err != nil || fsInfo == nil {
-				log.Warningf("get filesystem error, fs: %v, error: %v", fsInfo, err)
-				continue
-			}
-			return fsInfo, nil
-		}
-	}
-
-	if code != 0 {
-		msg := fmt.Sprintf("Create filesystem %v error: %d", data, code)
-		return nil, errors.New(msg)
-	}
-
-	respData := resp.Data.(map[string]interface{})
-	return respData, nil
-}
-
 func (cli *Client) DeleteFileSystem(id string) error {
 	url := fmt.Sprintf("/filesystem/%s", id)
 	resp, err := cli.delete(url, nil)
@@ -1712,10 +1674,21 @@ func (cli *Client) UpdateFileSystem(fsID string, params map[string]interface{}) 
 }
 
 func (cli *Client) CreateQos(name, objID, objType string, params map[string]int) (map[string]interface{}, error) {
+	utcTime, err := cli.getSystemUTCTime()
+	if err != nil {
+		return nil, err
+	}
+
+	days := time.Unix(utcTime, 0).Format("2006-01-02")
+	utcZeroTime, err  := time.ParseInLocation("2006-01-02", days, time.UTC)
+	if err !=nil {
+		return nil, err
+	}
+
 	data := map[string]interface{}{
 		"NAME":              name,
 		"SCHEDULEPOLICY":    1,
-		"SCHEDULESTARTTIME": 1410969600,
+		"SCHEDULESTARTTIME": utcZeroTime.Unix(),
 		"STARTTIME":         "00:00",
 		"DURATION":          86400,
 	}

@@ -70,10 +70,10 @@ func (p *SAN) preCreate(params map[string]interface{}) error {
 	return nil
 }
 
-func (p *SAN) Create(params map[string]interface{}) error {
+func (p *SAN) Create(params map[string]interface{}) (utils.Volume, error) {
 	err := p.preCreate(params)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	taskflow := taskflow.NewTaskFlow("Create-LUN-Volume")
@@ -83,7 +83,7 @@ func (p *SAN) Create(params map[string]interface{}) error {
 	if (replicationOK && replication) && (hyperMetroOK && hyperMetro) {
 		msg := "cannot create replication and hypermetro for a volume at the same time"
 		log.Errorln(msg)
-		return errors.New(msg)
+		return nil, errors.New(msg)
 	} else if replicationOK && replication {
 		taskflow.AddTask("Get-Replication-Params", p.getReplicationParams, nil)
 	} else if hyperMetroOK && hyperMetro {
@@ -103,13 +103,14 @@ func (p *SAN) Create(params map[string]interface{}) error {
 		taskflow.AddTask("Create-HyperMetro", p.createHyperMetro, p.revertHyperMetro)
 	}
 
-	_, err = taskflow.Run(params)
+	res, err := taskflow.Run(params)
 	if err != nil {
 		taskflow.Revert()
-		return err
+		return nil, err
 	}
 
-	return nil
+	volObj := p.prepareVolObj(params, res)
+	return volObj, nil
 }
 
 func (p *SAN) Delete(name string) error {
@@ -256,6 +257,7 @@ func (p *SAN) createLocalLun(params, taskResult map[string]interface{}) (map[str
 
 	return map[string]interface{}{
 		"localLunID": lun["ID"].(string),
+		"lunWWN": lun["WWN"].(string),
 	}, nil
 }
 

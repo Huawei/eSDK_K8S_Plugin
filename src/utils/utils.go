@@ -18,6 +18,7 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -38,17 +39,22 @@ const (
 	V5Version       = "V500"
 	defaultTimeout  = 30
 	longTimeout     = 60
+
+	OceanStorDoradoV6 = "DoradoV6"
+	OceanStorDorado   = "Dorado"
+	OceanStorV3       = "V3"
+	OceanStorV5       = "V5"
 )
 
 var maskObject = []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
 
 type VolumeMetrics struct {
-	Available *resource.Quantity
-	Capacity *resource.Quantity
+	Available  *resource.Quantity
+	Capacity   *resource.Quantity
 	InodesUsed *resource.Quantity
-	Inodes *resource.Quantity
+	Inodes     *resource.Quantity
 	InodesFree *resource.Quantity
-	Used *resource.Quantity
+	Used       *resource.Quantity
 }
 
 func PathExist(path string) (bool, error) {
@@ -79,7 +85,7 @@ func MaskSensitiveInfo(info interface{}) string {
 	return message
 }
 
-func execShellCmdTimeout(fun func(string, bool, ...interface{})(string, bool, error), format string, logFilter bool, args ...interface{}) (string, error) {
+func execShellCmdTimeout(fun func(string, bool, ...interface{}) (string, bool, error), format string, logFilter bool, args ...interface{}) (string, error) {
 	var output string
 	var err error
 	var timeOut bool
@@ -341,9 +347,9 @@ func GetProductVersion(SystemInfo map[string]interface{}) (string, error) {
 	}
 
 	if strings.HasPrefix(productVersion, DoradoV6Version) {
-		return "DoradoV6", nil
+		return OceanStorDoradoV6, nil
 	} else if strings.HasPrefix(productVersion, V5Version) {
-		return "V5", nil
+		return OceanStorV5, nil
 	}
 
 	productMode, ok := SystemInfo["PRODUCTMODE"].(string)
@@ -352,10 +358,10 @@ func GetProductVersion(SystemInfo map[string]interface{}) (string, error) {
 	}
 
 	if match, _ := regexp.MatchString(`8[0-9][0-9]`, productMode); match {
-		return "Dorado", nil
+		return OceanStorDorado, nil
 	}
 
-	return "V3", nil
+	return OceanStorV3, nil
 }
 
 func IsSupportFeature(features map[string]int, feature string) bool {
@@ -540,5 +546,35 @@ func NeedMultiPath(backendConfigs []map[string]interface{}) bool {
 
 // IsCapacityAvailable indicates whether the volume size is an integer multiple of 512.
 func IsCapacityAvailable(volumeSizeBytes int64, allocationUnitBytes int64) bool {
-	return volumeSizeBytes % allocationUnitBytes == 0
+	return volumeSizeBytes%allocationUnitBytes == 0
+}
+
+// TransToInt is to trans different type to int type.
+func TransToInt(v interface{}) (int, error) {
+	switch v.(type) {
+	case string:
+		return strconv.Atoi(v.(string))
+	case int:
+		return v.(int), nil
+	case float64:
+		return int(v.(float64)), nil
+	default:
+		return 0, errors.New("unSupport type")
+	}
+}
+
+// TransToIntStrict only trans int type.
+func TransToIntStrict(val interface{}) (int, error) {
+	floatVal, ok := val.(float64)
+	if !ok {
+		log.Errorf("Value type invalid: {%v}, expect integer variable.", val)
+		return 0, errors.New("value type invalid")
+	}
+
+	if floatVal-math.Trunc(floatVal) != 0 {
+		log.Errorf("Value type invalid: {%v}, expect integer variable.", floatVal)
+		return 0, errors.New("value type invalid")
+	}
+
+	return int(floatVal), nil
 }

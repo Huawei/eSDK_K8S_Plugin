@@ -39,7 +39,7 @@ func (roce *RoCE) ConnectVolume(conn map[string]interface{}) (string, error) {
 	}
 
 	log.Errorln("final found no device.")
-	return "", nil
+	return "", errors.New("final found no device")
 }
 
 func (roce *RoCE) DisConnectVolume(tgtLunGuid string) error {

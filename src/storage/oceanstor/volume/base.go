@@ -6,6 +6,7 @@ import (
 	"storage/oceanstor/client"
 	"storage/oceanstor/smartx"
 	"strconv"
+	"utils"
 	"utils/log"
 )
 
@@ -100,13 +101,18 @@ func (p *Base) getPoolID(params map[string]interface{}) error {
 
 func (p *Base) getQoS(params map[string]interface{}) error {
 	if v, exist := params["qos"].(string); exist && v != "" {
-		qos, err := smartx.VerifyQos(v)
+		qos, err := smartx.ExtractQoSParameters(p.product, v)
 		if err != nil {
-			log.Errorf("Verify qos %s error: %v", v, err)
+			log.Errorf("qos parameter %s error: %v", v, err)
 			return err
 		}
 
-		params["qos"] = qos
+		validatedQos, err := smartx.ValidateQoSParameters(p.product, qos)
+		if err != nil {
+			log.Errorln(err)
+			return err
+		}
+		params["qos"] = validatedQos
 	}
 
 	return nil
@@ -252,4 +258,22 @@ func (p *Base) setWorkLoadID(cli *client.Client, params map[string]interface{}) 
 		params["workloadTypeID"] = workloadTypeID
 	}
 	return nil
+}
+
+func (p *Base) prepareVolObj(params, res map[string]interface{}) utils.Volume {
+	volName, isStr := params["name"].(string)
+	if !isStr {
+		// Not expecting this error to happen
+		log.Warningf("Expecting string for volume name, received type %T", params["name"])
+	}
+
+	volObj := utils.NewVolume(volName)
+
+	if res != nil{
+		if lunWWN, ok := res["lunWWN"].(string); ok{
+			volObj.SetLunWWN(lunWWN)
+		}
+	}
+
+	return volObj
 }

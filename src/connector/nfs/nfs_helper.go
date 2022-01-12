@@ -182,6 +182,7 @@ func mountUnix(sourcePath, targetPath, flags string, checkSourcePath bool) error
 	mountMap, err := readMountPoints()
 	value, exist := mountMap[targetPath]
 	if exist {
+		// checkSourcePath means the source is block type, need to check the realpath
 		if checkSourcePath {
 			err := compareMountPath(sourcePath, value)
 			if err != nil {
@@ -189,12 +190,18 @@ func mountUnix(sourcePath, targetPath, flags string, checkSourcePath bool) error
 			}
 			log.Infof("%s is already mount to %s", sourcePath, targetPath)
 			return nil
-		} else if value != sourcePath {
-			msg := fmt.Sprintf("The mount %s is already exist, but the source path is not %s",
-				targetPath, sourcePath)
-			log.Errorln(msg)
-			return errors.New(msg)
 		}
+
+		// if the checkSourcePath is false, check the filesystem by comparing the sourcePath and mountPath
+		if value == sourcePath {
+			log.Infof("Mount %s to %s is already exist", sourcePath, targetPath)
+			return nil
+		}
+
+		msg := fmt.Sprintf("The mount %s is already exist, but the source path is not %s, instead of %s",
+			targetPath, sourcePath, value)
+		log.Errorln(msg)
+		return errors.New(msg)
 	}
 
 	if flags != "" {
@@ -344,8 +351,14 @@ func mountDisk(sourcePath, targetPath, fsType, flags string) error {
 }
 
 func unmountUnix(targetPath string) error {
+	_, err := os.Stat(targetPath)
+	if err != nil && os.IsNotExist(err) {
+		return nil
+	}
+
 	output, err := utils.ExecShellCmd("umount %s", targetPath)
-	if err != nil && !strings.Contains(output, "not mounted") {
+	if err != nil && !(strings.Contains(output, "not mounted") ||
+		strings.Contains(output, "not found")) {
 		log.Errorf("Unmount %s error: %s", targetPath, output)
 		return err
 	}
@@ -353,6 +366,30 @@ func unmountUnix(targetPath string) error {
 	return nil
 }
 
+func removeTargetPath(targetPath string) error {
+	_, err := os.Stat(targetPath)
+	if err != nil && os.IsNotExist(err) {
+		return nil
+	}
+
+	if err != nil && !os.IsNotExist(err) {
+		msg := fmt.Sprintf("get target path %s state error %v", targetPath, err)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+
+	if err := os.RemoveAll(targetPath); err != nil {
+		msg := fmt.Sprintf("remove target path %s error %v", targetPath, err)
+		log.Errorln(msg)
+		return errors.New(msg)
+	}
+	return nil
+}
+
 func tryDisConnectVolume(targetPath string) error {
-	return unmountUnix(targetPath)
+	err :=  unmountUnix(targetPath)
+	if err != nil {
+		return err
+	}
+	return removeTargetPath(targetPath)
 }
