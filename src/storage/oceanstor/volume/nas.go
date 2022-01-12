@@ -78,10 +78,10 @@ func (p *NAS) preCreate(params map[string]interface{}) error {
 	return nil
 }
 
-func (p *NAS) Create(params map[string]interface{}) error {
+func (p *NAS) Create(params map[string]interface{}) (utils.Volume, error) {
 	err := p.preCreate(params)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	taskflow := taskflow.NewTaskFlow("Create-FileSystem-Volume")
@@ -92,7 +92,7 @@ func (p *NAS) Create(params map[string]interface{}) error {
 	if (replicationOK && replication) && (hyperMetroOK && hyperMetro) {
 		msg := "cannot create replication and hypermetro for a volume at the same time"
 		log.Errorln(msg)
-		return errors.New(msg)
+		return nil, errors.New(msg)
 	} else if replicationOK && replication {
 		taskflow.AddTask("Get-Replication-Params", p.getReplicationParams, nil)
 	} else if hyperMetroOK && hyperMetro {
@@ -120,11 +120,13 @@ func (p *NAS) Create(params map[string]interface{}) error {
 		// operation fails for the first time and the deletion operation is delivered for the second time,
 		// the CSI does not receive the deletion request, but the storage create)
 		taskflow.Revert()
-		return err
+		return nil, err
 	}
 
-	return nil
+	volObj := p.prepareVolObj(params, nil)
+	return volObj, nil
 }
+
 
 func (p *NAS) createLocalFS(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	fsName := params["name"].(string)

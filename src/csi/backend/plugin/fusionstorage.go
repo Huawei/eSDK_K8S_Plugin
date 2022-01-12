@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	CAPACITY_UNIT int64 = 1024 * 1024
+	CAPACITY_UNIT    int64 = 1024 * 1024
+	fileCapacityUnit int64 = 1024
 )
 
 type FusionStoragePlugin struct {
 	basePlugin
-	cli      *client.Client
+	cli *client.Client
 }
 
 func (p *FusionStoragePlugin) init(config map[string]interface{}, keepLogin bool) error {
@@ -71,6 +72,7 @@ func (p *FusionStoragePlugin) getParams(name string, parameters map[string]inter
 		"storagepool",
 		"cloneFrom",
 		"authClient",
+		"storageQuota",
 	}
 
 	for _, key := range paramKeys {
@@ -121,4 +123,17 @@ func (p *FusionStoragePlugin) UpdatePoolCapabilities(poolNames []string) (map[st
 	}
 
 	return capabilities, nil
+}
+
+// SupportQoSParameters checks requested QoS parameters support by FusionStorage plugin
+func (p *FusionStoragePlugin) SupportQoSParameters(qosConfig string) error {
+	// do not verify qos parameter for FusionStorage
+	return nil
+}
+
+// Logout is to logout the storage session
+func (p *FusionStoragePlugin) Logout() {
+	if p.cli != nil {
+		p.cli.Logout()
+	}
 }

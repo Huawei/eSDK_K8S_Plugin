@@ -36,7 +36,7 @@ func (fc *FibreChannel) ConnectVolume(conn map[string]interface{}) (string, erro
 	}
 
 	log.Errorln("Final found no device.")
-	return "", nil
+	return "", errors.New("final found no device")
 }
 
 func (fc *FibreChannel) DisConnectVolume(tgtLunWWN string) error {

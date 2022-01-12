@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	HYPERMETROPAIR_RUNNING_STATUS_NORMAL = "1"
-	HYPERMETROPAIR_RUNNING_STATUS_PAUSE  = "41"
+	hyperMetroPairRunningStatusNormal = "1"
+	hyperMetroPairRunningStatusPause  = "41"
+	reflectResultLength               = 2
 )
 
 type OceanstorSanPlugin struct {
@@ -94,23 +95,23 @@ func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
 	return volume.NewSAN(p.cli, metroRemoteCli, replicaRemoteCli, p.product)
 }
 
-func (p *OceanstorSanPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
+func (p *OceanstorSanPlugin) CreateVolume(name string, parameters map[string]interface{}) (utils.Volume, error) {
 	size, ok := parameters["size"].(int64)
 	if !ok || !utils.IsCapacityAvailable(size, SectorSize) {
 		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", size)
 		log.Errorln(msg)
-		return "", errors.New(msg)
+		return nil, errors.New(msg)
 	}
 
 	params := p.getParams(name, parameters)
 	san := p.getSanObj()
 
-	err := san.Create(params)
+	volObl, err := san.Create(params)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return params["name"].(string), nil
+	return volObl, nil
 }
 
 func (p *OceanstorSanPlugin) DeleteVolume(name string) error {
@@ -150,12 +151,12 @@ func (p *OceanstorSanPlugin) metroHandler(localCli, metroCli *client.Client, lun
 	}
 
 	if method == "ControllerDetach" || method == "NodeUnstage" {
-		if pair["RUNNINGSTATUS"] != HYPERMETROPAIR_RUNNING_STATUS_NORMAL &&
-			pair["RUNNINGSTATUS"] != HYPERMETROPAIR_RUNNING_STATUS_PAUSE {
+		if pair["RUNNINGSTATUS"] != hyperMetroPairRunningStatusNormal &&
+			pair["RUNNINGSTATUS"] != hyperMetroPairRunningStatusPause {
 			log.Warningf("hypermetro pair status of LUN %s is not normal or pause", localLunID)
 		}
 	} else {
-		if pair["RUNNINGSTATUS"] != HYPERMETROPAIR_RUNNING_STATUS_NORMAL {
+		if pair["RUNNINGSTATUS"] != hyperMetroPairRunningStatusNormal {
 			log.Warningf("hypermetro pair status of LUN %s is not normal", localLunID)
 		}
 	}
@@ -233,7 +234,7 @@ func (p *OceanstorSanPlugin) DetachVolume(name string, parameters map[string]int
 	if err != nil {
 		return err
 	}
-	if len(out) != 2 {
+	if len(out) != reflectResultLength {
 		return fmt.Errorf("detach volume %s error", lunName)
 	}
 
@@ -251,47 +252,112 @@ func (p *OceanstorSanPlugin) mutexReleaseClient(plugin *OceanstorSanPlugin, cli 
 	plugin.clientCount --
 	if plugin.clientCount == 0 {
 		cli.Logout()
+		plugin.storageOnline = false
 	}
 }
 
 func (p *OceanstorSanPlugin) releaseClient(cli, metroCli *client.Client) {
 	if p.storageOnline {
-		defer p.mutexReleaseClient(p, cli)
+		p.mutexReleaseClient(p, cli)
 	}
 
 	if p.metroRemotePlugin != nil && p.metroRemotePlugin.storageOnline {
-		defer p.mutexReleaseClient(p.metroRemotePlugin, metroCli)
+		p.mutexReleaseClient(p.metroRemotePlugin, metroCli)
 	}
 }
 
-func (p *OceanstorSanPlugin) StageVolume(name string, parameters map[string]interface{}) error {
-	cli, metroCli := p.getClient()
+func (p *OceanstorSanPlugin) getStageVolumeInfo(name string, parameters map[string]interface{}) (
+	*connector.ConnectInfo, error) {
+	cli, metroCli, err := p.getClient()
+	if err != nil {
+		return nil, err
+	}
 	defer p.releaseClient(cli, metroCli)
 
 	lunName := utils.GetLunName(name)
 	lun, err := p.getLunInfo(cli, metroCli, lunName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if lun == nil {
-		return fmt.Errorf("LUN %s to stage doesn't exist", lunName)
+		return nil, fmt.Errorf("LUN %s to stage doesn't exist", lunName)
 	}
 
 	var out []reflect.Value
 	out, err = p.handler(cli, metroCli, lun, parameters, "NodeStage")
 	if err != nil {
-		return err
+		log.Errorf("Storage connect for volume %s error: %v", lunName, err)
+		return nil, err
 	}
-	if len(out) != 2 {
-		return fmt.Errorf("stage volume %s error", lunName)
+
+	if len(out) != reflectResultLength {
+		return nil, fmt.Errorf("stage volume %s error", lunName)
 	}
 
 	result := out[1].Interface()
 	if result != nil {
-		return result.(error)
+		return nil, result.(error)
 	}
 
-	return p.lunStageVolume(name, out[0].Interface().(string), parameters)
+	connectInfo, ok := out[0].Interface().(*connector.ConnectInfo)
+	if !ok {
+		return nil, fmt.Errorf("stage volume %s error", lunName)
+	}
+	return connectInfo, nil
+}
+
+func (p *OceanstorSanPlugin) StageVolume(name string, parameters map[string]interface{}) error {
+	connectInfo, err := p.getStageVolumeInfo(name, parameters)
+	if err != nil {
+		return err
+	}
+
+	devPath, err := p.lunConnectVolume(connectInfo)
+	if err != nil {
+		return err
+	}
+
+	return p.lunStageVolume(name, devPath, parameters)
+}
+
+func (p *OceanstorSanPlugin) getUnStageVolumeInfo(name string, parameters map[string]interface{}) (
+	*connector.DisConnectInfo, error) {
+	cli, metroCli, err := p.getClient()
+	if err != nil {
+		return nil, err
+	}
+	defer p.releaseClient(cli, metroCli)
+
+	lunName := utils.GetLunName(name)
+	lun, err := p.getLunInfo(cli, metroCli, lunName)
+	if err != nil {
+		return nil, err
+	}
+	if lun == nil {
+		return nil, nil
+	}
+
+	out, err := p.handler(cli, metroCli, lun, parameters, "NodeUnstage")
+	if err != nil {
+		log.Errorf("Storage disconnect for volume %s error: %v", lunName, err)
+		return nil, err
+	}
+
+	if len(out) != reflectResultLength {
+		return nil, fmt.Errorf("unstage volume %s error", lunName)
+	}
+
+	result := out[1].Interface()
+	if result != nil {
+		return nil, result.(error)
+	}
+
+	disconnectInfo, ok := out[0].Interface().(*connector.DisConnectInfo)
+	if !ok {
+		return nil, fmt.Errorf("unstage volume %s error", lunName)
+	}
+
+	return disconnectInfo, nil
 }
 
 func (p *OceanstorSanPlugin) UnstageVolume(name string, parameters map[string]interface{}) error {
@@ -300,34 +366,36 @@ func (p *OceanstorSanPlugin) UnstageVolume(name string, parameters map[string]in
 		return err
 	}
 
-	cli, metroCli := p.getClient()
-	defer p.releaseClient(cli, metroCli)
-
-	lunName := utils.GetLunName(name)
-	lun, err := p.getLunInfo(cli, metroCli, lunName)
+	disconnectInfo, err := p.getUnStageVolumeInfo(name, parameters)
 	if err != nil {
 		return err
 	}
-	if lun == nil {
+
+	if disconnectInfo == nil {
 		return nil
 	}
+	
+	return p.lunDisconnectVolume(disconnectInfo)
+}
 
-	var out []reflect.Value
-
-	out, err = p.handler(cli, metroCli, lun, parameters, "NodeUnstage")
-	if err != nil {
-		return err
+// UnstageVolumeWithWWN does node side volume cleanup using lun WWN
+func (p *OceanstorSanPlugin) UnstageVolumeWithWWN(tgtLunWWN string) error {
+	var conn connector.Connector
+	switch p.protocol {
+	case "iscsi":
+		conn = connector.GetConnector(connector.ISCSIDriver)
+	case "fc":
+		conn = connector.GetConnector(connector.FCDriver)
+	case "roce":
+		conn = connector.GetConnector(connector.RoCEDriver)
+	case "fc-nvme":
+		conn = connector.GetConnector(connector.FCNVMeDriver)
+	default:
+		msg := fmt.Sprintf("the protocol %s is not valid", p.protocol)
+		log.Errorln(msg)
+		return errors.New(msg)
 	}
-	if len(out) != 1 {
-		return fmt.Errorf("unstage volume %s error", lunName)
-	}
-
-	result := out[0].Interface()
-	if result != nil {
-		return result.(error)
-	}
-
-	return nil
+	return conn.DisConnectVolume(tgtLunWWN)
 }
 
 func (p *OceanstorSanPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
@@ -343,7 +411,10 @@ func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(remote Plugin) {
 }
 
 func (p *OceanstorSanPlugin) NodeExpandVolume(name, volumePath string) error {
-	cli, metroCli := p.getClient()
+	cli, metroCli, err := p.getClient()
+	if err != nil {
+		return err
+	}
 	defer p.releaseClient(cli, metroCli)
 
 	lunName := utils.GetLunName(name)
@@ -402,33 +473,39 @@ func (p *OceanstorSanPlugin) DeleteSnapshot(snapshotParentId, snapshotName strin
 	return nil
 }
 
-func (p *OceanstorSanPlugin) mutexGetClient() *client.Client {
-	var cli *client.Client
-	var err error
+func (p *OceanstorSanPlugin) mutexGetClient() (*client.Client, error) {
 	p.clientMutex.Lock()
 	defer p.clientMutex.Unlock()
+	var err error
 	if !p.storageOnline || p.clientCount == 0 {
-		cli, err = p.duplicateClient()
+		err = p.cli.Login()
 		p.storageOnline = err == nil
 		if err == nil {
 			p.clientCount ++
 		}
 	} else {
-		cli = p.cli
 		p.clientCount ++
 	}
 
-	return cli
+	return p.cli, err
 }
 
-func (p *OceanstorSanPlugin) getClient() (*client.Client, *client.Client) {
-	cli := p.mutexGetClient()
+func (p *OceanstorSanPlugin) getClient() (*client.Client, *client.Client, error) {
+	cli, locErr := p.mutexGetClient()
 	var metroCli *client.Client
+	var rmtErr error
 	if p.metroRemotePlugin != nil {
-		metroCli = p.metroRemotePlugin.mutexGetClient()
+		metroCli, rmtErr = p.metroRemotePlugin.mutexGetClient()
+		if locErr != nil && rmtErr != nil {
+			return nil, nil, errors.New("local and remote storage can not login")
+		}
+	} else {
+		if locErr != nil {
+			return nil, nil, errors.New("local storage can not login")
+		}
 	}
 
-	return cli, metroCli
+	return cli, metroCli, nil
 }
 
 func (p *OceanstorSanPlugin) getLunInfo(localCli, remoteCli *client.Client, lunName string) (map[string]interface{}, error) {

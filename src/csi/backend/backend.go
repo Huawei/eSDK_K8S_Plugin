@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"regexp"
+	fsUtils "storage/fusionstorage/utils"
 	"strings"
 	"sync"
 	"utils"
@@ -33,6 +34,9 @@ var (
 		{"hyperMetro", filterByMetro},
 		{"replication", filterByReplication},
 		{"applicationType", filterByApplicationType},
+		{"storageQuota", filterByStorageQuota},
+		{"sourceVolumeName", filterBySupportClone},
+		{"sourceSnapshotName", filterBySupportClone},
 	}
 
 	secondaryFilterFuncs = [][]interface{}{
@@ -457,7 +461,7 @@ func SelectStoragePool(requestSize int64, parameters map[string]interface{}) (*S
 	return localPool, remotePool, nil
 }
 
-func filterByBackendName(backendName string, candidatePools []*StoragePool) []*StoragePool {
+func filterByBackendName(backendName string, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	var filterPools []*StoragePool
 
 	for _, pool := range candidatePools {
@@ -466,10 +470,10 @@ func filterByBackendName(backendName string, candidatePools []*StoragePool) []*S
 		}
 	}
 
-	return filterPools
+	return filterPools, nil
 }
 
-func filterByStoragePool(poolName string, candidatePools []*StoragePool) []*StoragePool {
+func filterByStoragePool(poolName string, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	var filterPools []*StoragePool
 
 	for _, pool := range candidatePools {
@@ -478,10 +482,10 @@ func filterByStoragePool(poolName string, candidatePools []*StoragePool) []*Stor
 		}
 	}
 
-	return filterPools
+	return filterPools, nil
 }
 
-func filterByVolumeType(volumeType string, candidatePools []*StoragePool) []*StoragePool {
+func filterByVolumeType(volumeType string, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	var filterPools []*StoragePool
 
 	for _, pool := range candidatePools {
@@ -496,10 +500,10 @@ func filterByVolumeType(volumeType string, candidatePools []*StoragePool) []*Sto
 		}
 	}
 
-	return filterPools
+	return filterPools, nil
 }
 
-func filterByAllocType(allocType string, candidatePools []*StoragePool) []*StoragePool {
+func filterByAllocType(allocType string, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	var filterPools []*StoragePool
 
 	for _, pool := range candidatePools {
@@ -520,29 +524,45 @@ func filterByAllocType(allocType string, candidatePools []*StoragePool) []*Stora
 		}
 	}
 
-	return filterPools
+	return filterPools, nil
 }
 
-func filterByQos(qos string, candidatePools []*StoragePool) []*StoragePool {
+func filterByQos(qos string, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	var filterPools []*StoragePool
 
+	if qos == "" {
+		return candidatePools, nil
+	}
+
+	var poolSelectionErrors []error
 	for _, pool := range candidatePools {
-		if qos != "" {
-			supportQoS, exist := pool.Capabilities["SupportQoS"].(bool)
-			if exist && supportQoS {
-				filterPools = append(filterPools, pool)
+		supportQoS, exist := pool.Capabilities["SupportQoS"].(bool)
+		if exist && supportQoS {
+			err := pool.Plugin.SupportQoSParameters(qos)
+			if err != nil {
+				poolSelectionErrors = append(poolSelectionErrors,
+					fmt.Errorf("%s:%s", pool.Parent, err))
+				continue
 			}
-		} else {
+
 			filterPools = append(filterPools, pool)
 		}
 	}
 
-	return filterPools
+	if len(filterPools) == 0 {
+		err := errors.New("failed to select pool with QoS parameters")
+		for _, poolSelectionError := range poolSelectionErrors {
+			err = fmt.Errorf("%s %s", err, poolSelectionError)
+		}
+		return filterPools, err
+	}
+
+	return filterPools, nil
 }
 
-func filterByMetro(hyperMetro string, candidatePools []*StoragePool) []*StoragePool {
+func filterByMetro(hyperMetro string, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	if len(hyperMetro) == 0 || !utils.StrToBool(hyperMetro) {
-		return candidatePools
+		return candidatePools, nil
 	}
 
 	var filterPools []*StoragePool
@@ -558,12 +578,12 @@ func filterByMetro(hyperMetro string, candidatePools []*StoragePool) []*StorageP
 		}
 	}
 
-	return filterPools
+	return filterPools, nil
 }
 
-func filterByReplication(replication string, candidatePools []*StoragePool) []*StoragePool {
+func filterByReplication(replication string, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	if len(replication) == 0 || !utils.StrToBool(replication) {
-		return candidatePools
+		return candidatePools, nil
 	}
 
 	var filterPools []*StoragePool
@@ -579,7 +599,7 @@ func filterByReplication(replication string, candidatePools []*StoragePool) []*S
 		}
 	}
 
-	return filterPools
+	return filterPools, nil
 }
 
 // filterByTopology returns a subset of the provided pools that can support any of the topology requirement.
@@ -757,16 +777,33 @@ func filterByCapability(
 	parameters map[string]interface{},
 	candidatePools []*StoragePool,
 	filterFuncs [][]interface{}) ([]*StoragePool, error) {
+	var err error
 	for _, i := range filterFuncs {
-		key, filter := i[0].(string), i[1].(func(string, []*StoragePool) []*StoragePool)
+		key, filter := i[0].(string), i[1].(func(string, []*StoragePool) ([]*StoragePool, error))
 		value, _ := parameters[key].(string)
-		candidatePools = filter(value, candidatePools)
-		if len(candidatePools) == 0 {
-			return nil, fmt.Errorf("failed to select pool, the final filter field: %s, parameters %v", key, parameters)
+		candidatePools, err = filter(value, candidatePools)
+		if err != nil || len(candidatePools) == 0 {
+			return nil, fmt.Errorf("failed to select pool, the final filter field: %s, parameters %v. "+
+				"Reason: %v", key, parameters, err)
 		}
 	}
 
 	return candidatePools, nil
+}
+
+func filterBySupportClone(cloneSource string, candidatePools []*StoragePool) ([]*StoragePool, error) {
+	if cloneSource == "" {
+		return candidatePools, nil
+	}
+
+	var filterPools []*StoragePool
+	for _, pool := range candidatePools {
+		if pool.Capabilities["SupportClone"].(bool) {
+			filterPools = append(filterPools, pool)
+		}
+	}
+
+	return filterPools, nil
 }
 
 func filterByCapacity(requestSize int64, allocType string, candidatePools []*StoragePool) []*StoragePool {
@@ -817,7 +854,7 @@ func (pool *StoragePool) GetSupportedTopologies() []map[string]string {
 	return backend.SupportedTopologies
 }
 
-func filterByApplicationType(appType string, candidatePools []*StoragePool) []*StoragePool {
+func filterByApplicationType(appType string, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	var filterPools []*StoragePool
 	for _, pool := range candidatePools {
 		if appType != "" {
@@ -829,5 +866,25 @@ func filterByApplicationType(appType string, candidatePools []*StoragePool) []*S
 			filterPools = append(filterPools, pool)
 		}
 	}
-	return filterPools
+	return filterPools, nil
+}
+
+func filterByStorageQuota(storageQuota string, candidatePools []*StoragePool) ([]*StoragePool, error) {
+	var filterPools []*StoragePool
+	if storageQuota == "" {
+		return candidatePools, nil
+	}
+
+	for _, pool := range candidatePools {
+		supportStorageQuota, ok := pool.Capabilities["SupportQuota"].(bool)
+		if ok && supportStorageQuota {
+			err := fsUtils.IsStorageQuotaAvailable(storageQuota)
+			if err != nil {
+				return nil, err
+			}
+			filterPools = append(filterPools, pool)
+		}
+	}
+
+	return filterPools, nil
 }

@@ -34,7 +34,7 @@ func (isc *iSCSI) ConnectVolume(conn map[string]interface{}) (string, error) {
 	}
 
 	log.Errorln("Final found no device.")
-	return "", nil
+	return "", errors.New("final found no device")
 }
 
 func (isc *iSCSI) DisConnectVolume(tgtLunWWN string) error {

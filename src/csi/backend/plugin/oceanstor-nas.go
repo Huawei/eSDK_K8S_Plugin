@@ -72,22 +72,22 @@ func (p *OceanstorNasPlugin) getNasObj() *volume.NAS {
 	return volume.NewNAS(p.cli, metroRemoteCli, replicaRemoteCli, p.product)
 }
 
-func (p *OceanstorNasPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
+func (p *OceanstorNasPlugin) CreateVolume(name string, parameters map[string]interface{}) (utils.Volume, error) {
 	size, ok := parameters["size"].(int64)
 	if !ok || !utils.IsCapacityAvailable(size, SectorSize) {
 		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", size)
 		log.Errorln(msg)
-		return "", errors.New(msg)
+		return nil, errors.New(msg)
 	}
 
 	params := p.getParams(name, parameters)
 	nas := p.getNasObj()
-	err := nas.Create(params)
+	volObj, err := nas.Create(params)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return params["name"].(string), nil
+	return volObj, nil
 }
 
 func (p *OceanstorNasPlugin) getClient() (*client.Client, *client.Client) {
