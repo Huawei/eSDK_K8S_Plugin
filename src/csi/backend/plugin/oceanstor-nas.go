@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"errors"
+	"fmt"
 	"storage/oceanstor/client"
 	"storage/oceanstor/volume"
 	"utils"
@@ -71,16 +72,30 @@ func (p *OceanstorNasPlugin) getNasObj() *volume.NAS {
 	return volume.NewNAS(p.cli, metroRemoteCli, replicaRemoteCli, p.product)
 }
 
-func (p *OceanstorNasPlugin) CreateVolume(name string, parameters map[string]interface{}) (string, error) {
-	params := p.getParams(name, parameters)
-	nas := p.getNasObj()
-
-	err := nas.Create(params)
-	if err != nil {
-		return "", err
+func (p *OceanstorNasPlugin) CreateVolume(name string, parameters map[string]interface{}) (utils.Volume, error) {
+	size, ok := parameters["size"].(int64)
+	if !ok || !utils.IsCapacityAvailable(size, SectorSize) {
+		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", size)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
 	}
 
-	return params["name"].(string), nil
+	params := p.getParams(name, parameters)
+	nas := p.getNasObj()
+	volObj, err := nas.Create(params)
+	if err != nil {
+		return nil, err
+	}
+
+	return volObj, nil
+}
+
+func (p *OceanstorNasPlugin) getClient() (*client.Client, *client.Client) {
+	var replicaRemoteCli *client.Client
+	if p.replicaRemotePlugin != nil {
+		replicaRemoteCli = p.replicaRemotePlugin.cli
+	}
+	return p.cli, replicaRemoteCli
 }
 
 func (p *OceanstorNasPlugin) DeleteVolume(name string) error {
@@ -89,7 +104,12 @@ func (p *OceanstorNasPlugin) DeleteVolume(name string) error {
 }
 
 func (p *OceanstorNasPlugin) ExpandVolume(name string, size int64) (bool, error) {
-	newSize := utils.TransVolumeCapacity(size, 512)
+	if !utils.IsCapacityAvailable(size, SectorSize) {
+		msg := fmt.Sprintf("Expand Volume: the capacity %d is not an integer multiple of 512.", size)
+		log.Errorln(msg)
+		return false, errors.New(msg)
+	}
+	newSize := utils.TransVolumeCapacity(size, SectorSize)
 	nas := p.getNasObj()
 	return false, nas.Expand(name, newSize)
 }

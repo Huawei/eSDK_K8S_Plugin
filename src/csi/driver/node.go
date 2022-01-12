@@ -47,9 +47,9 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	parameters := map[string]interface{}{
-		"targetPath": req.GetStagingTargetPath(),
-		"fsType":     mnt.GetFsType(),
-		"mountFlags": strings.Join(opts, ","),
+		"targetPath":         req.GetStagingTargetPath(),
+		"fsType":             mnt.GetFsType(),
+		"mountFlags":         strings.Join(opts, ","),
 		"volumeUseMultiPath": d.useMultiPath,
 	}
 
@@ -103,8 +103,8 @@ func (d *Driver) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolu
 		opts = append(opts, "ro")
 	}
 
-	connectInfo := map[string]interface{} {
-		"srcType": connector.MountFSType,
+	connectInfo := map[string]interface{}{
+		"srcType":    connector.MountFSType,
 		"sourcePath": sourcePath,
 		"targetPath": targetPath,
 		"mountFlags": strings.Join(opts, ","),
@@ -171,10 +171,26 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		log.Errorf("Marshal node info of %s error: %v", nodeBytes, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
 	log.Infof("Get NodeId %s", nodeBytes)
+
+	if d.nodeName == "" {
+		return &csi.NodeGetInfoResponse{
+			NodeId: string(nodeBytes),
+		}, nil
+	}
+
+	// Get topology info from Node labels
+	topology, err := d.k8sUtils.GetNodeTopology(d.nodeName)
+	if err != nil {
+		log.Errorln(err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
 	return &csi.NodeGetInfoResponse{
 		NodeId: string(nodeBytes),
+		AccessibleTopology: &csi.Topology{
+			Segments: topology,
+		},
 	}, nil
 }
 

@@ -35,6 +35,84 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		parameters["backend"], parameters["cloneFrom"] = utils.SplitVolumeId(cloneFrom)
 	}
 
+	// process volume content source
+	err := d.processVolumeContentSource(req, parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	// process accessibility requirements
+	d.processAccessibilityRequirements(req, parameters)
+
+	localPool, remotePool, err := backend.SelectStoragePool(size, parameters)
+	if err != nil {
+		log.Errorf("Cannot select pool for volume creation: %v", err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	parameters["storagepool"] = localPool.Name
+	if remotePool != nil {
+		parameters["metroDomain"] = backend.GetMetroDomain(remotePool.Parent)
+		parameters["vStorePairID"] = backend.GetMetrovStorePairID(remotePool.Parent)
+		parameters["remoteStoragePool"] = remotePool.Name
+	}
+
+	vol, err := localPool.Plugin.CreateVolume(name, parameters)
+	if err != nil {
+		log.Errorf("Create volume %s error: %v", name, err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	volume, err := d.getCreatedVolume(req, vol, localPool)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	log.Infof("Volume %s is created", name)
+	return &csi.CreateVolumeResponse{
+		Volume: volume,
+	}, nil
+}
+
+func (d *Driver) getCreatedVolume(req *csi.CreateVolumeRequest, vol utils.Volume, pool *backend.StoragePool) (*csi.Volume, error) {
+	contentSource := req.GetVolumeContentSource()
+	size := req.GetCapacityRange().GetRequiredBytes()
+
+	accessibleTopologies := make([]*csi.Topology, 0)
+	if req.GetAccessibilityRequirements() != nil &&
+		len(req.GetAccessibilityRequirements().GetRequisite()) != 0 {
+		supportedTopology := pool.GetSupportedTopologies()
+		if len(supportedTopology) > 0 {
+			for _, segment := range supportedTopology {
+				accessibleTopologies = append(accessibleTopologies, &csi.Topology{Segments: segment})
+			}
+		}
+	}
+
+	volName := vol.GetVolumeName()
+
+	attributes := map[string]string{
+		"backend": pool.Parent,
+		"name": volName,
+	}
+
+	if lunWWN, err := vol.GetLunWWN(); err == nil {
+		attributes["lunWWN"] = lunWWN
+	}
+
+	csiVolume := &csi.Volume{
+		VolumeId:           pool.Parent + "." + volName,
+		CapacityBytes:      size,
+		VolumeContext:      attributes,
+		AccessibleTopology: accessibleTopologies,
+	}
+	if contentSource != nil {
+		csiVolume.ContentSource = contentSource
+	}
+
+	return csiVolume, nil
+}
+
+func (d *Driver) processVolumeContentSource(req *csi.CreateVolumeRequest, parameters map[string]interface{}) error {
 	contentSource := req.GetVolumeContentSource()
 	if contentSource != nil {
 		if contentSnapshot := contentSource.GetSnapshot(); contentSnapshot != nil {
@@ -52,53 +130,44 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			log.Infof("Start to create volume from volume %s", sourceVolumeName)
 		} else {
 			log.Errorf("The source %s is not snapshot either volume", contentSource)
-			return nil, status.Error(codes.InvalidArgument, "no source ID provided is invalid")
+			return status.Error(codes.InvalidArgument, "no source ID provided is invalid")
 		}
 	}
 
-	localPool, remotePool, err := backend.SelectStoragePool(size, parameters)
-	if err != nil {
-		log.Errorf("Cannot select pool for volume creation: %v", err)
-		return nil, status.Error(codes.Internal, err.Error())
+	return nil
+}
+
+func (d *Driver) processAccessibilityRequirements(req *csi.CreateVolumeRequest, parameters map[string]interface{}) {
+	accessibleTopology := req.GetAccessibilityRequirements()
+	if accessibleTopology == nil {
+		log.Infoln("Empty accessibility requirements in create volume request")
+		return
 	}
 
-	parameters["storagepool"] = localPool.Name
-	if remotePool != nil {
-		parameters["metroDomain"] = backend.GetMetroDomain(remotePool.Parent)
-		parameters["vStorePairID"] = backend.GetMetrovStorePairID(remotePool.Parent)
-		parameters["remoteStoragePool"] = remotePool.Name
-	}
-
-	volName, err := localPool.Plugin.CreateVolume(name, parameters)
-	if err != nil {
-		log.Errorf("Create volume %s error: %v", name, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	log.Infof("Volume %s is created", name)
-
-	if contentSource != nil {
-		attributes := map[string]string{
-			"backend": localPool.Parent,
-			"name":    volName,
+	var requisiteTopologies = make([]map[string]string, 0)
+	for _, requisite := range accessibleTopology.GetRequisite() {
+		requirement := make(map[string]string)
+		for k, v := range requisite.GetSegments() {
+			requirement[k] = v
 		}
-
-		return &csi.CreateVolumeResponse{
-			Volume: &csi.Volume{
-				VolumeId:      localPool.Parent + "." + volName,
-				CapacityBytes: size,
-				VolumeContext: attributes,
-				ContentSource: req.VolumeContentSource,
-			},
-		}, nil
+		requisiteTopologies = append(requisiteTopologies, requirement)
 	}
 
-	return &csi.CreateVolumeResponse{
-		Volume: &csi.Volume{
-			VolumeId:      localPool.Parent + "." + volName,
-			CapacityBytes: size,
-		},
-	}, nil
+	var preferredTopologies = make([]map[string]string, 0)
+	for _, preferred := range accessibleTopology.GetPreferred() {
+		preference := make(map[string]string)
+		for k, v := range preferred.GetSegments() {
+			preference[k] = v
+		}
+		preferredTopologies = append(preferredTopologies, preference)
+	}
+
+	parameters[backend.Topology] = backend.AccessibleTopology{
+		RequisiteTopologies: requisiteTopologies,
+		PreferredTopologies: preferredTopologies,
+	}
+
+	log.Infof("accessibility Requirements in create volume %+v", parameters[backend.Topology])
 }
 
 func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
@@ -164,6 +233,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 
 func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	// Volume attachment will be done at node stage process
+	log.Infof("Run controller publish volume %s from node %s", req.GetVolumeId(), req.GetNodeId())
 	return &csi.ControllerPublishVolumeResponse{}, nil
 }
 
@@ -301,9 +371,9 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	backendName, snapshotParentId, snapshotName := utils.SplitSnapshotId(snapshotId)
 	backend := backend.GetBackend(backendName)
 	if backend == nil {
-		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
-		log.Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
+			"CAUTION: snapshot need to manually delete from array.", backendName)
+		return &csi.DeleteSnapshotResponse{}, nil
 	}
 
 	err := backend.Plugin.DeleteSnapshot(snapshotParentId, snapshotName)

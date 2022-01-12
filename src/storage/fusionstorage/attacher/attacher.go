@@ -1,15 +1,31 @@
+/*
+ Copyright (c) Huawei Technologies Co., Ltd. 2021-2021. All rights reserved.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+      http://www.apache.org/licenses/LICENSE-2.0
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+*/
+
+// Package attacher provide storage mapping or unmapping
 package attacher
 
 import (
-	"connector"
-	_ "connector/iscsi"
-	_ "connector/local"
 	"errors"
 	"fmt"
 	"net"
+	"strings"
+
+	"connector"
+	_ "connector/iscsi"
+	_ "connector/local"
 	"proto"
 	"storage/fusionstorage/client"
-	"strings"
 	"utils"
 	"utils/log"
 )
@@ -296,7 +312,8 @@ func (p *Attacher) doUnmapping(lunName, hostName string) (string, error) {
 	return lun["wwn"].(string), nil
 }
 
-func (p *Attacher) getMappingProperties(wwn, hostLunId string) (map[string]interface{}, error) {
+func (p *Attacher) getMappingProperties(wwn, hostLunId string, volumeUseMultiPath bool) (
+	map[string]interface{}, error) {
 	tgtPortals, tgtIQNs, err := p.getTargetPortals()
 	if err != nil {
 		return nil, err
@@ -309,13 +326,13 @@ func (p *Attacher) getMappingProperties(wwn, hostLunId string) (map[string]inter
 	}
 
 	connectInfo := map[string]interface{}{
-		"tgtLunWWN": wwn,
-		"tgtPortals": tgtPortals,
-		"tgtIQNs": tgtIQNs,
-		"tgtHostLUNs": tgtHostLUNs,}
+		"tgtLunWWN":          wwn,
+		"tgtPortals":         tgtPortals,
+		"tgtIQNs":            tgtIQNs,
+		"tgtHostLUNs":        tgtHostLUNs,
+		"volumeUseMultiPath": volumeUseMultiPath,}
 	return connectInfo, nil
 }
-
 
 func (p *Attacher) iSCSIControllerAttach(lunName string, parameters map[string]interface{}) (
 	map[string]interface{}, error) {
@@ -364,7 +381,12 @@ func (p *Attacher) iSCSIControllerAttach(lunName string, parameters map[string]i
 		return nil, err
 	}
 
-	return p.getMappingProperties(lun["wwn"].(string), hostLunId)
+	volumeUseMultiPath, ok := parameters["volumeUseMultiPath"].(bool)
+	if !ok {
+		volumeUseMultiPath = true
+	}
+
+	return p.getMappingProperties(lun["wwn"].(string), hostLunId, volumeUseMultiPath)
 }
 
 func (p *Attacher) SCSIControllerAttach(lunName string, parameters map[string]interface{}) (string, error) {
@@ -418,40 +440,37 @@ func (p *Attacher) ControllerDetach(lunName string, parameters map[string]interf
 	return wwn, nil
 }
 
-func (p *Attacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
-	var devPath string
+func (p *Attacher) NodeStage(lunName string, parameters map[string]interface{}) (*connector.ConnectInfo, error) {
+	var conn connector.Connector
+	var mappingInfo map[string]interface{}
+	var err error
 	if p.protocol == "iscsi" {
-		connectInfo, err := p.iSCSIControllerAttach(lunName, parameters)
+		mappingInfo, err = p.iSCSIControllerAttach(lunName, parameters)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
-		connectInfo["volumeUseMultiPath"] = parameters["volumeUseMultiPath"].(bool)
-		conn := connector.GetConnector(connector.ISCSIDriver)
-		devPath, err = conn.ConnectVolume(connectInfo)
-		if err != nil {
-			return "", err
-		}
+		conn = connector.GetConnector(connector.ISCSIDriver)
 	} else {
 		tgtLunWWN, err := p.SCSIControllerAttach(lunName, parameters)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
-		conn := connector.GetConnector(connector.LocalDriver)
-		devPath, err = conn.ConnectVolume(map[string]interface{}{"tgtLunWWN": tgtLunWWN})
-		if err != nil {
-			return "", err
-		}
+		mappingInfo = map[string]interface{}{"tgtLunWWN": tgtLunWWN}
+		conn = connector.GetConnector(connector.LocalDriver)
 	}
 
-	return devPath, nil
+	return &connector.ConnectInfo{
+		Conn:        conn,
+		MappingInfo: mappingInfo,
+	}, nil
 }
 
-func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
+func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}) (*connector.DisConnectInfo, error) {
 	lun, err := p.getLunInfo(lunName)
 	if lun == nil {
-		return err
+		return nil, err
 	}
 
 	var conn connector.Connector
@@ -461,12 +480,15 @@ func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}
 		conn = connector.GetConnector(connector.LocalDriver)
 	}
 
-	err = conn.DisConnectVolume(lun["wwn"].(string))
-	if err != nil {
-		log.Errorf("Delete dev %s error: %v", lun["wwn"].(string), err)
-		return err
+	tgtLunWWN, ok := lun["wwn"].(string)
+	if !ok {
+		return nil, errors.New("there is no wwn in lun info")
 	}
-	return nil
+
+	return &connector.DisConnectInfo{
+		Conn:   conn,
+		TgtLun: tgtLunWWN,
+	}, nil
 }
 
 func (p *Attacher) getLunInfo(lunName string) (map[string]interface{}, error) {

@@ -3,6 +3,7 @@ package plugin
 import (
 	"errors"
 	"storage/oceanstor/client"
+	"storage/oceanstor/smartx"
 	"strconv"
 	"strings"
 	"utils"
@@ -11,7 +12,7 @@ import (
 )
 
 const (
-	DORADO_V6_POOL_USAGE_TYPE     = "0"
+	DORADO_V6_POOL_USAGE_TYPE = "0"
 )
 
 type OceanstorPlugin struct {
@@ -96,13 +97,16 @@ func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, e
 	supportQoS := utils.IsSupportFeature(features, "SmartQoS")
 	supportMetro := utils.IsSupportFeature(features, "HyperMetro")
 	supportReplication := utils.IsSupportFeature(features, "HyperReplication")
+	supportApplicationType := p.product == "DoradoV6"
 
 	capabilities := map[string]interface{}{
-		"SupportThin":        supportThin,
-		"SupportThick":       supportThick,
-		"SupportQoS":         supportQoS,
-		"SupportMetro":       supportMetro,
-		"SupportReplication": supportReplication,
+		"SupportThin":            supportThin,
+		"SupportThick":           supportThick,
+		"SupportQoS":             supportQoS,
+		"SupportMetro":           supportMetro,
+		"SupportReplication":     supportReplication,
+		"SupportApplicationType": supportApplicationType,
+		"SupportClone":           true,
 	}
 
 	return capabilities, nil
@@ -127,6 +131,7 @@ func (p *OceanstorPlugin) getParams(name string, parameters map[string]interface
 		"sourceSnapshotName",
 		"sourceVolumeName",
 		"snapshotParentId",
+		"applicationType",
 	}
 
 	for _, key := range paramKeys {
@@ -174,8 +179,8 @@ func (p *OceanstorPlugin) updatePoolCapabilities(poolNames []string, usageType s
 	for _, name := range poolNames {
 		if pool, exist := pools[name].(map[string]interface{}); exist {
 			poolType, exist := pool["NEWUSAGETYPE"].(string)
-			if (pool["USAGETYPE"] == usageType || pool["USAGETYPE"] == DORADO_V6_POOL_USAGE_TYPE) || (
-				exist && poolType == DORADO_V6_POOL_USAGE_TYPE) {
+			if (pool["USAGETYPE"] == usageType || pool["USAGETYPE"] == DORADO_V6_POOL_USAGE_TYPE) ||
+				(exist && poolType == DORADO_V6_POOL_USAGE_TYPE) {
 				validPools = append(validPools, pool)
 			} else {
 				log.Warningf("Pool %s is not for %s", name, usageType)
@@ -205,11 +210,22 @@ func (p *OceanstorPlugin) analyzePoolsCapacity(pools []map[string]interface{}) m
 }
 
 func (p *OceanstorPlugin) duplicateClient() (*client.Client, error) {
-	cli := p.cli.DuplicateClient()
-	err := cli.Login()
+	err := p.cli.Login()
 	if err != nil {
 		return nil, err
 	}
 
-	return cli, nil
+	return p.cli, nil
+}
+
+// SupportQoSParameters checks requested QoS parameters support by Oceanstor plugin
+func (p *OceanstorPlugin) SupportQoSParameters(qosConfig string) error {
+	return smartx.CheckQoSParameterSupport(p.product, qosConfig)
+}
+
+// Logout is to logout the storage session
+func (p *OceanstorPlugin) Logout() {
+	if p.cli != nil {
+		p.cli.Logout()
+	}
 }

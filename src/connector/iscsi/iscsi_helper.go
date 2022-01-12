@@ -205,6 +205,9 @@ func getAllISCSISession() [][]string {
 
 func connectISCSIPortal(tgtPortal, targetIQN string, tgtChapInfo chapInfo) (string, bool) {
 	checkExitCode := []string{"exit status 0", "exit status 21", "exit status 255"}
+	// If the host already discovery the target, we do not need to run --op new.
+	// Therefore, we check to see if the target exists, and if we get 255(Not Found), should run --op new.
+	// It will return 21 for No records Found after version 2.0-871
 	err := runISCSIAdmin(tgtPortal, targetIQN, "", checkExitCode)
 	if err != nil {
 		if err.Error() == "timeout" {
@@ -221,8 +224,9 @@ func connectISCSIPortal(tgtPortal, targetIQN string, tgtChapInfo chapInfo) (stri
 	var manualScan bool
 	err = updateISCSIAdmin(tgtPortal, targetIQN, "node.session.scan", "manual")
 	if err != nil {
-		manualScan = true
+		log.Warningf("Update node session scan mode to manual error, reason: %v", tgtPortal, err)
 	}
+	manualScan = err == nil
 
 	err = updateChapInfo(tgtPortal, targetIQN, tgtChapInfo)
 	if err != nil {
@@ -234,6 +238,7 @@ func connectISCSIPortal(tgtPortal, targetIQN string, tgtChapInfo chapInfo) (stri
 		sessions := getAllISCSISession()
 		for _, s := range sessions {
 			if s[0] == "tcp:" && strings.ToLower(tgtPortal) == strings.ToLower(s[2]) && targetIQN == s[4] {
+				log.Infof("Login iSCSI session success. Session: %s, manualScan: %s", s[1], manualScan)
 				return s[1], manualScan
 			}
 		}
@@ -348,10 +353,9 @@ func scan(session, tgtLun string, hostChannelTargetLun []string, numRescans, sec
 	return device, numRescans, secondNextScan, doScans
 }
 
-func connectVol(tgtPortal, targetIQN, tgtLun string, tgtChapInfo chapInfo, iSCSIShareData *shareData) {
+func connectVol(tgt singleConnectorInfo, conn *connectorInfo, iSCSIShareData *shareData) {
 	var device string
-
-	session, manualScan := connectISCSIPortal(tgtPortal, targetIQN, tgtChapInfo)
+	session, manualScan := connectISCSIPortal(tgt.tgtPortal, tgt.tgtIQN, conn.tgtChapInfo)
 	if session != "" {
 		var numRescans, secondNextScan int
 		var hostChannelTargetLun []string
@@ -366,21 +370,24 @@ func connectVol(tgtPortal, targetIQN, tgtLun string, tgtChapInfo chapInfo, iSCSI
 
 		iSCSIShareData.numLogin += 1
 		for doScans {
-			device, numRescans, secondNextScan, doScans = scan(session, tgtLun, hostChannelTargetLun, numRescans,
+			device, numRescans, secondNextScan, doScans = scan(
+				session, tgt.tgtHostLun, hostChannelTargetLun, numRescans,
 				secondNextScan, doScans, iSCSIShareData)
-			log.Infof("found device %s", device)
+			log.Infof("Found device %s", device)
+			if device != "" {
+				device = connector.ClearUnavailableDevice(device, conn.tgtLunWWN)
+			}
 		}
 
 		if device == "" {
-			log.Debugf("LUN %s on iSCSI portal %s not found on sysfs after logging in.", tgtLun, tgtPortal)
-		}
-
-		if device != "" {
+			log.Warningf("LUN %s on iSCSI portal %s not found on sysfs after logging in.",
+				tgt.tgtHostLun, tgt.tgtPortal)
+		} else {
 			iSCSIShareData.foundDevices = append(iSCSIShareData.foundDevices, device)
 			iSCSIShareData.justAddedDevices = append(iSCSIShareData.justAddedDevices, device)
 		}
 	} else {
-		log.Warningf("build iSCSI session %s error", tgtPortal)
+		log.Warningf("build iSCSI session %s error", tgt.tgtPortal)
 		iSCSIShareData.failedLogin += 1
 	}
 
@@ -430,12 +437,12 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 				log.Flush()
 			}()
 
-			connectVol(tgt.tgtPortal, tgt.tgtIQN, tgt.tgtHostLun, conn.tgtChapInfo, iSCSIShareData)
+			connectVol(tgt, conn, iSCSIShareData)
 		}(tgtInfo)
 	}
 
 	if connMap["volumeUseMultiPath"].(bool) {
-		mPath, _ = scanMultiPath(lenIndex, iSCSIShareData)
+		mPath, _ = scanMultiPath(lenIndex, conn.tgtLunWWN, iSCSIShareData)
 	} else {
 		scanSingle(iSCSIShareData)
 	}
@@ -447,28 +454,26 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 		return "", errors.New("volume device not found")
 	}
 
-	if !connMap["volumeUseMultiPath"].(bool) {
-		device := fmt.Sprintf("/dev/%s", iSCSIShareData.foundDevices[0])
-		err := connector.VerifySingleDevice(device, conn.tgtLunWWN,
-			"volume device not found", false, tryDisConnectVolume)
-		if err != nil {
-			return "", err
-		}
-		return device, nil
+	return checkDeviceAvailable(iSCSIShareData, connMap["volumeUseMultiPath"].(bool), conn.tgtLunWWN, mPath)
+}
+
+func checkSinglePathAvailable(iSCSIShareData *shareData, tgtLunWWN string) (string, error) {
+	device := fmt.Sprintf("/dev/%s", iSCSIShareData.foundDevices[0])
+	err := connector.VerifySingleDevice(device, tgtLunWWN,
+		"volume device not found", false, tryDisConnectVolume)
+	if err != nil {
+		return "", err
+	}
+	return device, nil
+}
+
+func checkDeviceAvailable(iSCSIShareData *shareData, volumeUseMultiPath bool, tgtLunWWN, mPath string) (
+	string, error) {
+	if !volumeUseMultiPath {
+		return checkSinglePathAvailable(iSCSIShareData, tgtLunWWN)
 	}
 
-	// mPath: dm-<id>
-	if mPath != "" {
-		dev, err := connector.VerifyMultiPathDevice(mPath, conn.tgtLunWWN,
-			"volume device not found", false, tryDisConnectVolume)
-		if err != nil {
-			return "", err
-		}
-		return dev, nil
-	}
-
-	log.Errorln("no dm was created")
-	return "", errors.New("volume device not found")
+	return connector.VerifyMultiPathDevice(mPath, tgtLunWWN, "volume device not found", false, tryDisConnectVolume)
 }
 
 func scanSingle(iSCSIShareData *shareData) {
@@ -518,23 +523,7 @@ func getSYSfsWwn(foundDevices []string, mPath string) (string, error) {
 
 	msg := fmt.Sprintf("Cannot find device %s wwid", foundDevices)
 	log.Errorln(msg)
-	return "", errors.New(msg)
-}
-
-func findSYSfsMultiPath(foundDevices []string) string {
-	for _, device := range foundDevices {
-		dmPath := fmt.Sprintf("/sys/block/%s/holders/dm-*", device)
-
-		paths, err := filepath.Glob(dmPath)
-		if err != nil {
-			continue
-		}
-		if paths != nil {
-			splitPath := strings.Split(paths[0], "/")
-			return splitPath[len(splitPath)-1]
-		}
-	}
-	return ""
+	return "", nil
 }
 
 func addMultiWWN(tgtLunWWN string) (bool, error) {
@@ -575,7 +564,7 @@ func tryScanMultiDevice(mPath string, iSCSIShareData *shareData) string {
 			log.Warningf("Add multiPath path failed, error: %s", err)
 		}
 
-		mPath = findSYSfsMultiPath(iSCSIShareData.foundDevices)
+		mPath = connector.FindAvailableMultiPath(iSCSIShareData.foundDevices)
 	}
 	return mPath
 }
@@ -583,7 +572,7 @@ func tryScanMultiDevice(mPath string, iSCSIShareData *shareData) string {
 func scanMultiDevice(mPath, wwn string, iSCSIShareData *shareData, wwnAdded bool) (string, bool) {
 	var err error
 	if mPath == "" && len(iSCSIShareData.foundDevices) != 0 {
-		mPath = findSYSfsMultiPath(iSCSIShareData.foundDevices)
+		mPath = connector.FindAvailableMultiPath(iSCSIShareData.foundDevices)
 		if wwn != "" && !(mPath != "" || wwnAdded) {
 			wwnAdded, err = addMultiWWN(wwn)
 			if err != nil {
@@ -597,7 +586,7 @@ func scanMultiDevice(mPath, wwn string, iSCSIShareData *shareData, wwnAdded bool
 	return mPath, wwnAdded
 }
 
-func scanMultiPath(lenIndex int, iSCSIShareData *shareData) (string, string) {
+func scanMultiPath(lenIndex int, LunWWN string, iSCSIShareData *shareData) (string, string) {
 	var wwnAdded bool
 	var lastTryOn int64
 	var mPath, wwn string
@@ -607,7 +596,11 @@ func scanMultiPath(lenIndex int, iSCSIShareData *shareData) (string, string) {
 		if wwn == "" && len(iSCSIShareData.foundDevices) != 0 {
 			wwn, err = getSYSfsWwn(iSCSIShareData.foundDevices, mPath)
 			if err != nil {
-				continue
+				break
+			}
+
+			if wwn == "" {
+				wwn = LunWWN
 			}
 		}
 

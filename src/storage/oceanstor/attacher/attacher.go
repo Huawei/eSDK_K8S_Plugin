@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
+
+	"connector"
 	"proto"
 	"storage/oceanstor/client"
-	"strings"
 	"utils"
 	"utils/log"
 )
@@ -14,8 +16,8 @@ import (
 type AttacherPlugin interface {
 	ControllerAttach(string, map[string]interface{}) (map[string]interface{}, error)
 	ControllerDetach(string, map[string]interface{}) (string, error)
-	NodeStage(string, map[string]interface{}) (string, error)
-	NodeUnstage(string, map[string]interface{}) error
+	NodeStage(string, map[string]interface{}) (*connector.ConnectInfo, error)
+	NodeUnstage(string, map[string]interface{}) (*connector.DisConnectInfo, error)
 	getTargetRoCEPortals() ([]string, error)
 	getLunInfo(lunName string) (map[string]interface{}, error)
 }
@@ -670,15 +672,15 @@ func (p *Attacher) doUnmapping(hostID, lunName string) (string, error) {
 	return lunUniqueId, nil
 }
 
-func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
+func (p *Attacher) NodeUnstage(lunName string, parameters map[string]interface{}) (*connector.DisConnectInfo, error) {
 	lun, err := p.getLunInfo(lunName)
 	if lun == nil {
-		return err
+		return nil, err
 	}
 
 	lunUniqueId, err := utils.GetLunUniqueId(p.protocol, lun)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	return disConnectVolume(lunUniqueId, p.protocol)

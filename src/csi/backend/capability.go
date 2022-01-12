@@ -113,3 +113,12 @@ func AsyncUpdateCapabilities(controllerFlagFile string) {
 
 	wait.Wait()
 }
+
+// LogoutBackend is to logout all storage backend
+func LogoutBackend() {
+	for _, backend := range csiBackends {
+		log.Infof("Start to logout the backend %s", backend.Name)
+		backend.Plugin.Logout()
+		backend.Available = false
+	}
+}

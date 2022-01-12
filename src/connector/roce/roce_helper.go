@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
-	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -98,7 +97,7 @@ func connectRoCEPortal(existSessions map[string]bool, tgtPortal, targetNQN strin
 			return err
 		}
 
-		err2 := utils.CheckExistCode(err, checkExitCode)
+		err2 := utils.IgnoreExistCode(err, checkExitCode)
 		if err2 != nil {
 			log.Warningf("Run %s: output=%s, err=%v", utils.MaskSensitiveInfo(iSCSICmd),
 				utils.MaskSensitiveInfo(output), err2)
@@ -117,7 +116,7 @@ func connectVol(existSessions map[string]bool, tgtPortal, tgtLunGUID string, nvm
 
 	err = connectRoCEPortal(existSessions, tgtPortal, targetNQN)
 	if err != nil {
-		log.Errorf("connect roce protal  %s error, reason: %v", tgtPortal, err)
+		log.Errorf("connect roce portal %s error, reason: %v", tgtPortal, err)
 		nvmeShareData.failedLogin += 1
 		nvmeShareData.stoppedThreads += 1
 		return
@@ -126,7 +125,13 @@ func connectVol(existSessions map[string]bool, tgtPortal, tgtLunGUID string, nvm
 	nvmeShareData.numLogin += 1
 	var device string
 	for i := 1; i < 4; i++ {
-		device, err = scanRoCEDevice(targetNQN, tgtPortal, tgtLunGUID)
+		nvmeConnectInfo, err := getSubSysInfo()
+		if err != nil {
+			log.Errorf("Get nvme info error: %v", err)
+			break
+		}
+
+		device, err = scanRoCEDevice(nvmeConnectInfo, targetNQN, tgtPortal, tgtLunGUID)
 		if err != nil && err.Error() != "FindNoDevice" {
 			log.Errorf("Get device of guid %s error: %v", tgtLunGUID, err)
 			break
@@ -150,7 +155,7 @@ func connectVol(existSessions map[string]bool, tgtPortal, tgtLunGUID string, nvm
 	return
 }
 
-func scanMultiPath(lenIndex int, nvmeShareData *shareData) (string, string) {
+func scanMultiPath(lenIndex int, LunGUID string, nvmeShareData *shareData) (string, string) {
 	var wwnAdded bool
 	var lastTryOn int64
 	var mPath, wwn string
@@ -160,7 +165,11 @@ func scanMultiPath(lenIndex int, nvmeShareData *shareData) (string, string) {
 		if wwn == "" && len(nvmeShareData.foundDevices) != 0 {
 			wwn, err = getSYSfsWwn(nvmeShareData.foundDevices, mPath)
 			if err != nil {
-				continue
+				break
+			}
+
+			if wwn == "" {
+				wwn = LunGUID
 			}
 		}
 
@@ -207,13 +216,13 @@ func getSYSfsWwn(foundDevices []string, mPath string) (string, error) {
 
 	msg := fmt.Sprintf("Cannot find device %s wwid", foundDevices)
 	log.Errorln(msg)
-	return "", errors.New(msg)
+	return "", nil
 }
 
 func scanMultiDevice(mPath, wwn string, nvmeShareData *shareData, wwnAdded bool) (string, bool) {
 	var err error
 	if mPath == "" && len(nvmeShareData.foundDevices) != 0 {
-		mPath = findSYSfsMultiPath(nvmeShareData.foundDevices)
+		mPath = connector.FindAvailableMultiPath(nvmeShareData.foundDevices)
 		if wwn != "" && !(mPath != "" || wwnAdded) {
 			wwnAdded, err = addMultiWWN(wwn)
 			if err != nil {
@@ -225,21 +234,6 @@ func scanMultiDevice(mPath, wwn string, nvmeShareData *shareData, wwnAdded bool)
 	}
 
 	return mPath, wwnAdded
-}
-
-func findSYSfsMultiPath(foundDevices []string) string {
-	for _, device := range foundDevices {
-		dmPath := fmt.Sprintf("/sys/block/%s/holders/dm-*", device)
-		paths, err := filepath.Glob(dmPath)
-		if err != nil {
-			continue
-		}
-		if paths != nil {
-			splitPath := strings.Split(paths[0], "/")
-			return splitPath[len(splitPath)-1]
-		}
-	}
-	return ""
 }
 
 func addMultiWWN(deviceWWN string) (bool, error) {
@@ -266,7 +260,7 @@ func tryScanMultiDevice(mPath string, nvmeShareData *shareData) string {
 			log.Warningf("Add multiPath path failed, error: %s", err)
 		}
 
-		mPath = findSYSfsMultiPath(nvmeShareData.foundDevices)
+		mPath = connector.FindAvailableMultiPath(nvmeShareData.foundDevices)
 	}
 	return mPath
 }
@@ -299,6 +293,7 @@ func getExistSessions() (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Infof("All SubSysInfo %v", nvmeConnectInfo)
 
 	subSystems, ok := nvmeConnectInfo["Subsystems"].([]interface{})
 	if !ok {
@@ -327,6 +322,8 @@ func getExistSessions() (map[string]bool, error) {
 			existPortals[portal] = true
 		}
 	}
+
+	log.Infof("Exist Portals %v", existPortals)
 	return existPortals, nil
 }
 
@@ -368,7 +365,7 @@ func tryConnectVolume(connMap map[string]interface{}) (string, error) {
 	}
 
 	if connMap["volumeUseMultiPath"].(bool) {
-		mPath, _ = scanMultiPath(lenIndex, nvmeShareData)
+		mPath, _ = scanMultiPath(lenIndex, conn.tgtLunGUID, nvmeShareData)
 	} else {
 		scanSingle(nvmeShareData)
 	}
@@ -411,7 +408,7 @@ func findDevice(nvmeShareData *shareData, volumeUseMultiPath bool, mPath, tgtLun
 func getSubSysInfo() (map[string]interface{}, error) {
 	output, err := utils.ExecShellCmdFilterLog("nvme list-subsys -o json")
 	if err != nil {
-		log.Errorf("get exist nvme connect port error: %s", err)
+		log.Errorf("get exist nvme connect info %s,  error: %s", output, err)
 		return nil, errors.New("get nvme connect port failed")
 	}
 
@@ -456,21 +453,38 @@ func getSubPathInfo(p interface{}) (string, string) {
 		return "", ""
 	}
 
+	transport, exist := path["Transport"].(string)
+	if !exist || transport != "rdma" {
+		log.Warningf("Transport does not exist in path %v or Transport value is not rdma.", path)
+		return "", ""
+	}
+
+	state, exist := path["State"].(string)
+	if !exist || state != "live" {
+		log.Warningf("The state of path %v is not live.", path)
+		return "", ""
+	}
+
 	address, exist := path["Address"].(string)
 	if !exist {
+		log.Warningf("Address does not exist in path %v.", path)
 		return "", ""
 	}
 
 	splitAddress := strings.Split(address, " ")
-	if len(splitAddress) != intNumThree {
-		return "", ""
+	for _, addr := range splitAddress {
+		splitPortal := strings.Split(addr, "=")
+		if len(splitPortal) != intNumTwo {
+			continue
+		}
+
+		if splitPortal[0] == "traddr" {
+			return splitPortal[1], path["Name"].(string)
+		}
 	}
 
-	splitPortal := strings.Split(splitAddress[0], "=")
-	if len(splitPortal) != intNumTwo {
-		return "", ""
-	}
-	return splitPortal[1], path["Name"].(string)
+	log.Warningf("Didn't find portal in path %v", path)
+	return "", ""
 }
 
 func getSubSysPort(subPaths []interface{}, tgtPortal string) string {
@@ -542,11 +556,7 @@ func getNVMeWWN(devicePort, device string) (string, error) {
 	return "", errors.New("uuid is not exist")
 }
 
-func scanRoCEDevice(targetNqn, tgtPortal, tgtLunGUID string) (string, error) {
-	nvmeConnectInfo, err := getSubSysInfo()
-	if err != nil {
-		return "", err
-	}
+func scanRoCEDevice(nvmeConnectInfo map[string]interface{}, targetNqn, tgtPortal, tgtLunGUID string) (string, error) {
 	subPaths := getSubSysPaths(nvmeConnectInfo, targetNqn)
 	devicePort := getSubSysPort(subPaths, tgtPortal)
 
@@ -556,7 +566,7 @@ func scanRoCEDevice(targetNqn, tgtPortal, tgtLunGUID string) (string, error) {
 		return "", errors.New(msg)
 	}
 
-	err = scanNVMeDevice(devicePort)
+	err := scanNVMeDevice(devicePort)
 	if err != nil {
 		return "", err
 	}

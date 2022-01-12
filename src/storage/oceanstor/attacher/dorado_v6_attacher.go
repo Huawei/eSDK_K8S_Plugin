@@ -1,6 +1,7 @@
 package attacher
 
 import (
+	"connector"
 	"storage/oceanstor/client"
 	"utils"
 	"utils/log"
@@ -90,6 +91,8 @@ func (p *DoradoV6Attacher) ControllerAttach(lunName string, parameters map[strin
 	return p.getMappingProperties(wwn, hostLunId)
 }
 
-func (p *DoradoV6Attacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
+// NodeStage to do storage mapping and get the connector
+func (p *DoradoV6Attacher) NodeStage(lunName string, parameters map[string]interface{}) (
+	*connector.ConnectInfo, error) {
 	return connectVolume(p, lunName, p.protocol, parameters)
 }

@@ -1,3 +1,18 @@
+/*
+ Copyright (c) Huawei Technologies Co., Ltd. 2021-2021. All rights reserved.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+      http://www.apache.org/licenses/LICENSE-2.0
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+*/
+
+// Package connector provide the common func of scan device
 package connector
 
 import (
@@ -8,8 +23,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+
 	"utils"
 	"utils/log"
 )
@@ -74,8 +91,19 @@ func GetDevice(findDeviceMap map[string]string, tgtLunGUID string, checkDeviceAv
 		return dev, nil
 	}
 
+	// If the device can not read, directly return the device
+	readable := isDeviceReadable(devPath)
+	if !readable {
+		return dev, nil
+	}
+
 	if strings.HasPrefix(dev, "dm") {
-		_, err = IsMultiPathAvailable(dev, tgtLunGUID)
+		devices, err := getDeviceFromDM(dev)
+		if err != nil {
+			return "", err
+		}
+
+		_, err = IsMultiPathAvailable(dev, tgtLunGUID, devices)
 		if err != nil {
 			return "", err
 		}
@@ -432,7 +460,52 @@ func FindMultiDevicePath(tgtWWN string) string {
 	return ""
 }
 
-func GetSCSIWwn(hostDevice string) (string, error) {
+// FindAvailableMultiPath is to get dm-multiapth through sd devices
+func FindAvailableMultiPath(foundDevices []string) string {
+	mPathMap, mPath := findMultiPathMaps(foundDevices)
+	if len(mPathMap) == 1 {
+		return mPath
+	}
+
+	if len(mPathMap) == 0 {
+		log.Infof("Start to clean up the devices %s", foundDevices)
+		if err := removeDevices(foundDevices); err != nil {
+			log.Errorf("clear devices %v error %v", foundDevices, err)
+			return ""
+		}
+		return ""
+	}
+
+	for dmPath, devices := range mPathMap {
+		log.Infof("Start to clean up the multipath %s with devices %s", dmPath, devices)
+		if _, err := removeMultiPathDevice(dmPath, devices); err != nil {
+			log.Errorf("clear multipath %s and devices %v error %v", dmPath, devices, err)
+		}
+	}
+
+	return ""
+}
+
+func findMultiPathMaps(foundDevices []string) (map[string][]string, string) {
+	mPathMap := make(map[string][]string)
+	var mPath string
+	for _, device := range foundDevices {
+		dmPath := fmt.Sprintf("/sys/block/%s/holders/dm-*", device)
+
+		paths, err := filepath.Glob(dmPath)
+		if err != nil || paths == nil {
+			continue
+		}
+
+		splitPath := strings.Split(paths[0], "/")
+		mPath = splitPath[len(splitPath)-1]
+		mPathMap[mPath] = append(mPathMap[mPath], device)
+	}
+
+	return mPathMap, mPath
+}
+
+func getSCSIWwnByScsiID(hostDevice string) (string, error) {
 	cmd := fmt.Sprintf("/lib/udev/scsi_id --page 0x83 --whitelisted %s", hostDevice)
 	output, err := utils.ExecShellCmd(cmd)
 	if err != nil {
@@ -441,6 +514,84 @@ func GetSCSIWwn(hostDevice string) (string, error) {
 	}
 
 	return strings.TrimSpace(output), nil
+}
+
+func getScsiHostWWid(devInfo map[string]string) (string, error) {
+	wwIDFile := fmt.Sprintf("/sys/class/scsi_host/host%s/device/session*/target%s:%s:%s/%s:%s:%s:%s/wwid",
+		devInfo["host"], devInfo["host"], devInfo["channel"], devInfo["id"], devInfo["host"],
+		devInfo["channel"], devInfo["id"], devInfo["lun"])
+
+	output, err := utils.ExecShellCmd("cat %s", wwIDFile)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(output, "\n"), nil
+}
+
+func getFCHostWWid(devInfo map[string]string) (string, error) {
+	wwIDFile := fmt.Sprintf("/sys/class/fc_host/host%s/device/rport-%s:%s-%s/target%s:%s:%s/%s:%s:%s:%s/wwid",
+		devInfo["host"], devInfo["host"], devInfo["channel"], devInfo["id"],
+		devInfo["host"], devInfo["channel"], devInfo["id"],
+		devInfo["host"], devInfo["channel"], devInfo["id"], devInfo["lun"])
+
+	output, err := utils.ExecShellCmd("cat %s", wwIDFile)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(output, "\n"), nil
+}
+
+func getSCSIWwnByWWid(hostDevice string) (string, error) {
+	devInfo := getDeviceInfo(strings.Split(hostDevice, "dev/")[1])
+	if devInfo == nil {
+		return "", errors.New("can not get device info")
+	}
+
+	var data string
+	var err error
+	data, err = getScsiHostWWid(devInfo)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such file or directory") {
+			data, err = getFCHostWWid(devInfo)
+		}
+
+		if err != nil {
+			msg := fmt.Sprintf("get wwid from host failed, err: %v", err)
+			log.Errorln(msg)
+			return "", errors.New(msg)
+		}
+	}
+
+	if !strings.HasPrefix(data, "naa.") {
+		return "", errors.New("unRecognized device type")
+	}
+
+	if len(data) < deviceWWidLength {
+		msg := fmt.Sprintf("get wwid for device %s failed", hostDevice)
+		log.Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	return data[deviceWWidLength:], nil
+}
+
+// GetSCSIWwn to get the device wwn
+func GetSCSIWwn(hostDevice string) (string, error) {
+	var wwn string
+	var err error
+	readable := isDeviceReadable(hostDevice)
+	if readable {
+		wwn, err = getSCSIWwnByScsiID(hostDevice)
+		if err != nil {
+			log.Warningf("get device %s wwn by scsi_id error: %v", hostDevice, err)
+		}
+	} else {
+		if strings.HasPrefix(hostDevice, "/dev/sd") {
+			wwn, err = getSCSIWwnByWWid(hostDevice)
+		}
+	}
+
+	return wwn, err
 }
 
 // GetNVMeWwn get the unique id of the device
@@ -468,15 +619,15 @@ func GetNVMeWwn(device string) (string, error) {
 // ReadDevice is to check whether the device is readable
 func ReadDevice(dev string) ([]byte, error) {
 	log.Infof("Checking to see if %s is readable.", dev)
-	out, err := utils.ExecShellCmdFilterLog("dd if=%s bs=4096 count=512 status=none", dev)
+	out, err := utils.ExecShellCmdFilterLog("dd if=%s bs=1024 count=512 status=none", dev)
 	if err != nil {
 		return nil, err
 	}
 
 	output := []byte(out)
-	// ensure the date size is 2MiB
-	if len(output) != 2097152 {
-		return nil, fmt.Errorf("can not read 2MiB bytes from the device %s, instead read %d bytes", dev, len(output))
+	if len(output) != halfMiDataLength {
+		return nil, fmt.Errorf("can not read 512KiB bytes from the device %s, instead read %d bytes",
+			dev, len(output))
 	}
 
 	if strings.Contains(out, "0+0 records in") {
@@ -502,17 +653,24 @@ func IsDeviceFormatted(dev string) (bool, error) {
 	return false, nil
 }
 
+func removeDevices(devices []string) error {
+	for _, dev := range devices {
+		err := removeSCSIDevice(dev)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func removeMultiPathDevice(multiPathName string, devices []string) (string, error) {
 	err := FlushDMDevice(multiPathName)
 	if err == nil {
 		multiPathName = ""
 	}
 
-	for _, dev := range devices {
-		err = removeSCSIDevice(dev)
-		if err != nil {
-			return "", err
-		}
+	if err := removeDevices(devices); err != nil {
+		return "", err
 	}
 
 	waitVolumeRemoval(devices)
@@ -585,33 +743,30 @@ func ResizeBlock(tgtLunWWN string) error {
 
 func getDeviceInfo(dev string) map[string]string {
 	device := "/dev/" + dev
-	devInfo := map[string]string {
-		"device": device,
-		"host": "",
-		"channel": "",
-		"id": "",
-		"lun": "",
-	}
-
-	output, _ := utils.ExecShellCmd("lsscsi")
-	if output == "" || strings.Contains(output, "command not found"){
-		return devInfo
+	output, err := utils.ExecShellCmd("lsblk -n -S %s -o HCTL", device)
+	if err != nil {
+		log.Warningf("Failed to get device %s hctl", device)
+		return nil
 	}
 
 	devLines := strings.Split(output, "\n")
 	for _, d := range devLines {
-		devStrings := strings.Fields(d)
-		dev := devStrings[len(devStrings) - 1]
-		if dev == device {
-			hostChannelInfo := strings.Split(strings.Trim(devStrings[0], "[]"), ":")
-			devInfo["host"] = hostChannelInfo[0]
-			devInfo["channel"] = hostChannelInfo[1]
-			devInfo["id"] = hostChannelInfo[2]
-			devInfo["lun"] = hostChannelInfo[3]
-			break
+		devString := strings.TrimSpace(d)
+		hostChannelInfo := strings.Split(devString, ":")
+		if len(hostChannelInfo) != intNumFour {
+			continue
 		}
+
+		devInfo := map[string]string {
+			"device": device,
+			"host": hostChannelInfo[0],
+			"channel": hostChannelInfo[1],
+			"id": hostChannelInfo[2],
+			"lun": hostChannelInfo[3],
+		}
+		return devInfo
 	}
-	return devInfo
+	return nil
 }
 
 func getDeviceSize(dev string) (string, error) {
@@ -671,6 +826,10 @@ func extendDMBlock(device string) error {
 
 func extendSCSIBlock(device string) error {
 	devInfo := getDeviceInfo(device)
+	if devInfo == nil {
+		return errors.New("can not get device info")
+	}
+
 	oldSize, err := getDeviceSize(device)
 	if err != nil {
 		return err
@@ -727,7 +886,7 @@ func ResizeMountPath(volumePath string) error {
 }
 
 func extResize(devicePath string) error {
-	output, err := utils.ExecShellCmd("resize2fs %s", devicePath)
+	output, err := utils.ExecShellCmd("resize2fs -p %s", devicePath)
 	if err != nil {
 		log.Errorf("Resize %s error: %s", devicePath, output)
 		return err
@@ -769,14 +928,18 @@ func findDeviceWWN(devices []string) (string, error) {
 		}
 
 		if err != nil {
-			return "", err
+			log.Warningf("get device %s wwn failed, error: %v", dev, err)
+			continue
 		}
 
-		if findWWN != "" && devWWN != findWWN {
+		if findWWN != "" && !(strings.Contains(devWWN, findWWN) ||
+			strings.Contains(findWWN, devWWN)) {
 			return "", errors.New("InconsistentWWN")
 		}
 		findWWN = devWWN
 	}
+
+	log.Infof("find the wwn %s for devices %v", findWWN, devices)
 	return findWWN, nil
 }
 
@@ -792,26 +955,47 @@ func checkDeviceReadable(devices []string) bool {
 	return true
 }
 
+func clearFaultyDevices(devices []string) ([]string, error) {
+	var normalDevices []string
+	for _, d := range devices {
+		dev := fmt.Sprintf("/dev/%s", d)
+		readable := isDeviceReadable(dev)
+		if readable {
+			normalDevices = append(normalDevices, d)
+			continue
+		}
+
+		err := removeSCSIDevice(d)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return normalDevices, nil
+}
+
 // IsMultiPathAvailable compares the dm device WWN with the lun WWN
-func IsMultiPathAvailable(mPath, lunWWN string) (bool, error) {
+func IsMultiPathAvailable(mPath, lunWWN string, devices []string) (bool, error) {
 	mPathWWN, err := findMultiPathWWN(mPath)
 	if err != nil {
 		return false, err
 	}
 
 	if !strings.Contains(mPathWWN, lunWWN) {
+		log.Errorf("the multipath device WWN %s is not equal to lun WWN %s", mPathWWN, lunWWN)
 		return false, errors.New("the multipath device WWN is not equal to lun WWN")
-	}
-
-	devices, err := getDeviceFromDM(mPath)
-	if err != nil {
-		return false, err
 	}
 
 	deviceWWN, err := findDeviceWWN(devices)
 	if err != nil {
 		return false, err
 	}
+
+	// false means unavailable when scan device, nil means when delete device without check
+	if deviceWWN == "" {
+		return false, nil
+	}
+
 	if !strings.Contains(deviceWWN, lunWWN) {
 		return false, errors.New("the device WWN is not equal to lun WWN")
 	}
@@ -834,6 +1018,10 @@ func IsDeviceAvailable(device, lunWWN string) (bool, error) {
 
 	if err != nil {
 		return false, err
+	}
+
+	if devWWN == "" {
+		return false, nil
 	}
 
 	if !strings.Contains(devWWN, lunWWN) {
@@ -872,6 +1060,42 @@ func DisConnectVolume(tgtLunWWN string, checkDeviceAvailable bool, f func(string
 	return nil
 }
 
+func isDeviceReadable(dev string) bool {
+	_, err := ReadDevice(dev)
+	if err != nil {
+		log.Warningf("Device:%s is unreadable. Error: %v", dev, err)
+		return false
+	}
+
+	return true
+}
+
+// CheckConnectSuccess is to check the sd device available
+func CheckConnectSuccess(device, tgtLunWWN string) bool {
+	devPath := fmt.Sprintf("/dev/%s", device)
+	if readable := isDeviceReadable(devPath); !readable {
+		return false
+	}
+
+	available, err := IsDeviceAvailable(devPath, tgtLunWWN)
+	if err != nil {
+		return false
+	}
+
+	return available
+}
+
+// ClearUnavailableDevice is to check the sd device connect success, otherwise delete the device
+func ClearUnavailableDevice(device, lunWWN string) string {
+	if !CheckConnectSuccess(device, lunWWN) {
+		if err := DeleteSDDev(device); err != nil {
+			log.Warningf("clear device %s for lun %s error: %v", device, lunWWN, err)
+		}
+		device = ""
+	}
+	return device
+}
+
 // VerifySingleDevice check the sd device whether available
 func VerifySingleDevice(device, lunWWN, errCode string, checkDeviceAvailable bool,
 	f func(string, bool) error) error {
@@ -906,7 +1130,17 @@ func VerifyMultiPathDevice(mPath, lunWWN, errCode string, checkDeviceAvailable b
 		return "", err
 	}
 
-	available, err := IsMultiPathAvailable(mPath, lunWWN)
+	devs, err := getDeviceFromDM(mPath)
+	if err != nil {
+		return "", err
+	}
+
+	devices, err := clearFaultyDevices(devs)
+	if err != nil {
+		return "", err
+	}
+
+	available, err := IsMultiPathAvailable(mPath, lunWWN, devices)
 	if err != nil && err.Error() == "InconsistentWWN" {
 		return "", err
 	}
@@ -947,4 +1181,49 @@ func RemoveRoCEDevice(device string) ([]string, string, error) {
 	}
 
 	return devices, multiPathName, nil
+}
+
+// GetDeviceSize to get the device size in bytes
+func GetDeviceSize(hostDevice string) (int64, error) {
+	// hostDevice is the symbol, such as /dev/sdb, /dev/dm-5, /dev/mapper/mpatha .etc
+	output, err := utils.ExecShellCmd("blockdev --getsize64 %s", hostDevice)
+	if err != nil {
+		log.Errorf("Failed to get device %s, err is %v", hostDevice, err)
+		return 0, err
+	}
+
+	outputLines := strings.Split(output, "\n")
+	for _, line := range outputLines {
+		if line == "" {
+			continue
+		}
+		size, err := strconv.ParseInt(line, 10, 64)
+		if err != nil {
+			log.Errorf("Failed to get device size %s, err is %v", line, err)
+			return 0, err
+		}
+		return size, nil
+	}
+
+	return 0, errors.New("failed to get device size")
+}
+
+// IsInFormatting is to check the device whether in formatting
+func IsInFormatting(sourcePath, fsType string) (bool, error) {
+	var cmd string
+	if fsType != "ext2" && fsType != "ext3" && fsType != "ext4" {
+		msg := fmt.Sprintf("Do not support the type %s.", fsType)
+		log.Errorln(msg)
+		return false, errors.New(msg)
+	}
+
+	cmd = fmt.Sprintf("ps -aux | grep mkfs | grep -w %s | wc -l |awk '{if($1>1) print 1; else print 0}'",
+		sourcePath)
+	output, err := utils.ExecShellCmd(cmd)
+	if err != nil {
+		return false, err
+	}
+
+	outputSplit := strings.Split(output, "\n")
+	return len(outputSplit) != 0 && outputSplit[0] == "1", nil
 }

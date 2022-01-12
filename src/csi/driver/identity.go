@@ -27,11 +27,18 @@ func (d *Driver) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCa
 					},
 				},
 			},
+			&csi.PluginCapability{
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
+					},
+				},
+			},
 		},
 	}, nil
 }
 
 func (d *Driver) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
-	log.Infof("Probe plugin %v", *d)
+	log.Debugf("Probe plugin %v", *d)
 	return &csi.ProbeResponse{}, nil
 }

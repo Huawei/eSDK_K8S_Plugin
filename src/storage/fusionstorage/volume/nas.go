@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"storage/fusionstorage/client"
+	fsUtils "storage/fusionstorage/utils"
 	"strconv"
 	"time"
 	"utils"
@@ -13,8 +14,10 @@ import (
 
 const (
 	notSupportSnapShotSpace = 0
-	spaceQuotaUnitMB        = 2
+	spaceQuotaUnitKB        = 1
 	quotaTargetFilesystem   = 1
+	quotaParentFileSystem   = "40"
+	directoryQuotaType      = "1"
 )
 
 type NAS struct {
@@ -49,18 +52,34 @@ func (p *NAS) preCreate(params map[string]interface{}) error {
 
 	name := params["name"].(string)
 	params["name"] = utils.GetFileSystemName(name)
-
 	if v, exist := params["clonefrom"].(string); exist {
 		params["clonefrom"] = utils.GetFileSystemName(v)
+	}
+
+	if v, exist := params["storagequota"].(string); exist {
+		quotaParams, err := fsUtils.ExtractStorageQuotaParameters(v)
+		if err != nil {
+			return fmt.Errorf("extract storageQuota %s failed", v)
+		}
+
+		params["spaceQuota"] = quotaParams["spaceQuota"].(string)
+		if v, exist := quotaParams["gracePeriod"]; exist {
+			gracePeriod, err := utils.TransToIntStrict(v)
+			if err != nil {
+				log.Errorf("Trans %s to int type error", v)
+				return fmt.Errorf("trans %s to int type error", v)
+			}
+			params["gracePeriod"] = gracePeriod
+		}
 	}
 
 	return nil
 }
 
-func (p *NAS) Create(params map[string]interface{}) error {
+func (p *NAS) Create(params map[string]interface{}) (utils.Volume, error) {
 	err := p.preCreate(params)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	createTask := taskflow.NewTaskFlow("Create-FileSystem-Volume")
@@ -71,14 +90,32 @@ func (p *NAS) Create(params map[string]interface{}) error {
 	_, err = createTask.Run(params)
 	if err != nil {
 		createTask.Revert()
-		return err
+		return nil, err
 	}
 
-	return nil
+	volObj := p.prepareVolObj(params)
+	return volObj, nil
 }
 
+
+func (p *NAS) prepareVolObj(params map[string]interface{}) utils.Volume {
+	volName, isStr := params["name"].(string)
+	if !isStr {
+		// Not expecting this error to happen
+		log.Warningf("Expecting string for volume name, received type %T", params["name"])
+	}
+	return utils.NewVolume(volName)
+}
+
+
 func (p *NAS) createFS(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	fsName := params["name"].(string)
+	fsName, ok := params["name"].(string)
+	if !ok {
+		msg := fmt.Sprintf("Parameter %v does not contain name field.", params)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	fs, err := p.cli.GetFileSystemByName(fsName)
 	if err != nil {
 		log.Errorf("Get filesystem %s error: %v", fsName, err)
@@ -118,7 +155,6 @@ func (p *NAS) revertFS(taskResult map[string]interface{}) error {
 	if !exist {
 		return nil
 	}
-
 	return p.deleteFS(fsID)
 }
 
@@ -132,7 +168,13 @@ func (p *NAS) deleteFS(fsID string) error {
 }
 
 func (p *NAS) createQuota(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	fsID, _ := taskResult["fsID"].(string)
+	fsID, ok := taskResult["fsID"].(string)
+	if !ok {
+		msg := fmt.Sprintf("Task %v does not contain fsID field.", taskResult)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	quota, err := p.cli.GetQuotaByFileSystem(fsID)
 	if err != nil {
 		log.Errorf("Get filesystem %s quota error: %v", fsID, err)
@@ -142,13 +184,30 @@ func (p *NAS) createQuota(params, taskResult map[string]interface{}) (map[string
 	if quota == nil {
 		quotaParams := map[string]interface{}{
 			"parent_id":              fsID,
-			"parent_type":            "40",
-			"quota_type":             "1",
-			"space_hard_quota":       params["capacity"].(int64),
+			"parent_type":            quotaParentFileSystem,
+			"quota_type":             directoryQuotaType,
 			"snap_space_switch":      notSupportSnapShotSpace,
-			"space_unit_type":        spaceQuotaUnitMB,
+			"space_unit_type":        spaceQuotaUnitKB,
 			"directory_quota_target": quotaTargetFilesystem,
 		}
+
+		capacity, ok := params["capacity"].(int64)
+		if !ok {
+			msg := fmt.Sprintf("The params %v does not contain capacity.", params)
+			log.Errorln(msg)
+			return nil, errors.New(msg)
+		}
+
+		if v, exist := params["spaceQuota"].(string); exist && v == "softQuota" {
+			quotaParams["space_soft_quota"] = capacity
+		} else {
+			quotaParams["space_hard_quota"] = capacity
+		}
+
+		if v, exist := params["gracePeriod"].(int); exist {
+			quotaParams["soft_grace_time"] = v
+		}
+
 		err := p.cli.CreateQuota(quotaParams)
 		if err != nil {
 			log.Errorf("Create filesystem quota %v error: %v", quotaParams, err)
@@ -164,7 +223,6 @@ func (p *NAS) revertQuota(taskResult map[string]interface{}) error {
 	if !exist {
 		return nil
 	}
-
 	return p.deleteQuota(fsID)
 }
 
@@ -176,7 +234,13 @@ func (p *NAS) deleteQuota(fsID string) error {
 	}
 
 	if quota != nil {
-		quotaId := quota["id"].(string)
+		quotaId, ok := quota["id"].(string)
+		if !ok {
+			msg := fmt.Sprintf("Quota %v does not contain id field.", quota)
+			log.Errorln(msg)
+			return errors.New(msg)
+		}
+
 		err := p.cli.DeleteQuota(quotaId)
 		if err != nil {
 			log.Errorf("Delete filesystem quota %s error: %v", quotaId, err)
@@ -188,7 +252,13 @@ func (p *NAS) deleteQuota(fsID string) error {
 }
 
 func (p *NAS) createShare(params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	fsName := params["name"].(string)
+	fsName, ok := params["name"].(string)
+	if !ok {
+		msg := fmt.Sprintf("Parameter %v does not contain name field.", params)
+		log.Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
 	sharePath := utils.GetFSSharePath(fsName)
 	share, err := p.cli.GetNfsShareByPath(sharePath)
 
@@ -235,7 +305,6 @@ func (p *NAS) revertShare(taskResult map[string]interface{}) error {
 	if !exist {
 		return nil
 	}
-
 	return p.deleteShare(shareID)
 }
 

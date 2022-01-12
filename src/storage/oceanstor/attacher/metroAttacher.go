@@ -2,6 +2,8 @@ package attacher
 
 import (
 	"errors"
+
+	"connector"
 	"utils"
 	"utils/log"
 )
@@ -20,19 +22,21 @@ func NewMetroAttacher(localAttacher, remoteAttacher AttacherPlugin, protocol str
 	}
 }
 
-func (p *MetroAttacher) NodeStage(lunName string, parameters map[string]interface{}) (string, error) {
+func (p *MetroAttacher) NodeStage(lunName string, parameters map[string]interface{}) (*connector.ConnectInfo, error) {
 	return connectVolume(p, lunName, p.protocol, parameters)
 }
 
-func (p *MetroAttacher) NodeUnstage(lunName string, parameters map[string]interface{}) error {
+// NodeUnstage to get the lun unique ID for disconnect volume
+func (p *MetroAttacher) NodeUnstage(lunName string, parameters map[string]interface{}) (
+	*connector.DisConnectInfo, error) {
 	lun, err := p.getLunInfo(lunName)
 	if lun == nil {
-		return err
+		return nil, err
 	}
 
 	lunUniqueID, err := utils.GetLunUniqueId(p.protocol, lun)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	return disConnectVolume(lunUniqueID, p.protocol)
@@ -70,12 +74,14 @@ func (p *MetroAttacher) mergeMappingInfo(localMapping, remoteMapping map[string]
 func (p *MetroAttacher) ControllerAttach(lunName string, parameters map[string]interface{}) (map[string]interface{}, error) {
 	remoteMapping, err := p.remoteAttacher.ControllerAttach(lunName, parameters)
 	if err != nil {
-		log.Warningf("Attach hypermetro remote volume %s error: %v", lunName, err)
+		log.Errorf("Attach hypermetro remote volume %s error: %v", lunName, err)
+		return nil, err
 	}
 
 	localMapping, err := p.localAttacher.ControllerAttach(lunName, parameters)
 	if err != nil {
-		log.Warningf("Attach hypermetro local volume %s error: %v", lunName, err)
+		log.Errorf("Attach hypermetro local volume %s error: %v", lunName, err)
+		return nil, err
 	}
 
 	return p.mergeMappingInfo(localMapping, remoteMapping)
@@ -84,12 +90,14 @@ func (p *MetroAttacher) ControllerAttach(lunName string, parameters map[string]i
 func (p *MetroAttacher) ControllerDetach(lunName string, parameters map[string]interface{}) (string, error) {
 	rmtLunWWN, err := p.remoteAttacher.ControllerDetach(lunName, parameters)
 	if err != nil {
-		log.Warningf("Detach hypermetro remote volume %s error: %v", lunName, err)
+		log.Errorf("Detach hypermetro remote volume %s error: %v", lunName, err)
+		return "", err
 	}
 
 	locLunWWN, err := p.localAttacher.ControllerDetach(lunName, parameters)
 	if err != nil {
-		log.Warningf("Detach hypermetro local volume %s error: %v", lunName, err)
+		log.Errorf("Detach hypermetro local volume %s error: %v", lunName, err)
+		return "", err
 	}
 
 	return p.mergeLunWWN(locLunWWN, rmtLunWWN)

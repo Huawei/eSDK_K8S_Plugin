@@ -57,7 +57,8 @@ func (loc *Local) ConnectVolume(conn map[string]interface{}) (string, error) {
 		time.Sleep(time.Second * waitInternal)
 	}
 
-	return "", nil
+	log.Errorln("Final found no device.")
+	return "", errors.New("final found no device")
 }
 
 // DisConnectVolume to remove the local lun path

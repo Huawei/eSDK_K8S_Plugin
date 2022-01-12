@@ -18,6 +18,7 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -36,17 +37,24 @@ import (
 const (
 	DoradoV6Version = "V600"
 	V5Version       = "V500"
+	defaultTimeout  = 30
+	longTimeout     = 60
+
+	OceanStorDoradoV6 = "DoradoV6"
+	OceanStorDorado   = "Dorado"
+	OceanStorV3       = "V3"
+	OceanStorV5       = "V5"
 )
 
 var maskObject = []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
 
 type VolumeMetrics struct {
-	Available *resource.Quantity
-	Capacity *resource.Quantity
+	Available  *resource.Quantity
+	Capacity   *resource.Quantity
 	InodesUsed *resource.Quantity
-	Inodes *resource.Quantity
+	Inodes     *resource.Quantity
 	InodesFree *resource.Quantity
-	Used *resource.Quantity
+	Used       *resource.Quantity
 }
 
 func PathExist(path string) (bool, error) {
@@ -77,66 +85,75 @@ func MaskSensitiveInfo(info interface{}) string {
 	return message
 }
 
-func ExecShellCmd(format string, args ...interface{}) (string, error) {
+func execShellCmdTimeout(fun func(string, bool, ...interface{}) (string, bool, error), format string, logFilter bool, args ...interface{}) (string, error) {
 	var output string
 	var err error
+	var timeOut bool
 	done := make(chan string)
-	defer close(done)
+	timeCh := make(chan bool)
+	defer func() {
+		close(done)
+		close(timeCh)
+	}()
 
 	go func() {
-		output, err = execShellCmd(format, done, false, args...)
+		output, timeOut, err = fun(format, logFilter, args...)
+		if !timeOut {
+			done <- "run command done"
+		} else {
+			timeCh <- timeOut
+		}
+		if err != nil {
+			log.Infoln("Run shell cmd failed.")
+		}
 	}()
 
 	select {
-	case do := <-done:
-		log.Debugf("Run shell cmd done %s.", do)
+	case <-done:
 		return output, err
-	case <-time.After(time.Duration(30) * time.Second):
+	case <-timeCh:
 		return "", errors.New("timeout")
 	}
+}
+
+// ExecShellCmd execs the command without filters the result log
+func ExecShellCmd(format string, args ...interface{}) (string, error) {
+	return execShellCmdTimeout(execShellCmd, format, false, args...)
 }
 
 // ExecShellCmdFilterLog execs the command and filters the result log
 func ExecShellCmdFilterLog(format string, args ...interface{}) (string, error) {
-	var output string
-	var err error
-	done := make(chan string)
-	defer close(done)
-
-	go func() {
-		output, err = execShellCmd(format, done, true, args...)
-	}()
-
-	select {
-	case do := <-done:
-		log.Debugf("Run shell cmd done %s.", do)
-		return output, err
-	case <-time.After(time.Duration(30) * time.Second):
-		return "", errors.New("timeout")
-	}
+	return execShellCmdTimeout(execShellCmd, format, true, args...)
 }
 
-func execShellCmd(format string, ch chan string, logFilter bool, args ...interface{}) (string, error) {
+func execShellCmd(format string, logFilter bool, args ...interface{}) (string, bool, error) {
 	cmd := fmt.Sprintf(format, args...)
 	log.Infof("Gonna run shell cmd \"%s\".", MaskSensitiveInfo(cmd))
 
-	defer func() {
-		ch <- fmt.Sprintf("Shell cmd \"%s\" done", MaskSensitiveInfo(cmd))
-	}()
-
 	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "/bin/sh", "-c", cmd}
 	shCmd := exec.Command("nsenter", execCmd...)
-	time.AfterFunc(30*time.Second, func() { _ = shCmd.Process.Kill() })
+	var timeOut bool
+	if strings.Contains(cmd, "mkfs") || strings.Contains(cmd, "resize2fs") {
+		time.AfterFunc(longTimeout*time.Second, func() {
+			timeOut = true
+		})
+	} else {
+		time.AfterFunc(defaultTimeout*time.Second, func() {
+			_ = shCmd.Process.Kill()
+			timeOut = true
+		})
+	}
 	output, err := shCmd.CombinedOutput()
 	if err != nil {
-		log.Warningf("Run shell cmd \"%s\" error: %s.", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output))
-		return string(output), err
+		log.Warningf("Run shell cmd \"%s\" output: %s, error: %v", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output),
+			MaskSensitiveInfo(err))
+		return string(output), timeOut, err
 	}
 
 	if !logFilter {
 		log.Infof("Shell cmd \"%s\" result:\n%s", MaskSensitiveInfo(cmd), MaskSensitiveInfo(output))
 	}
-	return string(output), nil
+	return string(output), timeOut, nil
 }
 
 func GetLunName(name string) string {
@@ -330,9 +347,9 @@ func GetProductVersion(SystemInfo map[string]interface{}) (string, error) {
 	}
 
 	if strings.HasPrefix(productVersion, DoradoV6Version) {
-		return "DoradoV6", nil
+		return OceanStorDoradoV6, nil
 	} else if strings.HasPrefix(productVersion, V5Version) {
-		return "V5", nil
+		return OceanStorV5, nil
 	}
 
 	productMode, ok := SystemInfo["PRODUCTMODE"].(string)
@@ -341,10 +358,10 @@ func GetProductVersion(SystemInfo map[string]interface{}) (string, error) {
 	}
 
 	if match, _ := regexp.MatchString(`8[0-9][0-9]`, productMode); match {
-		return "Dorado", nil
+		return OceanStorDorado, nil
 	}
 
-	return "V3", nil
+	return OceanStorV3, nil
 }
 
 func IsSupportFeature(features map[string]int, feature string) bool {
@@ -457,6 +474,7 @@ func GetAccessModeType(accessMode csi.VolumeCapability_AccessMode_Mode) string {
 	}
 }
 
+// CheckExistCode if the error code exist in ExitCode, return err
 func CheckExistCode(err error, checkExitCode []string) error {
 	for _, v := range checkExitCode {
 		if err.Error() == v {
@@ -465,6 +483,17 @@ func CheckExistCode(err error, checkExitCode []string) error {
 	}
 
 	return nil
+}
+
+// IgnoreExistCode if the error code exist in ExitCode, return nil
+func IgnoreExistCode(err error, checkExitCode []string) error {
+	for _, v := range checkExitCode {
+		if err.Error() == v {
+			return nil
+		}
+	}
+
+	return err
 }
 
 func TestMultiPathService() error {
@@ -513,4 +542,39 @@ func NeedMultiPath(backendConfigs []map[string]interface{}) bool {
 	}
 
 	return needMultiPath
+}
+
+// IsCapacityAvailable indicates whether the volume size is an integer multiple of 512.
+func IsCapacityAvailable(volumeSizeBytes int64, allocationUnitBytes int64) bool {
+	return volumeSizeBytes%allocationUnitBytes == 0
+}
+
+// TransToInt is to trans different type to int type.
+func TransToInt(v interface{}) (int, error) {
+	switch v.(type) {
+	case string:
+		return strconv.Atoi(v.(string))
+	case int:
+		return v.(int), nil
+	case float64:
+		return int(v.(float64)), nil
+	default:
+		return 0, errors.New("unSupport type")
+	}
+}
+
+// TransToIntStrict only trans int type.
+func TransToIntStrict(val interface{}) (int, error) {
+	floatVal, ok := val.(float64)
+	if !ok {
+		log.Errorf("Value type invalid: {%v}, expect integer variable.", val)
+		return 0, errors.New("value type invalid")
+	}
+
+	if floatVal-math.Trunc(floatVal) != 0 {
+		log.Errorf("Value type invalid: {%v}, expect integer variable.", floatVal)
+		return 0, errors.New("value type invalid")
+	}
+
+	return int(floatVal), nil
 }
