@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclone
+spec:
+  storageClassName: mysc
+  dataSource:
+    name: mypvc
+    kind: PersistentVolumeClaim
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi

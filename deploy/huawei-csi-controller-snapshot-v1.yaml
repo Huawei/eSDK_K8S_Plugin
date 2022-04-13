@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-controller
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: huawei-csi-controller
+      provisioner: csi.huawei.com
+  template:
+    metadata:
+      labels:
+        app: huawei-csi-controller
+        provisioner: csi.huawei.com
+    spec:
+      containers:
+        - args:
+            - --csi-address=/csi/csi.sock
+            - --health-port=9808
+          image: k8s.gcr.io/sig-storage/livenessprobe:v2.5.0
+          imagePullPolicy: IfNotPresent
+          name: liveness-probe
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+        - args:
+            - --csi-address=$(ADDRESS)
+            - --timeout=6h
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          image: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
+          imagePullPolicy: IfNotPresent
+          name: csi-provisioner
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+        - args:
+            - --csi-address=$(ADDRESS)
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          image: k8s.gcr.io/sig-storage/csi-attacher:v3.3.0
+          imagePullPolicy: IfNotPresent
+          name: csi-attacher
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+        - args:
+            - --v=5
+            - --csi-address=$(ADDRESS)
+            - --handle-volume-inuse-error=false
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          image: k8s.gcr.io/sig-storage/csi-resizer:v1.3.0
+          imagePullPolicy: IfNotPresent
+          name: csi-resizer
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+        - args:
+            - --v=5
+            - --csi-address=$(ADDRESS)
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          image: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
+          imagePullPolicy: IfNotPresent
+          name: csi-snapshotter
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+        - args:
+            - --v=5
+            - --leader-election=false
+          image: k8s.gcr.io/sig-storage/snapshot-controller:v4.2.1
+          imagePullPolicy: IfNotPresent
+          name: snapshot-controller
+        - name: huawei-csi-driver
+          image: huawei-csi:*.*.*
+          imagePullPolicy: IfNotPresent
+          args:
+            - --endpoint=$(CSI_ENDPOINT)
+            - --controller
+            - --containerized
+            - --backend-update-interval=120
+            - --driver-name=csi.huawei.com
+          env:
+            - name: CSI_ENDPOINT
+              value: /csi/csi.sock
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            periodSeconds: 60
+            timeoutSeconds: 3
+          ports:
+            - containerPort: 9808
+              name: healthz
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/log
+              name: log
+            - mountPath: /etc/huawei
+              name: config-map
+            - mountPath: /etc/huawei/secret
+              name: secret
+      hostNetwork: true
+      serviceAccount: huawei-csi-controller
+      volumes:
+        - emptyDir: null
+          name: socket-dir
+        - hostPath:
+            path: /var/log/
+            type: Directory
+          name: log
+        - configMap:
+            name: huawei-csi-configmap
+          name: config-map
+        - name: secret
+          secret:
+            secretName: huawei-csi-secret
