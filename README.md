@@ -80,13 +80,13 @@ Export and import the image
     docker load -i huawei-csi.tar
 
 ### Deploy The huawei-csi-rbac
-Fill in the appropriate mirror version in [huawei-csi-rbac.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/yamls/deploy/huawei-csi-rbac.yaml),
+Fill in the appropriate mirror version in [huawei-csi-rbac.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/deploy/huawei-csi-rbac.yaml),
  and then create the Huawei CSI Rbac.
 
     kubectl create -f huawei-csi-rbac.yaml
 
 ### Deploy the huawei-csi-configmap
-Fill in the appropriate mirror version in [huawei-csi-configmap.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/yamls/deploy/huawei-csi-configmap-oceanstor-iscsi.yaml), and then create the Huawei CSI Configmap
+Fill in the appropriate mirror version in [huawei-csi-configmap.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/deploy/huawei-csi-configmap-oceanstor-iscsi.yaml), and then create the Huawei CSI Configmap
 
     kubectl create -f huawei-csi-configmap.yaml
 
@@ -95,12 +95,12 @@ Fill in the appropriate mirror version in [huawei-csi-configmap.yaml](https://gi
     ./secretGenerate
 
 ### Deploy the huawei-csi-controller
-Fill in the appropriate mirror version in [huawei-csi-controller.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/yamls/deploy/huawei-csi-controller.yaml), and then create the Huawei CSI Controller service
+Fill in the appropriate mirror version in [huawei-csi-controller.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/deploy/huawei-csi-controller.yaml), and then create the Huawei CSI Controller service
 
     kubectl create -f huawei-csi-controller.yaml
 
 ### Deploy the huawei-csi-node
-Fill in the appropriate mirror version in [huawei-csi-node.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/yamls/deploy/huawei-csi-node.yaml),
+Fill in the appropriate mirror version in [huawei-csi-node.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/deploy/huawei-csi-node.yaml),
  and then create the Huawei CSI Node service
 
     kubectl create -f huawei-csi-node.yaml
