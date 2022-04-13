@@ -1,0 +1,15 @@
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: mypv
+spec:
+  volumeMode: Block
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  csi:
+    driver: csi.huawei.com
+    volumeHandle: <backendName>.<volume-name>
+    fsType: <string>
+  capacity:
+    storage: 100Gi
