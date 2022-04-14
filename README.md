@@ -86,7 +86,7 @@ Fill in the appropriate mirror version in [huawei-csi-rbac.yaml](https://github.
     kubectl create -f huawei-csi-rbac.yaml
 
 ### Deploy the huawei-csi-configmap
-Fill in the appropriate mirror version in [huawei-csi-configmap.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/deploy/huawei-csi-configmap-oceanstor-iscsi.yaml), and then create the Huawei CSI Configmap
+Fill in the appropriate mirror version in [huawei-csi-configmap.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/deploy/huawei-csi-configmap/huawei-csi-configmap-oceanstor-iscsi.yaml), and then create the Huawei CSI Configmap
 
     kubectl create -f huawei-csi-configmap.yaml
 
@@ -95,7 +95,7 @@ Fill in the appropriate mirror version in [huawei-csi-configmap.yaml](https://gi
     ./secretGenerate
 
 ### Deploy the huawei-csi-controller
-Fill in the appropriate mirror version in [huawei-csi-controller.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/deploy/huawei-csi-controller.yaml), and then create the Huawei CSI Controller service
+Fill in the appropriate mirror version in [huawei-csi-controller.yaml](https://github.com/Huawei/eSDK_K8S_Plugin/blob/V2.2.16/deploy/huawei-csi-controller-snapshot-v1.yaml), and then create the Huawei CSI Controller service
 
     kubectl create -f huawei-csi-controller.yaml
 
