@@ -4,10 +4,6 @@
 
 ## Changes since v2.2.15
 
-**Fixes:**
-
-- Fixed issue  that scaning device failed due to stale device (Issue [#29](https://github.com/Huawei/eSDK_K8S_Plugin/issues/29))
-
 **Enhancements**
 
 - Support Raw Block
