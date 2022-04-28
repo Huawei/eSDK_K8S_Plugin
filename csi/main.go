@@ -47,7 +47,7 @@ const (
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "2.2.16"
+	csiVersion        = "2.2.5.1"
 	csiBetaVersion    = "B060"
 	defaultDriverName = "csi.huawei.com"
 	endpointDirPerm   = 0755
