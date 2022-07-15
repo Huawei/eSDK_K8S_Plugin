@@ -12,7 +12,8 @@ import (
 
 type FusionStorageNasPlugin struct {
 	FusionStoragePlugin
-	portal string
+	portal   string
+	protocol string
 }
 
 func init() {
@@ -25,19 +26,24 @@ func (p *FusionStorageNasPlugin) NewPlugin() Plugin {
 
 func (p *FusionStorageNasPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
 	protocol, exist := parameters["protocol"].(string)
-	if !exist || protocol != "nfs" {
-		return errors.New("protocol must be provided and be nfs for fusionstorage-nas backend")
+	if !exist || (protocol != "nfs" && protocol != "dpc") {
+		return errors.New("protocol must be provided and be \"nfs\" or \"dpc\" for fusionstorage-nas backend")
 	}
 
-	portals, exist := parameters["portals"].([]interface{})
-	if !exist || len(portals) != 1 {
-		return errors.New("portals must be provided for fusionstorage-nas backend and just support one portal")
-	}
+	p.protocol = protocol
 
-	portal := portals[0].(string)
-	ip := net.ParseIP(portal)
-	if ip == nil {
-		return fmt.Errorf("portal %s is invalid", portal)
+	var portal string
+	if protocol == "nfs" {
+		portals, exist := parameters["portals"].([]interface{})
+		if !exist || len(portals) != 1 {
+			return errors.New("portals must be provided for fusionstorage-nas nfs backend and just support one portal")
+		}
+
+		portal = portals[0].(string)
+		ip := net.ParseIP(portal)
+		if ip == nil {
+			return fmt.Errorf("portal %s is invalid", portal)
+		}
 	}
 
 	err := p.init(config, keepLogin)
@@ -78,6 +84,8 @@ func (p *FusionStorageNasPlugin) CreateVolume(ctx context.Context,
 		return nil, err
 	}
 
+	params["protocol"] = p.protocol
+
 	nas := volume.NewNAS(p.cli)
 	volObj, err := nas.Create(ctx, params)
 	if err != nil {
@@ -95,6 +103,7 @@ func (p *FusionStorageNasPlugin) DeleteVolume(ctx context.Context, name string) 
 func (p *FusionStorageNasPlugin) StageVolume(ctx context.Context,
 	name string,
 	parameters map[string]interface{}) error {
+	parameters["protocol"] = p.protocol
 	return p.fsStageVolume(ctx, name, p.portal, parameters)
 }
 
@@ -113,6 +122,12 @@ func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interfa
 		"SupportQuota": true,
 		"SupportClone": false,
 	}
+
+	err := p.updateNFS4Capability(capabilities)
+	if err != nil {
+		return nil, err
+	}
+
 	return capabilities, nil
 }
 
@@ -138,4 +153,22 @@ func (p *FusionStorageNasPlugin) ExpandVolume(ctx context.Context,
 
 func (p *FusionStorageNasPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
 	return p.updatePoolCapabilities(poolNames, FusionStorageNas)
+}
+
+func (p *FusionStorageNasPlugin) updateNFS4Capability(capabilities map[string]interface{}) error {
+	nfsServiceSetting, err := p.cli.GetNFSServiceSetting(context.Background())
+	if err != nil {
+		return err
+	}
+
+	// NFS3 is enabled by default.
+	capabilities["SupportNFS3"] = true
+	capabilities["SupportNFS4"] = false
+	capabilities["SupportNFS41"] = false
+
+	if nfsServiceSetting["SupportNFS41"] {
+		capabilities["SupportNFS41"] = true
+	}
+
+	return nil
 }

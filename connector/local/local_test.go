@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/prashantv/gostub"
 
@@ -61,14 +62,15 @@ func TestConnectVolume(t *testing.T) {
 		},
 	}
 
-	stubs := gostub.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
+	stubs := gostub.Stub(&waitDevOnlineTimeInterval, time.Millisecond)
+	defer stubs.Reset()
+
+	stubs.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
 		if args[0] == "/dev/disk/by-id/wwn-0xtgtLunWWN" {
 			return "/dev/disk/by-id/wwn-0xtgtLunWWN", nil
 		}
 		return "ls: cannot access '/dev/disk/by-id/wwn-0xtgtLunWWN': No such file or directory", nil
 	})
-	defer stubs.Reset()
-
 	stubs.StubFunc(&connector.VerifySingleDevice, nil)
 
 	for _, tt := range tests {
@@ -124,14 +126,16 @@ func TestDisConnectVolume(t *testing.T) {
 		},
 	}
 
-	stubs := gostub.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
+	stubs := gostub.Stub(&connector.DisconnectVolumeTimeOut, time.Millisecond)
+	defer stubs.Reset()
+
+	stubs.Stub(&connector.DisconnectVolumeTimeInterval, time.Millisecond)
+	stubs.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
 		if args[0] == "tgtLunWWN" {
 			return "./../../sd-tgtLunWWN\n", nil
 		}
 		return "No such file or directory", nil
 	})
-	defer stubs.Reset()
-
 	stubs.StubFunc(&connector.GetPhysicalDevices, []string{"sd-tgtLunWWN"}, nil)
 	stubs.StubFunc(&connector.RemoveAllDevice, "", nil)
 

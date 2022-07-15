@@ -26,6 +26,8 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+var flushTimeInterval = 3 * time.Second
+
 // PortWWNPair contains initiator wwn and target wwn
 type PortWWNPair struct {
 	InitiatorPortWWN string
@@ -62,7 +64,7 @@ func tryDisConnectVolume(ctx context.Context, tgtLunWWN string) error {
 	}
 
 	if multiPathName != "" {
-		time.Sleep(time.Second * timeSleepInternal)
+		time.Sleep(flushTimeInterval)
 		err = connector.FlushDMDevice(ctx, virtualDevice)
 		if err != nil {
 			return err

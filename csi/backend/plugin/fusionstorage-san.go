@@ -219,8 +219,7 @@ func (p *FusionStorageSanPlugin) releaseClient(ctx context.Context, cli *client.
 	}
 }
 
-func (p *FusionStorageSanPlugin) getStageVolumeInfo(ctx context.Context,
-	name string,
+func (p *FusionStorageSanPlugin) getStageVolumeInfo(ctx context.Context, name string,
 	parameters map[string]interface{}) (*connector.ConnectInfo, error) {
 	cli, err := p.getClient(ctx)
 	if err != nil {
@@ -236,7 +235,7 @@ func (p *FusionStorageSanPlugin) getStageVolumeInfo(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	err = connector.ClearResidualPath(ctx, lunWWN)
+	err = connector.ClearResidualPath(ctx, lunWWN, parameters["volumeMode"])
 	if err != nil {
 		return nil, err
 	}

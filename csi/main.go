@@ -23,7 +23,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -47,8 +46,8 @@ const (
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "2.2.16"
-	csiBetaVersion    = "B060"
+	csiVersion        = "3.0.0"
+	csiBetaVersion    = "B020"
 	defaultDriverName = "csi.huawei.com"
 	endpointDirPerm   = 0755
 
@@ -205,11 +204,8 @@ func getLogFileName() string {
 	return logFileName
 }
 
-func ensureRuntimePanicLogging() {
-	if r := recover(); r != nil {
-		log.Errorf("Runtime error caught in main routine: %v", r)
-		log.Errorf("%s", debug.Stack())
-	}
+func ensureRuntimePanicLogging(ctx context.Context) {
+	utils.RecoverPanic(ctx)
 
 	log.Flush()
 	log.Close()
@@ -240,7 +236,7 @@ func main() {
 		logrus.Fatalf("Init log error: %v", err)
 	}
 	defer func() {
-		ensureRuntimePanicLogging()
+		ensureRuntimePanicLogging(context.TODO())
 		releaseStorageClient(controllerService)
 	}()
 

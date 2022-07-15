@@ -13,6 +13,7 @@ import (
 	"net/http/cookiejar"
 	fusionURL "net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,8 @@ const (
 	DEFAULT_PARALLEL_COUNT  int   = 50
 	MAX_PARALLEL_COUNT      int   = 1000
 	MIN_PARALLEL_COUNT      int   = 20
+
+	notForbidden int = 0
 )
 
 var (
@@ -47,8 +50,9 @@ var (
 			"/dsware/service/v1.3/sec/keepAlive": true,
 		},
 		"GET": {
-			"/dsware/service/v1.3/storagePool": true,
-			"/dfv/service/obsPOE/accounts":     true,
+			"/dsware/service/v1.3/storagePool":        true,
+			"/dfv/service/obsPOE/accounts":            true,
+			"/api/v2/nas_protocol/nfs_service_config": true,
 		},
 	}
 	clientSemaphore *utils.Semaphore
@@ -1086,6 +1090,11 @@ func (cli *Client) CreateFileSystem(ctx context.Context, params map[string]inter
 		"storage_pool_id": params["poolId"].(int64),
 		"account_id":      params["accountid"].(string),
 	}
+
+	if params["protocol"] == "dpc" {
+		data["forbidden_dpc"] = notForbidden
+	}
+
 	resp, err := cli.post(ctx, "/api/v2/converged_service/namespaces", data)
 	if err != nil {
 		return nil, err
@@ -1704,4 +1713,47 @@ func (cli *Client) GetHostLunId(ctx context.Context, hostName, lunName string) (
 		}
 	}
 	return "", nil
+}
+
+func (cli *Client) GetNFSServiceSetting(ctx context.Context) (map[string]bool, error) {
+	setting := map[string]bool{"SupportNFS41": false}
+
+	resp, err := cli.get(ctx, "/api/v2/nas_protocol/nfs_service_config", nil)
+	if err != nil {
+		// Pacific 8.1.0/8.1.1 does not have this interface, ignore this error.
+		if strings.Contains(err.Error(), "invalid character '<' looking for beginning of value") {
+			log.AddContext(ctx).Debugln("Backend dose not have interface: /api/v2/nas_protocol/nfs_service_config")
+			return setting, nil
+		}
+
+		return nil, err
+	}
+
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		return nil, utils.Errorf(ctx, "The format of NFS service setting result is incorrect.")
+	}
+
+	code := int64(result["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("get NFS service setting failed. errorCode: %d", code)
+	}
+
+	data, ok := resp["data"].(map[string]interface{})
+	if !ok {
+		return nil, utils.Errorf(ctx, "The format of NFS service setting data is incorrect.")
+	}
+	if data == nil {
+		log.AddContext(ctx).Infoln("NFS service setting is empty.")
+		return nil, nil
+	}
+
+	for k, v := range data {
+		if k == "nfsv41_status" {
+			setting["SupportNFS41"] = v.(bool)
+			break
+		}
+	}
+
+	return setting, nil
 }

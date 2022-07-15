@@ -20,9 +20,9 @@ const (
 
 type OceanstorNasPlugin struct {
 	OceanstorPlugin
-	portal                 string
-	vStorePairID           string
-	metroDomainID          string
+	portal        string
+	vStorePairID  string
+	metroDomainID string
 
 	nasHyperMetro       volume.NASHyperMetro
 	metroRemotePlugin   *OceanstorNasPlugin
@@ -40,12 +40,12 @@ func (p *OceanstorNasPlugin) NewPlugin() Plugin {
 func (p *OceanstorNasPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
 	protocol, exist := parameters["protocol"].(string)
 	if !exist || protocol != "nfs" {
-		return errors.New("protocol must be provided and be nfs for oceanstor-nas backend")
+		return errors.New("protocol must be provided and be \"nfs\" for oceanstor-nas backend")
 	}
 
 	portals, exist := parameters["portals"].([]interface{})
-	if !exist || len(portals) == 0 {
-		return errors.New("portals must be provided for oceanstor-nas backend")
+	if !exist || len(portals) != 1 {
+		return errors.New("portals must be provided for oceanstor-nas backend and just support one portal")
 	}
 
 	err := p.init(config, keepLogin)
@@ -190,6 +190,11 @@ func (p *OceanstorNasPlugin) UpdateBackendCapabilities() (map[string]interface{}
 		return nil, err
 	}
 
+	err = p.updateNFS4Capability(capabilities)
+	if err != nil {
+		return nil, err
+	}
+
 	return capabilities, nil
 }
 
@@ -228,8 +233,8 @@ func (p *OceanstorNasPlugin) updateHyperMetroCapability(capabilities map[string]
 
 		p.nasHyperMetro = volume.NASHyperMetro{
 			FsHyperMetroActiveSite: fsHyperMetroDomain["CONFIGROLE"] == HYPER_METRO_DOMAIN_ACTIVE,
-			LocVStoreID: vStorePair["LOCALVSTOREID"].(string),
-			RmtVStoreID: vStorePair["REMOTEVSTOREID"].(string),
+			LocVStoreID:            vStorePair["LOCALVSTOREID"].(string),
+			RmtVStoreID:            vStorePair["REMOTEVSTOREID"].(string),
 		}
 		p.metroDomainID = vStorePair["DOMAINID"].(string)
 	} else {
@@ -248,6 +253,32 @@ func (p *OceanstorNasPlugin) updateReplicationCapability(capabilities map[string
 	if capabilities["SupportReplication"] == true && p.replicaRemotePlugin == nil {
 		capabilities["SupportReplication"] = false
 	}
+	return nil
+}
+
+func (p *OceanstorNasPlugin) updateNFS4Capability(capabilities map[string]interface{}) error {
+	nfsServiceSetting, err := p.cli.GetNFSServiceSetting(context.Background())
+	if err != nil {
+		return err
+	}
+
+	// NFS3 is enabled by default.
+	capabilities["SupportNFS3"] = true
+	capabilities["SupportNFS4"] = false
+	capabilities["SupportNFS41"] = false
+
+	if !nfsServiceSetting["SupportNFS3"] {
+		capabilities["SupportNFS3"] = false
+	}
+
+	if nfsServiceSetting["SupportNFS4"] {
+		capabilities["SupportNFS4"] = true
+	}
+
+	if nfsServiceSetting["SupportNFS41"] {
+		capabilities["SupportNFS41"] = true
+	}
+
 	return nil
 }
 
