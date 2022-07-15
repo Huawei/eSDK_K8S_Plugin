@@ -4,7 +4,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-controller
-  namespace: kube-system
+  namespace: huawei-csi
 spec:
   replicas: 1
   selector:

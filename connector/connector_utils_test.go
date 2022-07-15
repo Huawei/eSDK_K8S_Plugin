@@ -415,8 +415,8 @@ func TestWatchDMDevice(t *testing.T) {
 			"dm-0",
 			3,
 			[]string{"sdb", "sdc", "sdd"},
-			800 * time.Millisecond,
-			800 * time.Millisecond,
+			100 * time.Millisecond,
+			100 * time.Millisecond,
 			nil,
 		},
 		{
@@ -425,8 +425,8 @@ func TestWatchDMDevice(t *testing.T) {
 			"dm-0",
 			3,
 			[]string{"sdb", "sdc"},
-			800 * time.Millisecond,
-			800 * time.Millisecond,
+			100 * time.Millisecond,
+			100 * time.Millisecond,
 			errors.New(VolumePathIncomplete),
 		},
 		{
@@ -435,19 +435,19 @@ func TestWatchDMDevice(t *testing.T) {
 			"dm-0",
 			3,
 			[]string{"sdb", "sdc", "sdd"},
-			time.Second,
-			5 * time.Second,
+			100 * time.Millisecond,
+			200 * time.Millisecond,
 			errors.New(VolumeNotFound),
 		},
 	}
 
-	stub := gostub.New()
-	defer stub.Reset()
+	stubs := gostub.Stub(&ScanVolumeTimeout, 10*time.Millisecond)
+	defer stubs.Reset()
 
 	for _, c := range cases {
 		var startTime = time.Now()
 
-		stub.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
+		stubs.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
 			if time.Now().Sub(startTime) > c.aggregatedTime {
 				return fmt.Sprintf("name    sysfs uuid                             \nmpathja %s  %s", c.lunName, c.lunWWN), nil
 			} else {
@@ -455,7 +455,7 @@ func TestWatchDMDevice(t *testing.T) {
 			}
 		})
 
-		stub.Stub(&getDeviceFromDM, func(dm string) ([]string, error) {
+		stubs.Stub(&getDeviceFromDM, func(dm string) ([]string, error) {
 			if time.Now().Sub(startTime) > c.pathCompleteTime {
 				return c.devices, nil
 			} else {

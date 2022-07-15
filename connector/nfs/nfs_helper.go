@@ -38,8 +38,13 @@ type connectorInfo struct {
 	sourcePath string
 	targetPath string
 	fsType     string
-	mntFlags   string
+	mntFlags   mountParam
 	accessMode csi.VolumeCapability_AccessMode_Mode
+}
+
+type mountParam struct {
+	dashT string
+	dashO string
 }
 
 func parseNFSInfo(ctx context.Context,
@@ -71,15 +76,21 @@ func parseNFSInfo(ctx context.Context,
 		fsType = "ext4"
 	}
 
-	mntFlags, _ := connectionProperties["mountFlags"].(string)
 	accessMode, _ := connectionProperties["accessMode"].(csi.VolumeCapability_AccessMode_Mode)
+	mntDashO, _ := connectionProperties["mountFlags"].(string)
+	protocol, _ := connectionProperties["protocol"].(string)
+	var mntDashT string
+	if protocol == "dpc" {
+		mntDashT = "dpc"
+	}
 
 	con.srcType = srcType
 	con.sourcePath = sourcePath
 	con.targetPath = targetPath
 	con.fsType = fsType
-	con.mntFlags = mntFlags
 	con.accessMode = accessMode
+	con.mntFlags = mountParam{dashO: strings.TrimSpace(mntDashO), dashT: mntDashT}
+
 	return &con, nil
 }
 
@@ -127,7 +138,7 @@ func preMount(sourcePath, targetPath string, checkSourcePath bool) error {
 	return nil
 }
 
-func mountFS(ctx context.Context, sourcePath, targetPath, flags string) error {
+func mountFS(ctx context.Context, sourcePath, targetPath string, flags mountParam) error {
 	return mountUnix(ctx, sourcePath, targetPath, flags, false)
 }
 
@@ -182,7 +193,11 @@ func compareMountPath(ctx context.Context, sourcePath, mountSourcePath string) e
 	return nil
 }
 
-func appendMountFlags(ctx context.Context, sourcePath, flags string) string {
+func appendXFSMountFlags(ctx context.Context, sourcePath string, flags mountParam) mountParam {
+	// Only disk devices need to be determined whether the system is XFS.
+	if !strings.Contains(sourcePath, "/dev/") {
+		return flags
+	}
 	fsType, err := connector.GetFsTypeByDevPath(ctx, sourcePath)
 	if err != nil {
 		log.AddContext(ctx).Warningf("Get device: [%s] FsType failed. error: %v", sourcePath, err)
@@ -190,14 +205,18 @@ func appendMountFlags(ctx context.Context, sourcePath, flags string) string {
 	}
 	if fsType == "xfs" {
 		// xfs volumes are always mounted with '-o nouuid' to allow clones to be mounted to the same node as the source
-		flags = fmt.Sprintf("%s nouuid", flags)
+		if flags.dashO == "" {
+			flags.dashO = "nouuid"
+		} else {
+			flags.dashO = fmt.Sprintf("%s,nouuid", flags.dashO)
+		}
 	}
 
-	log.AddContext(ctx).Infof("mount flags: [%s]", flags)
+	log.AddContext(ctx).Infof("mount flags: [%v]", flags)
 	return flags
 }
 
-func mountUnix(ctx context.Context, sourcePath, targetPath, flags string, checkSourcePath bool) error {
+func mountUnix(ctx context.Context, sourcePath, targetPath string, flags mountParam, checkSourcePath bool) error {
 	var output string
 	var err error
 	err = preMount(sourcePath, targetPath, checkSourcePath)
@@ -228,13 +247,17 @@ func mountUnix(ctx context.Context, sourcePath, targetPath, flags string, checkS
 			targetPath, sourcePath, value)
 	}
 
-	flags = appendMountFlags(ctx, sourcePath, flags)
-	if flags != "" {
-		output, err = utils.ExecShellCmd(ctx, "mount %s %s -o %s", sourcePath, targetPath, flags)
-	} else {
-		output, err = utils.ExecShellCmd(ctx, "mount %s %s", sourcePath, targetPath)
+	flags = appendXFSMountFlags(ctx, sourcePath, flags)
+
+	if flags.dashT != "" {
+		flags.dashT = fmt.Sprintf("-t %s", flags.dashT)
 	}
 
+	if flags.dashO != "" {
+		flags.dashO = fmt.Sprintf("-o %s", flags.dashO)
+	}
+
+	output, err = utils.ExecShellCmd(ctx, "mount %s %s %s %s", sourcePath, targetPath, flags.dashT, flags.dashO)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Mount %s to %s error: %s", sourcePath, targetPath, output)
 		return err
@@ -332,7 +355,7 @@ func getDiskSizeType(ctx context.Context, sourcePath string) (string, error) {
 	return "", errors.New("the disk size does not support")
 }
 
-func mountDisk(ctx context.Context, sourcePath, targetPath, fsType, flags string,
+func mountDisk(ctx context.Context, sourcePath, targetPath, fsType string, flags mountParam,
 	accessMode csi.VolumeCapability_AccessMode_Mode) error {
 	var err error
 	existFsType, err := getFSType(ctx, sourcePath)

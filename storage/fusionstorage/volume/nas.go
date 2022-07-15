@@ -97,9 +97,13 @@ func (p *NAS) Create(ctx context.Context, params map[string]interface{}) (utils.
 
 	createTask := taskflow.NewTaskFlow(ctx, "Create-FileSystem-Volume")
 	createTask.AddTask("Create-FS", p.createFS, p.revertFS)
-	createTask.AddTask("Create-Quota", p.createQuota, p.revertQuota)
-	createTask.AddTask("Create-Share", p.createShare, p.revertShare)
-	createTask.AddTask("Allow-Share-Access", p.allowShareAccess, nil)
+	if params["protocol"] == "dpc" {
+		createTask.AddTask("Create-Quota", p.createQuota, nil)
+	} else {
+		createTask.AddTask("Create-Quota", p.createQuota, p.revertQuota)
+		createTask.AddTask("Create-Share", p.createShare, p.revertShare)
+		createTask.AddTask("Allow-Share-Access", p.allowShareAccess, nil)
+	}
 	_, err = createTask.Run(params)
 	if err != nil {
 		createTask.Revert()

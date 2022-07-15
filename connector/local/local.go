@@ -17,6 +17,7 @@ package local
 
 import (
 	"context"
+	"time"
 
 	"huawei-csi-driver/connector"
 	"huawei-csi-driver/utils"
@@ -27,7 +28,7 @@ import (
 type Local struct {
 }
 
-const waitInternal = 2
+var waitDevOnlineTimeInterval = 2 * time.Second
 
 func init() {
 	connector.RegisterConnector(connector.LocalDriver, &Local{})
