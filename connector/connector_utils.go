@@ -43,6 +43,11 @@ const (
 	UseUltraPathNVMe
 )
 
+var (
+	DisconnectVolumeTimeOut      = time.Minute
+	DisconnectVolumeTimeInterval = time.Second
+)
+
 type deviceInfo struct {
 	lunWWN         string
 	deviceName     string
@@ -116,7 +121,7 @@ func getDevices(deviceLink string) []string {
 }
 
 func getDMDeviceByAlias(ctx context.Context, dm string) (string, error) {
-	output, err := utils.ExecShellCmd(ctx, "ls -l /dev/mapper/ | grep %s", dm)
+	output, err := utils.ExecShellCmd(ctx, "ls -l /dev/mapper/ | grep -w %s", dm)
 	if err != nil {
 		return "", utils.Errorf(ctx, "Get DMDevice by alias: %s failed. error: %v", dm, err)
 	}
@@ -479,9 +484,9 @@ func getDMDeviceInfo(line string) (dm DMDeviceInfo, err error) {
 	return dm, err
 }
 
-// FindAvailableMultiPath is to get dm-multiapth through sd devices
+// FindAvailableMultiPath is to get dm-multipath through sd devices
 func FindAvailableMultiPath(ctx context.Context, foundDevices []string) (string, bool) {
-	log.AddContext(ctx).Infof("Start to find the dm multiapth of devices %v", foundDevices)
+	log.AddContext(ctx).Infof("Start to find the dm multipath of devices %v", foundDevices)
 	mPathMap, mPath := findMultiPathMaps(foundDevices)
 	if len(mPathMap) == 1 {
 		return mPath, false
@@ -492,9 +497,9 @@ func FindAvailableMultiPath(ctx context.Context, foundDevices []string) (string,
 	}
 
 	for dmPath, devices := range mPathMap {
-		log.AddContext(ctx).Infof("Start to clean up the multipath %s with devices %s", dmPath, devices)
+		log.AddContext(ctx).Infof("Start to clean up the multipath [%s] with devices %s", dmPath, devices)
 		if _, err := removeMultiPathDevice(ctx, dmPath, devices); err != nil {
-			log.AddContext(ctx).Errorf("clear multipath %s and devices %v error %v", dmPath, devices, err)
+			log.AddContext(ctx).Errorf("clear multipath [%s] and devices %v error %v", dmPath, devices, err)
 		}
 	}
 	return "", true
@@ -1223,7 +1228,7 @@ func DisConnectVolume(ctx context.Context, tgtLunWWN string, f func(context.Cont
 			return false, err
 		}
 		return false, nil
-	}, time.Minute, time.Second)
+	}, DisconnectVolumeTimeOut, DisconnectVolumeTimeInterval)
 }
 
 // CheckConnectSuccess is to check the sd device available
@@ -1529,8 +1534,15 @@ var RemoveAllDevice = func(ctx context.Context,
 }
 
 // ClearResidualPath used to clear residual path
-func ClearResidualPath(ctx context.Context, lunWWN string) error {
-	log.AddContext(ctx).Infof("Enter func: ClearResidualPath. lunWWN:%s", lunWWN)
+func ClearResidualPath(ctx context.Context, lunWWN string, volumeMode interface{}) error {
+	log.AddContext(ctx).Infof("Enter func: ClearResidualPath. lunWWN:[%s]. volumeMode:[%v]", lunWWN, volumeMode)
+
+	v, ok := volumeMode.(string)
+	if ok && v == "Block" {
+		log.AddContext(ctx).Infof("volumeMode is Block, skip residual device check.")
+		return nil
+	}
+
 	devInfos, err := getDevicesInfosByGUID(ctx, lunWWN)
 	if err != nil {
 		return err

@@ -1,8 +1,9 @@
 package config
 
 const (
+	DefaultNameSpace        = "huawei-csi"
 	OrchestratorName        = "Huawei"
-	OrchestratorVersion     = "2.2.16"
-	MinKubernetesCSIVersion = "v1.18.0"
-	MaxKubernetesCSIVersion = "v1.23.x"
+	OrchestratorVersion     = "3.0.0"
+	MinKubernetesCSIVersion = "v1.21.0"
+	MaxKubernetesCSIVersion = "v1.24.x"
 )

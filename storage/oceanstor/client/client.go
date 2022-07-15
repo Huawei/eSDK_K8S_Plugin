@@ -69,12 +69,13 @@ const (
 
 var (
 	loggerFilter = map[string]map[string]bool{
-		"POST": map[string]bool{
+		"POST": {
 			"/xx/sessions": true,
 		},
-		"GET": map[string]bool{
+		"GET": {
 			"/storagepool":     true,
 			"/license/feature": true,
+			"/nfsservice":      true,
 		},
 	}
 
@@ -3119,4 +3120,47 @@ func (cli *Client) GetFCTargetWWNs(ctx context.Context, initiatorWWN string) ([]
 	}
 
 	return tgtWWNs, nil
+}
+
+func (cli *Client) GetNFSServiceSetting(ctx context.Context) (map[string]bool, error) {
+	resp, err := cli.get(ctx, "/nfsservice", nil)
+	if err != nil {
+		// All enterprise storage support this interface.
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("get NFS service setting failed. errorCode: %d", code)
+	}
+
+	if resp.Data == nil {
+		log.AddContext(ctx).Infoln("NFS service setting is empty.")
+		return nil, nil
+	}
+
+	setting := map[string]bool{
+		// NFS3 is enabled by default.
+		"SupportNFS3":  true,
+		"SupportNFS4":  false,
+		"SupportNFS41": false,
+	}
+	respData := resp.Data.(map[string]interface{})
+	for k, v := range respData {
+		var err error
+		if k == "SUPPORTV3" {
+			setting["SupportNFS3"], err = strconv.ParseBool(v.(string))
+		} else if k == "SUPPORTV4" {
+			setting["SupportNFS4"], err = strconv.ParseBool(v.(string))
+		} else if k == "SUPPORTV41" {
+			setting["SupportNFS41"], err = strconv.ParseBool(v.(string))
+		}
+
+		if err != nil {
+			log.AddContext(ctx).Errorf("Convert [%v] to bool failed. error: %v", v, err)
+			return nil, err
+		}
+	}
+
+	return setting, nil
 }

@@ -4,7 +4,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-controller
-  namespace: kube-system
+  namespace: huawei-csi
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -12,7 +12,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-node
-  namespace: kube-system
+  namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -20,7 +20,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-attacher-cfg
-  namespace: kube-system
+  namespace: huawei-csi
 rules:
   - apiGroups:
       - coordination.k8s.io
@@ -40,7 +40,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-provisioner-cfg
-  namespace: kube-system
+  namespace: huawei-csi
 rules:
   - apiGroups:
       - ""
@@ -95,7 +95,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-resizer-cfg
-  namespace: kube-system
+  namespace: huawei-csi
 rules:
   - apiGroups:
       - coordination.k8s.io
@@ -115,7 +115,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-snapshot-controller-leaderelection
-  namespace: kube-system
+  namespace: huawei-csi
 rules:
   - apiGroups:
       - coordination.k8s.io
@@ -135,7 +135,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-snapshotter-leaderelection
-  namespace: kube-system
+  namespace: huawei-csi
 rules:
   - apiGroups:
       - coordination.k8s.io
@@ -505,7 +505,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-attacher-role-cfg
-  namespace: kube-system
+  namespace: huawei-csi
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -513,7 +513,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -521,7 +521,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-csi-resizer-role-cfg
-  namespace: kube-system
+  namespace: huawei-csi
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -529,7 +529,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -537,7 +537,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-provisioner-role-cfg
-  namespace: kube-system
+  namespace: huawei-csi
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -545,7 +545,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -553,7 +553,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-snapshot-controller-leaderelection-role
-  namespace: kube-system
+  namespace: huawei-csi
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -561,7 +561,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -569,7 +569,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-snapshotter-leaderelection-role
-  namespace: kube-system
+  namespace: huawei-csi
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -577,7 +577,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -592,7 +592,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -607,7 +607,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -622,7 +622,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -637,7 +637,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-node
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -652,7 +652,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -667,4 +667,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
-    namespace: kube-system
+    namespace: huawei-csi
