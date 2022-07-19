@@ -1,3 +1,59 @@
+# 3.0.0
+
+## Supported Huawei storage products
+
+| Storage Product     | Version                    |
+| ------------------- | -------------------------- |
+| OceanStor Dorado V6 | 6.0.1, 6.1.0, 6.1.2, 6.1.3 |
+| OceanStor Dorado V3 | V300R002                   |
+| OceanStor V6        | 6.1.3                      |
+| OceanStor V5/F V5   | V500R007, V500R007 Kunpeng |
+| OceanStor V3/F V3   | V300R006                   |
+| FusionStorage       | V100R006C30                |
+| FusionStorage Block | 8.0.0, 8.0.1               |
+| OceanStor Pacific   | 8.1.0, 8.1.1, 8.1.2        |
+
+## Supported container platforms and operating systems (OSs)
+
+| Container platform/OS | Version                                                     |
+| --------------------- | ----------------------------------------------------------- |
+| Kubernetes            | 1.21, 1.22, 1.23, 1.24                                      |
+| CentOS                | 7.6 x86_64, 7.7 x86_64, 7.9 x86_64, 8.2 x86_64              |
+| SUSE                  | 15 SP2 x86_64                                               |
+| Red Hat CoreOS        | 4.6 x86_64, 4.7 x86_64, 4.8 x86_64, 4.9 x86_64, 4.10 x86_64 |
+| Ubuntu                | 18.04 x86_64, 20.04 x86_64                                  |
+| Kylin V10             | SP1 Arm, SP2 Arm                                            |
+
+## Kubernetes features supported by enterprise storage
+
+| Feature                     | OceanStor V3/F V3OceanStor V5/F V5 | OceanStor V3/F V3OceanStor V5/F V5 | OceanStor Dorado V3 | OceanStor V6 | OceanStor V6 | OceanStor Dorado V6 | OceanStor Dorado V6 |
+| --------------------------- | ---------------------------------- | ---------------------------------- | ------------------- | ------------ | ------------ | ------------------- | ------------------- |
+| -                           | SAN                                | NAS                                | -                   | SAN          | NAS          | SAN                 | NAS                 |
+| Dynamic Provisioning        | √                                  | √                                  | √                   | √            | √            | √                   | √                   |
+| Static Provisioning         | √                                  | √                                  | √                   | √            | √            | √                   | √                   |
+| Expand Persistent Volume    | √                                  | √                                  | √                   | √            | √            | √                   | √                   |
+| Create VolumeSnapshot       | √                                  | √                                  | √                   | √            | √            | √                   | √                   |
+| Create Volume from Snapshot | √                                  | √                                  | √                   | √            | ×            | √                   | ×                   |
+| Delete Snapshot             | √                                  | √                                  | √                   | √            | √            | √                   | √                   |
+| CSI Volume Cloning          | √                                  | √                                  | √                   | √            | ×            | √                   | ×                   |
+| CSI Raw Block Volume        | √                                  | ×                                  | √                   | √            | ×            | √                   | ×                   |
+| Topology                    | √                                  | √                                  | √                   | √            | √            | √                   | √                   |
+
+## Kubernetes features supported by distributed storage
+
+| Feature                     | FusionStorage | FusionStorage Block | OceanStor Pacific | OceanStor Pacific |
+| --------------------------- | ------------- | ------------------- | ----------------- | ----------------- |
+| -                           | -             | -                   | SAN               | NAS               |
+| Dynamic Provisioning        | √             | √                   | √                 | √                 |
+| Static Provisioning         | √             | √                   | √                 | √                 |
+| Expand Persistent Volume    | √             | √                   | √                 | ×                 |
+| Create VolumeSnapshot       | √             | √                   | √                 | ×                 |
+| Create Volume from Snapshot | √             | √                   | √                 | ×                 |
+| Delete Snapshot             | √             | √                   | √                 | ×                 |
+| CSI Volume Cloning          | √             | √                   | √                 | ×                 |
+| CSI Raw Block Volume        | √             | √                   | √                 | ×                 |
+| Topology                    | √             | √                   | √                 | √                 |
+
 # 2.2.16
 
 ## Mappings between CSI and Kubernetes versions
@@ -32,7 +88,6 @@
 | |OceanStor Pacific series 8.1.0/8.1.1/8.1.2|
 
 # 2.2.15
-
 ## Mappings between CSI and Kubernetes versions
 
 | Features |1.16|1.17|1.18|1.19|1.20|1.21|
