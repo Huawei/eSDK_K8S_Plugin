@@ -1089,6 +1089,7 @@ func (cli *Client) CreateFileSystem(ctx context.Context, params map[string]inter
 		"name":            params["name"].(string),
 		"storage_pool_id": params["poolId"].(int64),
 		"account_id":      params["accountid"].(string),
+		"unix_permission": "777",
 	}
 
 	if params["protocol"] == "dpc" {
