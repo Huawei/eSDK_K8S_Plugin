@@ -2,7 +2,7 @@ kind: ConfigMap
 apiVersion: v1
 metadata:
   name: huawei-csi-configmap
-  namespace: huawei-csi
+  namespace: kube-system
 data:
   csi.json: |
     {

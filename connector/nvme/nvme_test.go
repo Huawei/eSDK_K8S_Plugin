@@ -8,7 +8,6 @@ import (
 	"path"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/prashantv/gostub"
 
@@ -137,7 +136,6 @@ func TestDisConnectVolume(t *testing.T) {
 	stubs.StubFunc(&connector.GetNVMePhysicalDevices, []string{}, nil)
 	stubs.StubFunc(&connector.RemoveAllDevice, "test", nil)
 	stubs.StubFunc(&connector.FlushDMDevice, nil)
-	stubs.Stub(&flushTimeInterval, time.Microsecond)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

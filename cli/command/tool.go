@@ -19,7 +19,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"net/url"
 	"os"
@@ -29,7 +28,6 @@ import (
 	"time"
 
 	k8sClient "huawei-csi-driver/cli/client"
-	"huawei-csi-driver/cli/config"
 	"huawei-csi-driver/utils/log"
 	"huawei-csi-driver/utils/pwd"
 
@@ -56,10 +54,6 @@ const (
 var (
 	validAccountMap = make(map[string]backendAccount)
 	backendNameSet  = make(map[string]struct{})
-)
-
-var (
-	secretNamespace = flag.String("namespace", config.DefaultNameSpace, "Namespace for huawei-csi-secret")
 )
 
 type backendConfigStatus struct {
@@ -89,7 +83,7 @@ func safeExit() {
 		return
 	}
 
-	newSecretYAML := k8sClient.GetSecretYAML(HUAWEICSISecret, *secretNamespace, secretMap)
+	newSecretYAML := k8sClient.GetSecretYAML(HUAWEICSISecret, storageNamespace, secretMap)
 	err = client.CreateObjectByYAML(newSecretYAML)
 	if err != nil {
 		fmt.Println(saveErr)
@@ -127,7 +121,7 @@ func checkBackendConnectivity(urlStr string) error {
 	}
 
 	addr := u.Host[:len(u.Host)-len(u.Port())-1]
-	sh := fmt.Sprintf("ping -c 3 -i 0.2 -w 1 %s", addr)
+	sh := fmt.Sprintf("ping -c 3 -i 0.001 -w 1 %s", addr)
 	cmd := exec.Command("/bin/bash", "-c", sh)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -180,9 +174,9 @@ func getInputString(tips string, isVisible bool) (string, error) {
 
 	var sh string
 	if isVisible {
-		sh = "stty erase '^H' -isig -ixon && read -r str && echo $str"
+		sh = "stty erase '^H' -isig -ixon && read str && echo $str"
 	} else {
-		sh = "stty erase '^H' -isig -ixon && read -sr pwd && echo $pwd"
+		sh = "stty erase '^H' -isig -ixon && read -s pwd && echo $pwd"
 	}
 
 	cmd := exec.Command("/bin/bash", "-c", sh)

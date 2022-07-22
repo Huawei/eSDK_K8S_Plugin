@@ -32,7 +32,8 @@ func waitDevOnline(ctx context.Context, tgtLunWWN string) string {
 	for i := 0; i < 30; i++ {
 		output, _ := utils.ExecShellCmd(ctx, "ls -l %s", devPath)
 		if strings.Contains(output, "No such file or directory") {
-			time.Sleep(waitDevOnlineTimeInterval)
+			time.Sleep(time.Second * waitInternal)
+			continue
 		} else if strings.Contains(output, devPath) {
 			return devPath
 		}

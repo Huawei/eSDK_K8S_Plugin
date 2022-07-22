@@ -25,7 +25,6 @@ import (
 	"os/exec"
 	"reflect"
 	"regexp"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -166,8 +165,7 @@ func execShellCmd(ctx context.Context, format string, logFilter bool, args ...in
 	cmd := fmt.Sprintf(format, args...)
 	log.AddContext(ctx).Infof("Gonna run shell cmd \"%s\".", MaskSensitiveInfo(cmd))
 
-	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "-u/proc/1/ns/uts", "/bin/sh",
-		"-c", cmd}
+	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "/bin/sh", "-c", cmd}
 	shCmd := exec.Command("nsenter", execCmd...)
 	var timeOut bool
 	if strings.Contains(cmd, "mkfs") || strings.Contains(cmd, "resize2fs") ||
@@ -769,12 +767,5 @@ func RemoveDir(filePath, dir string) {
 
 	if err := os.RemoveAll(dir); err != nil {
 		log.Errorf("Directory: %s delete failed: %s", dir, err)
-	}
-}
-
-// RecoverPanic used to recover panic
-func RecoverPanic(ctx context.Context) {
-	if r := recover(); r != nil {
-		log.AddContext(ctx).Errorf("Panic message: [%s]\nPanic stack: [%s]", r, debug.Stack())
 	}
 }

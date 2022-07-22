@@ -23,9 +23,16 @@ const (
 
 var (
 	client           k8sClient.Interface
+	storageNamespace string
 )
 
 func Init() {
+	if len(os.Args) >= inputArgsLength {
+		storageNamespace = os.Args[1]
+	} else {
+		storageNamespace = HUAWEINamespace
+	}
+
 	initInstallerLogging()
 	processInstallationArguments()
 	installSecret()
@@ -60,7 +67,7 @@ func installSecret() {
 }
 
 func initClient() (k8sClient.Interface, error) {
-	client, err := k8sClient.NewCliClient(*secretNamespace, 180*time.Second)
+	client, err := k8sClient.NewCliClient(storageNamespace, 180*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("Could not new a Kubernetes client, err: %v", err)
 	}

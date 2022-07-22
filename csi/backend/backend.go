@@ -39,7 +39,6 @@ var (
 		{"storageQuota", filterByStorageQuota},
 		{"sourceVolumeName", filterBySupportClone},
 		{"sourceSnapshotName", filterBySupportClone},
-		{"nfsProtocol", filterByNFSProtocol},
 	}
 
 	secondaryFilterFuncs = [][]interface{}{
@@ -241,6 +240,7 @@ func addProtocolTopology(backend *Backend, driverName string) error {
 	})
 
 	return nil
+
 }
 
 func analyzeBackend(config map[string]interface{}) (*Backend, error) {
@@ -328,10 +328,9 @@ func RegisterBackend(backendConfigs []map[string]interface{}, keepLogin bool, dr
 			return err
 		}
 
-		// Note: Protocol is considered as special topological parameter.
-		// The protocol topology is populated internally by plugin using protocol name.
-		// If configured protocol for backend is "iscsi", CSI plugin internally add
-		// topology.kubernetes.io/protocol.iscsi = csi.huawei.com in supportedTopologies.
+		// Note: Protocol is considered as special topological parameter. The
+		// protocol topology is populated internally by plugin using protocol name.
+		// If configured protocol for backend is "iscsi", CSI plugin internally add topology.kubernetes.io/protocol.iscsi = csi.huawei.com in supportedTopologies.
 		//
 		// Now users can opt to provision volumes based on protocol by
 		// 1. Labeling kubernetes nodes with protocol specific label (ie topology.kubernetes.io/protocol.iscsi = csi.huawei.com)
@@ -865,26 +864,6 @@ func filterByCapability(
 	}
 
 	return candidatePools, nil
-}
-
-func filterByNFSProtocol(ctx context.Context, nfsProtocol string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
-	if nfsProtocol == "" {
-		return candidatePools, nil
-	}
-
-	var filterPools []*StoragePool
-	for _, pool := range candidatePools {
-		if nfsProtocol == "nfs3" && pool.Capabilities["SupportNFS3"].(bool) {
-			filterPools = append(filterPools, pool)
-		} else if nfsProtocol == "nfs4" && pool.Capabilities["SupportNFS4"].(bool) {
-			filterPools = append(filterPools, pool)
-		} else if nfsProtocol == "nfs41" && pool.Capabilities["SupportNFS41"].(bool) {
-			filterPools = append(filterPools, pool)
-		}
-	}
-
-	return filterPools, nil
 }
 
 func filterBySupportClone(ctx context.Context, cloneSource string, candidatePools []*StoragePool) ([]*StoragePool,

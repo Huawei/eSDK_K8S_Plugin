@@ -39,7 +39,7 @@ func updateBackendCapabilities(backend *Backend, sync bool) error {
 	for _, pool := range backend.Pools {
 		for k, v := range backendCapabilities {
 			if cur, exist := pool.Capabilities[k]; !exist || cur != v {
-				log.Infof("Update backend capability [%s] of pool [%s] of backend [%s] from %v to %v",
+				log.Infof("Update backend capability %s of pool %s of backend %s from %v to %v",
 					k, pool.Name, pool.Parent, cur, v)
 				pool.Capabilities[k] = v
 			}
@@ -49,7 +49,7 @@ func updateBackendCapabilities(backend *Backend, sync bool) error {
 		if exist {
 			for k, v := range capabilities {
 				if cur, exist := pool.Capabilities[k]; !exist || !reflect.DeepEqual(cur, v) {
-					log.Infof("Update pool capability [%s] of pool [%s] of backend [%s] from %v to %v",
+					log.Infof("Update pool capability %s of pool %s of backend %s from %v to %v",
 						k, pool.Name, pool.Parent, cur, v)
 					pool.Capabilities[k] = v
 				}

@@ -15,12 +15,9 @@
 package main
 
 import (
-	"flag"
-
 	cmd "huawei-csi-driver/cli/command"
 )
 
 func main() {
-	flag.Parse()
 	cmd.Update()
 }

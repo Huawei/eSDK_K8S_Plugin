@@ -4,7 +4,7 @@ metadata:
   labels:
     provisioner: csi.huawei.com
   name: huawei-csi-node
-  namespace: huawei-csi
+  namespace: kube-system
 spec:
   selector:
     matchLabels:

@@ -3,20 +3,21 @@ package client
 import "testing"
 
 const csiSecret = "huawei-csi-secret"
-const defaultNameSpace = "huawei-csi"
+const defaultNameSpace = "kube-system"
 
 const normalCaseExpected = `
 apiVersion: v1
 kind: Secret
 metadata:
   name: huawei-csi-secret
-  namespace: huawei-csi
+  namespace: kube-system
 type: Opaque
 stringData:
   secret.json: |
     {
       "secrets": {
-        "stringDataKey1": stringDataVal1
+        "stringDataKey1": stringDataVal1,
+        "stringDataKey2": stringDataVal2
       }
     }
 `
@@ -26,14 +27,14 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: huawei-csi-secret
-  namespace: huawei-csi
+  namespace: kube-system
 type: Opaque
 stringData:
   secret.json: |
 `
 
 func TestGetSecretYAML(t *testing.T) {
-	stringData := map[string]string{"stringDataKey1": "stringDataVal1"}
+	stringData := map[string]string{"stringDataKey1": "stringDataVal1", "stringDataKey2": "stringDataVal2"}
 
 	cases := []struct {
 		CaseName              string
@@ -48,7 +49,7 @@ func TestGetSecretYAML(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.CaseName, func(t *testing.T) {
 			if ans := GetSecretYAML(c.secretName, c.namespace, c.stringData); ans != c.Expected {
-				t.Errorf("Test GetSecretYAML failed.\nExpected:%s \nGet:%s", c.Expected, ans)
+				t.Errorf("Test GetSecretYAML failed.")
 			}
 		})
 	}

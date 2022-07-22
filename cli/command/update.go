@@ -17,12 +17,21 @@ package command
 
 import (
 	"fmt"
+	"os"
 
 	"huawei-csi-driver/utils/log"
 )
 
+const inputArgsLength = 2
+
 // Update is to update the secret info for CSI
 func Update() {
+	if len(os.Args) >= inputArgsLength {
+		storageNamespace = os.Args[1]
+	} else {
+		storageNamespace = HUAWEINamespace
+	}
+
 	initInstallerLogging()
 	processInstallationArguments()
 	update()

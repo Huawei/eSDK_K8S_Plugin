@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-
 	"huawei-csi-driver/connector"
 	// init the nfs connector
 	_ "huawei-csi-driver/connector/nfs"
@@ -94,17 +93,11 @@ func (p *basePlugin) stageVolume(ctx context.Context, connectInfo map[string]int
 func (p *basePlugin) fsStageVolume(ctx context.Context,
 	name, portal string,
 	parameters map[string]interface{}) error {
-	sourcePath := portal + ":/" + name
-	if parameters["protocol"] == "dpc" {
-		sourcePath = "/" + name
-	}
-
 	connectInfo := map[string]interface{}{
 		"srcType":    connector.MountFSType,
-		"sourcePath": sourcePath,
-		"targetPath": parameters["targetPath"],
-		"mountFlags": parameters["mountFlags"],
-		"protocol":   parameters["protocol"],
+		"sourcePath": portal + ":/" + name,
+		"targetPath": parameters["targetPath"].(string),
+		"mountFlags": parameters["mountFlags"].(string),
 	}
 
 	return p.stageVolume(ctx, connectInfo)

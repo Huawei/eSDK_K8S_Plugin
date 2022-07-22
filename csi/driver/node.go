@@ -19,8 +19,6 @@ import (
 )
 
 func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	defer utils.RecoverPanic(ctx)
-
 	volumeId := req.GetVolumeId()
 	log.AddContext(ctx).Infof("Start to stage volume %s", volumeId)
 
@@ -55,7 +53,6 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		if accessMode == "ReadOnly" {
 			opts = append(opts, "ro")
 		}
-
 		parameters["targetPath"] = req.GetStagingTargetPath()
 		parameters["fsType"] = mnt.GetFsType()
 		parameters["mountFlags"] = strings.Join(opts, ",")

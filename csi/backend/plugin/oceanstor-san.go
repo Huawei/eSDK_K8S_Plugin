@@ -305,7 +305,7 @@ func (p *OceanstorSanPlugin) getStageVolumeInfo(ctx context.Context,
 		return nil, err
 	}
 
-	err = connector.ClearResidualPath(ctx, lunWWN, parameters["volumeMode"])
+	err = connector.ClearResidualPath(ctx, lunWWN)
 	if err != nil {
 		return nil, err
 	}

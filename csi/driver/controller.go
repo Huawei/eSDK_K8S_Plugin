@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes/timestamp"
@@ -21,14 +20,6 @@ const (
 	Block      = "Block"
 	FileSystem = "FileSystem"
 )
-
-var nfsProtocolMap = map[string]string{
-	// nfsvers=3.0 is not support
-	"nfsvers=3":   "nfs3",
-	"nfsvers=4":   "nfs4",
-	"nfsvers=4.0": "nfs4",
-	"nfsvers=4.1": "nfs41",
-}
 
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	name := req.GetName()
@@ -59,10 +50,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	// process accessibility requirements
 	d.processAccessibilityRequirements(ctx, req, parameters)
-	err = d.processNFSProtocol(ctx, req, parameters)
-	if err != nil {
-		return nil, err
-	}
 
 	msg := d.validateModeAndType(req, parameters)
 	if msg != "" {
@@ -493,43 +480,4 @@ func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeR
 	}
 
 	return true, nil
-}
-
-func (d *Driver) processNFSProtocol(ctx context.Context, req *csi.CreateVolumeRequest,
-	parameters map[string]interface{}) error {
-	for _, v := range req.GetVolumeCapabilities() {
-		for _, mountFlag := range v.GetMount().GetMountFlags() {
-			err := d.addNFSProtocol(ctx, mountFlag, parameters)
-			if err != nil {
-				return err
-			}
-		}
-
-		if parameters["nfsProtocol"] != nil {
-			break
-		}
-	}
-
-	return nil
-}
-
-func (d *Driver) addNFSProtocol(ctx context.Context, mountFlag string, parameters map[string]interface{}) error {
-	for _, singleFlag := range strings.Split(mountFlag, ",") {
-		singleFlag = strings.TrimSpace(singleFlag)
-		if strings.HasPrefix(singleFlag, "nfsvers=") {
-			value, ok := nfsProtocolMap[singleFlag]
-			if !ok {
-				return utils.Errorf(ctx, "unsupported nfs protocol version [%s].", singleFlag)
-			}
-
-			if parameters["nfsProtocol"] != nil {
-				return utils.Errorf(ctx, "Duplicate nfs protocol [%s].", mountFlag)
-			}
-
-			parameters["nfsProtocol"] = value
-			log.AddContext(ctx).Infof("Add nfs protocol: %v", parameters["nfsProtocol"])
-		}
-	}
-
-	return nil
 }
