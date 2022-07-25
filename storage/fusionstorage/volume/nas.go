@@ -86,6 +86,29 @@ func (p *NAS) preCreate(ctx context.Context, params map[string]interface{}) erro
 		}
 	}
 
+	// all_squash root_squash
+	params["allsquash"], exist = params["allsquash"].(string)
+	if !exist || params["allsquash"] == "" {
+		params["allsquash"] = 1
+	} else {
+		allSquash, err := strconv.Atoi(params["allsquash"].(string))
+		if err != nil {
+			return utils.Errorf(ctx, "parameter allSquash [%v] in sc needs to be a number.", params["allsquash"])
+		}
+		params["allsquash"] = allSquash
+	}
+
+	params["rootsquash"], exist = params["rootsquash"].(string)
+	if !exist || params["rootsquash"] == "" {
+		params["rootsquash"] = 1
+	} else {
+		rootSquash, err := strconv.Atoi(params["rootsquash"].(string))
+		if err != nil {
+			return utils.Errorf(ctx, "parameter rootSquash [%v] in sc needs to be a number.", params["rootsquash"])
+		}
+		params["rootsquash"] = rootSquash
+	}
+
 	return nil
 }
 
@@ -299,7 +322,7 @@ func (p *NAS) createShare(ctx context.Context,
 		}
 	}
 	return map[string]interface{}{
-		"shareID": share["id"].(string),
+		"shareID":   share["id"].(string),
 		"accountId": accountId,
 	}, nil
 }
@@ -341,10 +364,12 @@ func (p *NAS) deleteShare(ctx context.Context, shareID, accountId string) error 
 func (p *NAS) allowShareAccess(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	createParams := map[string]interface{}{
-		"name":      params["authclient"].(string),
-		"shareid":   taskResult["shareID"].(string),
-		"accessval": 1,
-		"accountid": params["accountid"].(string),
+		"name":       params["authclient"].(string),
+		"shareid":    taskResult["shareID"].(string),
+		"accessval":  1,
+		"accountid":  params["accountid"].(string),
+		"allsquash":  params["allsquash"].(int),
+		"rootsquash": params["rootsquash"].(int),
 	}
 
 	err := p.cli.AllowNfsShareAccess(ctx, createParams)
