@@ -1,4 +1,5 @@
 
+
 # 广汽自动驾驶项目--华为CSI
 ## 说明
 
@@ -6,6 +7,7 @@
 
 ## huawei-csi二进制编译
 ### 编译环境
+
 | System | Go Version |
 |---|---|
 |Linux|    >=1.17|
@@ -53,7 +55,9 @@ parameters:
 
 ### 示例参数说明
 
+
 以下三个参数仅支持配置为字符串格式
+
 
 #### unixPermission
 
@@ -61,22 +65,30 @@ parameters:
 
 参数配置格式：与Linux环境中权限配置格式一致，如"777"
 
+
 不配置该参数则默认为755
+
 
 #### rootSquash
 
+
 说明：设置是否允许客户端的root权限。
+
 
 可配置值："0"，"1"
 
 "0"：root_squash：表示不允许客户端以root用户访问，客户端使用root用户访问时映射为匿名用户。
 "1"：no_root_squash：表示允许客户端以root用户访问，保留root用户的权限。
 
+
 不配置该参数则默认为"1" no_root_squash
+
 
 #### allSquash
 
+
 说明：设置是否保留共享目录的UID和GID。
+
 
 可配置值："0"，"1"
 
