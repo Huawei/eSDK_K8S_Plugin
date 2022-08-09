@@ -222,13 +222,6 @@ func stopPrintProgress(c chan<- struct{}) {
 }
 
 func verifyingAccountValidity(backend backendConfigStatus, account backendAccount) error {
-	for _, urlStr := range backend.Urls {
-		err := checkBackendConnectivity(urlStr)
-		if err != nil {
-			return err
-		}
-	}
-
 	switch strings.ToLower(backend.Storage) {
 	case fusionstorageSan, fusionstorageNas:
 		return checkFusionStorageAccount(backend.Urls[0], account)
