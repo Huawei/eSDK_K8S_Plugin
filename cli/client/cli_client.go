@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"huawei-csi-driver/cli/config"
 	"huawei-csi-driver/cli/utils"
 
 	"github.com/cenkalti/backoff"
