@@ -101,16 +101,6 @@ func NewCliClient(namespace string, k8sTimeout time.Duration) (Interface, error)
 		return nil, err
 	}
 
-	k8sMMVersion := k8sVersion.ToMajorMinorVersion()
-	minOptionalCSIVersion := utils.MustParseSemantic(config.MinKubernetesCSIVersion).ToMajorMinorVersion()
-	maxOptionalCSIVersion := utils.MustParseSemantic(config.MaxKubernetesCSIVersion).ToMajorMinorVersion()
-
-	if k8sMMVersion.LessThan(minOptionalCSIVersion) || k8sMMVersion.GreaterThan(maxOptionalCSIVersion) {
-		return nil, fmt.Errorf("%s %s supports Kubernetes versions in the range [%s, %s]",
-			strings.Title(config.OrchestratorName), config.OrchestratorVersion,
-			minOptionalCSIVersion.ToMajorMinorString(), maxOptionalCSIVersion.ToMajorMinorString())
-	}
-
 	client := &KubectlClient{
 		cli:       cli,
 		flavor:    flavor,
