@@ -18,7 +18,7 @@ type: application
 version: 1.0.0
 
 # compatible Kubernetes versions, helm installation fails fail if the cluster runs an unsupported Kubernetes version
-kubeVersion: ">= 1.21.0 < 1.25.0"
+kubeVersion: ">= 1.19.0 < 1.25.0"
 # This is the version number of the application being deployed. This version number should be
 # incremented each time you make changes to the application. Versions are not expected to
 # follow Semantic Versioning. They should reflect the version the application is using.

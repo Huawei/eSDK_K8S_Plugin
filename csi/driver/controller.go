@@ -121,8 +121,9 @@ func (d *Driver) getCreatedVolume(ctx context.Context,
 
 	volName := vol.GetVolumeName()
 	attributes := map[string]string{
-		"backend": pool.Parent,
-		"name":    volName,
+		"backend":      pool.Parent,
+		"name":         volName,
+		"fsPermission": req.Parameters["fsPermission"],
 	}
 
 	if lunWWN, err := vol.GetLunWWN(); err == nil {

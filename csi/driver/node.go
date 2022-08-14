@@ -60,6 +60,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		parameters["fsType"] = mnt.GetFsType()
 		parameters["mountFlags"] = strings.Join(opts, ",")
 		parameters["accessMode"] = volumeAccessMode
+		parameters["fsPermission"] = req.VolumeContext["fsPermission"]
 	default:
 		msg := fmt.Sprintf("Invalid volume capability.")
 		log.AddContext(ctx).Errorln(msg)

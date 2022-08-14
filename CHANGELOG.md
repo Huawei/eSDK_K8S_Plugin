@@ -2,6 +2,17 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
+## Changes since v3.0.0
+
+**Fixes**
+
+- Optimization secretGenerate tool
+
+**Enhancements**
+
+- support configure the permission for attaching volumes
+
+
 ## Changes since v2.2.16
 
 **Enhancements**

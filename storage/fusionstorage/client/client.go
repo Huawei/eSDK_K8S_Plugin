@@ -1095,6 +1095,10 @@ func (cli *Client) CreateFileSystem(ctx context.Context, params map[string]inter
 		data["forbidden_dpc"] = notForbidden
 	}
 
+	if params["fspermission"] != nil && params["fspermission"] != "" {
+		data["unix_permission"] = params["fspermission"]
+	}
+
 	resp, err := cli.post(ctx, "/api/v2/converged_service/namespaces", data)
 	if err != nil {
 		return nil, err
@@ -1302,8 +1306,8 @@ func (cli *Client) AllowNfsShareAccess(ctx context.Context, params map[string]in
 		"share_id":     params["shareid"].(string),
 		"access_value": params["accessval"].(int),
 		"sync":         0,
-		"all_squash":   1,
-		"root_squash":  1,
+		"all_squash":   params["allsquash"].(int),
+		"root_squash":  params["rootsquash"].(int),
 		"type":         0,
 		"account_id":   params["accountid"].(string),
 	}
