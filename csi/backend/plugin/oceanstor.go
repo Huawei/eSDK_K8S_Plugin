@@ -139,6 +139,9 @@ func (p *OceanstorPlugin) getParams(ctx context.Context,
 		"sourceVolumeName",
 		"snapshotParentId",
 		"applicationType",
+		"fsPermission",
+		"allSquash",
+		"rootSquash",
 	}
 
 	for _, key := range paramKeys {

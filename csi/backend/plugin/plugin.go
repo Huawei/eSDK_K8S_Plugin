@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"errors"
+	"regexp"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
@@ -160,7 +161,34 @@ func (p *basePlugin) lunStageVolume(ctx context.Context,
 		"accessMode": parameters["accessMode"].(csi.VolumeCapability_AccessMode_Mode),
 	}
 
-	return p.stageVolume(ctx, connectInfo)
+	err := p.stageVolume(ctx, connectInfo)
+	if err != nil {
+		return err
+	}
+
+	chmodFsPermission(ctx, parameters)
+	return nil
+}
+
+func chmodFsPermission(ctx context.Context, parameters map[string]interface{}) {
+	fsPermission, exist := parameters["fsPermission"].(string)
+	if !exist || fsPermission == "" {
+		log.AddContext(ctx).Infoln("Global mount directory permission dose not need to be modified.")
+		return
+	}
+	reg := regexp.MustCompile(`^\d\d\d$`)
+	match := reg.FindStringSubmatch(fsPermission)
+	if match == nil {
+		log.AddContext(ctx).Errorf("fsPermission [%s] in storageClass.yaml format must be \"^\\d\\d\\d$\". "+
+			"Chmod targetPath: [%v] fsPermission failed.", fsPermission, parameters["targetPath"])
+		return
+	}
+
+	_, err := utils.ExecShellCmd(ctx, "chmod %v %v", fsPermission, parameters["targetPath"])
+	if err != nil {
+		log.AddContext(ctx).Errorf("Failed to modify the directory permission. "+
+			"targetPath: [%v], fsPermission: [%s]", parameters["targetPath"], fsPermission)
+	}
 }
 
 func (p *basePlugin) lunConnectVolume(ctx context.Context,

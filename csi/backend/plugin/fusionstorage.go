@@ -82,6 +82,9 @@ func (p *FusionStoragePlugin) getParams(name string,
 		"authClient",
 		"storageQuota",
 		"accountName",
+		"fsPermission",
+		"allSquash",
+		"rootSquash",
 	}
 
 	for _, key := range paramKeys {

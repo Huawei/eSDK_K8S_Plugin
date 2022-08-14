@@ -34,6 +34,10 @@ func (cli *Client) CreateFileSystem(ctx context.Context,
 		"ISSHOWSNAPDIR": false,
 	}
 
+	if params["fspermission"] != nil && params["fspermission"] != "" {
+		data["unixPermissions"] = params["fspermission"]
+	}
+
 	if hyperMetro, hyperMetroOK := params["hypermetro"].(bool); hyperMetroOK && hyperMetro {
 		data["fileSystemMode"] = hyperMetroFilesystem
 		if vstoreId, exist := params["vstoreId"].(string); exist && vstoreId != "" {
@@ -81,17 +85,17 @@ func (cli *Client) CreateFileSystem(ctx context.Context,
 func dealCreateFSError(ctx context.Context, code int64) error {
 	suggestMsg := "Suggestion: delete current PVC and specify the proper capacity of the file system and try again."
 	if code == exceedFSCapacityUpper {
-		return utils.Errorf(ctx,"create filesystem error. ErrorCode: %d. Reason: the entered capacity is " +
+		return utils.Errorf(ctx, "create filesystem error. ErrorCode: %d. Reason: the entered capacity is "+
 			"greater than the maximum capacity of the file system. %s", code, suggestMsg)
 	}
 
 	if code == lessFSCapacityLower {
-		return utils.Errorf(ctx,"create filesystem error. ErrorCode: %d. Reason: the entered capacity is " +
+		return utils.Errorf(ctx, "create filesystem error. ErrorCode: %d. Reason: the entered capacity is "+
 			"less than the minimum capacity of the file system. %s", code, suggestMsg)
 	}
 
 	if code != 0 {
-		return utils.Errorf(ctx,"Create filesystem error. ErrorCode: %d. Please contact technical " +
+		return utils.Errorf(ctx, "Create filesystem error. ErrorCode: %d. Please contact technical "+
 			"support.", code)
 	}
 

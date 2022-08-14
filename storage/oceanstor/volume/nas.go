@@ -536,6 +536,29 @@ func (p *NAS) allowShareAccess(ctx context.Context,
 		return nil, err
 	}
 
+	var allSquash int
+	var exist bool
+	params["allsquash"], exist = params["allsquash"].(string)
+	if !exist || params["allsquash"] == "" {
+		allSquash = 1
+	} else {
+		allSquash, err = strconv.Atoi(params["allsquash"].(string))
+		if err != nil {
+			return nil, utils.Errorf(ctx, "parameter allSquash [%v] in sc needs to be a number.", params["allsquash"])
+		}
+	}
+
+	var rootSquash int
+	params["rootsquash"], exist = params["rootsquash"].(string)
+	if !exist || params["rootsquash"] == "" {
+		rootSquash = 1
+	} else {
+		rootSquash, err = strconv.Atoi(params["rootsquash"].(string))
+		if err != nil {
+			return nil, utils.Errorf(ctx, "parameter rootSquash [%v] in sc needs to be a number.", params["allsquash"])
+		}
+	}
+
 	for _, i := range strings.Split(authClient, ";") {
 		_, exist := accesses[i]
 		delete(accesses, i)
@@ -549,8 +572,8 @@ func (p *NAS) allowShareAccess(ctx context.Context,
 			"PARENTID":   shareID,
 			"ACCESSVAL":  1,
 			"SYNC":       0,
-			"ALLSQUASH":  1,
-			"ROOTSQUASH": 1,
+			"ALLSQUASH":  allSquash,
+			"ROOTSQUASH": rootSquash,
 		}
 		if vStoreID != "" {
 			params["vstoreId"] = vStoreID
