@@ -27,7 +27,7 @@ images:
 
   # The image name and tag for the Huawei CSI Service container
   # Replace the appropriate tag name
-  huaweiCSIService: huawei-csi:3.0.0
+  huaweiCSIService: huawei-csi:3.0.1
 
 # The CSI driver parameter configuration
 csi_driver:  
