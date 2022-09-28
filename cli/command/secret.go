@@ -1,16 +1,18 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2021-2021. All rights reserved.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-      http://www.apache.org/licenses/LICENSE-2.0
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
-*/
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
 
 // Package command provides the method of configuring the backend
 package command
@@ -25,7 +27,6 @@ import (
 	"sync"
 
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/pwd"
 )
 
 func applySecret(secretExists bool) error {
@@ -193,11 +194,6 @@ func getInputAccountInfo(backend backendConfigStatus) (*backendAccount, error) {
 		return nil, errors.New("failed to obtain the password")
 	}
 
-	account.KeyText, err = generateKeyText()
-	if err != nil {
-		return nil, fmt.Errorf("generate random string error. %v", err)
-	}
-
 	c := startPrintProgress("\nVerifying user name and password. Please wait.")
 	err = verifyingAccountValidity(backend, account)
 	stopPrintProgress(c)
@@ -245,12 +241,6 @@ func updateStatusOfBackends(backends []backendConfigStatus,
 			}()
 
 			var err error
-			account.Password, err = pwd.Decrypt(account.Password, account.KeyText)
-			if err != nil {
-				log.Errorf("decrypt storage %s error: %v", backend.Name, err)
-				return
-			}
-
 			err = verifyingAccountValidity(backend, account)
 			if err != nil {
 				log.Errorf("failed while verifying account. %v", err)

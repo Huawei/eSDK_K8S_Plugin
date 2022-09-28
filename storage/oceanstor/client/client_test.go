@@ -1,16 +1,18 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-      http://www.apache.org/licenses/LICENSE-2.0
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
-*/
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
 
 package client
 
@@ -30,7 +32,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-var testClient *Client
+var testClient *BaseClient
 
 type responseCode int
 
@@ -58,8 +60,8 @@ func TestLogin(t *testing.T) {
 		},
 		{
 			"The user name or password is incorrect",
-			"{\"data\":{},\"error\":{\"code\":1077949061,\"description\":\"The user name or password is incorrect.\"," +
-				"\"errorParam\":\"\",\"suggestion\":\"Check the user name and password, and try again.\"}}",
+			"{\"data\":{},\"error\":{\"code\":1077949061,\"description\":\"The User name or PassWord is incorrect.\"," +
+				"\"errorParam\":\"\",\"suggestion\":\"Check the User name and PassWord, and try again.\"}}",
 			true,
 		},
 		{
@@ -74,9 +76,9 @@ func TestLogin(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -119,9 +121,9 @@ func TestLogout(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -151,9 +153,9 @@ func TestReLogin(t *testing.T) {
 			false,
 		},
 		{
-			"The user name or password is incorrect",
-			"{\"data\":{},\"error\":{\"code\":1077949061,\"description\":\"The user name or password " +
-				"is incorrect.\",\"errorParam\":\"\",\"suggestion\":\"Check the user name and password, and try again.\"}}",
+			"The User name or PassWord is incorrect",
+			"{\"data\":{},\"error\":{\"code\":1077949061,\"description\":\"The User name or PassWord " +
+				"is incorrect.\",\"errorParam\":\"\",\"suggestion\":\"Check the User name and PassWord, and try again.\"}}",
 			true,
 		},
 		{
@@ -168,9 +170,9 @@ func TestReLogin(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -181,7 +183,7 @@ func TestReLogin(t *testing.T) {
 			}, nil
 		}).AnyTimes()
 
-		err := testClient.reLogin(context.TODO())
+		err := testClient.ReLogin(context.TODO())
 		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
 	}
 }
@@ -243,9 +245,9 @@ func TestGetLunByName(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -339,9 +341,9 @@ func TestGetLunByID(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -389,9 +391,9 @@ func TestAddLunToGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -434,9 +436,9 @@ func TestRemoveLunFromGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -483,9 +485,9 @@ func TestGetLunGroupByName(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -529,9 +531,9 @@ func TestCreateLunGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -574,9 +576,9 @@ func TestDeleteLunGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -621,9 +623,9 @@ func TestQueryAssociateLunGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -666,9 +668,9 @@ func TestDeleteLun(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -730,9 +732,9 @@ func TestGetPoolByName(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -794,9 +796,9 @@ func TestGetAllPools(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -844,9 +846,9 @@ func TestCreateHost(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -899,9 +901,9 @@ func TestGetHostByName(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -944,9 +946,9 @@ func TestDeleteHost(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -992,9 +994,9 @@ func TestCreateHostGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1052,9 +1054,9 @@ func TestGetHostGroupByName(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1107,9 +1109,9 @@ func TestDeleteHostGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1183,9 +1185,9 @@ func TestCreateMapping(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1242,9 +1244,9 @@ func TestGetMappingByName(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1297,9 +1299,9 @@ func TestDeleteMapping(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1346,9 +1348,9 @@ func TestAddHostToGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1400,9 +1402,9 @@ func TestRemoveHostFromGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1455,9 +1457,9 @@ func TestQueryAssociateHostGroup(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1516,9 +1518,9 @@ func TestAddGroupToMapping(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1577,9 +1579,9 @@ func TestRemoveGroupFromMapping(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1626,9 +1628,9 @@ func TestGetLunCountOfHost(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1661,13 +1663,13 @@ func TestGetLunCountOfMapping(t *testing.T) {
 			"Get mapped lun count of mapping fail",
 			"{\"data\":{},\"error\":{\"code\":0,\"description\":\"0\"}}",
 			true,
-			errors.New("get mapped lun count of mapping fail"),
+			errors.New("Get mapped lun count of mapping fail"),
 		},
 		{
 			"Get mapped lun count of mapping error",
 			"{\"data\":{},\"error\":{\"code\":1077949061,\"description\":\"0\"}}",
 			true,
-			errors.New("get mapped lun count of mapping error"),
+			errors.New("Get mapped lun count of mapping error"),
 		},
 	}
 
@@ -1675,9 +1677,9 @@ func TestGetLunCountOfMapping(t *testing.T) {
 	defer ctrl.Finish()
 	mockClient := NewMockHTTPClient(ctrl)
 
-	temp := testClient.client
-	defer func() { testClient.client = temp }()
-	testClient.client = mockClient
+	temp := testClient.Client
+	defer func() { testClient.Client = temp }()
+	testClient.Client = mockClient
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1705,7 +1707,7 @@ func TestMain(m *testing.M) {
 		}
 	}()
 
-	testClient = NewClient([]string{"https://192.168.125.25:8088"},
+	testClient = NewClient([]string{"https://192.168.125.*:8088"},
 		"dev-account", "dev-password", "dev-vStore", "")
 
 	m.Run()

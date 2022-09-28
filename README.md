@@ -1,4 +1,4 @@
-# Huawei Storage CSI Driver For Kubernetes
+# Huawei Storage CSI Driver for Kubernetes
 
 ![GitHub](https://img.shields.io/github/license/Huawei/eSDK_K8S_Plugin)
 [![Go Report Card](https://goreportcard.com/badge/github.com/huawei/esdk_k8s_plugin)](https://goreportcard.com/report/github.com/huawei/esdk_k8s_plugin)
@@ -26,7 +26,8 @@ Step 1. Download the package and **cd** into the package
 
 Step 2. Run following command to compile the Huawei CSI Driver
 
-    make -f Makefile RELEASE_VER=[2.5.RC1] VER=[3.0.0] PLATFORM=[X86|ARM]
+    // PLATFORM support [X86|ARM]
+    make -f Makefile VER=3.1.0 PLATFORM=X86
 
 Step 3. After the compilation is finished, a bin directory will be created in the current 
 directory, the structure is as follows:

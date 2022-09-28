@@ -4,14 +4,14 @@
 
 ## Changes since v3.0.0
 
-**Fixes**
-
-- Optimization secretGenerate tool
-
 **Enhancements**
 
-- support configure the permission for attaching volumes
-
+- Support Generic ephemeral volumes
+- Support Customizing Volume Directory Permissions
+- Support Dorado V6 NAS 6.1.5 Clone and Snapshot Restore
+- Support Dorado V6 NAS 6.1.2 System VStrore HyperMetro
+- Support k8s 1.19 and 1.20
+- Support Debian 11
 
 ## Changes since v2.2.16
 

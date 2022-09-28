@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package volume
 
 import (
@@ -5,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"huawei-csi-driver/storage/fusionstorage/client"
@@ -20,6 +37,19 @@ const (
 	quotaTargetFilesystem   = 1
 	quotaParentFileSystem   = "40"
 	directoryQuotaType      = "1"
+)
+
+const (
+	allSquashString    string = "all_squash"
+	noAllSquashString  string = "no_all_squash"
+	rootSquashString   string = "root_squash"
+	noRootSquashString string = "no_root_squash"
+	visibleString      string = "visible"
+	invisibleString    string = "invisible"
+	allSquash                 = 0
+	noAllSquash               = 1
+	rootSquash                = 0
+	noRootSquash              = 1
 )
 
 type NAS struct {
@@ -86,27 +116,45 @@ func (p *NAS) preCreate(ctx context.Context, params map[string]interface{}) erro
 		}
 	}
 
-	// all_squash root_squash
-	params["allsquash"], exist = params["allsquash"].(string)
-	if !exist || params["allsquash"] == "" {
-		params["allsquash"] = 1
+	// all_squash  all_squash: 0  no_all_squash: 1
+	val, exist := params["allsquash"].(string)
+	if !exist || val == "" {
+		params["allsquash"] = noAllSquash
 	} else {
-		allSquash, err := strconv.Atoi(params["allsquash"].(string))
-		if err != nil {
-			return utils.Errorf(ctx, "parameter allSquash [%v] in sc needs to be a number.", params["allsquash"])
+		if strings.EqualFold(val, noAllSquashString) {
+			params["allsquash"] = noAllSquash
+		} else if strings.EqualFold(val, allSquashString) {
+			params["allsquash"] = allSquash
+		} else {
+			return utils.Errorf(ctx, "parameter allSquash [%v] in sc must be %s or %s.",
+				val, allSquashString, noAllSquashString)
 		}
-		params["allsquash"] = allSquash
 	}
 
-	params["rootsquash"], exist = params["rootsquash"].(string)
-	if !exist || params["rootsquash"] == "" {
-		params["rootsquash"] = 1
+	// root_squash
+	val, exist = params["rootsquash"].(string)
+	if !exist || val == "" {
+		params["rootsquash"] = noRootSquash
 	} else {
-		rootSquash, err := strconv.Atoi(params["rootsquash"].(string))
-		if err != nil {
-			return utils.Errorf(ctx, "parameter rootSquash [%v] in sc needs to be a number.", params["rootsquash"])
+		if strings.EqualFold(val, noRootSquashString) {
+			params["rootsquash"] = noRootSquash
+		} else if strings.EqualFold(val, rootSquashString) {
+			params["rootsquash"] = rootSquash
+		} else {
+			return utils.Errorf(ctx, "parameter rootSquash [%v] in sc must be %s or %s.",
+				val, rootSquashString, noRootSquashString)
 		}
-		params["rootsquash"] = rootSquash
+	}
+
+	if val, ok := params["snapshotdirectoryvisibility"].(string); ok {
+		if strings.EqualFold(val, visibleString) {
+			params["isshowsnapdir"] = true
+		} else if strings.EqualFold(val, invisibleString) {
+			params["isshowsnapdir"] = false
+		} else {
+			return utils.Errorf(ctx, "parameter snapshotDirectoryVisibility [%v] in sc must be %s or %s.",
+				params["snapshotdirectoryvisibility"], visibleString, invisibleString)
+		}
 	}
 
 	return nil
@@ -365,20 +413,21 @@ func (p *NAS) deleteShare(ctx context.Context, shareID, accountId string) error 
 	return nil
 }
 
-func (p *NAS) allowShareAccess(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	createParams := map[string]interface{}{
-		"name":       params["authclient"].(string),
-		"shareid":    taskResult["shareID"].(string),
-		"accessval":  1,
-		"accountid":  params["accountid"].(string),
-		"allsquash":  params["allsquash"].(int),
-		"rootsquash": params["rootsquash"].(int),
+func (p *NAS) allowShareAccess(ctx context.Context, params, taskResult map[string]interface{}) (
+	map[string]interface{}, error) {
+
+	allowNfsShareAccessReq := &client.AllowNfsShareAccessRequest{
+		AccessName:  params["authclient"].(string),
+		ShareId:     taskResult["shareID"].(string),
+		AccessValue: 1,
+		AllSquash:   params["allsquash"].(int),
+		RootSquash:  params["rootsquash"].(int),
+		AccountId:   params["accountid"].(string),
 	}
 
-	err := p.cli.AllowNfsShareAccess(ctx, createParams)
+	err := p.cli.AllowNfsShareAccess(ctx, allowNfsShareAccessReq)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Allow nfs share access %v error: %v", createParams, err)
+		log.AddContext(ctx).Errorf("Allow nfs share access %v error: %v", allowNfsShareAccessReq, err)
 		return nil, err
 	}
 

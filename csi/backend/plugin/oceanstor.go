@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package plugin
 
 import (
@@ -7,10 +23,10 @@ import (
 	"strings"
 
 	"huawei-csi-driver/storage/oceanstor/client"
+	"huawei-csi-driver/storage/oceanstor/clientv6"
 	"huawei-csi-driver/storage/oceanstor/smartx"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/pwd"
 )
 
 const (
@@ -20,7 +36,7 @@ const (
 type OceanstorPlugin struct {
 	basePlugin
 
-	cli          *client.Client
+	cli          client.BaseClientInterface
 	product      string
 	capabilities map[string]interface{}
 }
@@ -46,21 +62,11 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		return errors.New("password must be provided")
 	}
 
-	keyText, exist := config["keyText"].(string)
-	if !exist {
-		return errors.New("keyText must be provided")
-	}
-
-	decrypted, err := pwd.Decrypt(password, keyText)
-	if err != nil {
-		return err
-	}
-
 	vstoreName, _ := config["vstoreName"].(string)
 	parallelNum, _ := config["parallelNum"].(string)
 
-	cli := client.NewClient(urls, user, decrypted, vstoreName, parallelNum)
-	err = cli.Login(context.Background())
+	cli := client.NewClient(urls, user, password, vstoreName, parallelNum)
+	err := cli.Login(context.Background())
 	if err != nil {
 		return err
 	}
@@ -71,7 +77,7 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		return err
 	}
 
-	product, err := utils.GetProductVersion(system)
+	p.product, err = utils.GetProductVersion(system)
 	if err != nil {
 		log.Errorf("Get product version error: %v", err)
 		return err
@@ -81,8 +87,13 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		cli.Logout(context.Background())
 	}
 
-	p.cli = cli
-	p.product = product
+	if p.product == utils.OceanStorDoradoV6 {
+		log.Infoln("Using OceanStor V6 or Dorado V6 BaseClient.")
+		p.cli = clientv6.NewClientV6(urls, user, password, vstoreName, parallelNum)
+	} else {
+		p.cli = cli
+	}
+
 	return nil
 }
 
@@ -101,6 +112,7 @@ func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, e
 	supportMetro := utils.IsSupportFeature(features, "HyperMetro")
 	supportMetroNAS := utils.IsSupportFeature(features, "HyperMetroNAS")
 	supportReplication := utils.IsSupportFeature(features, "HyperReplication")
+	supportClone := utils.IsSupportFeature(features, "HyperClone") || utils.IsSupportFeature(features, "HyperCopy")
 	supportApplicationType := p.product == "DoradoV6"
 
 	capabilities := map[string]interface{}{
@@ -110,7 +122,7 @@ func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, e
 		"SupportMetro":           supportMetro,
 		"SupportReplication":     supportReplication,
 		"SupportApplicationType": supportApplicationType,
-		"SupportClone":           true,
+		"SupportClone":           supportClone,
 		"SupportMetroNAS":        supportMetroNAS,
 	}
 
@@ -118,8 +130,9 @@ func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, e
 	return capabilities, nil
 }
 
-func (p *OceanstorPlugin) getParams(ctx context.Context,
-	name string, parameters map[string]interface{}) map[string]interface{} {
+func (p *OceanstorPlugin) getParams(ctx context.Context, name string,
+	parameters map[string]interface{}) map[string]interface{} {
+
 	params := map[string]interface{}{
 		"name":        name,
 		"description": "Created from Kubernetes CSI",
@@ -139,9 +152,10 @@ func (p *OceanstorPlugin) getParams(ctx context.Context,
 		"sourceVolumeName",
 		"snapshotParentId",
 		"applicationType",
-		"fsPermission",
 		"allSquash",
 		"rootSquash",
+		"fsPermission",
+		"snapshotDirectoryVisibility",
 	}
 
 	for _, key := range paramKeys {
@@ -220,7 +234,7 @@ func (p *OceanstorPlugin) analyzePoolsCapacity(pools []map[string]interface{}) m
 	return capabilities
 }
 
-func (p *OceanstorPlugin) duplicateClient(ctx context.Context) (*client.Client, error) {
+func (p *OceanstorPlugin) duplicateClient(ctx context.Context) (client.BaseClientInterface, error) {
 	err := p.cli.Login(ctx)
 	if err != nil {
 		return nil, err

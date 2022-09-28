@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package attacher
 
 import (
@@ -30,7 +46,7 @@ type AttacherPlugin interface {
 }
 
 type Attacher struct {
-	cli      *client.Client
+	cli      client.BaseClientInterface
 	protocol string
 	invoker  string
 	portals  []string
@@ -39,7 +55,7 @@ type Attacher struct {
 
 func NewAttacher(
 	product string,
-	cli *client.Client,
+	cli client.BaseClientInterface,
 	protocol, invoker string,
 	portals []string,
 	alua map[string]interface{}) AttacherPlugin {
@@ -330,13 +346,13 @@ func (p *Attacher) getISCSIProperties(ctx context.Context, wwn, hostLunId string
 		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
 	}
 
-	return map[string]interface{} {
-		"tgtPortals": tgtPortals,
-		"tgtIQNs": tgtIQNs,
-		"tgtHostLUNs": tgtHostLUNs,
-		"tgtLunWWN": wwn,
+	return map[string]interface{}{
+		"tgtPortals":         tgtPortals,
+		"tgtIQNs":            tgtIQNs,
+		"tgtHostLUNs":        tgtHostLUNs,
+		"tgtLunWWN":          wwn,
 		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType": multiPathType,
+		"multiPathType":      multiPathType,
 	}, nil
 }
 
@@ -363,12 +379,12 @@ func (p *Attacher) getFCProperties(ctx context.Context, wwn, hostLunId string, p
 		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
 	}
 
-	return map[string]interface{} {
-		"tgtLunWWN": wwn,
-		"tgtWWNs": tgtWWNs,
-		"tgtHostLUNs": tgtHostLUNs,
+	return map[string]interface{}{
+		"tgtLunWWN":          wwn,
+		"tgtWWNs":            tgtWWNs,
+		"tgtHostLUNs":        tgtHostLUNs,
 		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType": multiPathType,
+		"multiPathType":      multiPathType,
 	}, nil
 }
 
@@ -389,11 +405,11 @@ func (p *Attacher) getFCNVMeProperties(ctx context.Context, wwn, hostLunId strin
 		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
 	}
 
-	return map[string]interface{} {
-		"portWWNList": portWWNList,
-		"tgtLunGuid": wwn,
+	return map[string]interface{}{
+		"portWWNList":        portWWNList,
+		"tgtLunGuid":         wwn,
 		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType": multiPathType,
+		"multiPathType":      multiPathType,
 	}, nil
 }
 
@@ -414,11 +430,11 @@ func (p *Attacher) getRoCEProperties(ctx context.Context, wwn, hostLunId string,
 		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
 	}
 
-	return map[string]interface{} {
-		"tgtPortals": tgtPortals,
-		"tgtLunGuid": wwn,
+	return map[string]interface{}{
+		"tgtPortals":         tgtPortals,
+		"tgtLunGuid":         wwn,
 		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType": multiPathType,
+		"multiPathType":      multiPathType,
 	}, nil
 }
 

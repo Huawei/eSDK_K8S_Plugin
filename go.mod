@@ -3,14 +3,16 @@ module huawei-csi-driver
 go 1.17
 
 require (
+	bou.ke/monkey v1.0.2
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/container-storage-interface/spec v1.4.0
 	github.com/golang/mock v1.4.1
 	github.com/golang/protobuf v1.5.1
 	github.com/prashantv/gostub v1.1.0
 	github.com/sirupsen/logrus v1.7.0
+	github.com/smartystreets/goconvey v1.7.2
 	github.com/stretchr/testify v1.7.0
-	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
 	google.golang.org/grpc v1.33.1
 	k8s.io/api v0.20.2
 	k8s.io/apimachinery v0.20.2
@@ -18,22 +20,25 @@ require (
 )
 
 require (
-	bou.ke/monkey v1.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v0.2.0 // indirect
 	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/googleapis/gnostic v0.4.1 // indirect
+	github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1 // indirect
 	github.com/imdario/mergo v0.3.5 // indirect
 	github.com/json-iterator/go v1.1.10 // indirect
+	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/smartystreets/assertions v1.2.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0 // indirect
-	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b // indirect
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d // indirect
-	golang.org/x/text v0.3.4 // indirect
+	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
+	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e // indirect
 	google.golang.org/appengine v1.6.5 // indirect
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect

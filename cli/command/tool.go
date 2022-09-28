@@ -1,16 +1,18 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2021-2021. All rights reserved.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-      http://www.apache.org/licenses/LICENSE-2.0
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
-*/
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
 
 // Package command provides the method of configuring the backend
 package command
@@ -21,7 +23,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -30,11 +31,9 @@ import (
 
 	k8sClient "huawei-csi-driver/cli/client"
 	"huawei-csi-driver/cli/config"
-	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/pwd"
-
 	fusionstorageClient "huawei-csi-driver/storage/fusionstorage/client"
 	oceanstorClient "huawei-csi-driver/storage/oceanstor/client"
+	"huawei-csi-driver/utils/log"
 )
 
 const (
@@ -74,7 +73,6 @@ type backendConfigStatus struct {
 type backendAccount struct {
 	Username string `json:"user"`
 	Password string `json:"password"`
-	KeyText  string `json:"keyText"`
 }
 
 func safeExit() {
@@ -105,12 +103,6 @@ func safeExit() {
 func getBackendSecretMap(nameToAccountMap map[string]backendAccount) (map[string]string, error) {
 	secretMap := make(map[string]string)
 	for backendName, account := range nameToAccountMap {
-		encrypted, err := pwd.Encrypt(account.Password, account.KeyText)
-		if err != nil {
-			return nil, fmt.Errorf("encrypt storage %s error: %v", backendName, err)
-		}
-
-		account.Password = encrypted
 		secretBytes, err := json.Marshal(account)
 		if err != nil {
 			return nil, fmt.Errorf("marshal secret info failed, error: %v", err)
@@ -118,23 +110,6 @@ func getBackendSecretMap(nameToAccountMap map[string]backendAccount) (map[string
 		secretMap[backendName] = string(secretBytes)
 	}
 	return secretMap, nil
-}
-
-func checkBackendConnectivity(urlStr string) error {
-	u, err := url.Parse(urlStr)
-	if err != nil || u.Host == "" || u.Port() == "" {
-		return fmt.Errorf("the format of the backend URL is incorrect. %s", urlStr)
-	}
-
-	addr := u.Host[:len(u.Host)-len(u.Port())-1]
-	sh := fmt.Sprintf("ping -c 3 -i 0.2 -w 1 %s", addr)
-	cmd := exec.Command("/bin/bash", "-c", sh)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("the network between the host and the backend is disconnected. %s"+
-			"err:%s, output:%s", addr, err, string(output))
-	}
-	return nil
 }
 
 func getSelectedBackendNumber(tips string, maxValue int) (int, error) {

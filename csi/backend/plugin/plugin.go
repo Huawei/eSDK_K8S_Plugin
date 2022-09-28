@@ -1,10 +1,24 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package plugin
 
 import (
 	"context"
 	"errors"
-	"regexp"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"huawei-csi-driver/connector"
@@ -166,29 +180,14 @@ func (p *basePlugin) lunStageVolume(ctx context.Context,
 		return err
 	}
 
-	chmodFsPermission(ctx, parameters)
-	return nil
-}
-
-func chmodFsPermission(ctx context.Context, parameters map[string]interface{}) {
 	fsPermission, exist := parameters["fsPermission"].(string)
 	if !exist || fsPermission == "" {
 		log.AddContext(ctx).Infoln("Global mount directory permission dose not need to be modified.")
-		return
-	}
-	reg := regexp.MustCompile(`^\d\d\d$`)
-	match := reg.FindStringSubmatch(fsPermission)
-	if match == nil {
-		log.AddContext(ctx).Errorf("fsPermission [%s] in storageClass.yaml format must be \"^\\d\\d\\d$\". "+
-			"Chmod targetPath: [%v] fsPermission failed.", fsPermission, parameters["targetPath"])
-		return
+		return nil
 	}
 
-	_, err := utils.ExecShellCmd(ctx, "chmod %v %v", fsPermission, parameters["targetPath"])
-	if err != nil {
-		log.AddContext(ctx).Errorf("Failed to modify the directory permission. "+
-			"targetPath: [%v], fsPermission: [%s]", parameters["targetPath"], fsPermission)
-	}
+	utils.ChmodFsPermission(ctx, parameters["targetPath"].(string), fsPermission)
+	return nil
 }
 
 func (p *basePlugin) lunConnectVolume(ctx context.Context,
