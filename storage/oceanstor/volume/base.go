@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package volume
 
 import (
@@ -12,23 +28,10 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-const (
-	HYPERMETROPAIR_HEALTH_STATUS_FAULT    = "2"
-	HYPERMETROPAIR_RUNNING_STATUS_NORMAL  = "1"
-	HYPERMETROPAIR_RUNNING_STATUS_TO_SYNC = "100"
-	HYPERMETROPAIR_RUNNING_STATUS_SYNCING = "23"
-	HYPERMETROPAIR_RUNNING_STATUS_UNKNOWN = "0"
-	HYPERMETROPAIR_RUNNING_STATUS_PAUSE   = "41"
-	HYPERMETROPAIR_RUNNING_STATUS_ERROR   = "94"
-	HYPERMETROPAIR_RUNNING_STATUS_INVALID = "35"
-
-	HYPERMETRODOMAIN_RUNNING_STATUS_NORMAL = "1"
-)
-
 type Base struct {
-	cli              *client.Client
-	metroRemoteCli   *client.Client
-	replicaRemoteCli *client.Client
+	cli              client.BaseClientInterface
+	metroRemoteCli   client.BaseClientInterface
+	replicaRemoteCli client.BaseClientInterface
 	product          string
 }
 
@@ -93,7 +96,7 @@ func (p *Base) getPoolID(ctx context.Context, params map[string]interface{}) err
 		return err
 	}
 	if pool == nil {
-		return fmt.Errorf("Storage pool %s doesn't exist", poolName)
+		return fmt.Errorf("storage pool %s doesn't exist", poolName)
 	}
 
 	params["poolID"] = pool["ID"].(string)
@@ -119,7 +122,7 @@ func (p *Base) getQoS(ctx context.Context, params map[string]interface{}) error 
 }
 
 func (p *Base) getRemotePoolID(ctx context.Context,
-	params map[string]interface{}, remoteCli *client.Client) (string, error) {
+	params map[string]interface{}, remoteCli client.BaseClientInterface) (string, error) {
 	remotePool, exist := params["remotestoragepool"].(string)
 	if !exist || len(remotePool) == 0 {
 		msg := "no remote pool is specified"
@@ -228,8 +231,8 @@ func (p *Base) getRemoteDeviceID(ctx context.Context, deviceSN string) (string, 
 		return "", errors.New(msg)
 	}
 
-	if remoteDevice["HEALTHSTATUS"] != REMOTE_DEVICE_HEALTH_STATUS ||
-		remoteDevice["RUNNINGSTATUS"] != REMOTE_DEVICE_RUNNING_STATUS_LINK_UP {
+	if remoteDevice["HEALTHSTATUS"] != remoteDeviceHealthStatus ||
+		remoteDevice["RUNNINGSTATUS"] != remoteDeviceRunningStatusLinkUp {
 		msg := fmt.Sprintf("Remote device %s status is not normal", deviceSN)
 		log.AddContext(ctx).Errorln(msg)
 		return "", errors.New(msg)
@@ -239,7 +242,7 @@ func (p *Base) getRemoteDeviceID(ctx context.Context, deviceSN string) (string, 
 }
 
 func (p *Base) getWorkLoadIDByName(ctx context.Context,
-	cli *client.Client,
+	cli client.BaseClientInterface,
 	workloadTypeName string) (string, error) {
 	workloadTypeID, err := cli.GetApplicationTypeByName(ctx, workloadTypeName)
 	if err != nil {
@@ -254,7 +257,7 @@ func (p *Base) getWorkLoadIDByName(ctx context.Context,
 	return workloadTypeID, nil
 }
 
-func (p *Base) setWorkLoadID(ctx context.Context, cli *client.Client, params map[string]interface{}) error {
+func (p *Base) setWorkLoadID(ctx context.Context, cli client.BaseClientInterface, params map[string]interface{}) error {
 	if val, ok := params["applicationtype"].(string); ok {
 		workloadTypeID, err := p.getWorkLoadIDByName(ctx, cli, val)
 		if err != nil {

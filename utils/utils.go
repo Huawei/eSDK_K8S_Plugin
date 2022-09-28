@@ -1,16 +1,18 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2021-2021. All rights reserved.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-      http://www.apache.org/licenses/LICENSE-2.0
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
-*/
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
 
 // Package utils to provide utils for CSI
 package utils
@@ -29,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"huawei-csi-driver/utils/log"
@@ -39,15 +42,17 @@ import (
 )
 
 const (
-	DoradoV6Version = "V600"
-	V5Version       = "V500"
-	defaultTimeout  = 30
-	longTimeout     = 60
+	DoradoV6Prefix    = "V600"
+	OceanStorV5Prefix = "V500"
 
+	// OceanStorDoradoV6 Dorado V6 and OceanStor V6 are exactly the same
 	OceanStorDoradoV6 = "DoradoV6"
-	OceanStorDorado   = "Dorado"
-	OceanStorV3       = "V3"
-	OceanStorV5       = "V5"
+	OceanStorDoradoV3 = "DoradoV3"
+	OceanStorV3       = "OceanStorV3"
+	OceanStorV5       = "OceanStorV5"
+
+	defaultTimeout = 30
+	longTimeout    = 60
 )
 
 var (
@@ -169,11 +174,29 @@ func execShellCmd(ctx context.Context, format string, logFilter bool, args ...in
 	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "-u/proc/1/ns/uts", "/bin/sh",
 		"-c", cmd}
 	shCmd := exec.Command("nsenter", execCmd...)
+
 	var timeOut bool
+	var output []byte
+	var err error
 	if strings.Contains(cmd, "mkfs") || strings.Contains(cmd, "resize2fs") ||
 		strings.Contains(cmd, "xfs_growfs") {
 		time.AfterFunc(longTimeout*time.Second, func() {
 			timeOut = true
+		})
+	} else if strings.Contains(cmd, "mount") {
+		// When the execution of the mount command times out, the subprocesses of the mount command must be killed.
+		shCmd.SysProcAttr = &syscall.SysProcAttr{}
+		shCmd.SysProcAttr.Setpgid = true
+		time.AfterFunc(defaultTimeout*time.Second, func() {
+			// len(output) == 0 && err == nil means process is not finished.
+			if len(output) == 0 && err == nil {
+				log.AddContext(ctx).Warningf(
+					"Exec mount command: [%s] time out, try to kill this processes and subprocesses. Pid: [%d].",
+					cmd, shCmd.Process.Pid)
+				errKill := syscall.Kill(-shCmd.Process.Pid, syscall.SIGKILL)
+				log.AddContext(ctx).Infof("Kill result: [%v]", errKill)
+				timeOut = true
+			}
 		})
 	} else {
 		time.AfterFunc(defaultTimeout*time.Second, func() {
@@ -181,9 +204,9 @@ func execShellCmd(ctx context.Context, format string, logFilter bool, args ...in
 			timeOut = true
 		})
 	}
-	output, err := shCmd.CombinedOutput()
+	output, err = shCmd.CombinedOutput()
 	if err != nil {
-		log.AddContext(ctx).Warningf("Run shell cmd \"%s\" output: %s, error: %v", MaskSensitiveInfo(cmd),
+		log.AddContext(ctx).Warningf("Run shell cmd \"%s\" output: [%s], error: [%v]", MaskSensitiveInfo(cmd),
 			MaskSensitiveInfo(output),
 			MaskSensitiveInfo(err))
 		return string(output), timeOut, err
@@ -193,6 +216,7 @@ func execShellCmd(ctx context.Context, format string, logFilter bool, args ...in
 		log.AddContext(ctx).Infof("Shell cmd \"%s\" result:\n%s", MaskSensitiveInfo(cmd),
 			MaskSensitiveInfo(output))
 	}
+
 	return string(output), timeOut, nil
 }
 
@@ -364,9 +388,9 @@ func GetProductVersion(systemInfo map[string]interface{}) (string, error) {
 		return "", errors.New("there is no PRODUCTVERSION field in system info")
 	}
 
-	if strings.HasPrefix(productVersion, DoradoV6Version) {
+	if strings.HasPrefix(productVersion, DoradoV6Prefix) {
 		return OceanStorDoradoV6, nil
-	} else if strings.HasPrefix(productVersion, V5Version) {
+	} else if strings.HasPrefix(productVersion, OceanStorV5Prefix) {
 		return OceanStorV5, nil
 	}
 
@@ -376,7 +400,7 @@ func GetProductVersion(systemInfo map[string]interface{}) (string, error) {
 	}
 
 	if match, _ := regexp.MatchString(`8[0-9][0-9]`, productMode); match {
-		return OceanStorDorado, nil
+		return OceanStorDoradoV3, nil
 	}
 
 	return OceanStorV3, nil
@@ -777,4 +801,10 @@ func RecoverPanic(ctx context.Context) {
 	if r := recover(); r != nil {
 		log.AddContext(ctx).Errorf("Panic message: [%s]\nPanic stack: [%s]", r, debug.Stack())
 	}
+}
+
+// IsDebugLog is used to determine whether debug log are required.
+func IsDebugLog(method, url string, debugLogMap map[string]map[string]bool) bool {
+	ret, exist := debugLogMap[method]
+	return exist && ret[url]
 }

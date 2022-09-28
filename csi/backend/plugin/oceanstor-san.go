@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package plugin
 
 import (
@@ -37,8 +53,8 @@ type OceanstorSanPlugin struct {
 }
 
 type handlerRequest struct {
-	localCli   *client.Client
-	metroCli   *client.Client
+	localCli   client.BaseClientInterface
+	metroCli   client.BaseClientInterface
 	lun        map[string]interface{}
 	parameters map[string]interface{}
 	method     string
@@ -93,8 +109,8 @@ func (p *OceanstorSanPlugin) Init(config, parameters map[string]interface{}, kee
 }
 
 func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
-	var metroRemoteCli *client.Client
-	var replicaRemoteCli *client.Client
+	var metroRemoteCli client.BaseClientInterface
+	var replicaRemoteCli client.BaseClientInterface
 
 	if p.metroRemotePlugin != nil {
 		metroRemoteCli = p.metroRemotePlugin.cli
@@ -222,7 +238,7 @@ func (p *OceanstorSanPlugin) handler(ctx context.Context, req handlerRequest) ([
 }
 
 func (p *OceanstorSanPlugin) DetachVolume(ctx context.Context, name string, parameters map[string]interface{}) error {
-	var localCli, metroCli *client.Client
+	var localCli, metroCli client.BaseClientInterface
 	if p.storageOnline {
 		localCli = p.cli
 	}
@@ -262,7 +278,7 @@ func (p *OceanstorSanPlugin) DetachVolume(ctx context.Context, name string, para
 
 func (p *OceanstorSanPlugin) mutexReleaseClient(ctx context.Context,
 	plugin *OceanstorSanPlugin,
-	cli *client.Client) {
+	cli client.BaseClientInterface) {
 	plugin.clientMutex.Lock()
 	defer plugin.clientMutex.Unlock()
 	plugin.clientCount--
@@ -272,7 +288,7 @@ func (p *OceanstorSanPlugin) mutexReleaseClient(ctx context.Context,
 	}
 }
 
-func (p *OceanstorSanPlugin) releaseClient(ctx context.Context, cli, metroCli *client.Client) {
+func (p *OceanstorSanPlugin) releaseClient(ctx context.Context, cli, metroCli client.BaseClientInterface) {
 	if p.storageOnline {
 		p.mutexReleaseClient(ctx, p, cli)
 	}
@@ -492,7 +508,7 @@ func (p *OceanstorSanPlugin) DeleteSnapshot(ctx context.Context,
 	return nil
 }
 
-func (p *OceanstorSanPlugin) mutexGetClient(ctx context.Context) (*client.Client, error) {
+func (p *OceanstorSanPlugin) mutexGetClient(ctx context.Context) (client.BaseClientInterface, error) {
 	p.clientMutex.Lock()
 	defer p.clientMutex.Unlock()
 	var err error
@@ -509,9 +525,9 @@ func (p *OceanstorSanPlugin) mutexGetClient(ctx context.Context) (*client.Client
 	return p.cli, err
 }
 
-func (p *OceanstorSanPlugin) getClient(ctx context.Context) (*client.Client, *client.Client, error) {
+func (p *OceanstorSanPlugin) getClient(ctx context.Context) (client.BaseClientInterface, client.BaseClientInterface, error) {
 	cli, locErr := p.mutexGetClient(ctx)
-	var metroCli *client.Client
+	var metroCli client.BaseClientInterface
 	var rmtErr error
 	if p.metroRemotePlugin != nil {
 		metroCli, rmtErr = p.metroRemotePlugin.mutexGetClient(ctx)
@@ -527,7 +543,7 @@ func (p *OceanstorSanPlugin) getClient(ctx context.Context) (*client.Client, *cl
 }
 
 func (p *OceanstorSanPlugin) getLunInfo(ctx context.Context,
-	localCli, remoteCli *client.Client,
+	localCli, remoteCli client.BaseClientInterface,
 	lunName string) (map[string]interface{}, error) {
 	var lun map[string]interface{}
 	var err error

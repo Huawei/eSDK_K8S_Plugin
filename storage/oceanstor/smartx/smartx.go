@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package smartx
 
 import (
@@ -20,7 +36,7 @@ type qosParameterList map[string]struct{}
 var (
 	oceanStorQosValidators = map[string]qosParameterValidators{
 		utils.OceanStorDoradoV6: doradoV6ParameterValidators,
-		utils.OceanStorDorado:   doradoParameterValidators,
+		utils.OceanStorDoradoV3: doradoParameterValidators,
 		utils.OceanStorV3:       oceanStorV3V5ParameterValidators,
 		utils.OceanStorV5:       oceanStorV3V5ParameterValidators,
 	}
@@ -96,7 +112,7 @@ var (
 	// one of parameter is mandatory for respective products
 	oceanStorQoSMandatoryParameters = map[string]qosParameterList{
 		utils.OceanStorDoradoV6: oceanStorCommonParameters,
-		utils.OceanStorDorado: {
+		utils.OceanStorDoradoV3: {
 			"MAXBANDWIDTH": struct{}{},
 			"MAXIOPS":      struct{}{},
 		},
@@ -137,7 +153,7 @@ func validateQoSParametersSupport(ctx context.Context, product string, qosParam 
 		}
 
 		if !f(int(v)) { // silently ignoring decimal number
-			return utils.Errorf(ctx,"%s of qos parameter has invalid value", k)
+			return utils.Errorf(ctx, "%s of qos parameter has invalid value", k)
 		}
 
 		if strings.HasPrefix(k, "MIN") || strings.HasPrefix(k, "LATENCY") {
@@ -220,10 +236,10 @@ func ValidateQoSParameters(product string, qosParam map[string]float64) (map[str
 }
 
 type SmartX struct {
-	cli *client.Client
+	cli client.BaseClientInterface
 }
 
-func NewSmartX(cli *client.Client) *SmartX {
+func NewSmartX(cli client.BaseClientInterface) *SmartX {
 	return &SmartX{
 		cli: cli,
 	}
@@ -240,7 +256,7 @@ func (p *SmartX) CreateQos(ctx context.Context,
 	var err error
 	var lowerLimit bool
 
-	for k, _ := range params {
+	for k := range params {
 		if strings.HasPrefix(k, "MIN") || strings.HasPrefix(k, "LATENCY") {
 			lowerLimit = true
 		}

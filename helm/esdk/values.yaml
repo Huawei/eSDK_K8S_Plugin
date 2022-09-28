@@ -1,69 +1,94 @@
-# An array of storages with the access info
+# Huawei Storage Information
 backends:
   - storage: "oceanstor-san"
     name: "***"
-    urls: 
+    urls:
       - "https://*.*.*.*:8088"
     pools:
       - "***"
-    parameters: 
+    parameters:
       protocol: "iscsi"
-      portals: 
+      portals:
         - "*.*.*.*"
 
-kubernetes:
-  namespace: huawei-csi
-
 images:
-  # The image name and tag for the attacher, provisioner and registrar sidecars. These must match the appropriate Kubernetes version.
+  # The image name and tag for the Huawei CSI Service container
+  # Replace the appropriate tag name
+  huaweiCSIService: huawei-csi:3.1.0
+
+  # The image name and tag for the sidecars. These must match the appropriate Kubernetes version.
   sidecar:
     csiAttacher: k8s.gcr.io/sig-storage/csi-attacher:v3.3.0
     csiProvisioner: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
-    csiResizer : k8s.gcr.io/sig-storage/csi-resizer:v1.3.0
+    csiResizer: k8s.gcr.io/sig-storage/csi-resizer:v1.3.0
     registrar: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0
     livenessProbe: k8s.gcr.io/sig-storage/livenessprobe:v2.5.0
     csiSnapshotter: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
     snapshotController: k8s.gcr.io/sig-storage/snapshot-controller:v4.2.1
 
-  # The image name and tag for the Huawei CSI Service container
-  # Replace the appropriate tag name
-  huaweiCSIService: huawei-csi:3.0.1
+# Namespace for installing huawei-csi-nodes and huawei-csi-controllers
+kubernetes:
+  # the default value huawei-csi is recommended.
+  namespace: huawei-csi
 
 # The CSI driver parameter configuration
-csi_driver:  
-  driverName: csi.huawei.com  # It is strongly recommended not to modify this parameter
-  endpoint: /csi/csi.sock  # It is strongly recommended not to modify this parameter
+csi_driver:
+  # Driver name, it is strongly recommended not to modify this parameter
+  driverName: csi.huawei.com
+  # Endpoint, it is strongly recommended not to modify this parameter
+  endpoint: /csi/csi.sock
+  # Maximum number of concurrent disk scans or detaches, support 1~10
   connectorThreads: 4
-  volumeUseMultipath: true  # Flag to enable or disable volume multipath access
-  scsiMultipathType: DM-multipath  # Required, if volume-use-multipath is set to  TRUE
-  nvmeMultipathType: HW-UltraPath-NVMe  # Required, if volume-use-multipath is set to  TRUE
+  # Flag to enable or disable volume multipath access, support [true, false]
+  volumeUseMultipath: true
+  # Multipath software used by fc/iscsi. support [DM-multipath, HW-UltraPath, HW-UltraPath-NVMe]
+  scsiMultipathType: DM-multipath
+  # Multipath software used by roce/fc-nvme. only support [HW-UltraPath-NVMe]
+  nvmeMultipathType: HW-UltraPath-NVMe
+  # Timeout interval for waiting for multipath aggregation when DM-multipath is used on the host. support 1~600
   scanVolumeTimeout: 3
+  # Interval for updating backend capabilities. support 60~600
   backendUpdateInterval: 60
+  # Huawei-csi-controller log configuration
   controllerLogging:
+    # Log record type, support [file, console]
     module: file
+    # Log Level, support [debug, info, warning, error, fatal]
     level: info
+    # Directory for storing logs
     fileDir: /var/log/huawei
+    # Size of a single log file
     fileSize: 20M
+    # Maximum number of log files that can be backed up.
     maxBackups: 9
+  # Huawei-csi-node log configuration
   nodeLogging:
+    # Log record type, support [file, console]
     module: file
+    # Log Level, support [debug, info, warning, error, fatal]
     level: info
+    # Directory for storing logs
     fileDir: /var/log/huawei
+    # Size of a single log file
     fileSize: 20M
+    # Maximum number of log files that can be backed up.
     maxBackups: 9
 
+# Number of huawei-csi-controllers
 huaweiCsiController:
-  replicas: 1  # Currently, the value can only be set to 1.
+  # Currently, the value can only be set to 1
+  replicas: 1
 
-# Default image pull policy for sidecar container images
+# Default image pull policy for sidecar container images, support [IfNotPresent, Always, Never]
 sidecarImagePullPolicy: "IfNotPresent"
 
-# Default image pull policy for Huawei plugin container images
+# Default image pull policy for Huawei plugin container images, support [IfNotPresent, Always, Never]
 huaweiImagePullPolicy: "IfNotPresent"
 
 # Flag to enable or disable snapshot (Optional)
 snapshot:
   enable: true
+
 # Flag to enable or disable resize (Optional)
 resizer:
   enable: true

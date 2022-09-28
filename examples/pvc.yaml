@@ -8,4 +8,4 @@ spec:
   storageClassName: mysc
   resources:
     requests:
-      storage: 100Gi
+      storage: 10Gi

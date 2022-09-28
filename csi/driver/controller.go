@@ -1,9 +1,27 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package driver
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -31,9 +49,10 @@ var nfsProtocolMap = map[string]string{
 }
 
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	name := req.GetName()
+	defer utils.RecoverPanic(ctx)
 
-	log.AddContext(ctx).Infof("Start to create volume %s", name)
+	volumeName := req.GetName()
+	log.AddContext(ctx).Infof("Start to create volume %s", volumeName)
 
 	capacityRange := req.GetCapacityRange()
 	if capacityRange == nil || capacityRange.RequiredBytes <= 0 {
@@ -43,6 +62,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	parameters := utils.CopyMap(req.GetParameters())
+	err := d.checkStorageClassParameters(ctx, parameters)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	size := capacityRange.RequiredBytes
 	parameters["size"] = capacityRange.RequiredBytes
 
@@ -51,13 +75,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		parameters["backend"], parameters["cloneFrom"] = utils.SplitVolumeId(cloneFrom)
 	}
 
-	// process volume content source
-	err := d.processVolumeContentSource(ctx, req, parameters)
+	// process volume content source. snapshot or clone
+	err = d.processVolumeContentSource(ctx, req, parameters)
 	if err != nil {
 		return nil, err
 	}
 
-	// process accessibility requirements
+	// process accessibility requirements. Topology
 	d.processAccessibilityRequirements(ctx, req, parameters)
 	err = d.processNFSProtocol(ctx, req, parameters)
 	if err != nil {
@@ -85,9 +109,9 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	parameters["accountName"] = backend.GetAccountName(localPool.Parent)
 
-	vol, err := localPool.Plugin.CreateVolume(ctx, name, parameters)
+	vol, err := localPool.Plugin.CreateVolume(ctx, volumeName, parameters)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Create volume %s error: %v", name, err)
+		log.AddContext(ctx).Errorf("Create volume %s error: %v", volumeName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -95,15 +119,41 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	log.AddContext(ctx).Infof("Volume %s is created", name)
+
+	log.AddContext(ctx).Infof("Volume %s is created", volumeName)
 	return &csi.CreateVolumeResponse{
 		Volume: volume,
 	}, nil
 }
 
-func (d *Driver) getCreatedVolume(ctx context.Context,
-	req *csi.CreateVolumeRequest,
-	vol utils.Volume,
+func (d *Driver) checkStorageClassParameters(ctx context.Context, parameters map[string]interface{}) error {
+	// check fsPermission parameter in sc
+	err := d.checkFsPermission(ctx, parameters)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Driver) checkFsPermission(ctx context.Context, parameters map[string]interface{}) error {
+	fsPermission, exist := parameters["fsPermission"].(string)
+	if !exist {
+		return nil
+	}
+
+	reg := regexp.MustCompile(`^[0-7][0-7][0-7]$`)
+	match := reg.FindStringSubmatch(fsPermission)
+	if match == nil {
+		errMsg := fmt.Sprintf("fsPermission [%s] in storageClass.yaml format must be [0-7][0-7][0-7].", fsPermission)
+		log.AddContext(ctx).Errorln(errMsg)
+		return errors.New(errMsg)
+	}
+
+	return nil
+}
+
+func (d *Driver) getCreatedVolume(ctx context.Context, req *csi.CreateVolumeRequest, vol utils.Volume,
 	pool *backend.StoragePool) (*csi.Volume, error) {
 	contentSource := req.GetVolumeContentSource()
 	size := req.GetCapacityRange().GetRequiredBytes()
@@ -144,8 +194,8 @@ func (d *Driver) getCreatedVolume(ctx context.Context,
 	return csiVolume, nil
 }
 
-func (d *Driver) processVolumeContentSource(ctx context.Context,
-	req *csi.CreateVolumeRequest, parameters map[string]interface{}) error {
+func (d *Driver) processVolumeContentSource(ctx context.Context, req *csi.CreateVolumeRequest,
+	parameters map[string]interface{}) error {
 	contentSource := req.GetVolumeContentSource()
 	if contentSource != nil {
 		if contentSnapshot := contentSource.GetSnapshot(); contentSnapshot != nil {
@@ -170,8 +220,8 @@ func (d *Driver) processVolumeContentSource(ctx context.Context,
 	return nil
 }
 
-func (d *Driver) processAccessibilityRequirements(ctx context.Context,
-	req *csi.CreateVolumeRequest, parameters map[string]interface{}) {
+func (d *Driver) processAccessibilityRequirements(ctx context.Context, req *csi.CreateVolumeRequest,
+	parameters map[string]interface{}) {
 	accessibleTopology := req.GetAccessibilityRequirements()
 	if accessibleTopology == nil {
 		log.AddContext(ctx).Infoln("Empty accessibility requirements in create volume request")
@@ -325,35 +375,35 @@ func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (
 func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: []*csi.ControllerServiceCapability{
-			&csi.ControllerServiceCapability{
+			{
 				Type: &csi.ControllerServiceCapability_Rpc{
 					Rpc: &csi.ControllerServiceCapability_RPC{
 						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 					},
 				},
 			},
-			&csi.ControllerServiceCapability{
+			{
 				Type: &csi.ControllerServiceCapability_Rpc{
 					Rpc: &csi.ControllerServiceCapability_RPC{
 						Type: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 					},
 				},
 			},
-			&csi.ControllerServiceCapability{
+			{
 				Type: &csi.ControllerServiceCapability_Rpc{
 					Rpc: &csi.ControllerServiceCapability_RPC{
 						Type: csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 					},
 				},
 			},
-			&csi.ControllerServiceCapability{
+			{
 				Type: &csi.ControllerServiceCapability_Rpc{
 					Rpc: &csi.ControllerServiceCapability_RPC{
 						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 					},
 				},
 			},
-			&csi.ControllerServiceCapability{
+			{
 				Type: &csi.ControllerServiceCapability_Rpc{
 					Rpc: &csi.ControllerServiceCapability_RPC{
 						Type: csi.ControllerServiceCapability_RPC_CLONE_VOLUME,

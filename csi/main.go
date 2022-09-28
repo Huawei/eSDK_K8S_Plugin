@@ -1,16 +1,18 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2021-2021. All rights reserved.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-      http://www.apache.org/licenses/LICENSE-2.0
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
-*/
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
 
 package main
 
@@ -22,7 +24,9 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -37,17 +41,18 @@ import (
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/k8sutils"
 	"huawei-csi-driver/utils/log"
+	"huawei-csi-driver/utils/version"
 )
 
 const (
 	configFile        = "/etc/huawei/csi.json"
 	secretFile        = "/etc/huawei/secret/secret.json"
+	versionFile       = "/var/lib/kubelet/plugins/csi.huawei.com/version"
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "3.0.0"
-	csiBetaVersion    = "B020"
+	csiVersion        = "3.1.0"
 	defaultDriverName = "csi.huawei.com"
 	endpointDirPerm   = 0755
 
@@ -175,7 +180,6 @@ func mergeData(config CSIConfig, secret CSISecret) error {
 		backendSecret := Secret.(map[string]interface{})
 		getSecret(backendSecret, backendConfig, "user")
 		getSecret(backendSecret, backendConfig, "password")
-		getSecret(backendSecret, backendConfig, "keyText")
 	}
 	return nil
 }
@@ -211,10 +215,8 @@ func ensureRuntimePanicLogging(ctx context.Context) {
 	log.Close()
 }
 
-func releaseStorageClient(keepLogin bool) {
-	if keepLogin {
-		backend.LogoutBackend()
-	}
+func releaseStorageClient() {
+	backend.LogoutBackend()
 }
 func raisePanic(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
@@ -235,15 +237,17 @@ func main() {
 	if err != nil {
 		logrus.Fatalf("Init log error: %v", err)
 	}
-	defer func() {
-		ensureRuntimePanicLogging(context.TODO())
-		releaseStorageClient(controllerService)
-	}()
 
+	go exitClean(controllerService)
 	// parse configurations
 	parseConfig()
 	if !controllerService {
 		doNodeAction()
+		// init version file on node
+		err := version.InitVersion(versionFile, csiVersion)
+		if err != nil {
+			logrus.Warningf("Init version error: %v", err)
+		}
 	}
 
 	err = backend.RegisterBackend(config.Backends, controllerService, *driverName)
@@ -378,4 +382,24 @@ func triggerGarbageCollector(k8sUtils k8sutils.Interface) {
 		log.Warningf("Stale device garbage collection incomplete, exited due to timeout")
 	}
 	return
+}
+
+func exitClean(isController bool) {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+	sign := <-signalChan
+	log.Infof("Receive  exit signal %v", sign)
+	// flush log
+	ensureRuntimePanicLogging(context.TODO())
+	if isController {
+		// release client
+		releaseStorageClient()
+	} else {
+		// clean version file
+		err := version.ClearVersion(versionFile)
+		if err != nil {
+			logrus.Warningf("clean version file error: %v", err)
+		}
+	}
+	close(signalChan)
 }

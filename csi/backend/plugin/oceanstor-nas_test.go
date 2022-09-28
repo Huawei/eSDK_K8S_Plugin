@@ -1,21 +1,29 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package plugin
 
 import (
 	"context"
-	"os"
-	"path"
 	"reflect"
 	"testing"
 
 	"bou.ke/monkey"
 
 	"huawei-csi-driver/storage/oceanstor/client"
-	"huawei-csi-driver/utils/log"
-)
-
-const (
-	logName string = "oceanstor-nas_test.log"
-	logDir  string = "/var/log/huawei"
 )
 
 func TestInit(t *testing.T) {
@@ -43,12 +51,12 @@ func TestInit(t *testing.T) {
 		},
 	}
 
-	var cli *client.Client
-	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Logout", func(*client.Client, context.Context) {})
-	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Login", func(*client.Client, context.Context) error {
+	var cli *client.BaseClient
+	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Logout", func(*client.BaseClient, context.Context) {})
+	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Login", func(*client.BaseClient, context.Context) error {
 		return nil
 	})
-	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "GetSystem", func(*client.Client, context.Context) (map[string]interface{}, error) {
+	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "GetSystem", func(*client.BaseClient, context.Context) (map[string]interface{}, error) {
 		return map[string]interface{}{"PRODUCTVERSION": "Test"}, nil
 	})
 	defer monkey.UnpatchAll()
@@ -61,20 +69,4 @@ func TestInit(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("Init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
-
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
-
-	m.Run()
 }

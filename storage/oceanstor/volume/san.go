@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package volume
 
 import (
@@ -15,28 +31,11 @@ import (
 	"huawei-csi-driver/utils/taskflow"
 )
 
-const (
-	LUNCOPY_HEALTH_STATUS_FAULT    = "2"
-	LUNCOPY_RUNNING_STATUS_QUEUING = "37"
-	LUNCOPY_RUNNING_STATUS_COPYING = "39"
-	LUNCOPY_RUNNING_STATUS_STOP    = "38"
-	LUNCOPY_RUNNING_STATUS_PAUSED  = "41"
-
-	CLONEPAIR_HEALTH_STATUS_FAULT         = "1"
-	CLONEPAIR_RUNNING_STATUS_UNSYNCING    = "0"
-	CLONEPAIR_RUNNING_STATUS_SYNCING      = "1"
-	CLONEPAIR_RUNNING_STATUS_NORMAL       = "2"
-	CLONEPAIR_RUNNING_STATUS_INITIALIZING = "3"
-
-	SNAPSHOT_RUNNING_STATUS_ACTIVE   = "43"
-	SNAPSHOT_RUNNING_STATUS_INACTIVE = "45"
-)
-
 type SAN struct {
 	Base
 }
 
-func NewSAN(cli, metroRemoteCli, replicaRemoteCli *client.Client, product string) *SAN {
+func NewSAN(cli, metroRemoteCli, replicaRemoteCli client.BaseClientInterface, product string) *SAN {
 	return &SAN{
 		Base: Base{
 			cli:              cli,
@@ -698,8 +697,8 @@ func (p *SAN) deleteLunCopy(ctx context.Context, lunCopyName string, isDeleteSna
 
 	lunCopyID := lunCopy["ID"].(string)
 	runningStatus := lunCopy["RUNNINGSTATUS"].(string)
-	if runningStatus == LUNCOPY_RUNNING_STATUS_QUEUING ||
-		runningStatus == LUNCOPY_RUNNING_STATUS_COPYING {
+	if runningStatus == lunCopyRunningStatusQueuing ||
+		runningStatus == lunCopyRunningStatusCopying {
 		p.cli.StopLunCopy(ctx, lunCopyID)
 	}
 
@@ -730,16 +729,16 @@ func (p *SAN) waitLunCopyFinish(ctx context.Context, lunCopyName string) error {
 		}
 
 		healthStatus := lunCopy["HEALTHSTATUS"].(string)
-		if healthStatus == LUNCOPY_HEALTH_STATUS_FAULT {
+		if healthStatus == lunCopyHealthStatusFault {
 			return false, fmt.Errorf("Luncopy %s is at fault status", lunCopyName)
 		}
 
 		runningStatus := lunCopy["RUNNINGSTATUS"].(string)
-		if runningStatus == LUNCOPY_RUNNING_STATUS_QUEUING ||
-			runningStatus == LUNCOPY_RUNNING_STATUS_COPYING {
+		if runningStatus == lunCopyRunningStatusQueuing ||
+			runningStatus == lunCopyRunningStatusCopying {
 			return false, nil
-		} else if runningStatus == LUNCOPY_RUNNING_STATUS_STOP ||
-			runningStatus == LUNCOPY_RUNNING_STATUS_PAUSED {
+		} else if runningStatus == lunCopyRunningStatusStop ||
+			runningStatus == lunCopyRunningStatusPaused {
 			return false, fmt.Errorf("Luncopy %s is stopped", lunCopyName)
 		} else {
 			return true, nil
@@ -764,16 +763,16 @@ func (p *SAN) waitClonePairFinish(ctx context.Context, clonePairID string) error
 		}
 
 		healthStatus := clonePair["copyStatus"].(string)
-		if healthStatus == CLONEPAIR_HEALTH_STATUS_FAULT {
+		if healthStatus == clonePairHealthStatusFault {
 			return false, fmt.Errorf("ClonePair %s is at fault status", clonePairID)
 		}
 
 		runningStatus := clonePair["syncStatus"].(string)
-		if runningStatus == CLONEPAIR_RUNNING_STATUS_NORMAL {
+		if runningStatus == clonePairRunningStatusNormal {
 			return true, nil
-		} else if runningStatus == CLONEPAIR_RUNNING_STATUS_SYNCING ||
-			runningStatus == CLONEPAIR_RUNNING_STATUS_INITIALIZING ||
-			runningStatus == CLONEPAIR_RUNNING_STATUS_UNSYNCING {
+		} else if runningStatus == clonePairRunningStatusSyncing ||
+			runningStatus == clonePairRunningStatusInitializing ||
+			runningStatus == clonePairRunningStatusUnsyncing {
 			return false, nil
 		} else {
 			return false, fmt.Errorf("ClonePair %s running status is abnormal", clonePairID)
@@ -817,7 +816,7 @@ func (p *SAN) waitCloneFinish(ctx context.Context,
 func (p *SAN) createRemoteLun(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	lunName := params["name"].(string)
-	remoteCli := taskResult["remoteCli"].(*client.Client)
+	remoteCli := taskResult["remoteCli"].(client.BaseClientInterface)
 
 	lun, err := remoteCli.GetLunByName(ctx, lunName)
 	if err != nil {
@@ -849,7 +848,7 @@ func (p *SAN) revertRemoteLun(ctx context.Context, taskResult map[string]interfa
 	if !exist {
 		return nil
 	}
-	remoteCli := taskResult["remoteCli"].(*client.Client)
+	remoteCli := taskResult["remoteCli"].(client.BaseClientInterface)
 	return remoteCli.DeleteLun(ctx, lunID)
 }
 
@@ -861,7 +860,7 @@ func (p *SAN) createRemoteQoS(ctx context.Context,
 	}
 
 	lunID := taskResult["remoteLunID"].(string)
-	remoteCli := taskResult["remoteCli"].(*client.Client)
+	remoteCli := taskResult["remoteCli"].(client.BaseClientInterface)
 
 	lun, err := remoteCli.GetLunByID(ctx, lunID)
 	if err != nil {
@@ -889,7 +888,7 @@ func (p *SAN) revertRemoteQoS(ctx context.Context, taskResult map[string]interfa
 	if !lunIDExist || !qosIDExist {
 		return nil
 	}
-	remoteCli := taskResult["remoteCli"].(*client.Client)
+	remoteCli := taskResult["remoteCli"].(client.BaseClientInterface)
 	smartX := smartx.NewSmartX(remoteCli)
 	return smartX.DeleteQos(ctx, qosID, lunID, "lun", "")
 }
@@ -965,18 +964,18 @@ func (p *SAN) waitHyperMetroSyncFinish(ctx context.Context, pairID string) error
 		}
 
 		healthStatus := pair["HEALTHSTATUS"].(string)
-		if healthStatus == HYPERMETROPAIR_HEALTH_STATUS_FAULT {
+		if healthStatus == hyperMetroPairHealthStatusFault {
 			return false, fmt.Errorf("Hypermetro pair %s is fault", pairID)
 		}
 
 		runningStatus := pair["RUNNINGSTATUS"].(string)
-		if runningStatus == HYPERMETROPAIR_RUNNING_STATUS_TO_SYNC ||
-			runningStatus == HYPERMETROPAIR_RUNNING_STATUS_SYNCING {
+		if runningStatus == hyperMetroPairRunningStatusToSync ||
+			runningStatus == hyperMetroPairRunningStatusSyncing {
 			return false, nil
-		} else if runningStatus == HYPERMETROPAIR_RUNNING_STATUS_UNKNOWN ||
-			runningStatus == HYPERMETROPAIR_RUNNING_STATUS_PAUSE ||
-			runningStatus == HYPERMETROPAIR_RUNNING_STATUS_ERROR ||
-			runningStatus == HYPERMETROPAIR_RUNNING_STATUS_INVALID {
+		} else if runningStatus == hyperMetroPairRunningStatusUnknown ||
+			runningStatus == hyperMetroPairRunningStatusPause ||
+			runningStatus == hyperMetroPairRunningStatusError ||
+			runningStatus == hyperMetroPairRunningStatusInvalid {
 			return false, fmt.Errorf("Hypermetro pair %s is at running status %s", pairID, runningStatus)
 		} else {
 			return true, nil
@@ -1029,7 +1028,7 @@ func (p *SAN) getHyperMetroParams(ctx context.Context,
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
-	if status := domain["RUNNINGSTATUS"].(string); status != HYPERMETRODOMAIN_RUNNING_STATUS_NORMAL {
+	if status := domain["RUNNINGSTATUS"].(string); status != hyperMetroDomainRunningStatusNormal {
 		msg := fmt.Sprintf("Hypermetro domain %s status is not normal", metroDomain)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
@@ -1122,9 +1121,9 @@ func (p *SAN) deleteHyperMetro(ctx context.Context,
 	pairID := pair["ID"].(string)
 	status := pair["RUNNINGSTATUS"].(string)
 
-	if status == HYPERMETROPAIR_RUNNING_STATUS_NORMAL ||
-		status == HYPERMETROPAIR_RUNNING_STATUS_TO_SYNC ||
-		status == HYPERMETROPAIR_RUNNING_STATUS_SYNCING {
+	if status == hyperMetroPairRunningStatusNormal ||
+		status == hyperMetroPairRunningStatusToSync ||
+		status == hyperMetroPairRunningStatusSyncing {
 		p.cli.StopHyperMetroPair(ctx, pairID)
 	}
 
@@ -1138,7 +1137,7 @@ func (p *SAN) deleteHyperMetro(ctx context.Context,
 }
 
 func (p *SAN) preExpandCheckRemoteCapacity(ctx context.Context,
-	params map[string]interface{}, cli *client.Client) (string, error) {
+	params map[string]interface{}, cli client.BaseClientInterface) (string, error) {
 	// check the remote pool
 	name := params["name"].(string)
 	remoteLunName := utils.GetLunName(name)
@@ -1209,9 +1208,9 @@ func (p *SAN) suspendHyperMetro(ctx context.Context,
 	pairID := pair["ID"].(string)
 	status := pair["RUNNINGSTATUS"].(string)
 
-	if status == HYPERMETROPAIR_RUNNING_STATUS_NORMAL ||
-		status == HYPERMETROPAIR_RUNNING_STATUS_TO_SYNC ||
-		status == HYPERMETROPAIR_RUNNING_STATUS_SYNCING {
+	if status == hyperMetroPairRunningStatusNormal ||
+		status == hyperMetroPairRunningStatusToSync ||
+		status == hyperMetroPairRunningStatusSyncing {
 		err := p.cli.StopHyperMetroPair(ctx, pairID)
 		if err != nil {
 			log.AddContext(ctx).Errorf("Suspend san hypermetro pair %s error: %v", pairID, err)
@@ -1388,8 +1387,8 @@ func (p *SAN) waitSnapshotReady(ctx context.Context, snapshotName string) error 
 			return false, err
 		}
 
-		if runningStatus == SNAPSHOT_RUNNING_STATUS_ACTIVE ||
-			runningStatus == SNAPSHOT_RUNNING_STATUS_INACTIVE {
+		if runningStatus == snapshotRunningStatusActive ||
+			runningStatus == snapshotRunningStatusInactive {
 			return true, nil
 		} else {
 			return false, nil
@@ -1501,8 +1500,8 @@ func (p *SAN) deleteReplicationPair(ctx context.Context,
 		pairID := pair["ID"].(string)
 
 		runningStatus := pair["RUNNINGSTATUS"].(string)
-		if runningStatus == REPLICATION_PAIR_RUNNING_STATUS_NORMAL ||
-			runningStatus == REPLICATION_PAIR_RUNNING_STATUS_SYNC {
+		if runningStatus == replicationPairRunningStatusNormal ||
+			runningStatus == replicationPairRunningStatusSync {
 			p.cli.SplitReplicationPair(ctx, pairID)
 		}
 
@@ -1528,7 +1527,7 @@ func (p *SAN) deleteReplicationRemoteLun(ctx context.Context,
 	return nil, err
 }
 
-func (p *SAN) deleteLun(ctx context.Context, name string, cli *client.Client) error {
+func (p *SAN) deleteLun(ctx context.Context, name string, cli client.BaseClientInterface) error {
 	lun, err := cli.GetLunByName(ctx, name)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun by name %s error: %v", name, err)
@@ -1579,8 +1578,8 @@ func (p *SAN) splitReplication(ctx context.Context,
 		pairID := pair["ID"].(string)
 
 		runningStatus := pair["RUNNINGSTATUS"].(string)
-		if runningStatus != REPLICATION_PAIR_RUNNING_STATUS_NORMAL &&
-			runningStatus != REPLICATION_PAIR_RUNNING_STATUS_SYNC {
+		if runningStatus != replicationPairRunningStatusNormal &&
+			runningStatus != replicationPairRunningStatusSync {
 			continue
 		}
 

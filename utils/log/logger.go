@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package log
 
 import (
@@ -160,6 +176,7 @@ func InitLogging(logName string) error {
 	}
 
 	logger = &tmpLogger
+	logger.Infof("Init logger [%s] success.", logName)
 	return nil
 }
 
@@ -330,4 +347,17 @@ func Flush() {
 // Close ensures closing output stream
 func Close() {
 	logger.close()
+}
+
+// FilteredLog will not print the logs that need to be filtered, and the log level will be as required.
+func FilteredLog(ctx context.Context, isSkip, isDebug bool, msg string) {
+	if isSkip {
+		return
+	}
+
+	if isDebug {
+		AddContext(ctx).Debugln(msg)
+	} else {
+		AddContext(ctx).Infoln(msg)
+	}
 }

@@ -1,41 +1,48 @@
-# usage: make -f Makefile VER=3.0.0 PLATFORM=X86 RELEASE_VER=2.5.RC2
+# usage: make -f Makefile VER=3.1.0 PLATFORM=X86 RELEASE_VER=2.5.RC2
 
-# [3.0.0]
+# (required) [3.1.0]
 VER=VER
-# [X86 ARM]
+# (required) [X86 ARM]
 PLATFORM=PLATFORM
-# eSDK Version: [2.5.RC1 2.5.RC2 ...]
+
+# (Optional) [2.5.RC1 2.5.RC2 ...] eSDK Version
 RELEASE_VER=RELEASE_VER
+# (Optional) [TRUE FALSE] Compile Binary Only
+ONLY_BIN=ONLY_BIN
 
 export GO111MODULE=on
 export GOPATH:=$(GOPATH):$(shell pwd)
+
 ifeq (${RELEASE_VER}, RELEASE_VER)
-       export PACKAGE=eSDK_Enterprise_Storage_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
-       export CLOUD_PACKAGE=eSDK_Cloud_Storage_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
+       export PACKAGE=eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
 else
-       export PACKAGE=eSDK_Enterprise_Storage_${RELEASE_VER}_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
-       export CLOUD_PACKAGE=eSDK_Cloud_Storage_${RELEASE_VER}_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
+       export PACKAGE=eSDK_Huawei_Storage_${RELEASE_VER}_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
+endif
+
+# Build process
+ifeq (${ONLY_BIN}, TRUE)
+all:PREPARE BUILD PACK
+else
+all:PREPARE BUILD COPY_FILE PACK
 endif
 
 
-all:PREPARE BUILD COPY_FILE PACK
-
 PREPARE:
-	rm -rf ./${PACKAGE} ./${CLOUD_PACKAGE}
-	rm -rf ./src/vendor
+	rm -rf ./${PACKAGE}
 	mkdir -p ./${PACKAGE}/bin
 
 BUILD:
+# usage: go build [-o output] [build flags] [packages]
 ifeq (${PLATFORM}, X86)
-	go build -o ./${PACKAGE}/bin/huawei-csi	./csi
-	go build -o ./${PACKAGE}/bin/secretGenerate  ./tools/secretGenerate
-	go build -o ./${PACKAGE}/bin/secretUpdate ./tools/secretUpdate
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./${PACKAGE}/bin/huawei-csi -ldflags="-s" -buildmode=pie ./csi
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./${PACKAGE}/bin/secretGenerate -ldflags="-s" -buildmode=pie ./tools/secretGenerate
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./${PACKAGE}/bin/secretUpdate -ldflags="-s" -buildmode=pie ./tools/secretUpdate
 endif
 
 ifeq (${PLATFORM}, ARM)
-	GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/huawei-csi	./csi
-	GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/secretGenerate ./tools/secretGenerate
-	GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/secretUpdate ./tools/secretUpdate
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/huawei-csi -ldflags="-s" -buildmode=pie ./csi
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/secretGenerate -ldflags="-s" -buildmode=pie ./tools/secretGenerate
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/secretUpdate -ldflags="-s" -buildmode=pie ./tools/secretUpdate
 endif
 
 COPY_FILE:
@@ -53,8 +60,9 @@ COPY_FILE:
 	mkdir -p ./${PACKAGE}/tools
 	cp -r ./tools/imageUpload/* ./${PACKAGE}/tools
 
+	mkdir -p ./${PACKAGE}/docs
+	-cp ./docs/eSDK* ./${PACKAGE}/docs
+
 PACK:
 	zip -r ${PACKAGE}.zip ./${PACKAGE}
-	mv ${PACKAGE} ${CLOUD_PACKAGE}
-	zip -r ${CLOUD_PACKAGE}.zip ./${CLOUD_PACKAGE}
-	rm -rf ./${CLOUD_PACKAGE}
+	rm -rf ./${PACKAGE}

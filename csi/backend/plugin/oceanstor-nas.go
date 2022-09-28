@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package plugin
 
 import (
@@ -63,8 +79,8 @@ func (p *OceanstorNasPlugin) Init(config, parameters map[string]interface{}, kee
 }
 
 func (p *OceanstorNasPlugin) getNasObj() *volume.NAS {
-	var metroRemoteCli *client.Client
-	var replicaRemoteCli *client.Client
+	var metroRemoteCli client.BaseClientInterface
+	var replicaRemoteCli client.BaseClientInterface
 
 	if p.metroRemotePlugin != nil {
 		metroRemoteCli = p.metroRemotePlugin.cli
@@ -76,9 +92,9 @@ func (p *OceanstorNasPlugin) getNasObj() *volume.NAS {
 	return volume.NewNAS(p.cli, metroRemoteCli, replicaRemoteCli, p.product, p.nasHyperMetro)
 }
 
-func (p *OceanstorNasPlugin) CreateVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) (utils.Volume, error) {
+func (p *OceanstorNasPlugin) CreateVolume(ctx context.Context, name string, parameters map[string]interface{}) (
+	utils.Volume, error) {
+
 	size, ok := parameters["size"].(int64)
 	if !ok || !utils.IsCapacityAvailable(size, SectorSize) {
 		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", size)
@@ -97,8 +113,8 @@ func (p *OceanstorNasPlugin) CreateVolume(ctx context.Context,
 	return volObj, nil
 }
 
-func (p *OceanstorNasPlugin) getClient() (*client.Client, *client.Client) {
-	var replicaRemoteCli *client.Client
+func (p *OceanstorNasPlugin) getClient() (client.BaseClientInterface, client.BaseClientInterface) {
+	var replicaRemoteCli client.BaseClientInterface
 	if p.replicaRemotePlugin != nil {
 		replicaRemoteCli = p.replicaRemotePlugin.cli
 	}
