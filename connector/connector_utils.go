@@ -64,7 +64,7 @@ type DMDeviceInfo struct {
 }
 
 func getDeviceLink(ctx context.Context, tgtLunGUID string) (string, error) {
-	output, err := utils.ExecShellCmd(ctx, "ls -l /dev/disk/by-id/ | grep %s", tgtLunGUID)
+	output, err := utils.ExecShellCmd(ctx, "ls -l /dev/disk/by-id/ | grep %s | grep -v part", tgtLunGUID)
 	if err != nil {
 		if strings.TrimSpace(output) == "" || strings.Contains(output, "No such file or directory") {
 			return "", nil
