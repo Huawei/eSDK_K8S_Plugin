@@ -152,7 +152,8 @@ func (k *kubeClient) GetVolume(nodeName string, driverName string) (map[string]s
 		case err := <-errChan:
 			volumeError = err
 		case volume := <-pvChan:
-			if driverName == volume.Spec.PersistentVolumeSource.CSI.Driver {
+			if volume.Spec.PersistentVolumeSource.CSI != nil &&
+				driverName == volume.Spec.PersistentVolumeSource.CSI.Driver {
 				k8sVolumeHandles[volume.Spec.PersistentVolumeSource.CSI.VolumeHandle] = struct{}{}
 			}
 		}
