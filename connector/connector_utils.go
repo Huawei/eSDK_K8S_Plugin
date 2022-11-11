@@ -39,10 +39,6 @@ const (
 	NotUseMultipath = iota
 	// UseDMMultipath means the device use DM-Multipath service
 	UseDMMultipath
-	// UseUltraPath means the device use huawei-UltraPath service
-	UseUltraPath
-	// UseUltraPathNVMe means the device use huawei-UltraPath-NVMe service
-	UseUltraPathNVMe
 )
 
 var (
@@ -170,14 +166,8 @@ var GetVirtualDevice = func(ctx context.Context, tgtLunGUID string) (string, int
 				"is correct and manually delete the residual partitioned disks.", device)
 		}
 
-		if strings.HasPrefix(device, "ultrapath") {
-			deviceType = UseUltraPathNVMe
-			virtualDevices = append(virtualDevices, device)
-		} else if strings.HasPrefix(device, "dm") {
+		if strings.HasPrefix(device, "dm") {
 			deviceType = UseDMMultipath
-			virtualDevices = append(virtualDevices, device)
-		} else if strings.HasPrefix(device, "sd") && isUltraPathDevice(ctx, device) {
-			deviceType = UseUltraPath
 			virtualDevices = append(virtualDevices, device)
 		} else if strings.HasPrefix(device, "sd") || strings.HasPrefix(device, "nvme") {
 			phyDevices = append(phyDevices, device)
@@ -755,20 +745,6 @@ func rescanUseDMMultipath(ctx context.Context, virtualDevice string) error {
 	return nil
 }
 
-func rescanUseUltraPath(ctx context.Context, device string) error {
-	err := rescanUpVirtualDevice(ctx, device)
-	if err != nil {
-		return err
-	}
-
-	err = rescanUpPhyDevice(ctx, device)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func rescanUpVirtualDevice(ctx context.Context, device string) error {
 	_, err := utils.ExecShellCmd(ctx, "echo 1 > /sys/block/%s/device/rescan", device)
 	if err != nil {
@@ -787,55 +763,6 @@ func rescanSCSIDevices(ctx context.Context, subDevices []string) error {
 		}
 	}
 	return nil
-}
-
-func rescanUpPhyDevice(ctx context.Context, virtualDevice string) error {
-	vlunID, err := getVLunIDByDeviceName(ctx, virtualDevice, UseUltraPath)
-	if err != nil {
-		return err
-	}
-
-	subDevices, err := getHCTLByVlunID(ctx, vlunID)
-	if err != nil {
-		return err
-	}
-
-	err = rescanSCSIDevices(ctx, subDevices)
-	if err != nil {
-		return utils.Errorf(ctx, "rescan device %s failed. error: %v", virtualDevice, err)
-	}
-
-	return nil
-}
-
-func getVLunIDByDeviceName(ctx context.Context, device string, devType int) (string, error) {
-	var output string
-	var err error
-
-	switch devType {
-	case UseUltraPath:
-		output, err = utils.ExecShellCmd(ctx, "upadmin show vlun | grep -w %s", device)
-	case UseUltraPathNVMe:
-		output, err = utils.ExecShellCmd(ctx, "upadmin_plus show vlun | grep -w %s", device)
-	default:
-		log.AddContext(ctx).Errorf("get vlun ID failed, invalid devType:%d", devType)
-		return "", errors.New("get vlun id failed")
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	for _, line := range strings.Split(output, "\n") {
-		patternFormat := fmt.Sprintf(`^[\s]+([\d]+)[\s]+%s`, device)
-		pattern := regexp.MustCompile(patternFormat)
-		ret := pattern.FindAllStringSubmatch(line, -1)
-		if ret != nil {
-			return ret[0][1], nil
-		}
-	}
-
-	return "", errors.New("get vlun id failed")
 }
 
 func getHCTLByVlunID(ctx context.Context, vlunID string) ([]string, error) {
@@ -857,26 +784,6 @@ func getHCTLByVlunID(ctx context.Context, vlunID string) ([]string, error) {
 	return subDevices, nil
 }
 
-func rescanUseUltraPathNVMe(ctx context.Context, device string) error {
-	output, err := GetUltraPathDetailsByPath(ctx, UltraPathNVMeCommand, device)
-	if err != nil {
-		return utils.Errorf(ctx, "get ultraPath %s detail info failed", device)
-	}
-
-	phyPaths, err := getFieldFromUltraPathInfo(output, "Path")
-	if err != nil {
-		return utils.Errorf(ctx, "get ultraPath %s detail info failed", device)
-	}
-
-	physicalDevices := getNVMePhysicalDevices(phyPaths)
-	err = extendBlock(ctx, physicalDevices)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func rescanDevice(ctx context.Context, virtualDevice string, devType int) error {
 	var err error
 
@@ -885,10 +792,6 @@ func rescanDevice(ctx context.Context, virtualDevice string, devType int) error 
 		err = rescanNotUseMultipath(ctx, virtualDevice)
 	case UseDMMultipath:
 		err = rescanUseDMMultipath(ctx, virtualDevice)
-	case UseUltraPath:
-		err = rescanUseUltraPath(ctx, virtualDevice)
-	case UseUltraPathNVMe:
-		err = rescanUseUltraPathNVMe(ctx, virtualDevice)
 	default:
 		log.AddContext(ctx).Errorln("Invalid device type.")
 		return errors.New("invalid device type")
@@ -1401,123 +1304,6 @@ var IsInFormatting = func(ctx context.Context, sourcePath, fsType string) (bool,
 	return len(outputSplit) != 0 && outputSplit[0] == "1", nil
 }
 
-// GetVLunIDByDevName to get the vLun Id by using device Name
-func GetVLunIDByDevName(ctx context.Context, upType, devName string) (string, error) {
-	output, err := GetUltraPathInfoByDevName(ctx, upType, devName)
-	if err != nil {
-		return "", err
-	}
-
-	splitInfo := strings.Fields(strings.TrimSpace(output))
-	if len(splitInfo) != lengthOfUltraPathInfo {
-		return "", utils.Errorf(ctx, "The result of upadmin is not valid for vlun %s", devName)
-	}
-
-	return splitInfo[0], nil
-}
-
-func getFieldFromUltraPathInfo(output, field string) ([]string, error) {
-	if output == "" || field == "" {
-		return nil, errors.New("input error")
-	}
-
-	var fieldInfo []string
-	splitLines := strings.Split(output, "\n")
-	for _, line := range splitLines {
-		if !strings.Contains(line, ":") {
-			continue
-		}
-		if strings.HasPrefix(line, field) {
-			fieldInfo = append(fieldInfo, line)
-		}
-	}
-	return fieldInfo, nil
-}
-
-func getPhysicalDevices(phyPaths []string) []string {
-	var phyDevices []string
-	for _, path := range phyPaths {
-		splitInfo := strings.Split(path, "[")
-		if len(splitInfo) != splitDeviceLength {
-			continue
-		}
-		splitInfo = strings.Split(splitInfo[1], "]")
-		if len(splitInfo) != splitDeviceLength {
-			continue
-		}
-		phyDevices = append(phyDevices, splitInfo[0])
-	}
-	return phyDevices
-}
-
-var getNVMePhysicalDevices = func(phyPaths []string) []string {
-	var phyDevices []string
-	for _, path := range phyPaths {
-		splitInfo := strings.Split(path, "(")
-		if len(splitInfo) != splitDeviceLength {
-			continue
-		}
-		splitInfo = strings.Split(splitInfo[1], ")")
-		if len(splitInfo) != splitDeviceLength {
-			continue
-		}
-		phyDevices = append(phyDevices, splitInfo[0])
-	}
-	return phyDevices
-}
-
-func getPhyDev(ctx context.Context, phyPaths []string, deviceType string) ([]string, error) {
-	switch deviceType {
-	case deviceTypeSCSI:
-		return getPhysicalDevices(phyPaths), nil
-	case deviceTypeNVMe:
-		return getNVMePhysicalDevices(phyPaths), nil
-	default:
-		return nil, utils.Errorf(ctx, "Invalid device type %s.", deviceType)
-	}
-}
-
-// GetPhyDev to get the physical device by using the vLun Id
-func GetPhyDev(ctx context.Context, upType, vLunID, deviceType string) ([]string, error) {
-	output, err := GetUltraPathDetailsByvLunID(ctx, upType, vLunID)
-	if err != nil {
-		return nil, err
-	}
-
-	phyPaths, err := getFieldFromUltraPathInfo(output, "Path")
-	if err != nil {
-		return nil, err
-	}
-
-	return getPhyDev(ctx, phyPaths, deviceType)
-}
-
-func deletePhysicalDevice(ctx context.Context, phyDevice string) error {
-	output, err := utils.ExecShellCmd(ctx, "echo 1 > /sys/class/scsi_device/%s/device/delete", phyDevice)
-	if err != nil {
-		if strings.Contains(output, "No such file or directory") {
-			return nil
-		}
-
-		log.AddContext(ctx).Errorf("Delete physical device %s error: %v", phyDevice, output)
-		return err
-	}
-	return nil
-}
-
-func deleteVirtualDevice(ctx context.Context, virtualDevice string) error {
-	output, err := utils.ExecShellCmd(ctx, "echo 1 > /sys/block/%s/device/delete", virtualDevice)
-	if err != nil {
-		if strings.Contains(output, "No such file or directory") {
-			return nil
-		}
-
-		log.AddContext(ctx).Errorf("Delete virtual device %s error: %v", virtualDevice, output)
-		return err
-	}
-	return nil
-}
-
 // RemoveAllDevice to remove the device through virtual device and physical device
 var RemoveAllDevice = func(ctx context.Context,
 	virtualDevice string,
@@ -1526,10 +1312,6 @@ var RemoveAllDevice = func(ctx context.Context,
 	switch deviceType {
 	case NotUseMultipath, UseDMMultipath:
 		return RemoveDevice(ctx, virtualDevice)
-	case UseUltraPath:
-		return "", RemoveUltraPathDevice(ctx, virtualDevice, phyDevices)
-	case UseUltraPathNVMe:
-		return "", RemoveUltraPathNVMeDevice(ctx, virtualDevice, phyDevices)
 	default:
 		return "", utils.Errorln(ctx, "invalid device type")
 	}
@@ -1595,12 +1377,8 @@ func getDevicesInfosByGUID(ctx context.Context, tgtLunGUID string) ([]*deviceInf
 		}
 
 		var devInfo = &deviceInfo{deviceName: device, lunWWN: tgtLunGUID, deviceFullName: "/dev/" + device}
-		if strings.HasPrefix(device, "ultrapath") {
-			devInfo.multipathType = UseUltraPathNVMe
-		} else if strings.HasPrefix(device, "dm") {
+		if strings.HasPrefix(device, "dm") {
 			devInfo.multipathType = UseDMMultipath
-		} else if strings.HasPrefix(device, "sd") && isUltraPathDevice(ctx, device) {
-			devInfo.multipathType = UseUltraPath
 		} else if strings.HasPrefix(device, "sd") || strings.HasPrefix(device, "nvme") {
 			devInfo.multipathType = NotUseMultipath
 		} else {
@@ -1621,10 +1399,6 @@ func clearResidualPath(ctx context.Context, deviceInfos []*deviceInfo) error {
 		switch deviceInfo.multipathType {
 		case UseDMMultipath:
 			isResidualDevicePath, err = isDMResidualPath(ctx, deviceInfo)
-		case UseUltraPath:
-			isResidualDevicePath, err = isUpResidualPath(ctx, deviceInfo)
-		case UseUltraPathNVMe:
-			isResidualDevicePath, err = isUpNVMeResidualPath(ctx, deviceInfo)
 		case NotUseMultipath:
 			isResidualDevicePath, err = isPhyResidualPath(ctx, deviceInfo)
 		default:
@@ -1685,47 +1459,6 @@ func isDMResidualPath(ctx context.Context, deviceInfo *deviceInfo) (bool, error)
 	return false, nil
 }
 
-func isUpResidualPathCommon(ctx context.Context, multipathType string, deviceInfo *deviceInfo) (bool, error) {
-	readable, err := IsDeviceReadable(ctx, deviceInfo.deviceFullName)
-	if err != nil || !readable {
-		// dd command not found considered an error
-		if strings.Contains(err.Error(), "command not found") {
-			return false, err
-		}
-		return true, nil
-	}
-
-	isTakeOver, err := isTakeOverByUltraPath(ctx, multipathType, deviceInfo.lunWWN)
-	if err != nil || !isTakeOver {
-		log.AddContext(ctx).Infof("Device:%s WWN:%s is not take over by UltraPath.",
-			deviceInfo.deviceName, deviceInfo.lunWWN)
-		return true, err
-	}
-
-	available, err := isUpMultiPathAvailable(ctx, multipathType, deviceInfo.deviceName, deviceInfo.lunWWN)
-	if err != nil || !available {
-		// If the device is readable but unavailable, CSI will not clear it. User need to clear the device manually.
-		return true, err
-	}
-
-	return false, nil
-}
-
-func isUpResidualPath(ctx context.Context, deviceInfo *deviceInfo) (bool, error) {
-	return isUpResidualPathCommon(ctx, UltraPathCommand, deviceInfo)
-}
-
-func isUpNVMeResidualPath(ctx context.Context, deviceInfo *deviceInfo) (bool, error) {
-	return isUpResidualPathCommon(ctx, UltraPathNVMeCommand, deviceInfo)
-}
-
-// IsUpNVMeResidualPath used to determine whether the device is residual
-var IsUpNVMeResidualPath = func(ctx context.Context, devName, lunWWN string) (bool, error) {
-	return isUpNVMeResidualPath(ctx,
-		&deviceInfo{deviceName: devName, lunWWN: lunWWN, multipathType: UseUltraPathNVMe,
-			deviceFullName: "/dev/" + devName})
-}
-
 func isPhyResidualPath(ctx context.Context, deviceInfo *deviceInfo) (bool, error) {
 	readable, err := IsDeviceReadable(ctx, deviceInfo.deviceFullName)
 	if err != nil || !readable {
@@ -1751,22 +1484,6 @@ var IsDeviceReadable = func(ctx context.Context, devicePath string) (bool, error
 	if err != nil {
 		log.AddContext(ctx).Warningf("Device:%s is unreadable.", devicePath)
 		return false, err
-	}
-
-	return true, nil
-}
-
-func isUpMultiPathAvailable(ctx context.Context, multipathType, dev, lunWWN string) (bool, error) {
-	devLunWWN, err := GetLunWWNByDevName(ctx, multipathType, dev)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get Lun WWN by device name:%s failed. error:%s", dev, err)
-		return false, err
-	}
-
-	if !strings.Contains(lunWWN, devLunWWN) {
-		log.AddContext(ctx).Warningf("Device:%s wwn:%s is inconsistent with target wwn:%s",
-			dev, devLunWWN, lunWWN)
-		return false, nil
 	}
 
 	return true, nil

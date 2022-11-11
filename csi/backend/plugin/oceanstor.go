@@ -109,21 +109,13 @@ func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, e
 	supportThin := utils.IsSupportFeature(features, "SmartThin")
 	supportThick := p.product != "Dorado" && p.product != "DoradoV6"
 	supportQoS := utils.IsSupportFeature(features, "SmartQoS")
-	supportMetro := utils.IsSupportFeature(features, "HyperMetro")
-	supportMetroNAS := utils.IsSupportFeature(features, "HyperMetroNAS")
-	supportReplication := utils.IsSupportFeature(features, "HyperReplication")
-	supportClone := utils.IsSupportFeature(features, "HyperClone") || utils.IsSupportFeature(features, "HyperCopy")
 	supportApplicationType := p.product == "DoradoV6"
 
 	capabilities := map[string]interface{}{
 		"SupportThin":            supportThin,
 		"SupportThick":           supportThick,
 		"SupportQoS":             supportQoS,
-		"SupportMetro":           supportMetro,
-		"SupportReplication":     supportReplication,
 		"SupportApplicationType": supportApplicationType,
-		"SupportClone":           supportClone,
-		"SupportMetroNAS":        supportMetroNAS,
 	}
 
 	p.capabilities = capabilities
@@ -144,13 +136,9 @@ func (p *OceanstorPlugin) getParams(ctx context.Context, name string,
 		"allocType",
 		"qos",
 		"authClient",
-		"cloneFrom",
-		"cloneSpeed",
-		"metroDomain",
 		"remoteStoragePool",
 		"sourceSnapshotName",
 		"sourceVolumeName",
-		"snapshotParentId",
 		"applicationType",
 		"allSquash",
 		"rootSquash",
@@ -161,29 +149,6 @@ func (p *OceanstorPlugin) getParams(ctx context.Context, name string,
 	for _, key := range paramKeys {
 		if v, exist := parameters[key]; exist && v != "" {
 			params[strings.ToLower(key)] = v
-		}
-	}
-
-	if v, exist := parameters["hyperMetro"].(string); exist && v != "" {
-		params["hypermetro"] = utils.StrToBool(ctx, v)
-	}
-
-	// Add new bool parameter here
-	for _, i := range []string{
-		"replication",
-	} {
-		if v, exist := parameters[i].(string); exist && v != "" {
-			params[i] = utils.StrToBool(ctx, v)
-		}
-	}
-
-	// Add new string parameter here
-	for _, i := range []string{
-		"replicationSyncPeriod",
-		"vStorePairID",
-	} {
-		if v, exist := parameters[i].(string); exist && v != "" {
-			params[i] = v
 		}
 	}
 

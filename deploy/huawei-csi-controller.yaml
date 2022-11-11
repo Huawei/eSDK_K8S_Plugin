@@ -21,7 +21,7 @@ spec:
         - args:
             - --csi-address=/csi/csi.sock
             - --health-port=9808
-          image: k8s.gcr.io/sig-storage/livenessprobe:v2.5.0
+          image: quay.io/k8scsi/livenessprobe:v0.4.1
           imagePullPolicy: IfNotPresent
           name: liveness-probe
           volumeMounts:
@@ -29,11 +29,12 @@ spec:
               name: socket-dir
         - args:
             - --csi-address=$(ADDRESS)
-            - --timeout=6h
+            - --connection-timeout=6h
+            - --provisioner=csi.huawei.com
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
+          image: quay.io/k8scsi/csi-provisioner:v0.4.2
           imagePullPolicy: IfNotPresent
           name: csi-provisioner
           volumeMounts:
@@ -44,43 +45,12 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-attacher:v3.3.0
+          image: quay.io/k8scsi/csi-attacher:v0.4.2
           imagePullPolicy: IfNotPresent
           name: csi-attacher
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        - args:
-            - --v=5
-            - --csi-address=$(ADDRESS)
-            - --handle-volume-inuse-error=false
-          env:
-            - name: ADDRESS
-              value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-resizer:v1.3.0
-          imagePullPolicy: IfNotPresent
-          name: csi-resizer
-          volumeMounts:
-            - mountPath: /csi
-              name: socket-dir
-        - args:
-            - --v=5
-            - --csi-address=$(ADDRESS)
-          env:
-            - name: ADDRESS
-              value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
-          imagePullPolicy: IfNotPresent
-          name: csi-snapshotter
-          volumeMounts:
-            - mountPath: /csi
-              name: socket-dir
-        - args:
-            - --v=5
-            - --leader-election=false
-          image: k8s.gcr.io/sig-storage/snapshot-controller:v4.2.1
-          imagePullPolicy: IfNotPresent
-          name: snapshot-controller
         - name: huawei-csi-driver
           image: huawei-csi:*.*.*
           imagePullPolicy: IfNotPresent
@@ -114,6 +84,12 @@ spec:
               name: config-map
             - mountPath: /etc/huawei/secret
               name: secret
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+            privileged: true
       hostNetwork: true
       serviceAccount: huawei-csi-controller
       volumes:

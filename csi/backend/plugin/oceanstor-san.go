@@ -147,18 +147,6 @@ func (p *OceanstorSanPlugin) DeleteVolume(ctx context.Context, name string) erro
 	return san.Delete(ctx, name)
 }
 
-func (p *OceanstorSanPlugin) ExpandVolume(ctx context.Context, name string, size int64) (bool, error) {
-	if !utils.IsCapacityAvailable(size, SectorSize) {
-		msg := fmt.Sprintf("Expand Volume: the capacity %d is not an integer multiple of 512.", size)
-		log.AddContext(ctx).Errorln(msg)
-		return false, errors.New(msg)
-	}
-	san := p.getSanObj()
-	newSize := utils.TransVolumeCapacity(size, 512)
-	isAttach, err := san.Expand(ctx, name, newSize)
-	return isAttach, err
-}
-
 func (p *OceanstorSanPlugin) isHyperMetro(lun map[string]interface{}) bool {
 	var rss map[string]string
 	rssStr := lun["HASRSSOBJECT"].(string)
@@ -168,26 +156,6 @@ func (p *OceanstorSanPlugin) isHyperMetro(lun map[string]interface{}) bool {
 }
 
 func (p *OceanstorSanPlugin) metroHandler(ctx context.Context, req handlerRequest) ([]reflect.Value, error) {
-	localLunID := req.lun["ID"].(string)
-	pair, err := req.localCli.GetHyperMetroPairByLocalObjID(ctx, localLunID)
-	if err != nil {
-		return nil, err
-	}
-	if pair == nil {
-		return nil, fmt.Errorf("hypermetro pair of LUN %s doesn't exist", localLunID)
-	}
-
-	if req.method == "ControllerDetach" || req.method == "NodeUnstage" {
-		if pair["RUNNINGSTATUS"] != hyperMetroPairRunningStatusNormal &&
-			pair["RUNNINGSTATUS"] != hyperMetroPairRunningStatusPause {
-			log.AddContext(ctx).Warningf("hypermetro pair status of LUN %s is not normal or pause",
-				localLunID)
-		}
-	} else {
-		if pair["RUNNINGSTATUS"] != hyperMetroPairRunningStatusNormal {
-			log.AddContext(ctx).Warningf("hypermetro pair status of LUN %s is not normal", localLunID)
-		}
-	}
 
 	localAttacher := attacher.NewAttacher(p.product, req.localCli, p.protocol, "csi", p.portals, p.alua)
 	remoteAttacher := attacher.NewAttacher(p.metroRemotePlugin.product, req.metroCli, p.metroRemotePlugin.protocol,
@@ -482,32 +450,6 @@ func (p *OceanstorSanPlugin) NodeExpandVolume(ctx context.Context,
 	return nil
 }
 
-func (p *OceanstorSanPlugin) CreateSnapshot(ctx context.Context,
-	lunName, snapshotName string) (map[string]interface{}, error) {
-	san := p.getSanObj()
-
-	snapshotName = utils.GetSnapshotName(snapshotName)
-	snapshot, err := san.CreateSnapshot(ctx, lunName, snapshotName)
-	if err != nil {
-		return nil, err
-	}
-
-	return snapshot, nil
-}
-
-func (p *OceanstorSanPlugin) DeleteSnapshot(ctx context.Context,
-	snapshotParentID, snapshotName string) error {
-	san := p.getSanObj()
-
-	snapshotName = utils.GetSnapshotName(snapshotName)
-	err := san.DeleteSnapshot(ctx, snapshotName)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (p *OceanstorSanPlugin) mutexGetClient(ctx context.Context) (client.BaseClientInterface, error) {
 	p.clientMutex.Lock()
 	defer p.clientMutex.Unlock()
@@ -595,12 +537,6 @@ func (p *OceanstorSanPlugin) UnstageVolumeWithWWN(ctx context.Context, tgtLunWWN
 	switch p.protocol {
 	case "iscsi":
 		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
-	case "fc":
-		conn = connector.GetConnector(ctx, connector.FCDriver)
-	case "roce":
-		conn = connector.GetConnector(ctx, connector.RoCEDriver)
-	case "fc-nvme":
-		conn = connector.GetConnector(ctx, connector.FCNVMeDriver)
 	default:
 		return utils.Errorf(ctx, "the protocol %s is not valid", p.protocol)
 	}

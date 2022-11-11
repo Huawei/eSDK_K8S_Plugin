@@ -1,6 +1,6 @@
-# usage: make -f Makefile VER=3.1.0 PLATFORM=X86 RELEASE_VER=2.5.RC2
+# usage: make -f Makefile VER=unionpay PLATFORM=X86 RELEASE_VER=2.5.RC2
 
-# (required) [3.1.0]
+# (required) [unionpay]
 VER=VER
 # (required) [X86 ARM]
 PLATFORM=PLATFORM
@@ -47,15 +47,11 @@ endif
 
 COPY_FILE:
 	mkdir -p ./${PACKAGE}/deploy
-	cp -r ./deploy/huawei-csi-node.yaml ./deploy/huawei-csi-rbac.yaml ./deploy/huawei-csi-configmap ./${PACKAGE}/deploy
-	cp ./deploy/huawei-csi-controller-snapshot-v1.yaml ./${PACKAGE}/deploy/huawei-csi-controller.yaml
-	cp ./deploy/huawei-csi-snapshot-crd-v1.yaml ./${PACKAGE}/deploy/huawei-csi-snapshot-crd.yaml
+	cp -r ./deploy/huawei-csi-node.yaml ./deploy/huawei-csi-controller.yaml ./deploy/huawei-csi-rbac.yaml ./deploy/huawei-csi-configmap ./${PACKAGE}/deploy
 
 	mkdir -p ./${PACKAGE}/examples
 	cp ./examples/* ./${PACKAGE}/examples
 
-	mkdir -p ./${PACKAGE}/helm/esdk
-	cp -r ./helm/esdk/* ./${PACKAGE}/helm/esdk
 
 	mkdir -p ./${PACKAGE}/tools
 	cp -r ./tools/imageUpload/* ./${PACKAGE}/tools

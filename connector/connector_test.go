@@ -61,7 +61,6 @@ func TestRegisterConnector(t *testing.T) {
 		wantErr bool
 	}{
 		{"Unregistered", args{ISCSIDriver, testConnector}, false},
-		{"Registered", args{FCDriver, testConnector}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,7 +83,6 @@ func TestGetConnector(t *testing.T) {
 		args args
 		want Connector
 	}{
-		{"NoExist", args{context.Background(), FCDriver}, nil},
 		{"Existed", args{context.Background(), ISCSIDriver}, testConnector},
 	}
 	for _, tt := range tests {

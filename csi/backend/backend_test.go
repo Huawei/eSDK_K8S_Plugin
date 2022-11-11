@@ -97,16 +97,6 @@ func TestNewBackend(t *testing.T) {
 			"testBackend",
 			map[string]interface{}{"storage": "wrong-type", "parameters": map[string]interface{}{}},
 			true},
-		{"metroBackendEmpty",
-			"testBackend",
-			map[string]interface{}{"storage": "oceanstor-san", "parameters": map[string]interface{}{},
-				"hyperMetroDomain": "testDomain"},
-			true},
-		{"metroDomainEmpty",
-			"testBackend",
-			map[string]interface{}{"storage": "oceanstor-san", "parameters": map[string]interface{}{},
-				"metroBackend": "testMetroBackend"},
-			true},
 	}
 
 	for _, tt := range tests {
@@ -548,51 +538,6 @@ func TestFilterByNFSProtocol(t *testing.T) {
 	}
 }
 
-func TestFilterBySupportClone(t *testing.T) {
-	tests := []struct {
-		name           string
-		cloneSource    string
-		candidatePools []*StoragePool
-		expect         int64
-	}{
-		{"Normal",
-			"source",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportClone": true}}},
-			1},
-		{"NormalMulti",
-			"source",
-			[]*StoragePool{
-				{Capabilities: map[string]interface{}{"SupportClone": true}},
-				{Capabilities: map[string]interface{}{"SupportClone": true}}},
-			2},
-		{"HasNotSupportClone",
-			"source",
-			[]*StoragePool{
-				{Capabilities: map[string]interface{}{"SupportClone": true}},
-				{Capabilities: map[string]interface{}{"SupportClone": false}}},
-			1},
-		{"AllNotSupportClone",
-			"source",
-			[]*StoragePool{
-				{Capabilities: map[string]interface{}{"SupportClone": false}},
-				{Capabilities: map[string]interface{}{"SupportClone": false}},
-				{Capabilities: map[string]interface{}{"SupportClone": false}}},
-			0},
-		{"cloneSourceEmpty",
-			"",
-			nil,
-			0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got, _ := filterBySupportClone(ctx, tt.cloneSource, tt.candidatePools); int64(len(got)) != tt.expect {
-				t.Errorf("test filterBySupportClone faild. got: %v expect: %v", len(got), tt.expect)
-			}
-		})
-	}
-}
-
 func TestFilterByCapacity(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -725,62 +670,6 @@ func TestFilterByApplicationType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got, _ := filterByApplicationType(ctx, tt.appType, tt.candidatePools); int64(len(got)) != tt.expect {
 				t.Errorf("test filterByApplicationType faild. got: %v expect: %v", got, tt.expect)
-			}
-		})
-	}
-}
-
-func TestFilterByStorageQuota(t *testing.T) {
-	tests := []struct {
-		name           string
-		storageQuota   string
-		candidatePools []*StoragePool
-		expect         int64
-		expectErr      bool
-	}{
-		{"NormalSoftQuota",
-			`{"spaceQuota": "softQuota", "gracePeriod": 100}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
-			1,
-			false,
-		},
-		{"NormalHardQuota",
-			`{"spaceQuota": "hardQuota"}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
-			1,
-			false,
-		},
-		{"NegativePeriod",
-			`{"spaceQuota": "hardQuota", "gracePeriod": -1}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
-			0,
-			true,
-		},
-		{"ExceedsTheMaximumPeriod",
-			`{"spaceQuota": "hardQuota", "gracePeriod": 4294967295}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
-			0,
-			true,
-		},
-		{"WrongType",
-			`{"spaceQuota": "WrongType"`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
-			0,
-			true,
-		},
-		{"HardWithPeriod",
-			`{"spaceQuota": "hardQuota", "gracePeriod": 10}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
-			0,
-			true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := filterByStorageQuota(ctx, tt.storageQuota, tt.candidatePools)
-			if int64(len(got)) != tt.expect || (err != nil) != tt.expectErr {
-				t.Errorf("test filterByStorageQuota faild. got: %v expect: %v", got, tt.expect)
 			}
 		})
 	}

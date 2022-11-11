@@ -25,18 +25,14 @@ import (
 )
 
 const (
-	FCDriver     = "fibreChannel"
-	FCNVMeDriver = "FC-NVMe"
-	ISCSIDriver  = "iSCSI"
-	RoCEDriver   = "RoCE"
-	LocalDriver  = "Local"
-	NFSDriver    = "NFS"
+	ISCSIDriver = "iSCSI"
+	LocalDriver = "Local"
+	NFSDriver   = "NFS"
 
 	MountFSType    = "fs"
 	MountBlockType = "block"
 
 	deviceTypeSCSI = "SCSI"
-	deviceTypeNVMe = "NVMe"
 
 	flushMultiPathInternal = 20
 	HCTLLength             = 4
@@ -47,12 +43,7 @@ const (
 	deviceWWidLength       = 4
 	halfMiDataLength       = 524288
 
-	UltraPathCommand     = "ultraPath"
-	UltraPathNVMeCommand = "ultraPath-NVMe"
-
 	DMMultiPath              = "DM-multipath"
-	HWUltraPath              = "HW-UltraPath"
-	HWUltraPathNVMe          = "HW-UltraPath-NVMe"
 	UnsupportedMultiPathType = "UnsupportedMultiPathType"
 
 	VolumeNotFound       = "VolumeDeviceNotFound"

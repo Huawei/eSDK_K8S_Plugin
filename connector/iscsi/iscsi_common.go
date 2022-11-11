@@ -51,8 +51,6 @@ func getSessionIds(ctx context.Context, devices []string, deviceType int) ([]str
 func getSessionID(ctx context.Context, device string, deviceType int) (string, error) {
 	if deviceType == connector.NotUseMultipath || deviceType == connector.UseDMMultipath {
 		return getSessionIDByDevice(device)
-	} else if deviceType == connector.UseUltraPath || deviceType == connector.UseUltraPathNVMe {
-		return getSessionIDByHCTL(ctx, device)
 	}
 	return "", errors.New("unSupport device Type")
 }

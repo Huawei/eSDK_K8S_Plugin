@@ -28,7 +28,6 @@ import (
 	"sync"
 
 	"huawei-csi-driver/csi/backend/plugin"
-	fsUtils "huawei-csi-driver/storage/fusionstorage/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/k8sutils"
 	"huawei-csi-driver/utils/log"
@@ -51,12 +50,7 @@ var (
 		{"volumeType", filterByVolumeType},
 		{"allocType", filterByAllocType},
 		{"qos", filterByQos},
-		{"hyperMetro", filterByMetro},
-		{"replication", filterByReplication},
 		{"applicationType", filterByApplicationType},
-		{"storageQuota", filterByStorageQuota},
-		{"sourceVolumeName", filterBySupportClone},
-		{"sourceSnapshotName", filterBySupportClone},
 		{"nfsProtocol", filterByNFSProtocol},
 	}
 
@@ -64,7 +58,6 @@ var (
 		{"volumeType", filterByVolumeType},
 		{"allocType", filterByAllocType},
 		{"qos", filterByQos},
-		{"replication", filterByReplication},
 		{"applicationType", filterByApplicationType},
 	}
 )
@@ -906,20 +899,6 @@ func filterByNFSProtocol(ctx context.Context, nfsProtocol string, candidatePools
 	return filterPools, nil
 }
 
-func filterBySupportClone(ctx context.Context, cloneSource string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
-	if cloneSource == "" {
-		return candidatePools, nil
-	}
-	var filterPools []*StoragePool
-	for _, pool := range candidatePools {
-		if pool.Capabilities["SupportClone"].(bool) {
-			filterPools = append(filterPools, pool)
-		}
-	}
-	return filterPools, nil
-}
-
 func filterByCapacity(requestSize int64, allocType string, candidatePools []*StoragePool) []*StoragePool {
 	var filterPools []*StoragePool
 	for _, pool := range candidatePools {
@@ -981,26 +960,5 @@ func filterByApplicationType(ctx context.Context, appType string, candidatePools
 			filterPools = append(filterPools, pool)
 		}
 	}
-	return filterPools, nil
-}
-
-func filterByStorageQuota(ctx context.Context, storageQuota string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
-	var filterPools []*StoragePool
-	if storageQuota == "" {
-		return candidatePools, nil
-	}
-
-	for _, pool := range candidatePools {
-		supportStorageQuota, ok := pool.Capabilities["SupportQuota"].(bool)
-		if ok && supportStorageQuota {
-			err := fsUtils.IsStorageQuotaAvailable(ctx, storageQuota)
-			if err != nil {
-				return nil, err
-			}
-			filterPools = append(filterPools, pool)
-		}
-	}
-
 	return filterPools, nil
 }

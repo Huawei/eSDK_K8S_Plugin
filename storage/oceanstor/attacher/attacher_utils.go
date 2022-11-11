@@ -20,10 +20,7 @@ import (
 	"context"
 
 	"huawei-csi-driver/connector"
-	_ "huawei-csi-driver/connector/fibrechannel"
 	_ "huawei-csi-driver/connector/iscsi"
-	_ "huawei-csi-driver/connector/nvme"
-	_ "huawei-csi-driver/connector/roce"
 	"huawei-csi-driver/utils"
 )
 
@@ -32,12 +29,6 @@ func disConnectVolume(ctx context.Context, tgtLunWWN, protocol string) (*connect
 	switch protocol {
 	case "iscsi":
 		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
-	case "fc":
-		conn = connector.GetConnector(ctx, connector.FCDriver)
-	case "roce":
-		conn = connector.GetConnector(ctx, connector.RoCEDriver)
-	case "fc-nvme":
-		conn = connector.GetConnector(ctx, connector.FCNVMeDriver)
 	default:
 		return nil, utils.Errorf(ctx, "the protocol %s is not valid", protocol)
 	}
@@ -59,12 +50,6 @@ func connectVolume(ctx context.Context, attacher AttacherPlugin, lunName, protoc
 	switch protocol {
 	case "iscsi":
 		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
-	case "fc":
-		conn = connector.GetConnector(ctx, connector.FCDriver)
-	case "roce":
-		conn = connector.GetConnector(ctx, connector.RoCEDriver)
-	case "fc-nvme":
-		conn = connector.GetConnector(ctx, connector.FCNVMeDriver)
 	default:
 		return nil, utils.Errorf(ctx, "the protocol %s is not valid", protocol)
 	}

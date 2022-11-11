@@ -15,9 +15,9 @@
 #  limitations under the License.
 #
 
-# usage: sh build.sh 3.1.0 X86
+# usage: sh build.sh unionpay X86
 
-# [3.1.0]
+# [unionpay]
 VER=$1
 # [X86 ARM]
 PLATFORM=$2

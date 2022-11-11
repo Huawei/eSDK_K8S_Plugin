@@ -34,9 +34,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+
 	"huawei-csi-driver/utils/log"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/sys/unix"
 	"k8s.io/apimachinery/pkg/api/resource"
 )

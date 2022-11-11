@@ -29,7 +29,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
@@ -52,7 +52,7 @@ const (
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "3.1.0"
+	csiVersion        = "unionpay"
 	defaultDriverName = "csi.huawei.com"
 	endpointDirPerm   = 0755
 
@@ -84,9 +84,6 @@ var (
 	scsiMultiPathType = flag.String("scsi-multipath-type",
 		connector.DMMultiPath,
 		"Multipath software for fc/iscsi block volumes")
-	nvmeMultiPathType = flag.String("nvme-multipath-type",
-		connector.HWUltraPathNVMe,
-		"Multipath software for roce/fc-nvme block volumes")
 	kubeconfig = flag.String("kubeconfig",
 		"",
 		"absolute path to the kubeconfig file")
@@ -138,7 +135,7 @@ func parseConfig() {
 
 	err = json.Unmarshal(secretData, &secret)
 	if err != nil {
-		raisePanic("Unmarshal config file %s error: %v", secretFile, err)
+		raisePanic("Unmarshal  config file %s error: %v", secretFile, err)
 	}
 
 	err = mergeData(config, secret)
@@ -264,12 +261,7 @@ func main() {
 		raisePanic("Kubernetes client initialization failed %v", err)
 	}
 
-	if !controllerService {
-		triggerGarbageCollector(k8sUtils)
-	}
-
-	d := driver.NewDriver(*driverName, csiVersion, *volumeUseMultiPath, *scsiMultiPathType,
-		*nvmeMultiPathType, k8sUtils, *nodeName)
+	d := driver.NewDriver(*driverName, csiVersion, *volumeUseMultiPath, *scsiMultiPathType, k8sUtils, *nodeName)
 
 	listener := listenEndpoint(*endpoint)
 	registerServer(listener, d)
@@ -318,12 +310,8 @@ func registerServer(listener net.Listener, d *driver.Driver) {
 
 func checkMultiPathType() {
 	if *volumeUseMultiPath {
-		if !(*scsiMultiPathType == connector.DMMultiPath || *scsiMultiPathType == connector.HWUltraPath ||
-			*scsiMultiPathType == connector.HWUltraPathNVMe) {
+		if !(*scsiMultiPathType == connector.DMMultiPath) {
 			log.Fatalf("The scsi-multipath-type=%v configuration is incorrect.", scsiMultiPathType)
-		}
-		if *nvmeMultiPathType != connector.HWUltraPathNVMe {
-			log.Fatalf("The nvme-multipath-type=%v configuration is incorrect.", nvmeMultiPathType)
 		}
 	}
 }
@@ -331,7 +319,6 @@ func checkMultiPathType() {
 func checkMultiPathService() {
 	multipathConfig := map[string]interface{}{
 		"SCSIMultipathType":  *scsiMultiPathType,
-		"NVMeMultipathType":  *nvmeMultiPathType,
 		"volumeUseMultiPath": *volumeUseMultiPath,
 	}
 
@@ -357,31 +344,6 @@ func doNodeAction() {
 
 	checkMultiPathType()
 	checkMultiPathService()
-}
-
-func triggerGarbageCollector(k8sUtils k8sutils.Interface) {
-	// Trigger stale device clean up and exit after cleanup completion or during timeout
-	log.Debugf("Enter func triggerGarbageCollector")
-	cleanupReport := make(chan error, 1)
-	defer func() {
-		close(cleanupReport)
-	}()
-	go func(ch chan error) {
-		res := nodeStaleDeviceCleanup(context.Background(), k8sUtils, *kubeletRootDir, *driverName, *nodeName)
-		ch <- res
-	}(cleanupReport)
-	timeoutInterval := time.Second * time.Duration(*deviceCleanupTimeout)
-	select {
-	case report := <-cleanupReport:
-		if report == nil {
-			log.Infof("Successfully completed stale device garbage collection")
-		} else {
-			log.Errorf("Stale device garbage collection exited with error %s", report)
-		}
-	case <-time.After(timeoutInterval):
-		log.Warningf("Stale device garbage collection incomplete, exited due to timeout")
-	}
-	return
 }
 
 func exitClean(isController bool) {

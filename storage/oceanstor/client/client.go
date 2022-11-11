@@ -47,20 +47,12 @@ const (
 
 type BaseClientInterface interface {
 	ApplicationType
-	Clone
-	FC
 	Filesystem
-	FSSnapshot
 	Host
-	HyperMetro
 	Iscsi
 	Lun
-	LunCopy
-	LunSnapshot
 	Mapping
 	Qos
-	Replication
-	RoCE
 	System
 	VStore
 

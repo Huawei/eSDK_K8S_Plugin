@@ -126,17 +126,6 @@ func (p *OceanstorNasPlugin) DeleteVolume(ctx context.Context, name string) erro
 	return nas.Delete(ctx, name)
 }
 
-func (p *OceanstorNasPlugin) ExpandVolume(ctx context.Context, name string, size int64) (bool, error) {
-	if !utils.IsCapacityAvailable(size, SectorSize) {
-		msg := fmt.Sprintf("Expand Volume: the capacity %d is not an integer multiple of 512.", size)
-		log.AddContext(ctx).Errorln(msg)
-		return false, errors.New(msg)
-	}
-	newSize := utils.TransVolumeCapacity(size, SectorSize)
-	nas := p.getNasObj()
-	return false, nas.Expand(ctx, name, newSize)
-}
-
 func (p *OceanstorNasPlugin) StageVolume(ctx context.Context,
 	name string,
 	parameters map[string]interface{}) error {
@@ -165,38 +154,8 @@ func (p *OceanstorNasPlugin) NodeExpandVolume(context.Context, string, string, b
 	return nil
 }
 
-func (p *OceanstorNasPlugin) CreateSnapshot(ctx context.Context,
-	fsName, snapshotName string) (map[string]interface{}, error) {
-	nas := p.getNasObj()
-
-	snapshotName = utils.GetFSSnapshotName(snapshotName)
-	snapshot, err := nas.CreateSnapshot(ctx, fsName, snapshotName)
-	if err != nil {
-		return nil, err
-	}
-
-	return snapshot, nil
-}
-
-func (p *OceanstorNasPlugin) DeleteSnapshot(ctx context.Context, snapshotParentId, snapshotName string) error {
-	nas := p.getNasObj()
-
-	snapshotName = utils.GetFSSnapshotName(snapshotName)
-	err := nas.DeleteSnapshot(ctx, snapshotParentId, snapshotName)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (p *OceanstorNasPlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
 	capabilities, err := p.OceanstorPlugin.UpdateBackendCapabilities()
-	if err != nil {
-		return nil, err
-	}
-
-	err = p.updateHyperMetroCapability(capabilities)
 	if err != nil {
 		return nil, err
 	}
@@ -212,57 +171,6 @@ func (p *OceanstorNasPlugin) UpdateBackendCapabilities() (map[string]interface{}
 	}
 
 	return capabilities, nil
-}
-
-func (p *OceanstorNasPlugin) updateHyperMetroCapability(capabilities map[string]interface{}) error {
-	if p.product == "DoradoV6" {
-		capabilities["SupportMetro"] = capabilities["SupportMetroNAS"]
-	}
-	delete(capabilities, "SupportMetroNAS")
-
-	if capabilities["SupportMetro"] != true {
-		return nil
-	}
-
-	if p.vStorePairID == "" {
-		capabilities["SupportMetro"] = false
-		return nil
-	}
-
-	vStorePair, err := p.cli.GetvStorePairByID(context.Background(), p.vStorePairID)
-	if err != nil {
-		return err
-	}
-
-	if p.product == "DoradoV6" && vStorePair != nil {
-		fsHyperMetroDomain, err := p.cli.GetFSHyperMetroDomain(context.Background(),
-			vStorePair["DOMAINNAME"].(string))
-		if err != nil {
-			return err
-		}
-
-		if fsHyperMetroDomain == nil ||
-			fsHyperMetroDomain["RUNNINGSTATUS"] != HYPER_METRO_DOMAIN_RUNNING_STATUS_NORMAL {
-			capabilities["SupportMetro"] = false
-			return nil
-		}
-
-		p.nasHyperMetro = volume.NASHyperMetro{
-			FsHyperMetroActiveSite: fsHyperMetroDomain["CONFIGROLE"] == HYPER_METRO_DOMAIN_ACTIVE,
-			LocVStoreID:            vStorePair["LOCALVSTOREID"].(string),
-			RmtVStoreID:            vStorePair["REMOTEVSTOREID"].(string),
-		}
-		p.metroDomainID = vStorePair["DOMAINID"].(string)
-	} else {
-		if vStorePair == nil ||
-			vStorePair["ACTIVEORPASSIVE"] != HYPER_METRO_VSTORE_PAIR_ACTIVE ||
-			vStorePair["LINKSTATUS"] != HYPER_METRO_VSTORE_PAIR_LINK_STATUS_CONNECTED ||
-			vStorePair["LOCALVSTORENAME"] != p.cli.GetvStoreName() {
-			capabilities["SupportMetro"] = false
-		}
-	}
-	p.UpdateRemoteCapabilities(capabilities)
-	return nil
 }
 
 func (p *OceanstorNasPlugin) updateReplicationCapability(capabilities map[string]interface{}) error {

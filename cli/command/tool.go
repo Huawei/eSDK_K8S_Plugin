@@ -31,7 +31,6 @@ import (
 
 	k8sClient "huawei-csi-driver/cli/client"
 	"huawei-csi-driver/cli/config"
-	fusionstorageClient "huawei-csi-driver/storage/fusionstorage/client"
 	oceanstorClient "huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils/log"
 )
@@ -198,8 +197,6 @@ func stopPrintProgress(c chan<- struct{}) {
 
 func verifyingAccountValidity(backend backendConfigStatus, account backendAccount) error {
 	switch strings.ToLower(backend.Storage) {
-	case fusionstorageSan, fusionstorageNas:
-		return checkFusionStorageAccount(backend.Urls[0], account)
 	case oceanstorSan, oceanstorNas:
 		return checkOceanStorAccount(backend.Urls, backend.VStoreName, account)
 	default:
@@ -207,18 +204,6 @@ func verifyingAccountValidity(backend backendConfigStatus, account backendAccoun
 		fmt.Println(msg)
 		return errors.New(msg)
 	}
-}
-
-func checkFusionStorageAccount(url string, account backendAccount) error {
-	cli := fusionstorageClient.NewClient(url, account.Username, account.Password, "")
-	err := cli.Login(context.Background())
-	if err != nil {
-		log.Errorf("failed to log in to fusionstorage. %v", err)
-		return err
-	}
-
-	cli.Logout(context.Background())
-	return nil
 }
 
 func checkOceanStorAccount(urls []string, vStoreName string, account backendAccount) error {

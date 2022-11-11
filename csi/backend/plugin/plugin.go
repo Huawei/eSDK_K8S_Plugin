@@ -19,7 +19,8 @@ package plugin
 import (
 	"context"
 	"errors"
-	"github.com/container-storage-interface/spec/lib/go/csi"
+
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 
 	"huawei-csi-driver/connector"
 	// init the nfs connector
@@ -33,7 +34,6 @@ type Plugin interface {
 	Init(map[string]interface{}, map[string]interface{}, bool) error
 	CreateVolume(context.Context, string, map[string]interface{}) (utils.Volume, error)
 	DeleteVolume(context.Context, string) error
-	ExpandVolume(context.Context, string, int64) (bool, error)
 	AttachVolume(context.Context, string, map[string]interface{}) error
 	DetachVolume(context.Context, string, map[string]interface{}) error
 	UpdateBackendCapabilities() (map[string]interface{}, error)
@@ -43,9 +43,6 @@ type Plugin interface {
 	UnstageVolumeWithWWN(context.Context, string) error
 	UpdateMetroRemotePlugin(Plugin)
 	UpdateReplicaRemotePlugin(Plugin)
-	NodeExpandVolume(context.Context, string, string, bool, int64) error
-	CreateSnapshot(context.Context, string, string) (map[string]interface{}, error)
-	DeleteSnapshot(context.Context, string, string) error
 	SmartXQoSQuery
 	Logout(context.Context)
 }
