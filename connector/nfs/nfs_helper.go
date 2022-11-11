@@ -29,7 +29,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+
 	"huawei-csi-driver/connector"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"

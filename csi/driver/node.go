@@ -22,16 +22,16 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"huawei-csi-driver/connector"
 	// init the nfs connector
 	_ "huawei-csi-driver/connector/nfs"
 	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
-
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -52,7 +52,6 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	parameters = map[string]interface{}{
 		"volumeUseMultiPath": d.useMultiPath,
 		"scsiMultiPathType":  d.scsiMultiPathType,
-		"nvmeMultiPathType":  d.nvmeMultiPathType,
 	}
 	switch req.VolumeCapability.GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
@@ -76,7 +75,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		parameters["fsType"] = mnt.GetFsType()
 		parameters["mountFlags"] = strings.Join(opts, ",")
 		parameters["accessMode"] = volumeAccessMode
-		parameters["fsPermission"] = req.VolumeContext["fsPermission"]
+		parameters["fsPermission"] = req.VolumeAttributes["fsPermission"]
 	default:
 		msg := fmt.Sprintf("Invalid volume capability.")
 		log.AddContext(ctx).Errorln(msg)
@@ -222,7 +221,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 		log.AddContext(ctx).Errorf("Marshal node info of %s error: %v", nodeBytes, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	log.AddContext(ctx).Infof("Get NodeId %s", nodeBytes)
+	log.AddContext(ctx).Infof("rpc NodeGetInfo NodeId %s", nodeBytes)
 
 	if d.nodeName == "" {
 		return &csi.NodeGetInfoResponse{
@@ -255,150 +254,29 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 					},
 				},
 			},
-			{
-				Type: &csi.NodeServiceCapability_Rpc{
-					Rpc: &csi.NodeServiceCapability_RPC{
-						Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.NodeServiceCapability_Rpc{
-					Rpc: &csi.NodeServiceCapability_RPC{
-						Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
-					},
-				},
-			},
 		},
 	}, nil
 }
-
-func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	volumeID := req.GetVolumeId()
-	if len(volumeID) == 0 {
-		msg := fmt.Sprintf("no volume ID provided")
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.InvalidArgument, msg)
+func (d *Driver) NodeGetId(ctx context.Context, req *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
+	var hostname = d.nodeName
+	if hostname == "" {
+		var err error
+		hostname, err = utils.GetHostName(ctx)
+		if err != nil {
+			log.AddContext(ctx).Errorf("Cannot get current host's hostname")
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
-
-	VolumePath := req.GetVolumePath()
-	if len(VolumePath) == 0 {
-		msg := fmt.Sprintf("no volume Path provided")
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.InvalidArgument, msg)
+	node := map[string]interface{}{
+		"HostName": hostname,
 	}
-
-	volumeMetrics, err := utils.GetVolumeMetrics(VolumePath)
+	nodeBytes, err := json.Marshal(node)
 	if err != nil {
-		msg := fmt.Sprintf("get volume metrics failed, reason %v", volumeMetrics)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	volumeAvailable, ok := volumeMetrics.Available.AsInt64()
-	if !ok {
-		msg := fmt.Sprintf("Volume metrics available %v is invalid", volumeMetrics.Available)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	volumeCapacity, ok := volumeMetrics.Capacity.AsInt64()
-	if !ok {
-		msg := fmt.Sprintf("Volume metrics capacity %v is invalid", volumeMetrics.Capacity)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	volumeUsed, ok := volumeMetrics.Used.AsInt64()
-	if !ok {
-		msg := fmt.Sprintf("Volume metrics used %v is invalid", volumeMetrics.Used)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Errorf(codes.Internal, msg)
-	}
-
-	volumeInodesFree, ok := volumeMetrics.InodesFree.AsInt64()
-	if !ok {
-		msg := fmt.Sprintf("Volume metrics inodesFree %v is invalid", volumeMetrics.InodesFree)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Errorf(codes.Internal, msg)
-	}
-
-	volumeInodes, ok := volumeMetrics.Inodes.AsInt64()
-	if !ok {
-		msg := fmt.Sprintf("Volume metrics inodes %v is invalid", volumeMetrics.Inodes)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Errorf(codes.Internal, msg)
-	}
-
-	volumeInodesUsed, ok := volumeMetrics.InodesUsed.AsInt64()
-	if !ok {
-		msg := fmt.Sprintf("Volume metrics inodesUsed %v is invalid", volumeMetrics.InodesUsed)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Errorf(codes.Internal, msg)
-	}
-
-	response := &csi.NodeGetVolumeStatsResponse{
-		Usage: []*csi.VolumeUsage{
-			{
-				Available: volumeAvailable,
-				Total:     volumeCapacity,
-				Used:      volumeUsed,
-				Unit:      csi.VolumeUsage_BYTES,
-			},
-			{
-				Available: volumeInodesFree,
-				Total:     volumeInodes,
-				Used:      volumeInodesUsed,
-				Unit:      csi.VolumeUsage_INODES,
-			},
-		},
-	}
-	return response, nil
-}
-
-func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	log.AddContext(ctx).Infof("Start to node expand volume %s", req)
-	volumeId := req.GetVolumeId()
-	if volumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "no volume ID provided")
-	}
-
-	capacityRange := req.GetCapacityRange()
-	if capacityRange == nil || capacityRange.RequiredBytes <= 0 {
-		msg := "NodeExpandVolume CapacityRange must be provided"
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.InvalidArgument, msg)
-	}
-
-	volumePath := req.GetVolumePath()
-	if volumePath == "" {
-		return nil, status.Error(codes.InvalidArgument, "no volume path provided")
-	}
-
-	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().GetMode())
-	if accessMode == "ReadOnly" {
-		log.AddContext(ctx).Warningf("The access mode of volume %s is %s", volumeId, accessMode)
-		return &csi.NodeExpandVolumeResponse{}, nil
-	}
-
-	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
-	if backend == nil {
-		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	var isBlock bool
-	if req.GetVolumeCapability().GetBlock() != nil {
-		isBlock = true
-	}
-
-	err := backend.Plugin.NodeExpandVolume(ctx, volName, volumePath, isBlock, capacityRange.RequiredBytes)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Node expand volume %s error: %v", volName, err)
+		log.AddContext(ctx).Errorf("NodeGetId Marshal node info of %s error: %v", nodeBytes, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	log.AddContext(ctx).Infof("Finish node expand volume %s", volumeId)
-	return &csi.NodeExpandVolumeResponse{}, nil
+	log.AddContext(ctx).Infof("rpc NodeGetId NodeId %s", nodeBytes)
+	return &csi.NodeGetIdResponse{
+		NodeId: string(nodeBytes),
+	}, nil
 }

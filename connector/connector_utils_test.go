@@ -379,14 +379,9 @@ func TestGetVirtualDevice(t *testing.T) {
 		wantDeviceKind int
 		wantErr        bool
 	}{
-		{"NormalUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh"}, "", nil, nil}, "ultrapathh", UseUltraPathNVMe, false},
 		{"NormalDm-*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"dm-2"}, "lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha -> ../dm-2", nil, nil}, "dm-2", UseDMMultipath, false},
 		{"NormalPhysicalSd*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"sdd"}, "", nil, nil}, "sdd", NotUseMultipath, false},
-		{"NormalPhysicalNVMe*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1"}, "", nil, nil}, "nvme1n1", NotUseMultipath, false},
-		{"ErrorMultiUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathi"}, "", nil, nil}, "", 0, true},
-		{"ErrorPartitionUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathh2"}, "", nil, nil}, "", 0, true},
 		{"ErrorPartitionDm-*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"dm-2"}, "lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha2 -> ../dm-2", nil, nil}, "", 0, true},
-		{"ErrorPartitionNvme*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1", "nvme1n1p1"}, "", nil, nil}, "", 0, true},
 	}
 
 	stub := GetDevicesByGUID

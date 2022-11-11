@@ -141,23 +141,6 @@ func (p *MetroAttacher) mergeLunWWN(ctx context.Context, locLunWWN, rmtLunWWN st
 	return locLunWWN, nil
 }
 
-func (p *MetroAttacher) getTargetRoCEPortals(ctx context.Context) ([]string, error) {
-	var availablePortals []string
-	localPortals, err := p.localAttacher.getTargetRoCEPortals(ctx)
-	if err != nil {
-		log.AddContext(ctx).Warningf("Get local roce portals error: %v", err)
-	}
-	availablePortals = append(availablePortals, localPortals...)
-
-	remotePortals, err := p.remoteAttacher.getTargetRoCEPortals(ctx)
-	if err != nil {
-		log.AddContext(ctx).Warningf("Get remote roce portals error: %v", err)
-	}
-	availablePortals = append(availablePortals, remotePortals...)
-
-	return availablePortals, nil
-}
-
 func (p *MetroAttacher) getLunInfo(ctx context.Context, lunName string) (map[string]interface{}, error) {
 	rmtLun, err := p.remoteAttacher.getLunInfo(ctx, lunName)
 	if err != nil {

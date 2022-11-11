@@ -33,10 +33,6 @@ var GetPhysicalDevices = func(ctx context.Context, device string, deviceType int
 		return []string{device}, nil
 	case UseDMMultipath:
 		return GetPhyDevicesFromDM(device)
-	case UseUltraPath:
-		return GetDeviceFromUltraPath(ctx, device)
-	case UseUltraPathNVMe:
-		return GetDeviceFromUltraPathNVMe(ctx, device)
 	default:
 		return nil, utils.Errorf(ctx, "Invalid device type %d.", deviceType)
 	}
@@ -47,44 +43,9 @@ var GetNVMePhysicalDevices = func(ctx context.Context, device string, deviceType
 	switch deviceType {
 	case NotUseMultipath:
 		return []string{device}, nil
-	case UseUltraPathNVMe:
-		return GetNVMeDeviceFromUltraPathNVMe(ctx, device)
 	default:
 		return nil, utils.Errorf(ctx, "Invalid device type %d.", deviceType)
 	}
-}
-
-func getDeviceFromUltraPathCommon(ctx context.Context, upType, upDevice string) ([]string, error) {
-	vLunID, err := GetVLunIDByDevName(ctx, upType, upDevice)
-	if err != nil {
-		return nil, err
-	}
-
-	return GetPhyDev(ctx, upType, vLunID, deviceTypeSCSI)
-}
-
-// GetDeviceFromUltraPath used to get physical device from ultrapath
-func GetDeviceFromUltraPath(ctx context.Context, upDevice string) ([]string, error) {
-	return getDeviceFromUltraPathCommon(ctx, UltraPathCommand, upDevice)
-}
-
-// GetDeviceFromUltraPathNVMe used to get physical device from ultrapath-nvme
-func GetDeviceFromUltraPathNVMe(ctx context.Context, upDevice string) ([]string, error) {
-	return getDeviceFromUltraPathCommon(ctx, UltraPathNVMeCommand, upDevice)
-}
-
-func getNVMeDeviceFromUltraPath(ctx context.Context, upType, upDevice string) ([]string, error) {
-	vLunID, err := GetVLunIDByDevName(ctx, upType, upDevice)
-	if err != nil {
-		return nil, err
-	}
-
-	return GetPhyDev(ctx, upType, vLunID, deviceTypeNVMe)
-}
-
-// GetNVMeDeviceFromUltraPathNVMe used to get physical nvme device from ultrapath-nvme
-func GetNVMeDeviceFromUltraPathNVMe(ctx context.Context, upDevice string) ([]string, error) {
-	return getNVMeDeviceFromUltraPath(ctx, UltraPathNVMeCommand, upDevice)
 }
 
 // DisConnectVolumeCommon used for disconnect volume for all protocol

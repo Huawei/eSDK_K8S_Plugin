@@ -24,44 +24,4 @@ const (
 	filesystemSplitStatusSplitting = "2"
 	filesystemSplitStatusQueuing   = "3"
 	filesystemSplitStatusAbnormal  = "4"
-
-	remoteDeviceHealthStatus        = "1"
-	remoteDeviceRunningStatusLinkUp = "10"
-
-	replicationPairRunningStatusNormal = "1"
-	replicationPairRunningStatusSync   = "23"
-
-	replicationVStorePairRunningStatusNormal = "1"
-	replicationVStorePairRunningStatusSync   = "23"
-
-	replicationRolePrimary = "0"
-
-	systemVStore = "0"
-
-	hyperMetroPairHealthStatusFault = "2"
-
-	hyperMetroPairRunningStatusUnknown = "0"
-	hyperMetroPairRunningStatusNormal  = "1"
-	hyperMetroPairRunningStatusSyncing = "23"
-	hyperMetroPairRunningStatusInvalid = "35"
-	hyperMetroPairRunningStatusPause   = "41"
-	hyperMetroPairRunningStatusError   = "94"
-	hyperMetroPairRunningStatusToSync  = "100"
-
-	hyperMetroDomainRunningStatusNormal = "1"
-
-	lunCopyHealthStatusFault    = "2"
-	lunCopyRunningStatusQueuing = "37"
-	lunCopyRunningStatusCopying = "39"
-	lunCopyRunningStatusStop    = "38"
-	lunCopyRunningStatusPaused  = "41"
-
-	clonePairHealthStatusFault         = "1"
-	clonePairRunningStatusUnsyncing    = "0"
-	clonePairRunningStatusSyncing      = "1"
-	clonePairRunningStatusNormal       = "2"
-	clonePairRunningStatusInitializing = "3"
-
-	snapshotRunningStatusActive   = "43"
-	snapshotRunningStatusInactive = "45"
 )

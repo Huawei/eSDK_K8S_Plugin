@@ -89,66 +89,7 @@ rules:
     verbs:
       - get
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-resizer-cfg
-  namespace: huawei-csi
-rules:
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshot-controller-leaderelection
-  namespace: huawei-csi
-rules:
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshotter-leaderelection
-  namespace: huawei-csi
-rules:
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
----
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -173,6 +114,7 @@ rules:
       - nodes
     verbs:
       - get
+      - update
   - apiGroups:
       - ""
     resources:
@@ -203,10 +145,19 @@ rules:
       - list
       - watch
       - patch
+      - update
   - apiGroups:
       - storage.k8s.io
     resources:
       - csinodes
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - csi.storage.k8s.io
+    resources:
+      - csinodeinfos
     verbs:
       - get
       - list
@@ -220,6 +171,7 @@ rules:
       - list
       - watch
       - patch
+      - update
   - apiGroups:
       - storage.k8s.io
     resources:
@@ -310,195 +262,7 @@ rules:
       - list
       - watch
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-resizer-runner
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-      - patch
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims/status
-    verbs:
-      - patch
-      - update
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshot-controller-runner
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims
-    verbs:
-      - get
-      - list
-      - watch
-      - update
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - storageclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents
-    verbs:
-      - create
-      - get
-      - list
-      - watch
-      - update
-      - delete
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents/status
-    verbs:
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshots
-    verbs:
-      - get
-      - list
-      - watch
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshots/status
-    verbs:
-      - update
-      - patch
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-    verbs:
-      - get
-      - list
-      - watch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshotter-runner
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents
-    verbs:
-      - create
-      - get
-      - list
-      - watch
-      - update
-      - delete
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents/status
-    verbs:
-      - update
-      - patch
----
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -515,22 +279,7 @@ subjects:
     name: huawei-csi-controller
     namespace: huawei-csi
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-csi-resizer-role-cfg
-  namespace: huawei-csi
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: huawei-csi-resizer-cfg
-subjects:
-  - kind: ServiceAccount
-    name: huawei-csi-controller
-    namespace: huawei-csi
----
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -547,38 +296,7 @@ subjects:
     name: huawei-csi-controller
     namespace: huawei-csi
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshot-controller-leaderelection-role
-  namespace: huawei-csi
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: huawei-csi-snapshot-controller-leaderelection
-subjects:
-  - kind: ServiceAccount
-    name: huawei-csi-controller
-    namespace: huawei-csi
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshotter-leaderelection-role
-  namespace: huawei-csi
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: huawei-csi-snapshotter-leaderelection
-subjects:
-  - kind: ServiceAccount
-    name: huawei-csi-controller
-    namespace: huawei-csi
----
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -589,36 +307,6 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: huawei-csi-attacher-runner
-subjects:
-  - kind: ServiceAccount
-    name: huawei-csi-controller
-    namespace: huawei-csi
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-csi-resizer-role
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: huawei-csi-resizer-runner
-subjects:
-  - kind: ServiceAccount
-    name: huawei-csi-controller
-    namespace: huawei-csi
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-csi-snapshotter-role
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: huawei-csi-snapshotter-runner
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
@@ -654,17 +342,3 @@ subjects:
     name: huawei-csi-controller
     namespace: huawei-csi
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshot-controller-role
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: huawei-csi-snapshot-controller-runner
-subjects:
-  - kind: ServiceAccount
-    name: huawei-csi-controller
-    namespace: huawei-csi

@@ -19,9 +19,9 @@ package driver
 import (
 	"context"
 
-	"huawei-csi-driver/utils/log"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	"huawei-csi-driver/utils/log"
 )
 
 func (d *Driver) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
@@ -47,7 +47,7 @@ func (d *Driver) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCa
 			{
 				Type: &csi.PluginCapability_Service_{
 					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
+						Type: csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS,
 					},
 				},
 			},

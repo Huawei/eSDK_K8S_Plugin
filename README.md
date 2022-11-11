@@ -1,45 +1,34 @@
-# Huawei Storage CSI Driver for Kubernetes
+# 银联容器项目--华为CSI
 
 ![GitHub](https://img.shields.io/github/license/Huawei/eSDK_K8S_Plugin)
 [![Go Report Card](https://goreportcard.com/badge/github.com/huawei/esdk_k8s_plugin)](https://goreportcard.com/report/github.com/huawei/esdk_k8s_plugin)
 ![GitHub go.mod Go version (subdirectory of monorepo)](https://img.shields.io/github/go-mod/go-version/Huawei/eSDK_K8S_Plugin)
-![GitHub Release Date](https://img.shields.io/github/release-date/Huawei/eSDK_K8S_Plugin)
-![GitHub release (latest by date)](https://img.shields.io/github/downloads/Huawei/eSDK_K8S_Plugin/latest/total)
 
 <img src="logo/csi.png" alt="Huawei CSI" width="100" height="100">
 
-## Description
+## 说明
 
-Huawei Container Storage Interface (CSI) Driver is used to provision LUN, recycle LUN, 
-and provide a series of disaster recovery functions of storages for Kubernetes Containers.
+本分支代码仅供银联容器项目使用。
+## 编译
 
-## Compiling
-This section describes the environmental requirements and steps of compiling Huawei CSI Driver
-
-### Compiler Environment
+### 编译环境
 | System | Go Version |
 |---|---|
 |Linux|    >=1.17|
 
-### Compilation steps
-Step 1. Download the package and **cd** into the package
+### 编译步骤
+步骤一：下载源代码，并进入到Makefile所在的目录下
 
-Step 2. Run following command to compile the Huawei CSI Driver
+步骤二. 执行编译命令
 
-    // PLATFORM support [X86|ARM]
-    make -f Makefile VER=3.1.0 PLATFORM=X86
+    make -f Makefile VER=unionpay PLATFORM=X86
 
-Step 3. After the compilation is finished, a bin directory will be created in the current 
-directory, the structure is as follows:
+步骤三. 使用bin目录下的huawei-csi二进制制作镜像，详细操作请参考docs文档。
 
     - bin
       - huawei-csi
       - secretGenerate
       - secretUpdate
+## 文档
 
-In addition, we also provide a way to directly download the installation package, 
-click [Release](https://github.com/Huawei/eSDK_K8S_Plugin/releases) to obtain the corresponding version of the plug-in package
-
-## Documentation
-
-For details, see the user guide in the docs directory.
+有关详细信息，请参阅docs目录中的用户指南。

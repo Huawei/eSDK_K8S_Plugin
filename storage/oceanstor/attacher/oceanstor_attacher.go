@@ -95,34 +95,6 @@ func (p *OceanStorAttacher) attachISCSI(ctx context.Context, hostID, hostName st
 	return err
 }
 
-func (p *OceanStorAttacher) attachFC(ctx context.Context, hostID, hostName string) error {
-	fcInitiators, err := p.Attacher.attachFC(ctx, hostID)
-	if err != nil {
-		return err
-	}
-
-	hostAlua := utils.GetAlua(ctx, p.alua, hostName)
-	if hostAlua != nil {
-		for _, i := range fcInitiators {
-			if !p.needUpdateInitiatorAlua(i, hostAlua) {
-				continue
-			}
-
-			err := p.cli.UpdateFCInitiator(ctx, i["ID"].(string), hostAlua)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func (p *OceanStorAttacher) attachRoCE(ctx context.Context, hostID string) error {
-	_, err := p.Attacher.attachRoCE(ctx, hostID)
-	return err
-}
-
 func (p *OceanStorAttacher) ControllerAttach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (
@@ -138,12 +110,7 @@ func (p *OceanStorAttacher) ControllerAttach(ctx context.Context,
 
 	if p.protocol == "iscsi" {
 		err = p.attachISCSI(ctx, hostID, hostName)
-	} else if p.protocol == "fc" || p.protocol == "fc-nvme" {
-		err = p.attachFC(ctx, hostID, hostName)
-	} else if p.protocol == "roce" {
-		err = p.attachRoCE(ctx, hostID)
 	}
-
 	if err != nil {
 		log.AddContext(ctx).Errorf("Attach %s connection error: %v", p.protocol, err)
 		return nil, err

@@ -24,8 +24,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -69,17 +68,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	size := capacityRange.RequiredBytes
 	parameters["size"] = capacityRange.RequiredBytes
-
-	cloneFrom, exist := parameters["cloneFrom"].(string)
-	if exist && cloneFrom != "" {
-		parameters["backend"], parameters["cloneFrom"] = utils.SplitVolumeId(cloneFrom)
-	}
-
-	// process volume content source. snapshot or clone
-	err = d.processVolumeContentSource(ctx, req, parameters)
-	if err != nil {
-		return nil, err
-	}
 
 	// process accessibility requirements. Topology
 	d.processAccessibilityRequirements(ctx, req, parameters)
@@ -181,9 +169,9 @@ func (d *Driver) getCreatedVolume(ctx context.Context, req *csi.CreateVolumeRequ
 	}
 
 	csiVolume := &csi.Volume{
-		VolumeId:           pool.Parent + "." + volName,
+		Id:                 pool.Parent + "." + volName,
 		CapacityBytes:      size,
-		VolumeContext:      attributes,
+		Attributes:         attributes,
 		AccessibleTopology: accessibleTopologies,
 	}
 
@@ -192,32 +180,6 @@ func (d *Driver) getCreatedVolume(ctx context.Context, req *csi.CreateVolumeRequ
 	}
 
 	return csiVolume, nil
-}
-
-func (d *Driver) processVolumeContentSource(ctx context.Context, req *csi.CreateVolumeRequest,
-	parameters map[string]interface{}) error {
-	contentSource := req.GetVolumeContentSource()
-	if contentSource != nil {
-		if contentSnapshot := contentSource.GetSnapshot(); contentSnapshot != nil {
-			sourceSnapshotId := contentSnapshot.GetSnapshotId()
-			sourceBackendName, snapshotParentId, sourceSnapshotName := utils.SplitSnapshotId(sourceSnapshotId)
-			parameters["sourceSnapshotName"] = sourceSnapshotName
-			parameters["snapshotParentId"] = snapshotParentId
-			parameters["backend"] = sourceBackendName
-			log.AddContext(ctx).Infof("Start to create volume from snapshot %s", sourceSnapshotName)
-		} else if contentVolume := contentSource.GetVolume(); contentVolume != nil {
-			sourceVolumeId := contentVolume.GetVolumeId()
-			sourceBackendName, sourceVolumeName := utils.SplitVolumeId(sourceVolumeId)
-			parameters["sourceVolumeName"] = sourceVolumeName
-			parameters["backend"] = sourceBackendName
-			log.AddContext(ctx).Infof("Start to create volume from volume %s", sourceVolumeName)
-		} else {
-			log.AddContext(ctx).Errorf("The source %s is not snapshot either volume", contentSource)
-			return status.Error(codes.InvalidArgument, "no source ID provided is invalid")
-		}
-	}
-
-	return nil
 }
 
 func (d *Driver) processAccessibilityRequirements(ctx context.Context, req *csi.CreateVolumeRequest,
@@ -275,48 +237,6 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 
 	log.AddContext(ctx).Infof("Volume %s is deleted", volumeId)
 	return &csi.DeleteVolumeResponse{}, nil
-}
-
-func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	volumeId := req.GetVolumeId()
-	if volumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "no volume ID provided")
-	}
-
-	log.AddContext(ctx).Infof("Start to controller expand volume %s", volumeId)
-	if req.GetCapacityRange() == nil {
-		return nil, status.Error(codes.InvalidArgument, "no capacity range provided")
-	}
-
-	minSize := req.GetCapacityRange().GetRequiredBytes()
-	maxSize := req.GetCapacityRange().GetLimitBytes()
-	if 0 < maxSize && maxSize < minSize {
-		return nil, status.Error(codes.InvalidArgument, "limitBytes is smaller than requiredBytes")
-	}
-
-	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
-	if backend == nil {
-		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	if support, err := isSupportExpandVolume(ctx, req, backend); !support {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	nodeExpansionRequired, err := backend.Plugin.ExpandVolume(ctx, volName, minSize)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Expand volume %s error: %v", volumeId, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	log.AddContext(ctx).Infof("Volume %s is expanded to %d, nodeExpansionRequired %t", volName, minSize, nodeExpansionRequired)
-	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         minSize,
-		NodeExpansionRequired: nodeExpansionRequired,
-	}, nil
 }
 
 func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (
@@ -389,101 +309,19 @@ func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.Control
 					},
 				},
 			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
-					},
-				},
-			},
 		},
 	}, nil
 }
 
 func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	volumeId := req.GetSourceVolumeId()
-	if volumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
-	}
-
-	snapshotName := req.GetName()
-	if snapshotName == "" {
-		return nil, status.Error(codes.InvalidArgument, "Snapshot Name missing in request")
-	}
-	log.AddContext(ctx).Infof("Start to Create snapshot %s for volume %s", snapshotName, volumeId)
-
-	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
-	if backend == nil {
-		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	snapshot, err := backend.Plugin.CreateSnapshot(ctx, volName, snapshotName)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Create snapshot %s error: %v", snapshotName, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	log.AddContext(ctx).Infof("Finish to Create snapshot %s for volume %s", snapshotName, volumeId)
-	return &csi.CreateSnapshotResponse{
-		Snapshot: &csi.Snapshot{
-			SizeBytes:      snapshot["SizeBytes"].(int64),
-			SnapshotId:     backendName + "." + snapshot["ParentID"].(string) + "." + snapshotName,
-			SourceVolumeId: volumeId,
-			CreationTime:   &timestamp.Timestamp{Seconds: snapshot["CreationTime"].(int64)},
-			ReadyToUse:     true,
-		},
-	}, nil
+	return nil, status.Error(codes.Unimplemented, "Not implemented")
 }
 
 func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	snapshotId := req.GetSnapshotId()
-	if snapshotId == "" {
-		return nil, status.Error(codes.InvalidArgument, "Snapshot ID missing in request")
-	}
-	log.AddContext(ctx).Infof("Start to Delete snapshot %s.", snapshotId)
-
-	backendName, snapshotParentId, snapshotName := utils.SplitSnapshotId(snapshotId)
-	backend := backend.GetBackend(backendName)
-	if backend == nil {
-		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
-			"CAUTION: snapshot need to manually delete from array.", backendName)
-		return &csi.DeleteSnapshotResponse{}, nil
-	}
-
-	err := backend.Plugin.DeleteSnapshot(ctx, snapshotParentId, snapshotName)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Delete snapshot %s error: %v", snapshotName, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	log.AddContext(ctx).Infof("Finish to Delete snapshot %s", snapshotId)
-	return &csi.DeleteSnapshotResponse{}, nil
+	return nil, status.Error(codes.Unimplemented, "Not implemented")
 }
 
 func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-// ControllerGetVolume is to get volume info, but unimplemented
-func (d *Driver) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (
-	*csi.ControllerGetVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
@@ -518,32 +356,6 @@ func (d *Driver) validateModeAndType(req *csi.CreateVolumeRequest, parameters ma
 	}
 
 	return ""
-}
-
-func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest, b *backend.Backend) (
-	bool, error) {
-	if b.Storage == "fusionstorage-nas" || b.Storage == "oceanstor-nas" {
-		log.AddContext(ctx).Debugf("Storage is [%s], support expand volume.", b.Storage)
-		return true, nil
-	}
-
-	volumeCapability := req.GetVolumeCapability()
-	if volumeCapability == nil {
-		return false, utils.Errorln(ctx, "Expand volume failed, req.GetVolumeCapability() is empty.")
-	}
-
-	if volumeCapability.GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER &&
-		volumeCapability.GetBlock() == nil {
-		return false, utils.Errorf(ctx, "The PVC %s is a \"lun\" type, volumeMode is \"Filesystem\", "+
-			"accessModes is \"ReadWriteMany\", can not support expand volume.", req.GetVolumeId())
-	}
-
-	if volumeCapability.GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
-		return false, utils.Errorf(ctx, "The PVC %s accessModes is \"ReadOnlyMany\", no need to expand volume.",
-			req.GetVolumeId())
-	}
-
-	return true, nil
 }
 
 func (d *Driver) processNFSProtocol(ctx context.Context, req *csi.CreateVolumeRequest,

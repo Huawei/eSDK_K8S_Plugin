@@ -91,10 +91,6 @@ func (p *DoradoV6Attacher) ControllerAttach(ctx context.Context,
 
 	if p.protocol == "iscsi" {
 		_, err = p.Attacher.attachISCSI(ctx, hostID)
-	} else if p.protocol == "fc" || p.protocol == "fc-nvme" {
-		_, err = p.Attacher.attachFC(ctx, hostID)
-	} else if p.protocol == "roce" {
-		_, err = p.Attacher.attachRoCE(ctx, hostID)
 	}
 
 	if err != nil {

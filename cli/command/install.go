@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	KubernetesCSIVersionMin = "v1.13.0"
+	KubernetesCSIVersionMin = "v1.12.0"
 
 	HUAWEICSIConfigMap = "huawei-csi-configmap"
 	HUAWEICSISecret    = "huawei-csi-secret"

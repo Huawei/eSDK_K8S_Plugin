@@ -537,10 +537,6 @@ func findDevice(ctx context.Context,
 	switch conn.multiPathType {
 	case connector.DMMultiPath:
 		diskName, _ = findDiskOfDM(ctx, lenIndex, conn.tgtLunWWN, iSCSIShareData)
-	case connector.HWUltraPath:
-		diskName = findDiskOfUltraPath(ctx, lenIndex, iSCSIShareData, connector.UltraPathCommand, conn.tgtLunWWN)
-	case connector.HWUltraPathNVMe:
-		diskName = findDiskOfUltraPath(ctx, lenIndex, iSCSIShareData, connector.UltraPathNVMeCommand, conn.tgtLunWWN)
 	default:
 		err = utils.Errorf(ctx, "%s. %s", connector.UnsupportedMultiPathType, conn.multiPathType)
 	}
@@ -569,10 +565,6 @@ func checkDeviceAvailable(ctx context.Context,
 	case connector.DMMultiPath:
 		return connector.VerifyDeviceAvailableOfDM(ctx, conn.tgtLunWWN,
 			expectPathNumber, iSCSIShareData.foundDevices, tryDisConnectVolume)
-	case connector.HWUltraPath:
-		return connector.VerifyDeviceAvailableOfUltraPath(ctx, connector.UltraPathCommand, diskName)
-	case connector.HWUltraPathNVMe:
-		return connector.VerifyDeviceAvailableOfUltraPath(ctx, connector.UltraPathNVMeCommand, diskName)
 	default:
 		return "", utils.Errorf(ctx, "%s. %s", connector.UnsupportedMultiPathType, conn.multiPathType)
 	}
@@ -714,22 +706,6 @@ func scanMultiDevice(ctx context.Context,
 	}
 
 	return mPath, wwnAdded
-}
-
-func findDiskOfUltraPath(ctx context.Context, lenIndex int, iSCSIShareData *shareData, upType, lunWWN string) string {
-	var diskName string
-	var err error
-	for !((int64(lenIndex) == iSCSIShareData.stoppedThreads && len(iSCSIShareData.foundDevices) == 0) ||
-		(diskName != "" && int64(lenIndex) == iSCSIShareData.numLogin+iSCSIShareData.failedLogin)) {
-
-		diskName, err = connector.GetDiskNameByWWN(ctx, upType, lunWWN)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(time.Second)
-	}
-	return diskName
 }
 
 func findDiskOfDM(ctx context.Context, lenIndex int, LunWWN string, iSCSIShareData *shareData) (string, string) {

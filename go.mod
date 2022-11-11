@@ -5,9 +5,8 @@ go 1.17
 require (
 	bou.ke/monkey v1.0.2
 	github.com/cenkalti/backoff v2.2.1+incompatible
-	github.com/container-storage-interface/spec v1.4.0
+	github.com/container-storage-interface/spec v0.3.0
 	github.com/golang/mock v1.4.1
-	github.com/golang/protobuf v1.5.1
 	github.com/prashantv/gostub v1.1.0
 	github.com/sirupsen/logrus v1.7.0
 	github.com/smartystreets/goconvey v1.7.2
@@ -23,6 +22,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v0.2.0 // indirect
 	github.com/gogo/protobuf v1.3.1 // indirect
+	github.com/golang/protobuf v1.5.1 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/googleapis/gnostic v0.4.1 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1 // indirect

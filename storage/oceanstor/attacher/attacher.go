@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	"huawei-csi-driver/connector"
-	"huawei-csi-driver/connector/nvme"
 	"huawei-csi-driver/proto"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
@@ -41,7 +40,6 @@ type AttacherPlugin interface {
 	ControllerDetach(context.Context, string, map[string]interface{}) (string, error)
 	NodeStage(context.Context, string, map[string]interface{}) (*connector.ConnectInfo, error)
 	NodeUnstage(context.Context, string, map[string]interface{}) (*connector.DisConnectInfo, error)
-	getTargetRoCEPortals(context.Context) ([]string, error)
 	getLunInfo(context.Context, string) (map[string]interface{}, error)
 }
 
@@ -356,98 +354,10 @@ func (p *Attacher) getISCSIProperties(ctx context.Context, wwn, hostLunId string
 	}, nil
 }
 
-func (p *Attacher) getFCProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]interface{}) (
-	map[string]interface{}, error) {
-	tgtWWNs, err := p.getTargetFCProperties(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	lenWWNs := len(tgtWWNs)
-	var tgtHostLUNs []string
-	for i := 0; i < lenWWNs; i++ {
-		tgtHostLUNs = append(tgtHostLUNs, hostLunId)
-	}
-
-	volumeUseMultiPath, exist := parameters["volumeUseMultiPath"].(bool)
-	if !exist {
-		return nil, errors.New("key volumeUseMultiPath does not exist in parameters")
-	}
-
-	multiPathType, exist := parameters["scsiMultiPathType"].(string)
-	if !exist {
-		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
-	}
-
-	return map[string]interface{}{
-		"tgtLunWWN":          wwn,
-		"tgtWWNs":            tgtWWNs,
-		"tgtHostLUNs":        tgtHostLUNs,
-		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType":      multiPathType,
-	}, nil
-}
-
-func (p *Attacher) getFCNVMeProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]interface{}) (
-	map[string]interface{}, error) {
-	portWWNList, err := p.getTargetFCNVMeProperties(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	volumeUseMultiPath, exist := parameters["volumeUseMultiPath"].(bool)
-	if !exist {
-		return nil, errors.New("key volumeUseMultiPath does not exist in parameters")
-	}
-
-	multiPathType, exist := parameters["nvmeMultiPathType"].(string)
-	if !exist {
-		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
-	}
-
-	return map[string]interface{}{
-		"portWWNList":        portWWNList,
-		"tgtLunGuid":         wwn,
-		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType":      multiPathType,
-	}, nil
-}
-
-func (p *Attacher) getRoCEProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]interface{}) (
-	map[string]interface{}, error) {
-	tgtPortals, err := p.getTargetRoCEPortals(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	volumeUseMultiPath, exist := parameters["volumeUseMultiPath"].(bool)
-	if !exist {
-		return nil, errors.New("key volumeUseMultiPath does not exist in parameters")
-	}
-
-	multiPathType, exist := parameters["nvmeMultiPathType"].(string)
-	if !exist {
-		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
-	}
-
-	return map[string]interface{}{
-		"tgtPortals":         tgtPortals,
-		"tgtLunGuid":         wwn,
-		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType":      multiPathType,
-	}, nil
-}
-
 func (p *Attacher) getMappingProperties(ctx context.Context,
 	wwn, hostLunId string, parameters map[string]interface{}) (map[string]interface{}, error) {
 	if p.protocol == "iscsi" {
 		return p.getISCSIProperties(ctx, wwn, hostLunId, parameters)
-	} else if p.protocol == "fc" {
-		return p.getFCProperties(ctx, wwn, hostLunId, parameters)
-	} else if p.protocol == "fc-nvme" {
-		return p.getFCNVMeProperties(ctx, wwn, hostLunId, parameters)
-	} else if p.protocol == "roce" {
-		return p.getRoCEProperties(ctx, wwn, hostLunId, parameters)
 	}
 
 	return nil, utils.Errorf(ctx, "UnSupport protocol %s", p.protocol)
@@ -504,105 +414,6 @@ func (p *Attacher) getTargetISCSIProperties(ctx context.Context) ([]string, []st
 	return tgtPortals, tgtIQNs, nil
 }
 
-func (p *Attacher) getTargetRoCEPortals(ctx context.Context) ([]string, error) {
-	var availablePortals []string
-	for _, portal := range p.portals {
-		ip := net.ParseIP(portal).String()
-		rocePortal, err := p.cli.GetRoCEPortalByIP(ctx, ip)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Get RoCE tgt portal error: %v", err)
-			return nil, err
-		}
-
-		if rocePortal == nil {
-			log.AddContext(ctx).Warningf("the config portal %s does not exist.", ip)
-			continue
-		}
-
-		supportProtocol, exist := rocePortal["SUPPORTPROTOCOL"].(string)
-		if !exist {
-			msg := "current storage does not support NVMe"
-			log.AddContext(ctx).Errorln(msg)
-			return nil, errors.New(msg)
-		}
-
-		if supportProtocol != "64" { // 64 means NVME protocol
-			log.AddContext(ctx).Warningf("the config portal %s does not support NVME.", ip)
-			continue
-		}
-
-		availablePortals = append(availablePortals, ip)
-	}
-
-	if availablePortals == nil {
-		msg := fmt.Sprintf("All config portal %s is not valid", p.portals)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
-	return availablePortals, nil
-}
-
-func (p *Attacher) getTargetFCNVMeProperties(ctx context.Context) ([]nvme.PortWWNPair, error) {
-	fcInitiators, err := proto.GetFCInitiator(ctx)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get fc initiator error:%v", err)
-		return nil, err
-	}
-
-	var ret []nvme.PortWWNPair
-	for _, hostInitiator := range fcInitiators {
-		tgtWWNs, err := p.cli.GetFCTargetWWNs(ctx, hostInitiator)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, tgtWWN := range tgtWWNs {
-			ret = append(ret, nvme.PortWWNPair{InitiatorPortWWN: hostInitiator, TargetPortWWN: tgtWWN})
-		}
-	}
-
-	log.AddContext(ctx).Infof("Get target fc-nvme properties:%#v", ret)
-	return ret, nil
-}
-
-func (p *Attacher) getTargetFCProperties(ctx context.Context) ([]string, error) {
-	fcInitiators, err := proto.GetFCInitiator(ctx)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get fc initiator error: %v", err)
-		return nil, err
-	}
-
-	validTgtWWNs := make(map[string]bool)
-	for _, wwn := range fcInitiators {
-		tgtWWNs, err := p.cli.GetFCTargetWWNs(ctx, wwn)
-		if err != nil {
-			return nil, err
-		}
-
-		if tgtWWNs == nil {
-			continue
-		}
-
-		for _, tgtWWN := range tgtWWNs {
-			validTgtWWNs[tgtWWN] = true
-		}
-	}
-
-	var tgtWWNs []string
-	for tgtWWN := range validTgtWWNs {
-		tgtWWNs = append(tgtWWNs, tgtWWN)
-	}
-
-	if tgtWWNs == nil {
-		msg := fmt.Sprintf("There is no alaivable target wwn of host initiators %v in storage.", fcInitiators)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
-	return tgtWWNs, nil
-}
-
 func (p *Attacher) attachISCSI(ctx context.Context, hostID string) (map[string]interface{}, error) {
 	name, err := proto.GetISCSIInitiator(ctx)
 	if err != nil {
@@ -635,97 +446,6 @@ func (p *Attacher) attachISCSI(ctx context.Context, hostID string) (map[string]i
 		}
 	} else if parentExist && parent != hostID {
 		msg := fmt.Sprintf("ISCSI initiator %s is already associated to another host %s", name, parent)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
-	return initiator, nil
-}
-
-func (p *Attacher) attachFC(ctx context.Context, hostID string) ([]map[string]interface{}, error) {
-	fcInitiators, err := proto.GetFCInitiator(ctx)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get fc initiator error: %v", err)
-		return nil, err
-	}
-
-	var addWWNs []string
-	var hostInitiators []map[string]interface{}
-
-	for _, wwn := range fcInitiators {
-		initiator, err := p.cli.GetFCInitiator(ctx, wwn)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Get FC initiator %s error: %v", wwn, err)
-			return nil, err
-		}
-		if initiator == nil {
-			log.AddContext(ctx).Warningf("FC initiator %s does not exist", wwn)
-			continue
-		}
-
-		status, exist := initiator["RUNNINGSTATUS"].(string)
-		if !exist || status != "27" {
-			log.AddContext(ctx).Warningf("FC initiator %s is not online", wwn)
-			continue
-		}
-
-		isFree, freeExist := initiator["ISFREE"].(string)
-		parent, parentExist := initiator["PARENTID"].(string)
-
-		if freeExist && isFree == "true" {
-			addWWNs = append(addWWNs, wwn)
-		} else if parentExist && parent != hostID {
-			msg := fmt.Sprintf("FC initiator %s is already associated to another host %s", wwn, parent)
-			log.AddContext(ctx).Errorln(msg)
-			return nil, errors.New(msg)
-		}
-
-		hostInitiators = append(hostInitiators, initiator)
-	}
-
-	for _, wwn := range addWWNs {
-		err := p.cli.AddFCInitiatorToHost(ctx, wwn, hostID)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Add initiator %s to host %s error: %v", wwn, hostID, err)
-			return nil, err
-		}
-	}
-
-	return hostInitiators, nil
-}
-
-func (p *Attacher) attachRoCE(ctx context.Context, hostID string) (map[string]interface{}, error) {
-	name, err := proto.GetRoCEInitiator(ctx)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get RoCE initiator name error: %v", name)
-		return nil, err
-	}
-
-	initiator, err := p.cli.GetRoCEInitiator(ctx, name)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get RoCE initiator %s error: %v", name, err)
-		return nil, err
-	}
-
-	if initiator == nil {
-		initiator, err = p.cli.AddRoCEInitiator(ctx, name)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Add initiator %s error: %v", name, err)
-			return nil, err
-		}
-	}
-
-	isFree, freeExist := initiator["ISFREE"].(string)
-	parent, parentExist := initiator["PARENTID"].(string)
-
-	if freeExist && isFree == "true" {
-		err := p.cli.AddRoCEInitiatorToHost(ctx, name, hostID)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Add RoCE initiator %s to host %s error: %v", name, hostID, err)
-			return nil, err
-		}
-	} else if parentExist && parent != hostID {
-		msg := fmt.Sprintf("RoCE initiator %s is already associated to another host %s", name, parent)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
