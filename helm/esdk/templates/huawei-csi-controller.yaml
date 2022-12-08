@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   labels:
-    provisioner: csi.huawei.com
+    provisioner: {{.Values.csi_driver.driverName }}
   name: huawei-csi-controller
   namespace: {{ .Values.kubernetes.namespace }}
 ---
@@ -11,7 +11,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
-    provisioner: csi.huawei.com
+    provisioner: {{.Values.csi_driver.driverName }}
   name: huawei-csi-attacher-role-cfg
   namespace: {{ .Values.kubernetes.namespace }}
 roleRef:
@@ -27,7 +27,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    provisioner: csi.huawei.com
+    provisioner: {{.Values.csi_driver.driverName }}
   name: huawei-csi-attacher-cfg
   namespace: {{ .Values.kubernetes.namespace }}
 rules:
@@ -47,7 +47,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
-    provisioner: csi.huawei.com
+    provisioner: {{.Values.csi_driver.driverName }}
   name: huawei-csi-provisioner-role-cfg
   namespace: {{ .Values.kubernetes.namespace }}
 roleRef:
@@ -63,7 +63,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    provisioner: csi.huawei.com
+    provisioner: {{.Values.csi_driver.driverName }}
   name: huawei-csi-provisioner-cfg
   namespace: {{ .Values.kubernetes.namespace }}
 rules:
@@ -118,12 +118,12 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-provisioner-role
+    provisioner: {{.Values.csi_driver.driverName }}
+  name: {{.Values.kubernetes.namespace }}-provisioner-role
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: huawei-csi-provisioner-runner
+  name: {{.Values.kubernetes.namespace }}-provisioner-runner
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
@@ -218,8 +218,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-attacher-role
+    provisioner: {{.Values.csi_driver.driverName }}
+  name: {{.Values.kubernetes.namespace }}-attacher-role
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -276,7 +276,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
-    provisioner: csi.huawei.com
+    provisioner: {{.Values.csi_driver.driverName }}
   name: huawei-csi-csi-resizer-role-cfg
   namespace: {{ .Values.kubernetes.namespace }}
 roleRef:
@@ -292,7 +292,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    provisioner: csi.huawei.com
+    provisioner: {{.Values.csi_driver.driverName }}
   name: huawei-csi-resizer-cfg
   namespace: {{ .Values.kubernetes.namespace }}
 rules:
@@ -312,8 +312,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-csi-resizer-role
+    provisioner: {{.Values.csi_driver.driverName }}
+  name: {{.Values.kubernetes.namespace }}-csi-resizer-role
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -327,8 +327,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-resizer-runner
+    provisioner: {{.Values.csi_driver.driverName }}
+  name: {{.Values.kubernetes.namespace }}-resizer-runner
 rules:
   - apiGroups:
       - ""
@@ -380,8 +380,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-csi-snapshotter-role
+    provisioner: {{.Values.csi_driver.driverName }}
+  name: {{.Values.kubernetes.namespace }}-csi-snapshotter-role
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -395,8 +395,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshotter-runner
+    provisioner: {{.Values.csi_driver.driverName }}
+  name: {{.Values.kubernetes.namespace }}-snapshotter-runner
 rules:
   - apiGroups:
       - ""
@@ -440,8 +440,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshot-controller-role
+    provisioner: {{.Values.csi_driver.driverName }}
+  name: {{.Values.kubernetes.namespace }}-snapshot-controller-role
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -455,8 +455,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshot-controller-runner
+    provisioner: {{.Values.csi_driver.driverName }}
+  name: {{.Values.kubernetes.namespace }}-snapshot-controller-runner
 rules:
   - apiGroups:
       - ""
@@ -550,7 +550,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    provisioner: csi.huawei.com
+    provisioner: {{.Values.csi_driver.driverName }}
   name: huawei-csi-controller
   namespace: {{ .Values.kubernetes.namespace }}
 spec:
@@ -558,12 +558,12 @@ spec:
   selector:
     matchLabels:
       app: huawei-csi-controller
-      provisioner: csi.huawei.com
+      provisioner: {{.Values.csi_driver.driverName }}
   template:
     metadata:
       labels:
         app: huawei-csi-controller
-        provisioner: csi.huawei.com
+        provisioner: {{.Values.csi_driver.driverName }}
     spec:
       containers:
         - args:
@@ -673,6 +673,18 @@ spec:
               name: secret
       hostNetwork: true
       serviceAccount: huawei-csi-controller
+      {{- with .Values.topology.huaweiCsiNodeSelector }}
+      nodeSelector:
+        {{ toYaml . |nindent 8}}
+      {{- end}}
+      {{- with .Values.topology.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.huaweiImagePullSecrets}}
+      imagePullSecrets:
+        {{ toYaml . |nindent 8}}
+      {{- end}}
       volumes:
         - emptyDir: null
           name: socket-dir
