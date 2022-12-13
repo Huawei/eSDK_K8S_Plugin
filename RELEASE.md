@@ -2,16 +2,16 @@
 
 ## Supported Huawei storage products
 
-| Storage Product     | Version                           |
-| ------------------- | --------------------------------- |
-| OceanStor Dorado V6 | 6.0.1, 6.1.0, 6.1.2, 6.1.3, 6.1.5 |
-| OceanStor Dorado V3 | V300R002                          |
-| OceanStor V6        | 6.1.3, 6.1.5                      |
-| OceanStor V5/F V5   | V500R007, V500R007 Kunpeng        |
-| OceanStor V3/F V3   | V300R006                          |
-| FusionStorage       | V100R006C30                       |
-| FusionStorage Block | 8.0.0, 8.0.1                      |
-| OceanStor Pacific   | 8.1.0, 8.1.1, 8.1.2, 8.1.3        |
+| Storage Product     | Version                                  |
+| ------------------- | ---------------------------------------- |
+| OceanStor Dorado V6 | 6.0.0, 6.0.1, 6.1.0, 6.1.2, 6.1.3, 6.1.5 |
+| OceanStor Dorado V3 | V300R002                                 |
+| OceanStor V6        | 6.1.3, 6.1.5                             |
+| OceanStor V5/F V5   | V500R007, V500R007 Kunpeng               |
+| OceanStor V3/F V3   | V300R006                                 |
+| FusionStorage       | V100R006C30                              |
+| FusionStorage Block | 8.0.0, 8.0.1                             |
+| OceanStor Pacific   | 8.1.0, 8.1.1, 8.1.2, 8.1.3               |
 
 ## Supported container platforms and operating systems (OSs)
 
@@ -29,16 +29,16 @@
 
 ## Supported Huawei storage products
 
-| Storage Product     | Version                    |
-| ------------------- | -------------------------- |
-| OceanStor Dorado V6 | 6.0.1, 6.1.0, 6.1.2, 6.1.3 |
-| OceanStor Dorado V3 | V300R002                   |
-| OceanStor V6        | 6.1.3                      |
-| OceanStor V5/F V5   | V500R007, V500R007 Kunpeng |
-| OceanStor V3/F V3   | V300R006                   |
-| FusionStorage       | V100R006C30                |
-| FusionStorage Block | 8.0.0, 8.0.1               |
-| OceanStor Pacific   | 8.1.0, 8.1.1, 8.1.2        |
+| Storage Product     | Version                           |
+| ------------------- | --------------------------------- |
+| OceanStor Dorado V6 | 6.0.0, 6.0.1, 6.1.0, 6.1.2, 6.1.3 |
+| OceanStor Dorado V3 | V300R002                          |
+| OceanStor V6        | 6.1.3                             |
+| OceanStor V5/F V5   | V500R007, V500R007 Kunpeng        |
+| OceanStor V3/F V3   | V300R006                          |
+| FusionStorage       | V100R006C30                       |
+| FusionStorage Block | 8.0.0, 8.0.1                      |
+| OceanStor Pacific   | 8.1.0, 8.1.1, 8.1.2               |
 
 ## Supported container platforms and operating systems (OSs)
 
