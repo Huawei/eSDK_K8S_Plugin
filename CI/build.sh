@@ -50,3 +50,12 @@ mv huawei-csi-v${VER}-${plat}.tar k8s/${package_name}/image
 rm -rf ${package_name}.zip
 cd k8s
 zip -rq ../${package_name}.zip *
+#签名
+cd ..
+mkdir sign
+mv ${package_name}.zip sign
+sh esdk_ci/ci/build_product_signature.sh $(pwd)/sign
+mkdir cms
+mv sign/*.cms .
+sh esdk_ci/ci/build_product_signature_hwp7s.sh $(pwd)/sign
+mv sign/* .

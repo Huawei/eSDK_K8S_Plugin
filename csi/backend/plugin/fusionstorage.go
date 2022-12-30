@@ -77,8 +77,9 @@ func (p *FusionStoragePlugin) init(config map[string]interface{}, keepLogin bool
 func (p *FusionStoragePlugin) getParams(name string,
 	parameters map[string]interface{}) (map[string]interface{}, error) {
 	params := map[string]interface{}{
-		"name":     name,
-		"capacity": utils.RoundUpSize(parameters["size"].(int64), CAPACITY_UNIT),
+		"name":        name,
+		"description": parameters["description"].(string),
+		"capacity":    utils.RoundUpSize(parameters["size"].(int64), CAPACITY_UNIT),
 	}
 
 	paramKeys := []string{

@@ -43,6 +43,7 @@ var (
 	curDriverName string
 	lockMutex     sync.Mutex
 	semaphoreMap  map[string]*utils.Semaphore
+	lockDir       = fmt.Sprintf("%s/lock/", lockDirPrefix)
 )
 
 const (
@@ -50,7 +51,7 @@ const (
 	disConnectVolume = "disConnect"
 	extendVolume     = "extend"
 	lockNamePrefix   = "hw-pvc-lock-"
-	lockDirPrefix    = "/var/lib/kubelet/plugins/"
+	lockDirPrefix    = "/csi"
 
 	filePermission     = 0644
 	dirPermission      = 0755
@@ -73,8 +74,7 @@ func InitLock(driverName string) error {
 		return err
 	}
 
-	lockPath := fmt.Sprintf("%s%s/lock/", lockDirPrefix, driverName)
-	err = checkLockPath(lockPath)
+	err = checkLockPath(lockDir)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func InitLock(driverName string) error {
 // SyncLock provide lock for device connect, disconnect and expand
 func SyncLock(ctx context.Context, lockName, operationType string) error {
 	startTime := time.Now()
-	lockDir := fmt.Sprintf("%s%s/lock/", lockDirPrefix, curDriverName)
+
 	err := createLockDir(filepath.Dir(lockDir))
 	if err != nil {
 		return fmt.Errorf("create dir failed, reason: %s", err)
@@ -123,7 +123,6 @@ func SyncUnlock(ctx context.Context, lockName, operationType string) error {
 	startTime := time.Now()
 	releaseSemaphore(ctx, operationType)
 
-	lockDir := fmt.Sprintf("%s%s/lock/", lockDirPrefix, curDriverName)
 	err := deleteLockFile(ctx, lockDir, lockName)
 	if err != nil {
 		return err

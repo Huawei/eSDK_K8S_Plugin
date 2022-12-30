@@ -15,9 +15,9 @@
 #  limitations under the License.
 #
 
-# usage: sh build.sh 3.1.0 X86
+# usage: sh build.sh 3.2.0 X86
 
-# [3.1.0]
+# [3.2.0]
 VER=$1
 # [X86 ARM]
 PLATFORM=$2

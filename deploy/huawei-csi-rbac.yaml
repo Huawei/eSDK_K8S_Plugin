@@ -203,6 +203,7 @@ rules:
       - list
       - watch
       - patch
+      - update
   - apiGroups:
       - storage.k8s.io
     resources:
@@ -220,6 +221,7 @@ rules:
       - list
       - watch
       - patch
+      - update
   - apiGroups:
       - storage.k8s.io
     resources:
@@ -244,6 +246,7 @@ rules:
       - watch
       - create
       - delete
+      - update
   - apiGroups:
       - ""
     resources:
@@ -326,6 +329,7 @@ rules:
       - list
       - watch
       - patch
+      - update
   - apiGroups:
       - ""
     resources:

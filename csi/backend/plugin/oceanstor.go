@@ -88,8 +88,12 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 	}
 
 	if p.product == utils.OceanStorDoradoV6 {
-		log.Infoln("Using OceanStor V6 or Dorado V6 BaseClient.")
-		p.cli = clientv6.NewClientV6(urls, user, password, vstoreName, parallelNum)
+		clientV6 := clientv6.NewClientV6(urls, user, password, vstoreName, parallelNum)
+		cli.Logout(context.Background())
+		err := p.switchClient(clientV6)
+		if err != nil {
+			return err
+		}
 	} else {
 		p.cli = cli
 	}
@@ -135,7 +139,7 @@ func (p *OceanstorPlugin) getParams(ctx context.Context, name string,
 
 	params := map[string]interface{}{
 		"name":        name,
-		"description": "Created from Kubernetes CSI",
+		"description": parameters["description"].(string),
 		"capacity":    utils.RoundUpSize(parameters["size"].(int64), 512),
 	}
 
@@ -156,6 +160,7 @@ func (p *OceanstorPlugin) getParams(ctx context.Context, name string,
 		"rootSquash",
 		"fsPermission",
 		"snapshotDirectoryVisibility",
+		"reservedSnapshotSpaceRatio",
 	}
 
 	for _, key := range paramKeys {
@@ -253,4 +258,9 @@ func (p *OceanstorPlugin) Logout(ctx context.Context) {
 	if p.cli != nil {
 		p.cli.Logout(ctx)
 	}
+}
+func (p *OceanstorPlugin) switchClient(newClient client.BaseClientInterface) error {
+	log.Infoln("Using OceanStor V6 or Dorado V6 BaseClient.")
+	p.cli = newClient
+	return p.cli.Login(context.Background())
 }

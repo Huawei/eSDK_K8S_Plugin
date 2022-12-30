@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -31,10 +32,17 @@ import (
 )
 
 const (
-	// volumeDataFileName refers the volume data file maintained by kubelet on node
-	volumeDataFileName = "vol_data.json"
 	// pvDirPath is a relative path inside kubelet root directory
-	relativePvDirPath = "/kubelet/plugins/kubernetes.io/csi/pv/"
+	relativePvPath = "/kubelet/plugins/kubernetes.io/csi/pv/*/vol_data.json"
+	// in case of file system,the index of the last occurrence of the specified pv name,
+	// For example,the path is "/var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-123/vol_data.json", we get pvc-123
+	pvLastIndex = 2
+
+	// deviceDirPath is a relative path inside kubelet root directory
+	relativeDevicePath = "/kubelet/plugins/kubernetes.io/csi/volumeDevices/*/data/vol_data.json"
+	// in case of block,the index of the last occurrence of the specified pv name
+	//For example,the path is "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-123/data/vol_data.json", we get pvc-123
+	deviceLastIndex = 3
 )
 
 // PVFileData  represents volume handle and the driver name which created it
@@ -49,15 +57,22 @@ type NodePVData struct {
 	VolumeName   string
 }
 
+// pvPathInfo pv path info
+type pvPathInfo struct {
+	pvFilePath string
+	VolumeName string
+}
+
 // nodeStaleDeviceCleanup checks volumes at node and k8s side and triggers cleanup for state devices
 func nodeStaleDeviceCleanup(ctx context.Context, k8sUtils k8sutils.Interface, kubeletRootDir string,
 	driverName string, nodeName string) error {
 	log.AddContext(ctx).Debugf("Enter func nodeStaleDeviceCleanup.")
-	nodeVolumes, err := getNodeVolumes(ctx, kubeletRootDir, driverName)
+	allPathInfos, err := getAllPathInfos(kubeletRootDir)
 	if err != nil {
 		log.AddContext(ctx).Errorln(err)
 		return err
 	}
+	nodeVolumes := getNodeVolumes(ctx, allPathInfos, driverName)
 	// If there are any volume files on node, go for stale device cleanup
 	if len(nodeVolumes) > 0 {
 		// Get all volumes belonging to this node from K8S side
@@ -71,83 +86,74 @@ func nodeStaleDeviceCleanup(ctx context.Context, k8sUtils k8sutils.Interface, ku
 	return nil
 }
 
-// dirExists checks if path exists, and it is a directory or not
-func dirExists(path string) (bool, bool, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, false, nil
-		}
-		return true, false, err
-	}
-	return true, info.IsDir(), nil
-}
+func getAllPathInfos(kubeletRootDir string) ([]pvPathInfo, error) {
+	var allPathInfos []pvPathInfo
 
-// getNodeVolumes extracts all volume handles using node pv files
-func getNodeVolumes(ctx context.Context, kubeletRootDir string, driverName string) ([]NodePVData, error) {
-	log.AddContext(ctx).Debugf("Enter func getNodeVolumes.")
-	absPvDirPath := kubeletRootDir + relativePvDirPath
-	// Check if pv path exists
-	exists, isDir, err := dirExists(absPvDirPath)
+	// get pv path information under the file system
+	pvPathInfos, err := getPvPathInfo(path.Join(kubeletRootDir, relativePvPath), pvLastIndex)
 	if err != nil {
 		return nil, err
 	}
+	allPathInfos = append(allPathInfos, pvPathInfos...)
 
+	// get pv path information under the block
+	devicePathInfos, err := getPvPathInfo(path.Join(kubeletRootDir, relativeDevicePath), deviceLastIndex)
+	if err != nil {
+		return nil, err
+	}
+	allPathInfos = append(allPathInfos, devicePathInfos...)
+	return allPathInfos, nil
+}
+
+// getPvPathInfo Parse the pv information according to the absolute path,
+// the lastIndex parameter is used to determine the index of the last occurrence of the specified pv name
+func getPvPathInfo(absPvFilePath string, lastIndex int) ([]pvPathInfo, error) {
+	var pvPathInfos []pvPathInfo
+	pvFilePaths, err := filepath.Glob(absPvFilePath)
+	if err != nil {
+		return nil, err
+	}
+	for _, filePath := range pvFilePaths {
+		dirNameList := strings.Split(filePath, string(os.PathSeparator))
+		info := pvPathInfo{
+			pvFilePath: filePath,
+			VolumeName: dirNameList[len(dirNameList)-lastIndex],
+		}
+		pvPathInfos = append(pvPathInfos, info)
+	}
+	return pvPathInfos, nil
+}
+
+// getNodeVolumes extracts all volume handles using node pv file
+func getNodeVolumes(ctx context.Context, pvPathInfos []pvPathInfo, driverName string) []NodePVData {
 	var nodePVs []NodePVData
-	// When Kubernetes is used for the first time, the file directory does not exist.
-	if !exists {
-		log.AddContext(ctx).Warningf("Path [%s] does not exist.", absPvDirPath)
-		return nodePVs, nil
-	}
-
-	if !isDir {
-		return nil, fmt.Errorf("Path [%s] does not exist or not a directory", absPvDirPath)
-	}
-	err = filepath.Walk(absPvDirPath, func(fileFullPath string, info os.FileInfo, walkErr error) error {
-
-		if walkErr != nil {
-			log.AddContext(ctx).Errorf("Error while processing the path [%s], %s", fileFullPath, walkErr.Error())
-			return walkErr
-		}
-		if info == nil {
-			log.AddContext(ctx).Infof("FileInfo is nil, Skipping directory path [%s]", fileFullPath)
-			return filepath.SkipDir /* Skip processing current directory and continue processing other directories */
-		}
-		// Process only 'vol_data.json' files
-		if info.IsDir() || info.Name() != volumeDataFileName {
-			return nil
-		}
-		targetDirPath := filepath.Dir(fileFullPath)
-		pvFileData, err := loadPVFileDataData(ctx, targetDirPath, volumeDataFileName)
+	for _, pvPath := range pvPathInfos {
+		pvFileData, err := loadPVFileData(ctx, pvPath.pvFilePath)
 		if err != nil {
-			log.AddContext(ctx).Errorf("Failed to load volume data from %s, %s", volumeDataFileName, err.Error())
-			return nil
+			log.AddContext(ctx).Errorf("Failed to load volume data from %s, %s", pvPath.pvFilePath, err.Error())
+			continue
 		}
 		if pvFileData == nil {
-			log.AddContext(ctx).Infof("Missing volume data in %s, skip processing", fileFullPath)
-			return nil
+			log.AddContext(ctx).Infof("Missing volume data in [%s], skip processing", pvPath.pvFilePath)
+			continue
 		}
 		// Skip the volumes created by other csi drivers
 		if driverName != pvFileData.DriverName {
-			log.AddContext(ctx).Infof("Volume belongs to the other driver %s, skipped", pvFileData.DriverName)
-			return nil
+			log.AddContext(ctx).Infof("Volume belongs to the other driver [%s], skipped", pvFileData.DriverName)
+			continue
 		}
-		pvName := filepath.Base(targetDirPath)
 		nodePV := NodePVData{
 			VolumeHandle: pvFileData.VolumeHandle,
-			VolumeName:   pvName,
+			VolumeName:   pvPath.VolumeName,
 		}
 		nodePVs = append(nodePVs, nodePV)
-		return nil
-	})
+	}
 
 	log.AddContext(ctx).Infof("PV list from node side for this node:  %v", nodePVs)
-	return nodePVs, err
+	return nodePVs
 }
 
-// loadPVFileDataData loads pv data file from input path
-func loadPVFileDataData(ctx context.Context, dir string, fileName string) (*PVFileData, error) {
-	dataFilePath := filepath.Join(dir, fileName)
+func loadPVFileData(ctx context.Context, dataFilePath string) (*PVFileData, error) {
 	// Check if the node pv data directory exists
 	exists, err := utils.PathExist(dataFilePath)
 

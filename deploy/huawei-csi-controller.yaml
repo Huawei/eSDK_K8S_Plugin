@@ -33,7 +33,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
+          image: quay.io/k8scsi/csi-provisioner:v1.4.0
           imagePullPolicy: IfNotPresent
           name: csi-provisioner
           volumeMounts:
@@ -44,7 +44,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-attacher:v3.4.0
+          image: quay.io/k8scsi/csi-attacher:v1.2.1
           imagePullPolicy: IfNotPresent
           name: csi-attacher
           volumeMounts:
@@ -63,24 +63,6 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        - args:
-            - --v=5
-            - --csi-address=$(ADDRESS)
-          env:
-            - name: ADDRESS
-              value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
-          imagePullPolicy: IfNotPresent
-          name: csi-snapshotter
-          volumeMounts:
-            - mountPath: /csi
-              name: socket-dir
-        - args:
-            - --v=5
-            - --leader-election=false
-          image: k8s.gcr.io/sig-storage/snapshot-controller:v4.2.1
-          imagePullPolicy: IfNotPresent
-          name: snapshot-controller
         - name: huawei-csi-driver
           image: huawei-csi:*.*.*
           imagePullPolicy: IfNotPresent

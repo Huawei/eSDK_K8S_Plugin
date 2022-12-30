@@ -17,6 +17,8 @@ params:
     value: 2.2.13.4
   - name: PLATFORM
     value: X86
+  - name: esdk_ci_branch
+    value: master
   - name: dockerimg
     value: 'szvecr02.his.huawei.com:80/ecr-build/esdk_suse_x86_12sp5:2.1.RC1'
 
@@ -31,6 +33,10 @@ env:
 steps:
   PRE_BUILD:
     - checkout
+    - codehub:
+        url: https://codehub-dg-y.huawei.com/esdk/esdk_public/esdk_ci.git
+        branch: ${esdk_ci_branch}
+        path: esdk_ci
   BUILD:
     - build_execute:
         command: sh CI/build.sh ${RELEASE_VER} ${VER} ${PLATFORM};echo "buildVersion=${eSDK_version}.$(date "+%Y%m%d%H%M%S")" > buildInfo.properties
@@ -39,7 +45,7 @@ steps:
   POST_BUILD:
     - get_build_metadata
     - upload_cloud_artifact:
-        file_path: '*.zip'
+        file_path: '*.zip*'
     - version_set
     - when:
         condition: upload_to_Cloudcmc == 'true'
@@ -55,7 +61,7 @@ steps:
               agent: .
               cache: /home/
               add_source_code: true
-              params: {'version':'${Cloudversion}','dir':'eSDK_Huawei_Storage*.zip','dist':'${dist}','offering':'eSDK Cloud Storage Plugins'}
+              params: {'version':'${Cloudversion}','dir':'eSDK_Huawei_Storage*.zip*','dist':'${dist}','offering':'eSDK Cloud Storage Plugins'}
           - get_build_metadata
     - when:
         condition: upload_to_Enterprisecmc == 'true'
@@ -71,6 +77,6 @@ steps:
               agent: .
               cache: /home/
               add_source_code: true
-              params: {'version':'${Enterpriseversion}','dir':'eSDK_Huawei_Storage*.zip','dist':'${dist}','offering':'eSDK Enterprise Storage Plugins'}
+              params: {'version':'${Enterpriseversion}','dir':'eSDK_Huawei_Storage*.zip*','dist':'${dist}','offering':'eSDK Enterprise Storage Plugins'}
           - get_build_metadata
 

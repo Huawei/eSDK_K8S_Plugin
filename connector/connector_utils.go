@@ -524,12 +524,17 @@ func findMultiPathMaps(foundDevices []string) (map[string][]string, string) {
 }
 
 func getSCSIWwnByScsiID(ctx context.Context, hostDevice string) (string, error) {
-	cmd := fmt.Sprintf("/lib/udev/scsi_id --page 0x83 --whitelisted %s", hostDevice)
-	output, err := utils.ExecShellCmd(ctx, cmd)
+	priorityCmd := fmt.Sprintf("/usr/lib/udev/scsi_id --page 0x83 --whitelisted %s", hostDevice)
+	output, err := utils.ExecShellCmd(ctx, priorityCmd)
 	if err != nil {
-		return "", utils.Errorf(ctx, "Failed to get scsi id of device %s, err is %v", hostDevice, err)
+		if strings.Contains(strings.ToLower(output), "no such file or directory") {
+			alternateCmd := fmt.Sprintf("/lib/udev/scsi_id --page 0x83 --whitelisted %s", hostDevice)
+			output, err = utils.ExecShellCmd(ctx, alternateCmd)
+		}
+		if err != nil {
+			return "", utils.Errorf(ctx, "Failed to get scsi id of device %s, err is %v", hostDevice, err)
+		}
 	}
-
 	return strings.TrimSpace(output), nil
 }
 

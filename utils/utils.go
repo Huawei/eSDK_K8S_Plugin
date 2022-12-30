@@ -175,41 +175,55 @@ func execShellCmd(ctx context.Context, format string, logFilter bool, args ...in
 		"-c", cmd}
 	shCmd := exec.Command("nsenter", execCmd...)
 
-	var timeOut bool
-	var output []byte
-	var err error
+	killProcess := true
+	var killProcessAndSubprocess bool
+	timeoutDuration := defaultTimeout * time.Second
+	// Processes are not killed when formatting or capacity expansion commands time out.
 	if strings.Contains(cmd, "mkfs") || strings.Contains(cmd, "resize2fs") ||
 		strings.Contains(cmd, "xfs_growfs") {
-		time.AfterFunc(longTimeout*time.Second, func() {
-			timeOut = true
-		})
+		timeoutDuration = longTimeout * time.Second
+		killProcess = false
 	} else if strings.Contains(cmd, "mount") {
-		// When the execution of the mount command times out, the subprocesses of the mount command must be killed.
+		killProcessAndSubprocess = true
 		shCmd.SysProcAttr = &syscall.SysProcAttr{}
 		shCmd.SysProcAttr.Setpgid = true
-		time.AfterFunc(defaultTimeout*time.Second, func() {
-			// len(output) == 0 && err == nil means process is not finished.
-			if len(output) == 0 && err == nil {
+	}
+
+	var timeout bool
+	var commandComplete bool
+	var output []byte
+	var err error
+	time.AfterFunc(timeoutDuration, func() {
+		timeout = true
+		if !killProcess {
+			return
+		}
+
+		// When the mount times out, the process and its subprocesses need to be killed.
+		if killProcessAndSubprocess {
+			if !commandComplete && len(output) == 0 && err == nil {
 				log.AddContext(ctx).Warningf(
 					"Exec mount command: [%s] time out, try to kill this processes and subprocesses. Pid: [%d].",
 					cmd, shCmd.Process.Pid)
 				errKill := syscall.Kill(-shCmd.Process.Pid, syscall.SIGKILL)
 				log.AddContext(ctx).Infof("Kill result: [%v]", errKill)
-				timeOut = true
 			}
-		})
-	} else {
-		time.AfterFunc(defaultTimeout*time.Second, func() {
-			_ = shCmd.Process.Kill()
-			timeOut = true
-		})
-	}
+			return
+		}
+
+		// Killing processes after other commands time out
+		if !commandComplete {
+			err = shCmd.Process.Kill()
+		}
+	})
+
 	output, err = shCmd.CombinedOutput()
+	commandComplete = true
 	if err != nil {
 		log.AddContext(ctx).Warningf("Run shell cmd \"%s\" output: [%s], error: [%v]", MaskSensitiveInfo(cmd),
 			MaskSensitiveInfo(output),
 			MaskSensitiveInfo(err))
-		return string(output), timeOut, err
+		return string(output), timeout, err
 	}
 
 	if !logFilter {
@@ -217,15 +231,7 @@ func execShellCmd(ctx context.Context, format string, logFilter bool, args ...in
 			MaskSensitiveInfo(output))
 	}
 
-	return string(output), timeOut, nil
-}
-
-func GetLunName(name string) string {
-	if len(name) <= 31 {
-		return name
-	}
-
-	return name[:31]
+	return string(output), timeout, nil
 }
 
 func GetSnapshotName(name string) string {

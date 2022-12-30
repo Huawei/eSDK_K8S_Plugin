@@ -37,6 +37,7 @@ const (
 	quotaTargetFilesystem   = 1
 	quotaParentFileSystem   = "40"
 	directoryQuotaType      = "1"
+	quotaInvalidValue       = 18446744073709552000
 )
 
 const (
@@ -263,7 +264,7 @@ func (p *NAS) createQuota(ctx context.Context,
 		return nil, errors.New(msg)
 	}
 
-	quota, err := p.cli.GetQuotaByFileSystem(ctx, fsID)
+	quota, err := p.cli.GetQuotaByFileSystemById(ctx, fsID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem %s quota error: %v", fsID, err)
 		return nil, err
@@ -313,7 +314,7 @@ func (p *NAS) revertQuota(ctx context.Context, taskResult map[string]interface{}
 }
 
 func (p *NAS) deleteQuota(ctx context.Context, fsID string) error {
-	quota, err := p.cli.GetQuotaByFileSystem(ctx, fsID)
+	quota, err := p.cli.GetQuotaByFileSystemById(ctx, fsID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem %s quota error: %v", fsID, err)
 		return err
@@ -488,6 +489,39 @@ func (p *NAS) Delete(ctx context.Context, name string) error {
 			log.AddContext(ctx).Errorf("Delete filesystem %s error: %v", fsID, err)
 			return err
 		}
+	}
+	return nil
+}
+
+func (p *NAS) Expand(ctx context.Context, name string, newSize int64) error {
+	fsName := utils.GetFileSystemName(name)
+	quota, err := p.cli.GetQuotaByFileSystemName(ctx, fsName)
+	if err != nil {
+		log.AddContext(ctx).Errorf("query quota error: %v", err)
+		return err
+	}
+	quotaId, ok := quota["id"].(string)
+	if !ok {
+		msg := fmt.Sprintf("Quota %v does not contain id field.", quota)
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+	params := map[string]interface{}{
+		"id": quotaId,
+	}
+	if oldHardSize, exits := quota["space_hard_quota"].(float64); exits && oldHardSize != quotaInvalidValue {
+		params["space_hard_quota"] = newSize
+	} else if oldSoftSize, exits := quota["space_soft_quota"].(float64); exits && oldSoftSize != quotaInvalidValue {
+		params["space_soft_quota"] = newSize
+	} else {
+		msg := fmt.Sprintf("Quota %v does not contain space_hard_quota or space_soft_quota.", quota)
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+	err = p.cli.UpdateQuota(ctx, params)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Update quota  error: %v", err)
+		return err
 	}
 	return nil
 }

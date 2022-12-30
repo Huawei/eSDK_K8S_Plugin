@@ -1,8 +1,8 @@
 FROM busybox:stable-glibc
 
 LABEL maintainers="The Huawei CSI Team"
-LABEL description="Huawei Storage CSI Driver"
-LABEL version="3.1.0"
+LABEL description="Kubernetes CSI Driver for Huawei Storage"
+LABEL version="3.2.0"
 
 COPY huawei-csi /
 

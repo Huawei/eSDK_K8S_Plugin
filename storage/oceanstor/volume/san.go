@@ -53,14 +53,14 @@ func (p *SAN) preCreate(ctx context.Context, params map[string]interface{}) erro
 	}
 
 	name := params["name"].(string)
-	params["name"] = utils.GetLunName(name)
+	params["name"] = p.cli.MakeLunName(name)
 
 	if v, exist := params["sourcevolumename"].(string); exist {
-		params["clonefrom"] = utils.GetLunName(v)
+		params["clonefrom"] = p.cli.MakeLunName(v)
 	} else if v, exist := params["sourcesnapshotname"].(string); exist {
 		params["fromSnapshot"] = utils.GetSnapshotName(v)
 	} else if v, exist := params["clonefrom"].(string); exist {
-		params["clonefrom"] = utils.GetLunName(v)
+		params["clonefrom"] = p.cli.MakeLunName(v)
 	}
 
 	err = p.setWorkLoadID(ctx, p.cli, params)
@@ -115,7 +115,7 @@ func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.
 }
 
 func (p *SAN) Delete(ctx context.Context, name string) error {
-	lunName := utils.GetLunName(name)
+	lunName := p.cli.MakeLunName(name)
 	lun, err := p.cli.GetLunByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun by name %s error: %v", lunName, err)
@@ -164,7 +164,7 @@ func (p *SAN) Delete(ctx context.Context, name string) error {
 }
 
 func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, error) {
-	lunName := utils.GetLunName(name)
+	lunName := p.cli.MakeLunName(name)
 	lun, err := p.cli.GetLunByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun by name %s error: %v", lunName, err)
@@ -1140,7 +1140,7 @@ func (p *SAN) preExpandCheckRemoteCapacity(ctx context.Context,
 	params map[string]interface{}, cli client.BaseClientInterface) (string, error) {
 	// check the remote pool
 	name := params["name"].(string)
-	remoteLunName := utils.GetLunName(name)
+	remoteLunName := p.cli.MakeLunName(name)
 	remoteLun, err := cli.GetLunByName(ctx, remoteLunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun by name %s error: %v", remoteLunName, err)

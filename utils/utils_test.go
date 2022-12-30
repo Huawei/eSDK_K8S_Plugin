@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	"huawei-csi-driver/utils/log"
 )
 
@@ -85,14 +86,6 @@ func TestMaskSensitiveInfo(t *testing.T) {
 		maskInfo := MaskSensitiveInfo(c.info)
 		assert.Equal(t, c.expectInfo, maskInfo, "case name is %s, result: %v", c.name, maskInfo)
 	}
-}
-
-func TestGetLunName(t *testing.T) {
-	shortName := GetLunName("TestShortName")
-	assert.Equal(t, "TestShortName", shortName)
-
-	longName := GetLunName("pvc-331a3fcd-6380-4de5-9bc0-be95c801edeb")
-	assert.Equal(t, "pvc-331a3fcd-6380-4de5-9bc0-be9", longName)
 }
 
 func TestGetSnapshotName(t *testing.T) {
