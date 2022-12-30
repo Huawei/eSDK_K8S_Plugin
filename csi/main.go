@@ -41,18 +41,19 @@ import (
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/k8sutils"
 	"huawei-csi-driver/utils/log"
+	"huawei-csi-driver/utils/notify"
 	"huawei-csi-driver/utils/version"
 )
 
 const (
 	configFile        = "/etc/huawei/csi.json"
 	secretFile        = "/etc/huawei/secret/secret.json"
-	versionFile       = "/var/lib/kubelet/plugins/csi.huawei.com/version"
+	versionFile       = "/csi/version"
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "3.1.0"
+	csiVersion        = "3.2.0"
 	defaultDriverName = "csi.huawei.com"
 	endpointDirPerm   = 0755
 
@@ -97,7 +98,7 @@ var (
 		"/var/lib",
 		"kubelet root directory")
 	deviceCleanupTimeout = flag.Int("deviceCleanupTimeout",
-		300,
+		240,
 		"Timeout interval in seconds for stale device cleanup")
 	scanVolumeTimeout = flag.Int("scan-volume-timeout",
 		3,
@@ -119,31 +120,31 @@ type CSISecret struct {
 func parseConfig() {
 	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		raisePanic("Read config file %s error: %v", configFile, err)
+		notify.Stop("Read config file %s error: %v", configFile, err)
 	}
 
 	err = json.Unmarshal(data, &config)
 	if err != nil {
-		raisePanic("Unmarshal config file %s error: %v", configFile, err)
+		notify.Stop("Unmarshal config file %s error: %v", configFile, err)
 	}
 
 	if len(config.Backends) <= 0 {
-		raisePanic("Must configure at least one backend")
+		notify.Stop("Must configure at least one backend")
 	}
 
 	secretData, err := ioutil.ReadFile(secretFile)
 	if err != nil {
-		raisePanic("Read config file %s error: %v", secretFile, err)
+		notify.Stop("Read config file %s error: %v", secretFile, err)
 	}
 
 	err = json.Unmarshal(secretData, &secret)
 	if err != nil {
-		raisePanic("Unmarshal config file %s error: %v", secretFile, err)
+		notify.Stop("Unmarshal config file %s error: %v", secretFile, err)
 	}
 
 	err = mergeData(config, secret)
 	if err != nil {
-		raisePanic("Merge configs error: %v", err)
+		notify.Stop("Merge configs error: %v", err)
 	}
 
 	// nodeName flag is only considered for node plugin
@@ -152,7 +153,7 @@ func parseConfig() {
 	}
 
 	if *scanVolumeTimeout < 1 || *scanVolumeTimeout > 600 {
-		raisePanic("The value of scanVolumeTimeout ranges from 1 to 600,%d", *scanVolumeTimeout)
+		notify.Stop("The value of scanVolumeTimeout ranges from 1 to 600,%d", *scanVolumeTimeout)
 	}
 
 	connector.ScanVolumeTimeout = time.Second * time.Duration(*scanVolumeTimeout)
@@ -187,7 +188,7 @@ func mergeData(config CSIConfig, secret CSISecret) error {
 func updateBackendCapabilities() {
 	err := backend.SyncUpdateCapabilities()
 	if err != nil {
-		raisePanic("Update backend capabilities error: %v", err)
+		notify.Stop("Update backend capabilities error: %v", err)
 	}
 
 	ticker := time.NewTicker(time.Second * time.Duration(*backendUpdateInterval))
@@ -218,15 +219,9 @@ func ensureRuntimePanicLogging(ctx context.Context) {
 func releaseStorageClient() {
 	backend.LogoutBackend()
 }
-func raisePanic(format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	log.Errorln(msg)
-	panic(msg)
-}
 
 func main() {
 	flag.Parse()
-
 	// ensure flags status
 	if *containerized {
 		*controllerFlagFile = ""
@@ -252,7 +247,7 @@ func main() {
 
 	err = backend.RegisterBackend(config.Backends, controllerService, *driverName)
 	if err != nil {
-		raisePanic("Register backends error: %v", err)
+		notify.Stop("Register backends error: %v", err)
 	}
 
 	if controllerService {
@@ -261,7 +256,7 @@ func main() {
 
 	k8sUtils, err := k8sutils.NewK8SUtils(*kubeconfig)
 	if err != nil {
-		raisePanic("Kubernetes client initialization failed %v", err)
+		notify.Stop("Kubernetes client initialization failed %v", err)
 	}
 
 	if !controllerService {
@@ -281,7 +276,7 @@ func listenEndpoint(endpoint string) net.Listener {
 	if err != nil && os.IsNotExist(err) {
 		err = os.Mkdir(endpointDir, endpointDirPerm)
 		if err != nil {
-			log.Fatalf("Error creating directory %s. error: %v", endpoint, err)
+			notify.Stop("Error creating directory %s. error: %v", endpoint, err)
 		}
 	} else {
 		_, err = os.Stat(endpoint)
@@ -289,13 +284,13 @@ func listenEndpoint(endpoint string) net.Listener {
 			log.Infof("Gonna remove old sock file %s", endpoint)
 			err = os.Remove(endpoint)
 			if err != nil {
-				log.Fatalf("Error removing directory %s. error: %v", endpoint, err)
+				notify.Stop("Error removing directory %s. error: %v", endpoint, err)
 			}
 		}
 	}
 	listener, err := net.Listen("unix", endpoint)
 	if err != nil {
-		log.Fatalf("Listen on %s error: %v", endpoint, err)
+		notify.Stop("Listen on %s error: %v", endpoint, err)
 	}
 	return listener
 }
@@ -312,7 +307,7 @@ func registerServer(listener net.Listener, d *driver.Driver) {
 
 	log.Infof("Starting Huawei CSI driver, listening on %s", *endpoint)
 	if err := server.Serve(listener); err != nil {
-		raisePanic("Start Huawei CSI driver error: %v", err)
+		notify.Stop("Start Huawei CSI driver error: %v", err)
 	}
 }
 
@@ -320,10 +315,10 @@ func checkMultiPathType() {
 	if *volumeUseMultiPath {
 		if !(*scsiMultiPathType == connector.DMMultiPath || *scsiMultiPathType == connector.HWUltraPath ||
 			*scsiMultiPathType == connector.HWUltraPathNVMe) {
-			log.Fatalf("The scsi-multipath-type=%v configuration is incorrect.", scsiMultiPathType)
+			notify.Stop("The scsi-multipath-type=%v configuration is incorrect.", scsiMultiPathType)
 		}
 		if *nvmeMultiPathType != connector.HWUltraPathNVMe {
-			log.Fatalf("The nvme-multipath-type=%v configuration is incorrect.", nvmeMultiPathType)
+			notify.Stop("The nvme-multipath-type=%v configuration is incorrect.", nvmeMultiPathType)
 		}
 	}
 }
@@ -338,13 +333,13 @@ func checkMultiPathService() {
 	requiredServices, err := utils.GetRequiredMultipath(context.Background(),
 		multipathConfig, config.Backends)
 	if err != nil {
-		log.Fatalf("Get required multipath services failed. Error: %v", err)
+		notify.Stop("Get required multipath services failed. Error: %v", err)
 	}
 
 	err = connutils.VerifyMultipathService(requiredServices,
 		utils.GetForbiddenMultipath(context.Background(), multipathConfig, config.Backends))
 	if err != nil {
-		log.Fatalf("Check multipath service failed. error:%v", err)
+		notify.Stop("Check multipath service failed. error:%v", err)
 	}
 	log.Infof("Check multipath service success.")
 }
@@ -352,7 +347,7 @@ func checkMultiPathService() {
 func doNodeAction() {
 	err := lock.InitLock(*driverName)
 	if err != nil {
-		log.Fatalf("Init Lock error for driver %s: %v", *driverName, err)
+		notify.Stop("Init Lock error for driver %s: %v", *driverName, err)
 	}
 
 	checkMultiPathType()
@@ -387,8 +382,22 @@ func triggerGarbageCollector(k8sUtils k8sutils.Interface) {
 func exitClean(isController bool) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-	sign := <-signalChan
-	log.Infof("Receive  exit signal %v", sign)
+	stopChan := notify.GetStopChan()
+	defer close(signalChan)
+	defer close(stopChan)
+
+	select {
+	case sign := <-signalChan:
+		log.Infof("Receive exit signal %v", sign)
+		clean(isController)
+	case <-stopChan:
+		log.Infof("Receive stop event ")
+		clean(isController)
+		os.Exit(-1)
+	}
+}
+
+func clean(isController bool) {
 	// flush log
 	ensureRuntimePanicLogging(context.TODO())
 	if isController {
@@ -401,5 +410,4 @@ func exitClean(isController bool) {
 			logrus.Warningf("clean version file error: %v", err)
 		}
 	}
-	close(signalChan)
 }

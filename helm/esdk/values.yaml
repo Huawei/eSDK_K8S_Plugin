@@ -1,30 +1,40 @@
 # Huawei Storage Information
 backends:
-  - storage: "oceanstor-san"
+  - storage: "***"
     name: "***"
     urls:
       - "https://*.*.*.*:8088"
     pools:
       - "***"
     parameters:
-      protocol: "iscsi"
+      protocol: "***"
       portals:
         - "*.*.*.*"
+
+# If the Kubernetes version is lower than 1.17, set this parameter to false.
+snapshot:
+  enable: true
 
 images:
   # The image name and tag for the Huawei CSI Service container
   # Replace the appropriate tag name
-  huaweiCSIService: huawei-csi:3.1.0
+  huaweiCSIService: huawei-csi:3.2.0
 
   # The image name and tag for the sidecars. These must match the appropriate Kubernetes version.
   sidecar:
-    csiAttacher: k8s.gcr.io/sig-storage/csi-attacher:v3.3.0
-    csiProvisioner: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
-    csiResizer: k8s.gcr.io/sig-storage/csi-resizer:v1.3.0
+    attacher: k8s.gcr.io/sig-storage/csi-attacher:v3.4.0
+    provisioner: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
+    resizer: k8s.gcr.io/sig-storage/csi-resizer:v1.4.0
     registrar: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0
     livenessProbe: k8s.gcr.io/sig-storage/livenessprobe:v2.5.0
-    csiSnapshotter: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
+    snapshotter: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
     snapshotController: k8s.gcr.io/sig-storage/snapshot-controller:v4.2.1
+
+# Default image pull policy for sidecar container images, support [IfNotPresent, Always, Never]
+sidecarImagePullPolicy: "IfNotPresent"
+
+# Default image pull policy for Huawei plugin container images, support [IfNotPresent, Always, Never]
+huaweiImagePullPolicy: "IfNotPresent"
 
 # Namespace for installing huawei-csi-nodes and huawei-csi-controllers
 kubernetes:
@@ -74,21 +84,5 @@ csi_driver:
     # Maximum number of log files that can be backed up.
     maxBackups: 9
 
-# Number of huawei-csi-controllers
-huaweiCsiController:
-  # Currently, the value can only be set to 1
-  replicas: 1
 
-# Default image pull policy for sidecar container images, support [IfNotPresent, Always, Never]
-sidecarImagePullPolicy: "IfNotPresent"
 
-# Default image pull policy for Huawei plugin container images, support [IfNotPresent, Always, Never]
-huaweiImagePullPolicy: "IfNotPresent"
-
-# Flag to enable or disable snapshot (Optional)
-snapshot:
-  enable: true
-
-# Flag to enable or disable resize (Optional)
-resizer:
-  enable: true

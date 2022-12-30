@@ -75,3 +75,8 @@ func (cli *ClientV6) SplitCloneFS(ctx context.Context, fsID, vStoreId string, sp
 
 	return nil
 }
+
+// MakeLunName  v6 storage lun name support 1 to 255 characters
+func (cli *ClientV6) MakeLunName(name string) string {
+	return name
+}

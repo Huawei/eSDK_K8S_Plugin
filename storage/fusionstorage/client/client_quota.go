@@ -50,7 +50,28 @@ func (cli *Client) CreateQuota(ctx context.Context, params map[string]interface{
 	return nil
 }
 
-func (cli *Client) GetQuotaByFileSystem(ctx context.Context, fsID string) (map[string]interface{}, error) {
+func (cli *Client) UpdateQuota(ctx context.Context, params map[string]interface{}) error {
+	resp, err := cli.put(ctx, "/api/v2/file_service/fs_quota", params)
+	if err != nil {
+		return err
+	}
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		msg := fmt.Sprintf("The result of response %v's format is not map[string]interface{}", resp)
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+	errorCode := int64(result["code"].(float64))
+	if errorCode != 0 {
+		msg := fmt.Sprintf("Failed to Update quota %v, error: %d", params, errorCode)
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// GetQuotaByFileSystemById query quota info by file system id
+func (cli *Client) GetQuotaByFileSystemById(ctx context.Context, fsID string) (map[string]interface{}, error) {
 	url := "/api/v2/file_service/fs_quota?parent_type=40&parent_id=" +
 		fsID + "&range=%7B%22offset%22%3A0%2C%22limit%22%3A100%7D"
 	resp, err := cli.get(ctx, url, nil)

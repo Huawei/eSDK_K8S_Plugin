@@ -39,6 +39,8 @@ type Lun interface {
 	QueryAssociateLunGroup(ctx context.Context, objType int, objID string) ([]interface{}, error)
 	// GetLunByName used for get lun by name
 	GetLunByName(ctx context.Context, name string) (map[string]interface{}, error)
+	// MakeLunName create lun name based on different storage models
+	MakeLunName(name string) string
 	// GetLunByID used for get lun by id
 	GetLunByID(ctx context.Context, id string) (map[string]interface{}, error)
 	// GetLunGroupByName used for get lun group by name
@@ -116,6 +118,14 @@ func (cli *BaseClient) GetLunByName(ctx context.Context, name string) (map[strin
 
 	lun := respData[0].(map[string]interface{})
 	return lun, nil
+}
+
+// MakeLunName v3/v5 storage support 1 to 31 characters
+func (cli *BaseClient) MakeLunName(name string) string {
+	if len(name) <= 31 {
+		return name
+	}
+	return name[:31]
 }
 
 // GetLunByID used for get lun by id

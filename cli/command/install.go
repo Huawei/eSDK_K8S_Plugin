@@ -19,7 +19,6 @@ package command
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"time"
 
 	logging "github.com/sirupsen/logrus"
@@ -34,7 +33,6 @@ const (
 
 	HUAWEICSIConfigMap = "huawei-csi-configmap"
 	HUAWEICSISecret    = "huawei-csi-secret"
-	HUAWEINamespace    = "kube-system"
 )
 
 var (
@@ -108,16 +106,4 @@ func processInstallationArguments() {
 		recordErrorf("CSI OceanStor requires Kubernetes %s or later.",
 			minOptionalCSIVersion.ShortString())
 	}
-}
-
-func generateKeyText() (string, error) {
-	cmd := "head -c32 /dev/urandom | base64"
-	shCmd := exec.Command("/bin/sh", "-c", cmd)
-	output, err := shCmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("Generate random string error: %v", err)
-		return "", err
-	}
-	output = output[:32]
-	return string(output), nil
 }

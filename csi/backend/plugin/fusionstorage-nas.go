@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 
 	"huawei-csi-driver/storage/fusionstorage/volume"
 	"huawei-csi-driver/utils"
@@ -47,26 +46,18 @@ func (p *FusionStorageNasPlugin) Init(config, parameters map[string]interface{},
 	}
 
 	p.protocol = protocol
-
-	var portal string
 	if protocol == "nfs" {
 		portals, exist := parameters["portals"].([]interface{})
 		if !exist || len(portals) != 1 {
 			return errors.New("portals must be provided for fusionstorage-nas nfs backend and just support one portal")
 		}
-
-		portal = portals[0].(string)
-		ip := net.ParseIP(portal)
-		if ip == nil {
-			return fmt.Errorf("portal %s is invalid", portal)
-		}
+		p.portal = portals[0].(string)
 	}
 
 	err := p.init(config, keepLogin)
 	if err != nil {
 		return err
 	}
-	p.portal = portal
 	return nil
 }
 
@@ -164,7 +155,8 @@ func (p *FusionStorageNasPlugin) DeleteSnapshot(ctx context.Context,
 func (p *FusionStorageNasPlugin) ExpandVolume(ctx context.Context,
 	name string,
 	size int64) (bool, error) {
-	return false, fmt.Errorf("unimplemented")
+	nas := volume.NewNAS(p.cli)
+	return false, nas.Expand(ctx, name, size)
 }
 
 func (p *FusionStorageNasPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {

@@ -2,6 +2,19 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
+## Changes since v3.1.0
+
+**Enhancements**
+
+- The PV prefix can be customized.
+- The description of the filesystem can be customized.
+- The reserved snapshot space can be modified.
+- The Pacific namespace can be expanded.
+- Support k8s 1.13 - 1.25
+- Support OpenShift 4.11
+- Support Ubuntu 22.04, SUSE 15 SP3
+- Support EulerOS V2R10
+
 ## Changes since v3.0.0
 
 **Enhancements**

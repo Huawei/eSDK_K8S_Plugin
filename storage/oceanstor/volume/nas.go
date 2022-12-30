@@ -139,6 +139,15 @@ func (p *NAS) preCreate(ctx context.Context, params map[string]interface{}) erro
 		}
 	}
 
+	// convert reservedsnapshotspaceratio to int
+	if val, exist := params["reservedsnapshotspaceratio"].(string); exist {
+		intVal, err := strconv.Atoi(val)
+		if err != nil {
+			return err
+		}
+		params["reservedsnapshotspaceratio"] = intVal
+	}
+
 	return nil
 }
 
@@ -518,7 +527,7 @@ func (p *NAS) createShare(ctx context.Context,
 		shareParams := map[string]interface{}{
 			"sharepath":   sharePath,
 			"fsid":        fsID,
-			"description": "Created from Kubernetes Provisioner",
+			"description": params["description"].(string),
 			"vStoreID":    vStoreID,
 		}
 

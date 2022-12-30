@@ -491,6 +491,10 @@ func (cli *BaseClient) CreateFileSystem(ctx context.Context, params map[string]i
 		data["ISSHOWSNAPDIR"] = val
 	}
 
+	if val, exist := params["reservedsnapshotspaceratio"].(int); exist {
+		data["SNAPSHOTRESERVEPER"] = val
+	}
+
 	if hyperMetro, hyperMetroOK := params["hypermetro"].(bool); hyperMetroOK && hyperMetro {
 		data["fileSystemMode"] = hyperMetroFilesystem
 		if vstoreId, exist := params["vstoreId"].(string); exist && vstoreId != "" {

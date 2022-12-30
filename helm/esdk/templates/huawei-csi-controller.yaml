@@ -146,6 +146,7 @@ rules:
       - watch
       - create
       - delete
+      - update
   - apiGroups:
       - ""
     resources:
@@ -211,6 +212,7 @@ rules:
       - get
       - list
       - watch
+      - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -243,6 +245,7 @@ rules:
       - list
       - watch
       - patch
+      - update
   - apiGroups:
       - storage.k8s.io
     resources:
@@ -260,6 +263,7 @@ rules:
       - list
       - watch
       - patch
+      - update
   - apiGroups:
       - storage.k8s.io
     resources:
@@ -267,7 +271,6 @@ rules:
     verbs:
       - patch
 
-{{ if .Values.resizer.enable }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -336,6 +339,7 @@ rules:
       - list
       - watch
       - patch
+      - update
   - apiGroups:
       - ""
     resources:
@@ -369,7 +373,7 @@ rules:
       - create
       - update
       - patch
-{{ end }}
+
 {{ if .Values.snapshot.enable }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -550,7 +554,7 @@ metadata:
   name: huawei-csi-controller
   namespace: {{ .Values.kubernetes.namespace }}
 spec:
-  replicas: {{ .Values.huaweiCsiController.replicas }}
+  replicas: 1
   selector:
     matchLabels:
       app: huawei-csi-controller
@@ -574,10 +578,11 @@ spec:
         - args:
             - --csi-address=$(ADDRESS)
             - --timeout=6h
+            - --volume-name-prefix={{ default "pvc" ((.Values.sidecarParameter).provisioner).volumeNamePrefix }}
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: {{ .Values.images.sidecar.csiProvisioner }}
+          image: {{ .Values.images.sidecar.provisioner }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
           name: csi-provisioner
           volumeMounts:
@@ -588,13 +593,12 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: {{ .Values.images.sidecar.csiAttacher }}
+          image: {{ .Values.images.sidecar.attacher }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
           name: csi-attacher
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        {{ if .Values.resizer.enable }}
         - args:
             - --v=5
             - --csi-address=$(ADDRESS)
@@ -602,13 +606,12 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: {{ .Values.images.sidecar.csiResizer }}
+          image: {{ .Values.images.sidecar.resizer }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
           name: csi-resizer
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        {{ end }}
         {{ if .Values.snapshot.enable }}
         - args:
             - --v=5
@@ -616,7 +619,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: {{ .Values.images.sidecar.csiSnapshotter }}
+          image: {{ .Values.images.sidecar.snapshotter }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
           name: csi-snapshotter
           volumeMounts:

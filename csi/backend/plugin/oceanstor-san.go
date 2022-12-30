@@ -247,7 +247,7 @@ func (p *OceanstorSanPlugin) DetachVolume(ctx context.Context, name string, para
 		metroCli = p.metroRemotePlugin.cli
 	}
 
-	lunName := utils.GetLunName(name)
+	lunName := p.cli.MakeLunName(name)
 	lun, err := p.getLunInfo(ctx, localCli, metroCli, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)
@@ -307,7 +307,7 @@ func (p *OceanstorSanPlugin) getStageVolumeInfo(ctx context.Context,
 	}
 	defer p.releaseClient(ctx, cli, metroCli)
 
-	lunName := utils.GetLunName(name)
+	lunName := p.cli.MakeLunName(name)
 	lun, err := p.getLunInfo(ctx, cli, metroCli, lunName)
 	if err != nil {
 		return nil, err
@@ -372,7 +372,7 @@ func (p *OceanstorSanPlugin) getUnStageVolumeInfo(ctx context.Context,
 	}
 	defer p.releaseClient(ctx, cli, metroCli)
 
-	lunName := utils.GetLunName(name)
+	lunName := p.cli.MakeLunName(name)
 	lun, err := p.getLunInfo(ctx, cli, metroCli, lunName)
 	if err != nil {
 		return nil, err
@@ -448,7 +448,7 @@ func (p *OceanstorSanPlugin) NodeExpandVolume(ctx context.Context,
 	}
 	defer p.releaseClient(ctx, cli, metroCli)
 
-	lunName := utils.GetLunName(name)
+	lunName := p.cli.MakeLunName(name)
 	lun, err := p.getLunInfo(ctx, cli, metroCli, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)

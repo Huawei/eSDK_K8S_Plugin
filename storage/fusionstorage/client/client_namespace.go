@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	fusionURL "net/url"
+	"strconv"
 
 	"huawei-csi-driver/utils/log"
 )
@@ -349,4 +350,30 @@ func (cli *Client) GetNfsShareAccess(ctx context.Context, shareID string) (map[s
 		return respData, nil
 	}
 	return nil, err
+}
+
+// GetQuotaByFileSystemName query quota info by file system name
+func (cli *Client) GetQuotaByFileSystemName(ctx context.Context, fsName string) (map[string]interface{}, error) {
+	fs, err := cli.GetFileSystemByName(ctx, fsName)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", fsName, err)
+		return nil, err
+	}
+	if fs == nil {
+		msg := fmt.Sprintf(" Filesystem %s does not exist", fsName)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, errors.New(msg)
+	}
+	if _, exit := fs["id"].(float64); !exit {
+		msg := fmt.Sprintf(" Filesystem %s not fount id", fsName)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, errors.New(msg)
+	}
+	fsID := strconv.FormatInt(int64(fs["id"].(float64)), 10)
+	quota, err := cli.GetQuotaByFileSystemById(ctx, fsID)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Get filesystem %s quota error: %v", fsID, err)
+		return nil, err
+	}
+	return quota, nil
 }

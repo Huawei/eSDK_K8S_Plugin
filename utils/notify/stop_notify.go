@@ -14,8 +14,27 @@
  *  limitations under the License.
  */
 
-package config
+package notify
 
-const (
-	DefaultNameSpace = "huawei-csi"
+import (
+	"huawei-csi-driver/utils/log"
 )
+
+var stopChan = make(chan struct{})
+
+//Stop used to throw out the stop signal
+func Stop(format string, args ...interface{}) {
+	log.Errorf(format, args...)
+	stopChan <- struct{}{}
+	wait()
+}
+
+//GetStopChan used to get stop channel
+func GetStopChan() chan struct{} {
+	return stopChan
+}
+
+func wait() {
+	//The purpose is to block business goroutine
+	stopChan <- struct{}{}
+}
