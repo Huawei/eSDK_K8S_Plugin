@@ -166,8 +166,8 @@ var GetVirtualDevice = func(ctx context.Context, tgtLunGUID string) (string, int
 		if err != nil {
 			return "", 0, utils.Errorf(ctx, "check device: %s is a partition device failed. error: %v", device, err)
 		} else if partitionDev {
-			return "", 0, utils.Errorf(ctx, "Device: %s is a partition device, Check whether the host configuration "+
-				"is correct and manually delete the residual partitioned disks.", device)
+			log.AddContext(ctx).Infof("Device: %s is a partition device, skip", device)
+			continue
 		}
 
 		if strings.HasPrefix(device, "ultrapath") {
