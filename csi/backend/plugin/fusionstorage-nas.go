@@ -139,7 +139,7 @@ func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interfa
 }
 
 func (p *FusionStorageNasPlugin) NodeExpandVolume(context.Context, string, string, bool, int64) error {
-	return fmt.Errorf("unimplemented")
+	return nil
 }
 
 func (p *FusionStorageNasPlugin) CreateSnapshot(ctx context.Context,
