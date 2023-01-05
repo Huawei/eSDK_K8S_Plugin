@@ -47,9 +47,7 @@ endif
 
 COPY_FILE:
 	mkdir -p ./${PACKAGE}/deploy
-	cp -r ./deploy/huawei-csi-node.yaml ./deploy/huawei-csi-rbac.yaml ./deploy/huawei-csi-configmap ./${PACKAGE}/deploy
-	cp ./deploy/huawei-csi-controller-snapshot-v1.yaml ./${PACKAGE}/deploy/huawei-csi-controller.yaml
-	cp ./deploy/huawei-csi-snapshot-crd-v1.yaml ./${PACKAGE}/deploy/huawei-csi-snapshot-crd.yaml
+	cp -r ./deploy/* ./${PACKAGE}/deploy
 
 	mkdir -p ./${PACKAGE}/examples
 	cp ./examples/* ./${PACKAGE}/examples
