@@ -45,6 +45,8 @@ kubernetes:
 csi_driver:
   # Driver name, it is strongly recommended not to modify this parameter
   driverName: csi.huawei.com
+  # indicate whether or not they support modifying a volume's ownership or permissions when the volume is being mounted.
+  fsGroupPolicy: ReadWriteOnceWithFSType
   # Endpoint, it is strongly recommended not to modify this parameter
   endpoint: /csi/csi.sock
   # Maximum number of concurrent disk scans or detaches, support 1~10
@@ -84,5 +86,17 @@ csi_driver:
     # Maximum number of log files that can be backed up.
     maxBackups: 9
 
+# Number of huawei-csi-controllers
+huaweiCsiController:
+  # Currently, the value can only be set to 1
+  replicas: 1
+topology:
+  huaweiCsiNodeSelector: {}
+  tolerations: []
 
+# Image pull secret if image stored in private repository
+huaweiImagePullSecrets: []
 
+# Flag to enable or disable resize (Optional)
+resizer:
+  enable: true
