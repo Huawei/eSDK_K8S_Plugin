@@ -24,7 +24,6 @@ import (
 	"strings"
 	"sync"
 
-	"huawei-csi-driver/connector"
 	"huawei-csi-driver/proto"
 	"huawei-csi-driver/storage/fusionstorage/attacher"
 	"huawei-csi-driver/storage/fusionstorage/client"
@@ -155,6 +154,11 @@ func (p *FusionStorageSanPlugin) CreateVolume(ctx context.Context,
 	return volObj, nil
 }
 
+func (p *FusionStorageSanPlugin) QueryVolume(ctx context.Context, name string) (utils.Volume, error) {
+	san := volume.NewSAN(p.cli)
+	return san.Query(ctx, name)
+}
+
 func (p *FusionStorageSanPlugin) DeleteVolume(ctx context.Context, name string) error {
 	san := volume.NewSAN(p.cli)
 	return san.Delete(ctx, name)
@@ -170,6 +174,19 @@ func (p *FusionStorageSanPlugin) ExpandVolume(ctx context.Context, name string, 
 	newSize := utils.TransVolumeCapacity(size, CAPACITY_UNIT)
 	isAttach, err := san.Expand(ctx, name, newSize)
 	return isAttach, err
+}
+
+// AttachVolume attach volume to node and return storage mapping info.
+func (p *FusionStorageSanPlugin) AttachVolume(ctx context.Context, name string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
+	localAttacher := attacher.NewAttacher(p.cli, p.protocol, "csi", p.portals, p.hosts, p.alua)
+	mappingInfo, err := localAttacher.ControllerAttach(ctx, name, parameters)
+	if err != nil {
+		log.AddContext(ctx).Errorf("attach volume %s error: %v", name, err)
+		return nil, err
+	}
+
+	return mappingInfo, nil
 }
 
 func (p *FusionStorageSanPlugin) DetachVolume(ctx context.Context,
@@ -223,106 +240,7 @@ func (p *FusionStorageSanPlugin) releaseClient(ctx context.Context, cli *client.
 	}
 }
 
-func (p *FusionStorageSanPlugin) getStageVolumeInfo(ctx context.Context, name string,
-	parameters map[string]interface{}) (*connector.ConnectInfo, error) {
-	cli, err := p.getClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer p.releaseClient(ctx, cli)
-
-	lunInfo, err := p.makeLunInfo(ctx, name, cli)
-	if err != nil {
-		return nil, err
-	}
-	lunWWN, err := lunInfo.GetLunWWN()
-	if err != nil {
-		return nil, err
-	}
-	err = connector.ClearResidualPath(ctx, lunWWN, parameters["volumeMode"])
-	if err != nil {
-		return nil, err
-	}
-
-	localAttacher := attacher.NewAttacher(cli, p.protocol, "csi", p.portals, p.hosts, p.alua)
-
-	connectInfo, err := localAttacher.NodeStage(ctx, lunInfo, parameters)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Stage volume %s error: %v", lunInfo.GetVolumeName(), err)
-		return nil, err
-	}
-
-	return connectInfo, nil
-}
-
-func (p *FusionStorageSanPlugin) makeLunInfo(ctx context.Context, name string, cli *client.Client) (utils.Volume, error) {
-	lunInfo := utils.NewVolume(name)
-
-	lun, err := cli.GetVolumeByName(ctx, lunInfo.GetVolumeName())
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunInfo.GetVolumeName(), err)
-		return lunInfo, err
-	}
-	if lun == nil {
-		return lunInfo, utils.Errorf(ctx, "Lun %s doesn't exist", lunInfo.GetVolumeName())
-	}
-
-	lunInfo.SetLunWWN(lun["wwn"].(string))
-	return lunInfo, nil
-}
-
-func (p *FusionStorageSanPlugin) StageVolume(ctx context.Context, name string,
-	parameters map[string]interface{}) error {
-	connectInfo, err := p.getStageVolumeInfo(ctx, name, parameters)
-	if err != nil {
-		return err
-	}
-	devPath, err := p.lunConnectVolume(ctx, connectInfo)
-	if err != nil {
-		return err
-	}
-	return p.lunStageVolume(ctx, name, devPath, parameters)
-}
-
-func (p *FusionStorageSanPlugin) getUnStageVolumeInfo(ctx context.Context, name string,
-	parameters map[string]interface{}) (
-	*connector.DisConnectInfo, error) {
-	cli, err := p.getClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer p.releaseClient(ctx, cli)
-
-	localAttacher := attacher.NewAttacher(cli, p.protocol, "csi", p.portals, p.hosts, p.alua)
-	disconnectInfo, err := localAttacher.NodeUnstage(ctx, name, parameters)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Unstage volume %s error: %v", name, err)
-		return nil, err
-	}
-	return disconnectInfo, nil
-}
-
-func (p *FusionStorageSanPlugin) UnstageVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) error {
-	err := p.unstageVolume(ctx, name, parameters)
-	if err != nil {
-		return err
-	}
-
-	disconnectInfo, err := p.getUnStageVolumeInfo(ctx, name, parameters)
-	if err != nil {
-		return err
-	}
-
-	if disconnectInfo == nil {
-		return nil
-	}
-
-	return p.lunDisconnectVolume(ctx, disconnectInfo)
-}
-
-func (p *FusionStorageSanPlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
+func (p *FusionStorageSanPlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
 	capabilities := map[string]interface{}{
 		"SupportThin":  true,
 		"SupportThick": false,
@@ -330,44 +248,7 @@ func (p *FusionStorageSanPlugin) UpdateBackendCapabilities() (map[string]interfa
 		"SupportClone": true,
 	}
 
-	return capabilities, nil
-}
-
-func (p *FusionStorageSanPlugin) NodeExpandVolume(ctx context.Context,
-	name, volumePath string, isBlock bool, requiredBytes int64) error {
-	cli, err := p.getClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer p.releaseClient(ctx, cli)
-
-	lun, err := cli.GetVolumeByName(ctx, name)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get lun %s error: %v", name, err)
-		return err
-	}
-	if lun == nil {
-		msg := fmt.Sprintf("LUN %s to expand doesn't exist", name)
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-
-	wwn := lun["wwn"].(string)
-	err = connector.ResizeBlock(ctx, wwn, requiredBytes)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Lun %s resize error: %v", wwn, err)
-		return err
-	}
-
-	if !isBlock {
-		err = connector.ResizeMountPath(ctx, volumePath)
-		if err != nil {
-			log.AddContext(ctx).Errorf("MountPath %s resize error: %v", volumePath, err)
-			return err
-		}
-	}
-
-	return nil
+	return capabilities, nil, nil
 }
 
 func (p *FusionStorageSanPlugin) CreateSnapshot(ctx context.Context,
@@ -398,4 +279,56 @@ func (p *FusionStorageSanPlugin) DeleteSnapshot(ctx context.Context,
 
 func (p *FusionStorageSanPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
 	return p.updatePoolCapabilities(poolNames, FusionStorageSan)
+}
+
+func (p *FusionStorageSanPlugin) Validate(ctx context.Context, param map[string]interface{}) error {
+	log.AddContext(ctx).Infoln("Start to validate FusionStorageSanPlugin parameters.")
+
+	err := p.verifyFusionStorageSanParam(ctx, param)
+	if err != nil {
+		return err
+	}
+
+	clientConfig, err := p.getNewClientConfig(ctx, param)
+	if err != nil {
+		return err
+	}
+
+	// Login verification
+	cli := client.NewClient(clientConfig.Url, clientConfig.User, clientConfig.SecretName,
+		clientConfig.SecretNamespace, clientConfig.ParallelNum, clientConfig.BackendID, clientConfig.AccountName)
+	err = cli.ValidateLogin(ctx)
+	if err != nil {
+		return err
+	}
+	cli.Logout(ctx)
+
+	return nil
+}
+
+func (p *FusionStorageSanPlugin) verifyFusionStorageSanParam(ctx context.Context, config map[string]interface{}) error {
+	parameters, exist := config["parameters"].(map[string]interface{})
+	if !exist {
+		msg := fmt.Sprintf("Verify parameters: [%v] failed. \nparameters must be provided", config["parameters"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	protocol, exist := parameters["protocol"].(string)
+	if !exist || (protocol != "scsi" && protocol != "iscsi") {
+		msg := fmt.Sprintf("Verify protocol: [%v] failed. \nprotocol must be provided and be \"scsi\" or \"iscsi\" "+
+			"for fusionstorage-san backend\n", parameters["protocol"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	portals, exist := parameters["portals"].([]interface{})
+	if !exist || len(portals) == 0 {
+		msg := fmt.Sprintf("Verify portals: [%v] failed. \nportals must be configured in fusionstorage-san "+
+			"backend\n", parameters["portals"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	return nil
 }

@@ -1,26 +1,11 @@
-# Huawei Storage Information
-backends:
-  - storage: "***"
-    name: "***"
-    urls:
-      - "https://*.*.*.*:8088"
-    pools:
-      - "***"
-    parameters:
-      protocol: "***"
-      portals:
-        - "*.*.*.*"
-
-# If the Kubernetes version is lower than 1.17, set this parameter to false.
-snapshot:
-  enable: true
-
 images:
-  # The image name and tag for the Huawei CSI Service container
-  # Replace the appropriate tag name
-  huaweiCSIService: huawei-csi:3.2.0
+  # Images provided by Huawei
+  huaweiCSIService: huawei-csi:4.0.0
+  storageBackendSidecar: storage-backend-sidecar:4.0.0
+  storageBackendController: storage-backend-controller:4.0.0
 
-  # The image name and tag for the sidecars. These must match the appropriate Kubernetes version.
+  # CSI-related sidecar images provided by the Kubernetes community.
+  # These must match the appropriate Kubernetes version.
   sidecar:
     attacher: k8s.gcr.io/sig-storage/csi-attacher:v3.4.0
     provisioner: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
@@ -41,12 +26,136 @@ kubernetes:
   # the default value huawei-csi is recommended.
   namespace: huawei-csi
 
+# Specify kubelet config dir path.
+# kubernetes and openshift is usually /var/lib/kubelet
+# Tanzu is usually /var/vcap/data/kubelet
+# CCE is usually /mnt/paas/kubernetes/kubelet
+kubeletConfigDir: /var/lib/kubelet
+
+# fsGroupPolicy: Defines if the underlying volume supports changing ownership and permission of the volume before being mounted.
+# Allowed values:
+#   ReadWriteOnceWithFSType: supports volume ownership and permissions change only if the fsType is defined
+#   and the volume's accessModes contains ReadWriteOnce.
+#   File: kubernetes may use fsGroup to change permissions and ownership of the volume
+#   to match user requested fsGroup in the pod's security policy regardless of fstype or access mode.
+#   None: volumes will be mounted with no modifications.
+# Default value: ReadWriteOnceWithFSType
+fsGroupPolicy: ReadWriteOnceWithFSType
+
+# attachRequired: Whether to skip any attach operation altogether.
+# Allowed values:
+#   true: attach will be called.
+#   false: attach will be skipped.
+# Default value: true
+attachRequired: true
+
+controller:
+  # controllerCount: Define the number of huawei-csi controller
+  # Allowed values: n, where n > 0
+  # Default value: 1
+  # Recommended value: 2
+  controllerCount: 1
+  
+  # volumeNamePrefix: Define a prefix that is prepended to volumes.
+  # THIS MUST BE ALL LOWER CASE.
+  # Default value: pvc
+  # Examples: "volumes", "vol"
+  volumeNamePrefix: pvc
+
+  # Port used by the webhook service. The default port is 443.
+  # You can change the port to another port that is not occupied.
+  webhookPort: 443
+
+  snapshot:
+    # enabled: Enable/Disable volume snapshot feature
+    # If the Kubernetes version is lower than 1.17, set this parameter to false.
+    # Allowed values:
+    #   true: enable volume snapshot feature(install snapshotter sidecar)
+    #   false: disable volume snapshot feature(do not install snapshotter sidecar)
+    # Default value: None
+    enabled: true
+
+  resizer:
+    # enabled: Enable/Disable volume expansion feature
+    # Allowed values:
+    #   true: enable volume expansion feature(install resizer sidecar)
+    #   false: disable volume snapshot feature(do not install resizer sidecar)
+    # Default value: None
+    enabled: true
+
+  # nodeSelector: Define node selection constraints for controller pods.
+  # For the pod to be eligible to run on a node, the node must have each
+  # of the indicated key-value pairs as labels.
+  # Leave as blank to consider all nodes
+  # Allowed values: map of key-value pairs
+  # Default value: None
+  nodeSelector:
+  # Uncomment if nodes you wish to use have the node-role.kubernetes.io/master taint
+  #  node-role.kubernetes.io/master: ""
+  # Uncomment if nodes you wish to use have the node-role.kubernetes.io/control-plane taint
+  #  node-role.kubernetes.io/control-plane: ""
+
+  # tolerations: Define tolerations that would be applied to controller deployment
+  # Leave as blank to install controller on worker nodes
+  # Allowed values: map of key-value pairs
+  # Default value: None
+  tolerations:
+  # Uncomment if nodes you wish to use have the node-role.kubernetes.io/master taint
+  #  - key: "node-role.kubernetes.io/master"
+  # Uncomment if nodes you wish to use have the node-role.kubernetes.io/control-plane taint
+  #  - key: "node-role.kubernetes.io/control-plane"
+  #    operator: "Exists"
+  #    effect: "NoSchedule"
+
+node:
+  # maxVolumesPerNode: Defines the maximum number of volumes that can be used by a node.
+  # Examples: 100
+  # Uncomment if you want to limit the number of volumes that can be used in a Node.
+  # maxVolumesPerNode: 100
+
+  # nodeSelector: Define node selection constraints for node pods.
+  # For the pod to be eligible to run on a node, the node must have each
+  # of the indicated key-value pairs as labels.
+  # Leave as blank to consider all nodes
+  # Allowed values: map of key-value pairs
+  # Default value: None
+  nodeSelector:
+  # Uncomment if nodes you wish to use have the node-role.kubernetes.io/master taint
+  #  node-role.kubernetes.io/master: ""
+  # Uncomment if nodes you wish to use have the node-role.kubernetes.io/control-plane taint
+  #  node-role.kubernetes.io/control-plane: ""
+
+  # tolerations: Define tolerations that would be applied to node daemonset
+  # Add/Remove tolerations as per requirement
+  # Leave as blank if you wish to not apply any tolerations
+  # Allowed values: map of key-value pairs
+  # Default value: None
+  tolerations:
+    - key: "node.kubernetes.io/memory-pressure"
+      operator: "Exists"
+      effect: "NoExecute"
+    - key: "node.kubernetes.io/disk-pressure"
+      operator: "Exists"
+      effect: "NoExecute"
+    - key: "node.kubernetes.io/network-unavailable"
+      operator: "Exists"
+      effect: "NoExecute"
+#    - key: "node-role.kubernetes.io/control-plane"
+#      operator: "Exists"
+#      effect: "NoSchedule"
+#    - key: "node-role.kubernetes.io/master"
+#      operator: "Exists"
+#      effect: "NoSchedule"
+
+
 # The CSI driver parameter configuration
-csi_driver:
+csiDriver:
   # Driver name, it is strongly recommended not to modify this parameter
   driverName: csi.huawei.com
   # Endpoint, it is strongly recommended not to modify this parameter
   endpoint: /csi/csi.sock
+  # DR Endpoint, it is strongly recommended not to modify this parameter
+  drEndpoint: /csi/dr-csi.sock
   # Maximum number of concurrent disk scans or detaches, support 1~10
   connectorThreads: 4
   # Flag to enable or disable volume multipath access, support [true, false]
@@ -84,5 +193,8 @@ csi_driver:
     # Maximum number of log files that can be backed up.
     maxBackups: 9
 
-
-
+# leaderElection configuration
+leaderElection:
+  leaseDuration: 8s
+  renewDeadline: 6s
+  retryPeriod: 2s

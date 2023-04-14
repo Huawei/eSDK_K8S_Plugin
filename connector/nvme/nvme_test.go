@@ -21,7 +21,6 @@ import (
 	"errors"
 	"flag"
 	"os"
-	"path"
 	"sync"
 	"testing"
 	"time"
@@ -30,11 +29,12 @@ import (
 
 	"huawei-csi-driver/connector"
 	"huawei-csi-driver/connector/utils/lock"
+	"huawei-csi-driver/csi/app"
+	"huawei-csi-driver/csi/app/config"
 	"huawei-csi-driver/utils/log"
 )
 
 const (
-	logDir  = "/var/log/huawei/"
 	logName = "nvmeTest.log"
 )
 
@@ -172,16 +172,11 @@ const defaultDriverName = "csi.huawei.com"
 var driverName = flag.String("driver-name", defaultDriverName, "CSI driver name")
 
 func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+	stubs := gostub.StubFunc(&app.GetGlobalConfig, config.MockCompletedConfig())
+	defer stubs.Reset()
+
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
 
 	if err := lock.InitLock(*driverName); err != nil {
 		log.Errorf("test lock init failed: %v", err)

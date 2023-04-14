@@ -60,6 +60,49 @@ rules:
     verbs:
       - get
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-node-runner
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - update
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+  - apiGroups:
+      - "xuanwu.huawei.io"
+    resources:
+      - storagebackendclaims
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-node-role
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: huawei-csi-node-runner
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-node
+    namespace: {{ .Values.kubernetes.namespace }}
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -78,22 +121,30 @@ spec:
         app: huawei-csi-node
         provisioner: csi.huawei.com
     spec:
+      {{ if .Values.node.nodeSelector }}
+      nodeSelector:
+      {{- toYaml .Values.node.nodeSelector | nindent 8 }}
+      {{ end }}
+      {{ if .Values.node.tolerations }}
+      tolerations:
+      {{- toYaml .Values.node.tolerations | nindent 6 }}
+      {{ end }}
       containers:
-        - args:
-            - --csi-address=/csi/csi.sock
-            - --health-port=9800
+        - name: liveness-probe
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--health-port=9800"
           image: {{ .Values.images.sidecar.livenessProbe }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
-          name: liveness-probe
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        - args:
-            - --csi-address=/csi/csi.sock
-            - --kubelet-registration-path=/var/lib/kubelet/plugins/csi.huawei.com/csi.sock
+        - name: csi-node-driver-registrar
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--kubelet-registration-path={{ .Values.kubeletConfigDir }}/plugins/csi.huawei.com/csi.sock"
           image: {{ .Values.images.sidecar.registrar }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
-          name: csi-node-driver-registrar
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -103,22 +154,24 @@ spec:
           image: {{ required "Must provide the CSI node service node image." .Values.images.huaweiCSIService }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
           args:
-            - "--endpoint={{ .Values.csi_driver.endpoint }}"
-            - "--containerized"
-            - "--driver-name={{ .Values.csi_driver.driverName }}"
-            - "--connector-threads={{ .Values.csi_driver.connectorThreads }}"
-            - "--volume-use-multipath={{ .Values.csi_driver.volumeUseMultipath }}"
-            {{ if .Values.csi_driver.volumeUseMultipath }}
-            - "--scsi-multipath-type={{ .Values.csi_driver.scsiMultipathType }}"
-            - "--nvme-multipath-type={{ .Values.csi_driver.nvmeMultipathType }}"
+            - "--endpoint={{ .Values.csiDriver.endpoint }}"
+            - "--driver-name={{ .Values.csiDriver.driverName }}"
+            - "--connector-threads={{ .Values.csiDriver.connectorThreads }}"
+            - "--volume-use-multipath={{ .Values.csiDriver.volumeUseMultipath }}"
+            {{ if .Values.csiDriver.volumeUseMultipath }}
+            - "--scsi-multipath-type={{ .Values.csiDriver.scsiMultipathType }}"
+            - "--nvme-multipath-type={{ .Values.csiDriver.nvmeMultipathType }}"
             {{ end }}
-            - "--scan-volume-timeout={{ .Values.csi_driver.scanVolumeTimeout }}"
-            - --loggingModule={{ .Values.csi_driver.nodeLogging.module }}
-            - --logLevel={{ .Values.csi_driver.nodeLogging.level }}
-            {{ if eq .Values.csi_driver.nodeLogging.module "file" }}
-            - --logFileDir={{ .Values.csi_driver.nodeLogging.fileDir }}
-            - --logFileSize={{ .Values.csi_driver.nodeLogging.fileSize }}
-            - --maxBackups={{ .Values.csi_driver.nodeLogging.maxBackups }}
+            - "--scan-volume-timeout={{ .Values.csiDriver.scanVolumeTimeout }}"
+            - "--logging-module={{ .Values.csiDriver.nodeLogging.module }}"
+            - "--log-level={{ .Values.csiDriver.nodeLogging.level }}"
+            {{ if eq .Values.csiDriver.nodeLogging.module "file" }}
+            - "--log-file-dir={{ .Values.csiDriver.nodeLogging.fileDir }}"
+            - "--log-file-size={{ .Values.csiDriver.nodeLogging.fileSize }}"
+            - "--max-backups={{ .Values.csiDriver.nodeLogging.maxBackups }}"
+            {{ end }}
+            {{ if .Values.node.maxVolumesPerNode }}
+            - "--max-volumes-per-node={{ .Values.node.maxVolumesPerNode }}"
             {{ end }}
           env:
             - name: CSI_NODENAME
@@ -126,6 +179,11 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: spec.nodeName
+            - name: CSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
           lifecycle:
             preStop:
               exec:
@@ -154,7 +212,7 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-            - mountPath: /var/lib/kubelet
+            - mountPath: {{ .Values.kubeletConfigDir }}
               mountPropagation: Bidirectional
               name: pods-dir
             - mountPath: /etc
@@ -166,24 +224,20 @@ spec:
               name: dev-dir
             - mountPath: /var/lib/iscsi
               name: iscsi-dir
-            - mountPath: /etc/huawei
-              name: config-map
-            - mountPath: /etc/huawei/secret
-              name: secret
       hostNetwork: true
       hostPID: true
       serviceAccountName: huawei-csi-node
       volumes:
         - hostPath:
-            path: /var/lib/kubelet/plugins/csi.huawei.com
+            path: {{ .Values.kubeletConfigDir }}/plugins/csi.huawei.com
             type: DirectoryOrCreate
           name: socket-dir
         - hostPath:
-            path: /var/lib/kubelet/plugins_registry
+            path: {{ .Values.kubeletConfigDir }}/plugins_registry
             type: Directory
           name: registration-dir
         - hostPath:
-            path: /var/lib/kubelet
+            path: {{ .Values.kubeletConfigDir }}
             type: Directory
           name: pods-dir
         - hostPath:
@@ -201,9 +255,3 @@ spec:
             path: /var/log/
             type: Directory
           name: log-dir
-        - configMap:
-            name: huawei-csi-configmap
-          name: config-map
-        - name: secret
-          secret:
-            secretName: huawei-csi-secret

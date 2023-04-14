@@ -114,6 +114,29 @@ func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.
 	return volObj, nil
 }
 
+func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
+	lun, err := p.cli.GetLunByName(ctx, name)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Get lun by name %s error: %v", name, err)
+		return nil, err
+	}
+
+	if lun == nil {
+		return nil, utils.Errorf(ctx, "lun [%s] to query does not exist", name)
+	}
+
+	volObj := utils.NewVolume(name)
+	if lunWWN, ok := lun["WWN"].(string); ok {
+		volObj.SetLunWWN(lunWWN)
+	}
+	// set the size, need to trans Sectors to Bytes
+	if capacity, err := strconv.ParseInt(lun["CAPACITY"].(string), 10, 64); err == nil {
+		volObj.SetSize(utils.TransK8SCapacity(capacity, 512))
+	}
+
+	return volObj, nil
+}
+
 func (p *SAN) Delete(ctx context.Context, name string) error {
 	lunName := p.cli.MakeLunName(name)
 	lun, err := p.cli.GetLunByName(ctx, lunName)

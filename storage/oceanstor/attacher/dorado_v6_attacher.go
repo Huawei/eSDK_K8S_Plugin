@@ -19,7 +19,6 @@ package attacher
 import (
 	"context"
 
-	"huawei-csi-driver/connector"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -90,11 +89,11 @@ func (p *DoradoV6Attacher) ControllerAttach(ctx context.Context,
 	}
 
 	if p.protocol == "iscsi" {
-		_, err = p.Attacher.attachISCSI(ctx, hostID)
+		_, err = p.Attacher.attachISCSI(ctx, hostID, parameters)
 	} else if p.protocol == "fc" || p.protocol == "fc-nvme" {
-		_, err = p.Attacher.attachFC(ctx, hostID)
+		_, err = p.Attacher.attachFC(ctx, hostID, parameters)
 	} else if p.protocol == "roce" {
-		_, err = p.Attacher.attachRoCE(ctx, hostID)
+		_, err = p.Attacher.attachRoCE(ctx, hostID, parameters)
 	}
 
 	if err != nil {
@@ -109,10 +108,4 @@ func (p *DoradoV6Attacher) ControllerAttach(ctx context.Context,
 	}
 
 	return p.getMappingProperties(ctx, wwn, hostLunId, parameters)
-}
-
-func (p *DoradoV6Attacher) NodeStage(ctx context.Context,
-	lunName string,
-	parameters map[string]interface{}) (*connector.ConnectInfo, error) {
-	return connectVolume(ctx, p, lunName, p.protocol, parameters)
 }

@@ -23,7 +23,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -166,7 +168,7 @@ var GetVirtualDevice = func(ctx context.Context, tgtLunGUID string) (string, int
 		if err != nil {
 			return "", 0, utils.Errorf(ctx, "check device: %s is a partition device failed. error: %v", device, err)
 		} else if partitionDev {
-			log.AddContext(ctx).Infof("Device: %s is a partition device, skip", device)
+			log.AddContext(ctx).Infof("Device: %s is a partition device，skip", device)
 			continue
 		}
 
@@ -1595,8 +1597,8 @@ func getDevicesInfosByGUID(ctx context.Context, tgtLunGUID string) ([]*deviceInf
 		if err != nil {
 			return nil, utils.Errorf(ctx, "check device: %s is a partition device failed. error: %v", device, err)
 		} else if partitionDev {
-			return nil, utils.Errorf(ctx, "Device: %s is a partition device, Check whether the host configuration "+
-				"is correct and manually delete the residual partitioned disks.", device)
+			log.AddContext(ctx).Infof("Device: %s is a partition device，skip", device)
+			continue
 		}
 
 		var devInfo = &deviceInfo{deviceName: device, lunWWN: tgtLunGUID, deviceFullName: "/dev/" + device}
@@ -1775,4 +1777,172 @@ func isUpMultiPathAvailable(ctx context.Context, multipathType, dev, lunWWN stri
 	}
 
 	return true, nil
+}
+
+// GetDeviceFromMountFile parse the mount file and get devicePath from targetPath.
+// If a device is associated with multiple paths, an error will be returned
+func GetDeviceFromMountFile(ctx context.Context, targetPath string, checkDevRef bool) (string, error) {
+	mountMap, err := ReadMountPoints(ctx)
+	if err != nil {
+		log.AddContext(ctx).Errorf("read /proc/mounts failed, error: %v", err)
+		return "", err
+	}
+
+	// If mountPath is symlink, need get its actual path.
+	mountPath, err := filepath.EvalSymlinks(targetPath)
+	if err != nil {
+		mountPath = targetPath
+	}
+
+	device := getDeviceFromMountMap(mountPath, mountMap)
+	if device == "" {
+		return "", fmt.Errorf("the path [%s] doesn't referenced device in /proc/mounts", mountPath)
+	}
+
+	if checkDevRef {
+		if deviceRefPaths := getDevicePathRefs(device, mountMap); len(deviceRefPaths) > 1 {
+			return "", fmt.Errorf("the device [%s] referenced multiple paths in /proc/mounts, paths: %v",
+				device, deviceRefPaths)
+		}
+	}
+
+	return device, nil
+}
+
+func getDeviceFromMountMap(targetPath string, mountMap map[string]string) string {
+	var device string
+	for mountPath, devPath := range mountMap {
+		if mountPath == targetPath {
+			device = devPath
+			break
+		}
+	}
+	return device
+}
+
+// getDevicePathRefs find all references to the device.
+func getDevicePathRefs(device string, mountMap map[string]string) []string {
+	var deviceRefPaths []string
+	for mountPath, devPath := range mountMap {
+		if devPath == device {
+			deviceRefPaths = append(deviceRefPaths, mountPath)
+		}
+	}
+	return deviceRefPaths
+}
+
+// ReadMountPoints read mount file
+// mountMap[mountPath] = devicePath
+func ReadMountPoints(ctx context.Context) (map[string]string, error) {
+	data, err := ioutil.ReadFile("/proc/mounts")
+	if err != nil {
+		log.AddContext(ctx).Errorf("Read the mount file error: %v", err)
+		return nil, err
+	}
+
+	mountMap := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) != "" {
+			splitValue := strings.Split(line, " ")
+			if len(splitValue) >= 2 && splitValue[0] != "#" {
+				mountMap[splitValue[1]] = splitValue[0]
+			}
+		}
+	}
+	return mountMap, nil
+}
+
+func removeWwnType(wwn string) string {
+	wwnTypes := []string{"t10.1", "t10.", "1", "eui.2", "eui.", "2", "naa.3", "naa.", "3"}
+	for _, wwnType := range wwnTypes {
+		if strings.HasPrefix(wwn, wwnType) && len(wwn) > len(wwnType) {
+			return wwn[len(wwnType):]
+		}
+	}
+	return wwn
+}
+
+// GetWwnFromTargetPath get wwn form targetPath
+func GetWwnFromTargetPath(ctx context.Context, volumeId, targetPath string, checkDevRef bool) (string, error) {
+	log.AddContext(ctx).Infof("start getting targetPath link device")
+	devicePath, err := GetDeviceFromSymLink(path.Join(targetPath, volumeId))
+	if err != nil || devicePath == "" {
+		log.AddContext(ctx).Infof("targetPath not found link device, targetPath: %s, error: %v",
+			targetPath, err)
+
+		devicePath, err = GetDeviceFromMountFile(ctx, targetPath, checkDevRef)
+		if err != nil {
+			log.AddContext(ctx).Errorf("not found device in /proc/mounts, targetPath: %s, error: %v",
+				targetPath, err)
+			return "", err
+		}
+	}
+
+	wwn, err := GetWwnByDevice(ctx, devicePath)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get device wwn failed, error: %v", err)
+		return "", err
+	}
+
+	return removeWwnType(wwn), nil
+}
+
+// GetDeviceFromSymLink returns link path if specified file exists and the type is symbolik link.
+// If file doesn't exist, or file exists but not symbolic link, returns an empty string with
+// error from Lstat().
+func GetDeviceFromSymLink(targetPath string) (string, error) {
+	info, err := os.Lstat(targetPath)
+	if err != nil {
+		return "", err
+	}
+
+	if info.Mode()&os.ModeSymlink != os.ModeSymlink {
+		return "", fmt.Errorf("the file mode is not system link, targetPath: %s", targetPath)
+	}
+
+	linkDevice, err := os.Readlink(targetPath)
+	if err != nil {
+		return "", err
+	}
+	return linkDevice, nil
+}
+
+func getDeviceTypeByName(ctx context.Context, deviceName string) (int, error) {
+	var deviceType int
+	if strings.HasPrefix(deviceName, "ultrapath") {
+		deviceType = UseUltraPathNVMe
+	} else if strings.HasPrefix(deviceName, "dm") || strings.HasPrefix(deviceName, "mpath") {
+		deviceType = UseDMMultipath
+	} else if strings.HasPrefix(deviceName, "sd") && isUltraPathDevice(ctx, deviceName) {
+		deviceType = UseUltraPath
+	} else if strings.HasPrefix(deviceName, "sd") || strings.HasPrefix(deviceName, "nvme") {
+		deviceType = NotUseMultipath
+	} else {
+		return 0, fmt.Errorf("unknowns device type, deviceName: %s", deviceName)
+	}
+	return deviceType, nil
+}
+
+// GetWwnByDevice get wwn according to multipath and protocol type
+func GetWwnByDevice(ctx context.Context, devicePath string) (string, error) {
+	deviceName := path.Base(devicePath)
+	devType, err := getDeviceTypeByName(ctx, deviceName)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get device type failed, devicePath: %s, error: %v", devicePath, err)
+		return "", err
+	}
+
+	if devType == UseUltraPath {
+		return GetLunWWNByDevName(ctx, UltraPathCommand, deviceName)
+	} else if devType == UseUltraPathNVMe {
+		return GetLunWWNByDevName(ctx, UltraPathNVMeCommand, deviceName)
+	} else if devType == UseDMMultipath {
+		return GetSCSIWwn(ctx, devicePath)
+	} else if strings.HasPrefix(deviceName, "nvme") {
+		return GetNVMeWwn(ctx, devicePath)
+	} else if strings.HasPrefix(deviceName, "sd") {
+		return GetSCSIWwn(ctx, devicePath)
+	} else {
+		return "", fmt.Errorf("can't get device wwn, devicePath: %s", devicePath)
+	}
 }

@@ -19,8 +19,6 @@ package proto
 import (
 	"context"
 	"errors"
-	"os"
-	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,7 +28,6 @@ import (
 )
 
 const (
-	logDir  = "/var/log/huawei/"
 	logName = "protoTest.log"
 )
 
@@ -54,7 +51,7 @@ func TestGetISCSIInitiator(t *testing.T) {
 			"awk: cmd. line:1: fatal: cannot open file `/etc/iscsi/initiatorname.iscsi' for reading (No such file or directory)",
 			errors.New("status 2"),
 			"",
-			errors.New("No ISCSI initiator exist"),
+			errors.New("no ISCSI initiator exist"),
 		},
 		{
 			"Execution Error",
@@ -97,7 +94,7 @@ func TestGetFCInitiator(t *testing.T) {
 			"cat: '/sys/class/fc_host/host*/port_name': No such file or directory",
 			nil,
 			nil,
-			errors.New("No FC initiator exist"),
+			errors.New("no FC initiator exist"),
 		},
 	}
 
@@ -133,7 +130,7 @@ func TestGetRoCEInitiator(t *testing.T) {
 			"cat: /etc/nvme/hostnq: No such file or directory",
 			errors.New("exit status 1"),
 			"",
-			errors.New("No NVME initiator exists"),
+			errors.New("no NVME initiator exists"),
 		},
 		{
 			"The output is empty",
@@ -165,21 +162,21 @@ func TestVerifyIscsiPortals(t *testing.T) {
 	}{
 		{
 			"Normal scenario",
-			[]interface{}{"192.168.125.25", "192.168.125.26"},
-			[]string{"192.168.125.25", "192.168.125.26"},
+			[]interface{}{"127.0.0.1", "127.0.0.2"},
+			[]string{"127.0.0.1", "127.0.0.2"},
 			nil,
 		},
 		{
 			"The portals parameter is empty",
 			nil,
 			nil,
-			errors.New("At least 1 portal must be provided for iscsi backend"),
+			errors.New("at least 1 portal must be provided for iscsi backend"),
 		},
 		{
 			"The format of the portals parameter is incorrect",
-			[]interface{}{"192..125.25:3260", "192.168.125.26:3260"},
+			[]interface{}{"127..0.1:3260", "127.0.0.2:3260"},
 			nil,
-			errors.New("192..125.25:3260 of portals is invalid"),
+			errors.New("127..0.1:3260 of portals is invalid"),
 		},
 	}
 
@@ -191,16 +188,8 @@ func TestVerifyIscsiPortals(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
 
 	m.Run()
 }

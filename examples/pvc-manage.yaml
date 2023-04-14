@@ -1,0 +1,16 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  annotations:
+    csi.huawei.com/manageVolumeName: *    # volume name, must be configured
+    csi.huawei.com/manageBackendName: *   # backend name, must be configured
+  labels:
+    provisioner: csi.huawei.com # csi driver name, default is 'csi.huawei.com'
+  name: my-manage-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: mysc
+  resources:
+    requests:
+      storage: 10Gi   # keep consistent with the storage volume size.

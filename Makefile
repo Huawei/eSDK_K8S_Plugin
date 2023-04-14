@@ -1,65 +1,61 @@
-# usage: make -f Makefile VER=3.2.0 PLATFORM=X86 RELEASE_VER=2.5.RC2
+# usage: make -f Makefile VER={VER} PLATFORM={PLATFORM}
 
-# (required) [3.2.0]
+# (required) [x.y.x]
 VER=VER
 # (required) [X86 ARM]
 PLATFORM=PLATFORM
 
 # (Optional) [2.5.RC1 2.5.RC2 ...] eSDK Version
 RELEASE_VER=RELEASE_VER
-# (Optional) [TRUE FALSE] Compile Binary Only
+# (Optional) [TRUE FALSE] Compile Binary Only, Cancel Inline Optimization
 ONLY_BIN=ONLY_BIN
 
 export GO111MODULE=on
 export GOPATH:=$(GOPATH):$(shell pwd)
 
 ifeq (${RELEASE_VER}, RELEASE_VER)
-       export PACKAGE=eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
+	export PACKAGE=eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
 else
-       export PACKAGE=eSDK_Huawei_Storage_${RELEASE_VER}_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
+	export PACKAGE=eSDK_Huawei_Storage_${RELEASE_VER}_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64
 endif
 
 # Build process
 ifeq (${ONLY_BIN}, TRUE)
 all:PREPARE BUILD PACK
+# Disable inline optimization
+flag = -gcflags "all=-N -l"
 else
+flag = -ldflags="-s" -buildmode=pie
 all:PREPARE BUILD COPY_FILE PACK
 endif
 
+# Platform [X86, ARM]
+ifeq (${PLATFORM}, X86)
+env = CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+else
+env = CGO_ENABLED=0 GOOS=linux GOARCH=arm64
+endif
 
 PREPARE:
 	rm -rf ./${PACKAGE}
 	mkdir -p ./${PACKAGE}/bin
 
 BUILD:
-# usage: go build [-o output] [build flags] [packages]
-ifeq (${PLATFORM}, X86)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./${PACKAGE}/bin/huawei-csi -ldflags="-s" -buildmode=pie ./csi
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./${PACKAGE}/bin/secretGenerate -ldflags="-s" -buildmode=pie ./tools/secretGenerate
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./${PACKAGE}/bin/secretUpdate -ldflags="-s" -buildmode=pie ./tools/secretUpdate
-endif
-
-ifeq (${PLATFORM}, ARM)
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/huawei-csi -ldflags="-s" -buildmode=pie ./csi
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/secretGenerate -ldflags="-s" -buildmode=pie ./tools/secretGenerate
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./${PACKAGE}/bin/secretUpdate -ldflags="-s" -buildmode=pie ./tools/secretUpdate
-endif
+# usage: [env] go build [-o output] [flags] packages
+	${env} go build -o ./${PACKAGE}/bin/huawei-csi ${flag} ./csi
+	${env} go build -o ./${PACKAGE}/bin/storage-backend-controller ${flag} ./cmd/storage-backend-controller
+	${env} go build -o ./${PACKAGE}/bin/storage-backend-sidecar ${flag} ./cmd/storage-backend-sidecar
+	${env} go build -o ./${PACKAGE}/bin/oceanctl ${flag} ./cli
 
 COPY_FILE:
-	mkdir -p ./${PACKAGE}/deploy
-	cp -r ./deploy/* ./${PACKAGE}/deploy
-
 	mkdir -p ./${PACKAGE}/examples
-	cp ./examples/* ./${PACKAGE}/examples
+	cp -r ./examples/* ./${PACKAGE}/examples
 
-	mkdir -p ./${PACKAGE}/helm/esdk
-	cp -r ./helm/esdk/* ./${PACKAGE}/helm/esdk
+	mkdir -p ./${PACKAGE}/helm/
+	cp -r ./helm/* ./${PACKAGE}/helm/
 
 	mkdir -p ./${PACKAGE}/tools
 	cp -r ./tools/imageUpload/* ./${PACKAGE}/tools
-
-	mkdir -p ./${PACKAGE}/docs
-	-cp ./docs/eSDK* ./${PACKAGE}/docs
 
 PACK:
 	zip -r ${PACKAGE}.zip ./${PACKAGE}

@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -30,6 +29,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+
 	"huawei-csi-driver/connector"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -144,27 +144,6 @@ func mountFS(ctx context.Context, sourcePath, targetPath string, flags mountPara
 	return mountUnix(ctx, sourcePath, targetPath, flags, false)
 }
 
-var readFile = ioutil.ReadFile
-
-func readMountPoints(ctx context.Context) (map[string]string, error) {
-	data, err := readFile("/proc/mounts")
-	if err != nil {
-		log.AddContext(ctx).Errorf("Read the mount file error: %v", err)
-		return nil, err
-	}
-
-	mountMap := make(map[string]string)
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(line) != "" {
-			splitValue := strings.Split(line, " ")
-			if len(splitValue) >= 2 && splitValue[0] != "#" {
-				mountMap[splitValue[1]] = splitValue[0]
-			}
-		}
-	}
-	return mountMap, nil
-}
-
 func compareMountPath(ctx context.Context, sourcePath, mountSourcePath string) error {
 	// the mount source path is like: /dev/mapper/mpath<x> or /dev/sd<x>
 	// but the source path is like: /dev/dm-<n> or /dev/sd<n>.
@@ -226,7 +205,7 @@ func mountUnix(ctx context.Context, sourcePath, targetPath string, flags mountPa
 		return err
 	}
 
-	mountMap, err := readMountPoints(ctx)
+	mountMap, err := connector.ReadMountPoints(ctx)
 	value, exist := mountMap[targetPath]
 	if exist {
 		// checkSourcePath means the source is block type, need to check the realpath

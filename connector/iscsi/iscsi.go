@@ -24,15 +24,15 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-type iSCSI struct {
+type ISCSI struct {
 }
 
 func init() {
-	connector.RegisterConnector(connector.ISCSIDriver, &iSCSI{})
+	connector.RegisterConnector(connector.ISCSIDriver, &ISCSI{})
 }
 
-func (isc *iSCSI) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
-	log.AddContext(ctx).Infof("iSCSI Start to connect volume ==> connect info: %v", conn)
+func (isc *ISCSI) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
+	log.AddContext(ctx).Infof("ISCSI Start to connect volume ==> connect info: %v", conn)
 	tgtLunWWN, exist := conn["tgtLunWWN"].(string)
 	if !exist {
 		return "", utils.Errorln(ctx, "key tgtLunWWN does not exist in connection properties")
@@ -40,7 +40,7 @@ func (isc *iSCSI) ConnectVolume(ctx context.Context, conn map[string]interface{}
 	return connector.ConnectVolumeCommon(ctx, conn, tgtLunWWN, connector.ISCSIDriver, tryConnectVolume)
 }
 
-func (isc *iSCSI) DisConnectVolume(ctx context.Context, tgtLunWWN string) error {
-	log.AddContext(ctx).Infof("iSCSI Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
+func (isc *ISCSI) DisConnectVolume(ctx context.Context, tgtLunWWN string) error {
+	log.AddContext(ctx).Infof("ISCSI Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
 	return connector.DisConnectVolumeCommon(ctx, tgtLunWWN, connector.ISCSIDriver, tryDisConnectVolume)
 }

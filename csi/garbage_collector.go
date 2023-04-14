@@ -25,7 +25,8 @@ import (
 	"strings"
 
 	"huawei-csi-driver/connector/utils/lock"
-	"huawei-csi-driver/csi/backend"
+	"huawei-csi-driver/csi/app"
+	"huawei-csi-driver/csi/manage"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/k8sutils"
 	"huawei-csi-driver/utils/log"
@@ -41,7 +42,7 @@ const (
 	// deviceDirPath is a relative path inside kubelet root directory
 	relativeDevicePath = "/kubelet/plugins/kubernetes.io/csi/volumeDevices/*/data/vol_data.json"
 	// in case of block,the index of the last occurrence of the specified pv name
-	//For example,the path is "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-123/data/vol_data.json", we get pvc-123
+	// For example,the path is "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-123/data/vol_data.json", we get pvc-123
 	deviceLastIndex = 3
 )
 
@@ -207,9 +208,9 @@ func checkAndClearStaleDevices(ctx context.Context, k8sUtils k8sutils.Interface,
 	staleDeviceCleanupChan := make(chan struct{})
 	defer close(staleDeviceCleanupChan)
 
-	retry := *deviceCleanupTimeout / lock.GetLockTimeoutSec
+	retry := app.GetGlobalConfig().DeviceCleanupTimeout / lock.GetLockTimeoutSec
 	log.AddContext(ctx).Debugf("Cleanup timeout: [%d], Get lock timeout: [%d], Retry times: [%d].",
-		*deviceCleanupTimeout, lock.GetLockTimeoutSec, retry)
+		app.GetGlobalConfig().DeviceCleanupTimeout, lock.GetLockTimeoutSec, retry)
 	for _, nodePV := range nodePVs {
 		if isNodePvValid(nodePV.VolumeHandle, k8sVolumes) {
 			continue
@@ -218,6 +219,9 @@ func checkAndClearStaleDevices(ctx context.Context, k8sUtils k8sutils.Interface,
 		volumeAttr, err := k8sUtils.GetVolumeAttributes(ctx, nodePV.VolumeName)
 		if err == nil {
 			lunWWN = volumeAttr["lunWWN"]
+		}
+		if err != nil || lunWWN == "" {
+			continue
 		}
 
 		staleVolumesCnt++
@@ -234,27 +238,18 @@ func checkAndClearStaleDevices(ctx context.Context, k8sUtils k8sutils.Interface,
 
 func cleanStaleDevices(ctx context.Context, volumeHandle, lunWWN string) error {
 	log.AddContext(ctx).Infof("Start to clean stale devices for the volume %s lunWWN %s", volumeHandle, lunWWN)
-	var err error
 	backendName, volName := utils.SplitVolumeId(volumeHandle)
-	backend := backend.GetBackend(backendName)
-	if backend == nil {
-		log.AddContext(ctx).Warningf("Backend [%s] doesn't exist.", backendName)
+	manager, err := manage.NewManager(ctx, backendName)
+	if err != nil {
+		log.AddContext(ctx).Warningf("cleanStaleDevices init manager fail, backend: %s, error: %v",
+			backendName, err)
 		return nil
 	}
 
-	// Based on lunWWN availability, perform node side cleanup
-	if lunWWN != "" {
-		log.AddContext(ctx).Debugf("Unstage volume [%s] with WWN [%s].", volName, lunWWN)
-		err = backend.Plugin.UnstageVolumeWithWWN(ctx, lunWWN)
-	} else {
-		log.AddContext(ctx).Debugf("Unstage volume [%s].", volName)
-		parameters := map[string]interface{}{
-			"targetPath": "",
-		}
-		err = backend.Plugin.UnstageVolume(ctx, volName, parameters)
-	}
-
+	err = manager.UnStageWithWwn(ctx, lunWWN, volumeHandle)
 	if err != nil {
+		log.AddContext(ctx).Warningf("clean stale device failed, volumeHandle: %s, wwn: %s, error: %v",
+			volName, lunWWN, err)
 		return err
 	}
 	log.AddContext(ctx).Infof("Cleanup stale devices completed for the volume %s", volumeHandle)

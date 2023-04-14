@@ -26,8 +26,8 @@ import (
 	"huawei-csi-driver/connector"
 	_ "huawei-csi-driver/connector/iscsi"
 	_ "huawei-csi-driver/connector/local"
-	"huawei-csi-driver/proto"
 	"huawei-csi-driver/storage/fusionstorage/client"
+	"huawei-csi-driver/storage/oceanstor/attacher"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -60,12 +60,7 @@ func NewAttacher(cli *client.Client, protocol, invoker string, portals []string,
 func (p *Attacher) getHostName(ctx context.Context, parameters map[string]interface{}) (string, error) {
 	hostName, ok := parameters["HostName"].(string)
 	if !ok {
-		var err error
-
-		hostName, err = utils.GetHostName(ctx)
-		if err != nil {
-			return "", err
-		}
+		return "", fmt.Errorf("can not find host name,parameters:%v", parameters)
 	}
 
 	return hostName, nil
@@ -205,7 +200,11 @@ func (p *Attacher) parseiSCSIPortalList(ctx context.Context,
 }
 
 func (p *Attacher) attachIscsiInitiatorToHost(ctx context.Context, hostName string) error {
-	initiatorName, err := proto.GetISCSIInitiator(ctx)
+	parameters := map[string]interface{}{
+		"HostName": hostName,
+	}
+
+	initiatorName, err := attacher.GetSingleInitiator(ctx, attacher.ISCSI, parameters)
 	if err != nil {
 		return err
 	}
@@ -353,16 +352,6 @@ func (p *Attacher) getMappingProperties(ctx context.Context,
 		"tgtIQNs":     tgtIQNs,
 		"tgtHostLUNs": tgtHostLUNs}
 
-	var exist bool
-	connectInfo["volumeUseMultiPath"], exist = parameters["volumeUseMultiPath"].(bool)
-	if !exist {
-		return nil, errors.New("key volumeUseMultiPath does not exist in parameters")
-	}
-
-	connectInfo["multiPathType"], exist = parameters["scsiMultiPathType"].(string)
-	if !exist {
-		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
-	}
 	return connectInfo, nil
 }
 
@@ -457,6 +446,35 @@ func (p *Attacher) ControllerDetach(ctx context.Context,
 	}
 
 	return wwn, nil
+}
+
+//ControllerAttach controller attach return host and storage mapping information
+func (p *Attacher) ControllerAttach(ctx context.Context,
+	lunName string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
+
+	var mappingInfo map[string]interface{}
+
+	lun, err := p.getLunInfo(ctx, lunName)
+	lunInfo := utils.NewVolume(lunName)
+	if wwn, ok := lun["wwn"].(string); ok {
+		lunInfo.SetLunWWN(wwn)
+	}
+
+	if p.protocol == "iscsi" {
+		mappingInfo, err = p.iSCSIControllerAttach(ctx, lunInfo, parameters)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		tgtLunWWN, err := p.SCSIControllerAttach(ctx, lunInfo, parameters)
+		if err != nil {
+			return nil, err
+		}
+
+		mappingInfo = map[string]interface{}{"tgtLunWWN": tgtLunWWN}
+	}
+	return mappingInfo, nil
 }
 
 func (p *Attacher) NodeStage(ctx context.Context,

@@ -23,9 +23,11 @@ import (
 	"strings"
 
 	"huawei-csi-driver/connector"
+	"huawei-csi-driver/csi/app"
+	"huawei-csi-driver/csi/manage"
+
 	// init the nfs connector
 	_ "huawei-csi-driver/connector/nfs"
-	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 
@@ -39,50 +41,14 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	volumeId := req.GetVolumeId()
 	log.AddContext(ctx).Infof("Start to stage volume %s", volumeId)
-
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
-	if backend == nil {
-		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+	manager, err := manage.NewManager(ctx, backendName)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Stage init manager fail, backend: %s, error: %v", backendName, err)
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	var parameters = map[string]interface{}{}
-	parameters = map[string]interface{}{
-		"volumeUseMultiPath": d.useMultiPath,
-		"scsiMultiPathType":  d.scsiMultiPathType,
-		"nvmeMultiPathType":  d.nvmeMultiPathType,
-	}
-	switch req.VolumeCapability.GetAccessType().(type) {
-	case *csi.VolumeCapability_Block:
-		log.AddContext(ctx).Infoln("The request is to create volume of type Block")
-		stagePath := req.GetStagingTargetPath() + "/" + volumeId
-		parameters["stagingPath"] = stagePath
-		parameters["volumeMode"] = "Block"
-	case *csi.VolumeCapability_Mount:
-		log.AddContext(ctx).Infoln("The request is to create volume of type filesystem")
-		mnt := req.GetVolumeCapability().GetMount()
-		opts := mnt.GetMountFlags()
-		volumeAccessMode := req.GetVolumeCapability().GetAccessMode().GetMode()
-		accessMode := utils.GetAccessModeType(volumeAccessMode)
-		log.AddContext(ctx).Infof("The access mode of volume %s is %s", volumeId, accessMode)
-
-		if accessMode == "ReadOnly" {
-			opts = append(opts, "ro")
-		}
-
-		parameters["targetPath"] = req.GetStagingTargetPath()
-		parameters["fsType"] = mnt.GetFsType()
-		parameters["mountFlags"] = strings.Join(opts, ",")
-		parameters["accessMode"] = volumeAccessMode
-		parameters["fsPermission"] = req.VolumeContext["fsPermission"]
-	default:
-		msg := fmt.Sprintf("Invalid volume capability.")
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-	err := backend.Plugin.StageVolume(ctx, volName, parameters)
+	err = manager.StageVolume(ctx, req)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Stage volume %s error: %v", volName, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -99,20 +65,15 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	log.AddContext(ctx).Infof("Start to unstage volume %s from %s", volumeId, targetPath)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
-	if backend == nil {
-		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	parameters := map[string]interface{}{
-		"targetPath": targetPath,
-	}
-
-	err := backend.Plugin.UnstageVolume(ctx, volName, parameters)
+	manager, err := manage.NewManager(ctx, backendName)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Unstage volume %s error: %v", volName, err)
+		log.AddContext(ctx).Errorf("UnStage init manager fail, backend: %s, error: %v", backendName, err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	err = manager.UnStageVolume(ctx, req)
+	if err != nil {
+		log.AddContext(ctx).Errorf("UnStage volume %s error: %v", volName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -226,7 +187,8 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 
 	if d.nodeName == "" {
 		return &csi.NodeGetInfoResponse{
-			NodeId: string(nodeBytes),
+			NodeId:            string(nodeBytes),
+			MaxVolumesPerNode: int64(app.GetGlobalConfig().MaxVolumesPerNode),
 		}, nil
 	}
 
@@ -238,7 +200,8 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	}
 
 	return &csi.NodeGetInfoResponse{
-		NodeId: string(nodeBytes),
+		NodeId:            string(nodeBytes),
+		MaxVolumesPerNode: int64(app.GetGlobalConfig().MaxVolumesPerNode),
 		AccessibleTopology: &csi.Topology{
 			Segments: topology,
 		},
@@ -356,47 +319,22 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 	return response, nil
 }
 
-func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (
+	*csi.NodeExpandVolumeResponse, error) {
+
 	log.AddContext(ctx).Infof("Start to node expand volume %s", req)
 	volumeId := req.GetVolumeId()
-	if volumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "no volume ID provided")
-	}
-
-	capacityRange := req.GetCapacityRange()
-	if capacityRange == nil || capacityRange.RequiredBytes <= 0 {
-		msg := "NodeExpandVolume CapacityRange must be provided"
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.InvalidArgument, msg)
-	}
-
-	volumePath := req.GetVolumePath()
-	if volumePath == "" {
-		return nil, status.Error(codes.InvalidArgument, "no volume path provided")
-	}
-
-	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().GetMode())
-	if accessMode == "ReadOnly" {
-		log.AddContext(ctx).Warningf("The access mode of volume %s is %s", volumeId, accessMode)
-		return &csi.NodeExpandVolumeResponse{}, nil
-	}
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
-	if backend == nil {
-		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
-	}
-
-	var isBlock bool
-	if req.GetVolumeCapability().GetBlock() != nil {
-		isBlock = true
-	}
-
-	err := backend.Plugin.NodeExpandVolume(ctx, volName, volumePath, isBlock, capacityRange.RequiredBytes)
+	manager, err := manage.NewManager(ctx, backendName)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Node expand volume %s error: %v", volName, err)
+		log.AddContext(ctx).Errorf("Expand init manager fail, backend: %s, error: %v", backendName, err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	err = manager.ExpandVolume(ctx, req)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Expand volume %s error: %v", volName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	log.AddContext(ctx).Infof("Finish node expand volume %s", volumeId)

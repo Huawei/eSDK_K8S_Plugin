@@ -20,9 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"huawei-csi-driver/utils"
 	"strings"
 
+	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -197,7 +197,14 @@ func (cli *Client) getAllPools(ctx context.Context) ([]interface{}, error) {
 func (cli *Client) GetNFSServiceSetting(ctx context.Context) (map[string]bool, error) {
 	setting := map[string]bool{"SupportNFS41": false}
 
-	resp, err := cli.get(ctx, "/api/v2/nas_protocol/nfs_service_config", nil)
+	req := make(map[string]interface{})
+	if cli.accountName != "" {
+		req["account_name"] = cli.accountName
+	} else {
+		req = nil
+	}
+
+	resp, err := cli.get(ctx, "/api/v2/nas_protocol/nfs_service_config", req)
 	if err != nil {
 		// Pacific 8.1.0/8.1.1 does not have this interface, ignore this error.
 		if strings.Contains(err.Error(), "invalid character '<' looking for beginning of value") {

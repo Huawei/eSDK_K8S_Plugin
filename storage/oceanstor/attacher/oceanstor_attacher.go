@@ -19,7 +19,6 @@ package attacher
 import (
 	"context"
 
-	"huawei-csi-driver/connector"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -81,8 +80,9 @@ func (p *OceanStorAttacher) needUpdateInitiatorAlua(initiator map[string]interfa
 	return false
 }
 
-func (p *OceanStorAttacher) attachISCSI(ctx context.Context, hostID, hostName string) error {
-	iscsiInitiator, err := p.Attacher.attachISCSI(ctx, hostID)
+func (p *OceanStorAttacher) attachISCSI(ctx context.Context, hostID, hostName string,
+	parameters map[string]interface{}) error {
+	iscsiInitiator, err := p.Attacher.attachISCSI(ctx, hostID, parameters)
 	if err != nil {
 		return err
 	}
@@ -95,8 +95,9 @@ func (p *OceanStorAttacher) attachISCSI(ctx context.Context, hostID, hostName st
 	return err
 }
 
-func (p *OceanStorAttacher) attachFC(ctx context.Context, hostID, hostName string) error {
-	fcInitiators, err := p.Attacher.attachFC(ctx, hostID)
+func (p *OceanStorAttacher) attachFC(ctx context.Context, hostID, hostName string,
+	parameters map[string]interface{}) error {
+	fcInitiators, err := p.Attacher.attachFC(ctx, hostID, parameters)
 	if err != nil {
 		return err
 	}
@@ -118,8 +119,8 @@ func (p *OceanStorAttacher) attachFC(ctx context.Context, hostID, hostName strin
 	return nil
 }
 
-func (p *OceanStorAttacher) attachRoCE(ctx context.Context, hostID string) error {
-	_, err := p.Attacher.attachRoCE(ctx, hostID)
+func (p *OceanStorAttacher) attachRoCE(ctx context.Context, hostID string, parameters map[string]interface{}) error {
+	_, err := p.Attacher.attachRoCE(ctx, hostID, parameters)
 	return err
 }
 
@@ -137,11 +138,11 @@ func (p *OceanStorAttacher) ControllerAttach(ctx context.Context,
 	hostName := host["NAME"].(string)
 
 	if p.protocol == "iscsi" {
-		err = p.attachISCSI(ctx, hostID, hostName)
+		err = p.attachISCSI(ctx, hostID, hostName, parameters)
 	} else if p.protocol == "fc" || p.protocol == "fc-nvme" {
-		err = p.attachFC(ctx, hostID, hostName)
+		err = p.attachFC(ctx, hostID, hostName, parameters)
 	} else if p.protocol == "roce" {
-		err = p.attachRoCE(ctx, hostID)
+		err = p.attachRoCE(ctx, hostID, parameters)
 	}
 
 	if err != nil {
@@ -156,11 +157,4 @@ func (p *OceanStorAttacher) ControllerAttach(ctx context.Context,
 	}
 
 	return p.getMappingProperties(ctx, wwn, hostLunId, parameters)
-}
-
-// NodeStage to do storage mapping and get the connector
-func (p *OceanStorAttacher) NodeStage(ctx context.Context,
-	lunName string,
-	parameters map[string]interface{}) (*connector.ConnectInfo, error) {
-	return connectVolume(ctx, p, lunName, p.protocol, parameters)
 }

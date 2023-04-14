@@ -1,0 +1,15 @@
+storage: "oceanstor-nas"
+name: <BACKEND-NAME>
+namespace: <NAMESPACE>
+urls:
+  - "https://*.*.*.*:8088"
+  - "https://*.*.*.*:8088"
+pools:
+  - "pool1"
+  - "pool2"
+parameters:
+  protocol: <protocol>
+  portals:
+    - portal1
+    - portal2
+maxClientThreads: "30"

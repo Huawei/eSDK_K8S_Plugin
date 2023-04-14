@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -32,25 +31,13 @@ import (
 )
 
 var (
-	logger LoggingInterface
-
-	loggingModule = flag.String("loggingModule",
-		"file",
-		"Flag enable one of available logging module (file, console)")
-	logLevel = flag.String("logLevel",
-		"info",
-		"Set logging level (debug, info, error, warning, fatal)")
-	logFileDir = flag.String("logFileDir",
-		defaultLogDir,
-		"The flag to specify logging directory. The flag is only supported if logging module is file")
-
+	logger         LoggingInterface
 	testInitLogger sync.Once
 )
 
 type key string
 
 const (
-	defaultLogDir   = "/var/log/huawei"
 	timestampFormat = "2006-01-02 15:04:05.000000"
 
 	csiRequestID key = "csi.requestid"
@@ -110,8 +97,8 @@ type loggerImpl struct {
 
 var _ LoggingInterface = &loggerImpl{}
 
-func parseLogLevel() (logrus.Level, error) {
-	switch *logLevel {
+func parseLogLevel(logLevel string) (logrus.Level, error) {
+	switch logLevel {
 	case "debug":
 		return logrus.DebugLevel, nil
 	case "info":
@@ -127,9 +114,21 @@ func parseLogLevel() (logrus.Level, error) {
 	}
 }
 
+// LoggingRequest use to init the logging service
+type LoggingRequest struct {
+	LogName       string
+	LogFileSize   string
+	LoggingModule string
+	LogLevel      string
+	LogFileDir    string
+	MaxBackups    uint
+}
+
+var maxBackups uint
+
 // InitLogging configures logging. Logs are written to a log file or stdout/stderr.
 // Since logrus doesn't support multiple writers, each log stream is implemented as a hook.
-func InitLogging(logName string) error {
+func InitLogging(req *LoggingRequest) error {
 	var tmpLogger loggerImpl
 
 	// initialize logrus in wrapper
@@ -139,7 +138,7 @@ func InitLogging(logName string) error {
 	tmpLogger.Logger.SetOutput(ioutil.Discard)
 
 	// set logging level
-	level, err := parseLogLevel()
+	level, err := parseLogLevel(req.LogLevel)
 	if err != nil {
 		return err
 	}
@@ -149,11 +148,12 @@ func InitLogging(logName string) error {
 	formatter := &PlainTextFormatter{TimestampFormat: timestampFormat, pid: os.Getpid()}
 
 	hooks := make([]logrus.Hook, 0)
-	switch *loggingModule {
+	switch req.LoggingModule {
 	case "file":
-		logFilePath := fmt.Sprintf("%s/%s", *logFileDir, logName)
+		maxBackups = req.MaxBackups
+		logFilePath := fmt.Sprintf("%s/%s", req.LogFileDir, req.LogName)
 		// Write to the log file
-		logFileHook, err := newFileHook(logFilePath, formatter)
+		logFileHook, err := newFileHook(logFilePath, req.LogFileSize, formatter)
 		if err != nil {
 			return fmt.Errorf("could not initialize logging to file: %v", err)
 		}
@@ -166,7 +166,8 @@ func InitLogging(logName string) error {
 		}
 		hooks = append(hooks, logConsoleHook)
 	default:
-		return fmt.Errorf("invalid logging module [%v]. Support only 'file' or 'console'", loggingModule)
+		return fmt.Errorf("invalid logging module [%v]. Support only 'file' or 'console'",
+			req.LoggingModule)
 	}
 
 	tmpLogger.hooks = hooks
@@ -176,7 +177,6 @@ func InitLogging(logName string) error {
 	}
 
 	logger = &tmpLogger
-	logger.Infof("Init logger [%s] success.", logName)
 	return nil
 }
 

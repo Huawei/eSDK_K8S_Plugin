@@ -114,12 +114,7 @@ func (cli *BaseClient) GetFileSystemByName(ctx context.Context, name string) (ma
 	}
 
 	respData := resp.Data.([]interface{})
-	if len(respData) == 0 {
-		return nil, nil
-	}
-
-	fs := respData[0].(map[string]interface{})
-	return fs, nil
+	return cli.getObjByvStoreName(respData), nil
 }
 
 // GetFileSystemByID used for get file system by id

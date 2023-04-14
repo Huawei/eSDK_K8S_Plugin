@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -98,7 +99,7 @@ func (p *NAS) preCreate(ctx context.Context, params map[string]interface{}) erro
 	params["name"] = utils.GetFileSystemName(name)
 
 	if v, exist := params["clonefrom"].(string); exist {
-		params["clonefrom"] = utils.GetFileSystemName(v)
+		params["clonefrom"] = v
 	}
 
 	if v, exist := params["storagequota"].(string); exist {
@@ -386,7 +387,7 @@ func (p *NAS) waitFilesystemCreated(ctx context.Context, fsName string) error {
 		if err != nil {
 			return false, err
 		}
-		if fs["running_status"].(float64) == 0 { //filesystem is ok
+		if fs["running_status"].(float64) == 0 { // filesystem is ok
 			return true, nil
 		} else {
 			return false, nil
@@ -435,8 +436,38 @@ func (p *NAS) allowShareAccess(ctx context.Context, params, taskResult map[strin
 	return nil, nil
 }
 
-func (p *NAS) Delete(ctx context.Context, name string) error {
-	fsName := utils.GetFileSystemName(name)
+func (p *NAS) Query(ctx context.Context, fsName string) (utils.Volume, error) {
+	quota, err := p.cli.GetQuotaByFileSystemName(ctx, fsName)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", fsName, err)
+		return nil, err
+	}
+
+	return p.setSize(ctx, fsName, quota)
+}
+
+func (p *NAS) setSize(ctx context.Context, fsName string, quota map[string]interface{}) (utils.Volume, error) {
+	volObj := utils.NewVolume(fsName)
+	var capacity int64
+	if hardSize, exits := quota["space_hard_quota"].(float64); exits && hardSize != quotaInvalidValue {
+		capacity = int64(hardSize)
+	} else if softSize, exits := quota["space_soft_quota"].(float64); exits && softSize != quotaInvalidValue {
+		capacity = int64(hardSize)
+	} else {
+		msg := fmt.Sprintf("Quota %v does not contain space_hard_quota or space_soft_quota.", quota)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	spaceUnitType, exist := quota["space_unit_type"].(float64)
+	if !exist {
+		return nil, utils.Errorln(ctx, "Quota %v does not contain space_unit_type.")
+	}
+	volObj.SetSize(utils.TransK8SCapacity(capacity, int64(math.Pow(1024, spaceUnitType))))
+	return volObj, nil
+}
+
+func (p *NAS) Delete(ctx context.Context, fsName string) error {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", fsName, err)
@@ -450,7 +481,7 @@ func (p *NAS) Delete(ctx context.Context, name string) error {
 
 	fsID := strconv.FormatInt(int64(fs["id"].(float64)), 10)
 	accountId := fs["account_id"].(string)
-	sharePath := utils.GetFSSharePath(name)
+	sharePath := utils.GetOriginSharePath(fsName)
 	share, err := p.cli.GetNfsShareByPath(ctx, sharePath, accountId)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get nfs share by path %s error: %v", sharePath, err)
@@ -493,8 +524,7 @@ func (p *NAS) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
-func (p *NAS) Expand(ctx context.Context, name string, newSize int64) error {
-	fsName := utils.GetFileSystemName(name)
+func (p *NAS) Expand(ctx context.Context, fsName string, newSize int64) error {
 	quota, err := p.cli.GetQuotaByFileSystemName(ctx, fsName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("query quota error: %v", err)

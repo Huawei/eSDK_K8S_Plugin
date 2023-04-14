@@ -19,8 +19,10 @@ package plugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/fusionstorage/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -54,13 +56,25 @@ func (p *FusionStoragePlugin) init(config map[string]interface{}, keepLogin bool
 		return errors.New("user must be provided")
 	}
 
-	password, exist := config["password"].(string)
+	secretName, exist := config["secretName"].(string)
 	if !exist {
-		return errors.New("password must be provided")
+		return errors.New("SecretName must be provided")
 	}
 
-	parallelNum, _ := config["parallelNum"].(string)
-	cli := client.NewClient(url, user, password, parallelNum)
+	secretNamespace, exist := config["secretNamespace"].(string)
+	if !exist {
+		return errors.New("SecretNamespace must be provided")
+	}
+
+	backendID, exist := config["backendID"].(string)
+	if !exist {
+		return errors.New("backendID must be provided")
+	}
+
+	accountName, _ := config["accountName"].(string)
+	parallelNum, _ := config["maxClientThreads"].(string)
+
+	cli := client.NewClient(url, user, secretName, secretNamespace, parallelNum, backendID, accountName)
 	err := cli.Login(context.Background())
 	if err != nil {
 		return err
@@ -103,14 +117,14 @@ func (p *FusionStoragePlugin) getParams(name string,
 	return params, nil
 }
 
-func (p *FusionStoragePlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
+func (p *FusionStoragePlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
 	capabilities := map[string]interface{}{
 		"SupportThin":  true,
 		"SupportThick": false,
 		"SupportQoS":   false,
 	}
 
-	return capabilities, nil
+	return capabilities, nil, nil
 }
 
 func (p *FusionStoragePlugin) updatePoolCapabilities(poolNames []string, storageType int) (map[string]interface{}, error) {
@@ -165,4 +179,55 @@ func (p *FusionStoragePlugin) Logout(ctx context.Context) {
 	if p.cli != nil {
 		p.cli.Logout(ctx)
 	}
+}
+
+func (p *FusionStoragePlugin) getNewClientConfig(ctx context.Context, config map[string]interface{}) (*client.NewClientConfig, error) {
+	newClientConfig := &client.NewClientConfig{}
+	configUrls, exist := config["urls"].([]interface{})
+	if !exist || len(configUrls) <= 0 {
+		msg := fmt.Sprintf("Verify urls: [%v] failed. urls must be provided.", config["urls"])
+		log.AddContext(ctx).Errorln(msg)
+		return newClientConfig, errors.New(msg)
+	}
+
+	newClientConfig.Url, exist = configUrls[0].(string)
+	if !exist {
+		msg := fmt.Sprintf("Verify url: [%v] failed. convert url to string failed.", configUrls[0])
+		log.AddContext(ctx).Errorln(msg)
+		return newClientConfig, errors.New(msg)
+	}
+
+	newClientConfig.User, exist = config["user"].(string)
+	if !exist {
+		msg := fmt.Sprintf("Verify User: [%v] failed. User must be provided.", config["user"])
+		log.AddContext(ctx).Errorln(msg)
+		return newClientConfig, errors.New(msg)
+	}
+
+	newClientConfig.SecretName, exist = config["secretName"].(string)
+	if !exist {
+		msg := fmt.Sprintf("Verify SecretName: [%v] failed. SecretName must be provided.", config["secretName"])
+		log.AddContext(ctx).Errorln(msg)
+		return newClientConfig, errors.New(msg)
+	}
+
+	newClientConfig.SecretNamespace, exist = config["secretNamespace"].(string)
+	if !exist {
+		msg := fmt.Sprintf("Verify SecretNamespace: [%v] failed. SecretNamespace must be provided.",
+			config["SecretNamespace"])
+		log.AddContext(ctx).Errorln(msg)
+		return newClientConfig, errors.New(msg)
+	}
+
+	newClientConfig.BackendID, exist = config["backendID"].(string)
+	if !exist {
+		msg := fmt.Sprintf("Verify backendID: [%v] failed. backendID must be provided.",
+			config["backendID"])
+		return newClientConfig, pkgUtils.Errorln(ctx, msg)
+	}
+
+	newClientConfig.AccountName, _ = config["accountName"].(string)
+	newClientConfig.ParallelNum, _ = config["maxClientThreads"].(string)
+
+	return newClientConfig, nil
 }

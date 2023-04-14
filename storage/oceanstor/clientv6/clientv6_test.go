@@ -21,8 +21,6 @@ import (
 	"context"
 	"io/ioutil"
 	"net/http"
-	"os"
-	"path"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -35,7 +33,6 @@ import (
 var testClient *ClientV6
 
 const (
-	logDir  = "/var/log/huawei/"
 	logName = "clientV6_test.log"
 
 	successStatus int = 200
@@ -81,19 +78,16 @@ func TestSplitCloneFS(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
 
 	testClient = NewClientV6([]string{"https://192.168.125.*:8088"},
-		"dev-account", "dev-password", "dev-vStore", "")
+		"dev-account",
+		"mock-sec-name",
+		"mock-sec-namespace",
+		"dev-vStore",
+		"",
+		"mock-backend-id")
 
 	m.Run()
 }

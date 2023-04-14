@@ -263,6 +263,28 @@ func (p *SAN) createQoS(ctx context.Context,
 	}, nil
 }
 
+func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
+	vol, err := p.cli.GetVolumeByName(ctx, name)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Get volume by name %s error: %v", name, err)
+		return nil, err
+	}
+
+	if vol == nil {
+		return nil, fmt.Errorf("lun %s to query does not exist", name)
+	}
+
+	volObj := utils.NewVolume(name)
+	if lunWWN, ok := vol["wwn"].(string); ok {
+		volObj.SetLunWWN(lunWWN)
+	}
+
+	// set the size, need to trans MiB to Bytes
+	capacity := int64(vol["volSize"].(float64))
+	volObj.SetSize(utils.TransK8SCapacity(capacity, 1024*1024))
+	return volObj, nil
+}
+
 func (p *SAN) Delete(ctx context.Context, name string) error {
 	vol, err := p.cli.GetVolumeByName(ctx, name)
 	if err != nil {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,45 @@
 
 package config
 
+import (
+	"huawei-csi-driver/cli/client"
+)
+
 const (
-	DefaultNameSpace = "huawei-csi"
+	//CliVersion oceanctl version
+	CliVersion = "v4.0.0"
+
+	// DefaultMaxClientThreads default max client threads
+	DefaultMaxClientThreads = "30"
+
+	// DefaultUidLength default uid length
+	DefaultUidLength = 10
+
+	// DefaultNamespace default namespace
+	DefaultNamespace = "huawei-csi"
+)
+
+var (
+	// SupportedFormats supported output format
+	SupportedFormats = []string{"json", "wide", "yaml"}
+)
+
+var (
+	// Namespace the value of namespace flag, set by options.WithNameSpace().
+	Namespace string
+
+	// OutputFormat the value of output format flag, set by options.WithOutPutFormat().
+	OutputFormat string
+
+	// FileName the value of filename flag, set by options.WithFilename().
+	FileName string
+
+	//DeleteAll the value of all flag, set by options.DeleteAll().
+	DeleteAll bool
+
+	// ChangePassword the value of password flag, set by options.WithPassword().
+	ChangePassword bool
+
+	// Client when the discoverOperating() function executes successfully, this field will be set.
+	Client client.KubernetesClient
 )

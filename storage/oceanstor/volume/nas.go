@@ -85,11 +85,11 @@ func (p *NAS) preCreate(ctx context.Context, params map[string]interface{}) erro
 	params["name"] = utils.GetFileSystemName(name)
 
 	if v, exist := params["sourcevolumename"].(string); exist {
-		params["clonefrom"] = utils.GetFileSystemName(v)
+		params["clonefrom"] = v
 	} else if v, exist := params["sourcesnapshotname"].(string); exist {
 		params["fromSnapshot"] = utils.GetFSSnapshotName(v)
 	} else if v, exist := params["clonefrom"].(string); exist {
-		params["clonefrom"] = utils.GetFileSystemName(v)
+		params["clonefrom"] = v
 	}
 
 	err = p.setWorkLoadID(ctx, p.cli, params)
@@ -662,8 +662,27 @@ func (p *NAS) revertShareAccess(ctx context.Context, taskResult map[string]inter
 	return nil
 }
 
-func (p *NAS) Delete(ctx context.Context, name string) error {
-	fsName := utils.GetFileSystemName(name)
+func (p *NAS) Query(ctx context.Context, fsName string) (utils.Volume, error) {
+	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Query filesystem %s error: %v", fsName, err)
+		return nil, err
+	}
+
+	if fs == nil {
+		return nil, utils.Errorf(ctx, "Filesystem [%s] to query does not exist", fsName)
+	}
+
+	volObj := utils.NewVolume(fsName)
+	// set the size, need to trans Sectors to Bytes
+	if capacity, err := strconv.ParseInt(fs["CAPACITY"].(string), 10, 64); err == nil {
+		volObj.SetSize(utils.TransK8SCapacity(capacity, 512))
+	}
+
+	return volObj, nil
+}
+
+func (p *NAS) Delete(ctx context.Context, fsName string) error {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", fsName, err)
@@ -743,7 +762,7 @@ func (p *NAS) Delete(ctx context.Context, name string) error {
 
 	vStoreID, _ := fs["vstoreId"].(string)
 	params := map[string]interface{}{
-		"name":           name,
+		"name":           fsName,
 		"replicationIDs": replicationIDs,
 		"hypermetroIDs":  hypermetroIDs,
 		"localVStoreID":  vStoreID,
@@ -754,8 +773,7 @@ func (p *NAS) Delete(ctx context.Context, name string) error {
 	return err
 }
 
-func (p *NAS) Expand(ctx context.Context, name string, newSize int64) error {
-	fsName := utils.GetFileSystemName(name)
+func (p *NAS) Expand(ctx context.Context, fsName string, newSize int64) error {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", fsName, err)
@@ -810,7 +828,7 @@ func (p *NAS) Expand(ctx context.Context, name string, newSize int64) error {
 
 	expandTask.AddTask("Expand-Local-FileSystem", p.expandLocalFS, nil)
 	params := map[string]interface{}{
-		"name":            name,
+		"name":            fsName,
 		"size":            newSize,
 		"expandSize":      newSize - curSize,
 		"localFSID":       fs["ID"].(string),
@@ -1048,7 +1066,7 @@ func (p *NAS) deleteHyperMetroShare(ctx context.Context,
 }
 
 func (p *NAS) deleteShare(ctx context.Context, name, vStoreID string, cli client.BaseClientInterface) error {
-	sharePath := utils.GetSharePath(name)
+	sharePath := utils.GetOriginSharePath(name)
 	share, err := cli.GetNfsShareByPath(ctx, sharePath, vStoreID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get nfs share by path %s error: %v", sharePath, err)
@@ -1067,8 +1085,7 @@ func (p *NAS) deleteShare(ctx context.Context, name, vStoreID string, cli client
 	return nil
 }
 
-func (p *NAS) deleteFS(ctx context.Context, name string, cli client.BaseClientInterface) error {
-	fsName := utils.GetFileSystemName(name)
+func (p *NAS) deleteFS(ctx context.Context, fsName string, cli client.BaseClientInterface) error {
 	fs, err := cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", fsName, err)
@@ -1320,8 +1337,7 @@ func (p *NAS) preExpandCheckRemoteCapacity(ctx context.Context,
 	}
 
 	// check the remote pool
-	name := params["name"].(string)
-	remoteFsName := utils.GetFileSystemName(name)
+	remoteFsName := params["name"].(string)
 	remoteFs, err := cli.GetFileSystemByName(ctx, remoteFsName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", remoteFsName, err)
@@ -1407,8 +1423,7 @@ func (p *NAS) expandLocalFS(ctx context.Context,
 	return nil, err
 }
 
-func (p *NAS) CreateSnapshot(ctx context.Context, name, snapshotName string) (map[string]interface{}, error) {
-	fsName := utils.GetFileSystemName(name)
+func (p *NAS) CreateSnapshot(ctx context.Context, fsName, snapshotName string) (map[string]interface{}, error) {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem by name %s error: %v", fsName, err)

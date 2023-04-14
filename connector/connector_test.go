@@ -18,8 +18,6 @@ package connector
 
 import (
 	"context"
-	"os"
-	"path"
 	"reflect"
 	"testing"
 
@@ -27,7 +25,6 @@ import (
 )
 
 const (
-	logDir  = "/var/log/huawei/"
 	logName = "connectorTest.log"
 )
 
@@ -97,16 +94,8 @@ func TestGetConnector(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
 
 	m.Run()
 }

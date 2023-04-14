@@ -20,12 +20,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -40,29 +42,28 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		return nil, err
 	}
 
-	parameters, err := processCreateVolumeParameters(ctx, req)
+	annotations, err := app.GetGlobalConfig().K8sUtils.GetVolumeConfiguration(ctx, req.GetName())
 	if err != nil {
-		return nil, err
+		if !strings.Contains(err.Error(), "PVCNotFound") {
+			return nil, err
+		}
+		log.AddContext(ctx).Infof("The PVC %s is not the imported volume, "+
+			"try to create a new one.", req.GetName())
+		return d.createVolume(ctx, req)
 	}
 
-	localPool, remotePool, err := backend.SelectStoragePool(ctx, req.GetCapacityRange().RequiredBytes, parameters)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Cannot select pool for volume creation: %v", err)
-		return nil, status.Error(codes.Internal, err.Error())
+	volumeName, volumeOk := annotations[app.GetGlobalConfig().DriverName+annManageVolumeName]
+	backendName, backendOk := annotations[app.GetGlobalConfig().DriverName+annManageBackendName]
+	if (!volumeOk && backendOk) || (volumeOk && !backendOk) {
+		msg := fmt.Sprintf("The annotation with PVC %s is incorrect, both VolumeName [%s] and BackendName [%s] "+
+			"should configure.", req.GetName(), volumeName, backendName)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, status.Error(codes.FailedPrecondition, msg)
+	} else if volumeOk && backendOk {
+		// manage Volume
+		return d.manageVolume(ctx, req, volumeName, backendName)
 	}
-
-	processCreateVolumeParametersAfterSelect(parameters, localPool, remotePool)
-
-	vol, err := localPool.Plugin.CreateVolume(ctx, req.GetName(), parameters)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Create volume %s error: %v", req.GetName(), err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	log.AddContext(ctx).Infof("Volume %s is created", req.GetName())
-	return &csi.CreateVolumeResponse{
-		Volume: makeCreateVolumeResponse(ctx, req, vol, localPool),
-	}, nil
+	return d.createVolume(ctx, req)
 }
 
 func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
@@ -71,7 +72,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	log.AddContext(ctx).Infof("Start to delete volume %s", volumeId)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
+	backend := backend.GetBackendWithFresh(ctx, backendName, true)
 	if backend == nil {
 		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
 			"CAUTION: volume need to manually delete from array.", backendName)
@@ -108,7 +109,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	}
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
+	backend := backend.GetBackendWithFresh(ctx, backendName, true)
 	if backend == nil {
 		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
 		log.AddContext(ctx).Errorln(msg)
@@ -135,10 +136,44 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (
 	*csi.ControllerPublishVolumeResponse, error) {
 
-	// Volume attachment will be done at node stage process
-	log.AddContext(ctx).Infof("Run controller publish volume %s from node %s",
-		req.GetVolumeId(), req.GetNodeId())
-	return &csi.ControllerPublishVolumeResponse{}, nil
+	nodeId := req.GetNodeId()
+	volumeId := req.GetVolumeId()
+	log.AddContext(ctx).Infof("Run controller publish volume %s to node %s", volumeId, nodeId)
+
+	backendName, volName := utils.SplitVolumeId(volumeId)
+	backend := backend.GetBackendWithFresh(ctx, backendName, true)
+	if backend == nil {
+		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, status.Error(codes.Internal, msg)
+	}
+
+	var parameters map[string]interface{}
+
+	err := json.Unmarshal([]byte(nodeId), &parameters)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Unmarshal node info of %s error: %v", nodeId, err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	mappingInfo, err := backend.Plugin.AttachVolume(ctx, volName, parameters)
+	if err != nil {
+		log.AddContext(ctx).Errorf("controller publish volume %s to node %s error: %v", volName, nodeId, err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	publishInfo, err := json.Marshal(mappingInfo)
+	if err != nil {
+		log.AddContext(ctx).Errorf("controller publish json marshal error: %v", err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	log.AddContext(ctx).Infof("Volume %s is controller published to node %s", volumeId, nodeId)
+	return &csi.ControllerPublishVolumeResponse{
+		PublishContext: map[string]string{
+			"publishInfo": string(publishInfo),
+		},
+	}, nil
 }
 
 func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (
@@ -150,7 +185,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	log.AddContext(ctx).Infof("Start to controller unpublish volume %s from node %s", volumeId, nodeInfo)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
+	backend := backend.GetBackendWithFresh(ctx, backendName, true)
 	if backend == nil {
 		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
 			"CAUTION: volume %s need to manually detach from array.", backendName, volName)
@@ -248,7 +283,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	log.AddContext(ctx).Infof("Start to Create snapshot %s for volume %s", snapshotName, volumeId)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackend(backendName)
+	backend := backend.GetBackendWithFresh(ctx, backendName, true)
 	if backend == nil {
 		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
 		log.AddContext(ctx).Errorln(msg)
@@ -283,7 +318,7 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	log.AddContext(ctx).Infof("Start to Delete snapshot %s.", snapshotId)
 
 	backendName, snapshotParentId, snapshotName := utils.SplitSnapshotId(snapshotId)
-	backend := backend.GetBackend(backendName)
+	backend := backend.GetBackendWithFresh(ctx, backendName, true)
 	if backend == nil {
 		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
 			"CAUTION: snapshot need to manually delete from array.", backendName)

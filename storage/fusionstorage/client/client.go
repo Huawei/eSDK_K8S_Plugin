@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -43,6 +44,11 @@ const (
 	defaultParallelCount int = 50
 	maxParallelCount     int = 1000
 	minParallelCount     int = 20
+
+	loginFailed         = 1077949061
+	loginFailedWithArg  = 1077987870
+	userPasswordInvalid = 1073754390
+	IPLock              = 1077949071
 )
 
 var (
@@ -69,16 +75,31 @@ func isFilterLog(method, url string) bool {
 }
 
 type Client struct {
-	url       string
-	user      string
-	password  string
+	url             string
+	user            string
+	secretNamespace string
+	secretName      string
+	backendID       string
+	accountName     string
+
 	authToken string
 	client    *http.Client
 
 	reloginMutex sync.Mutex
 }
 
-func NewClient(url, user, password, parallelNum string) *Client {
+// NewClientConfig stores the information needed to create a new FusionStorage client
+type NewClientConfig struct {
+	Url             string
+	User            string
+	SecretName      string
+	SecretNamespace string
+	ParallelNum     string
+	BackendID       string
+	AccountName     string
+}
+
+func NewClient(url, user, secretName, secretNamespace, parallelNum, backendID, accountName string) *Client {
 	var err error
 	var parallelCount int
 
@@ -95,9 +116,12 @@ func NewClient(url, user, password, parallelNum string) *Client {
 	log.Infof("Init parallel count is %d", parallelCount)
 	clientSemaphore = utils.NewSemaphore(parallelCount)
 	return &Client{
-		url:      url,
-		user:     user,
-		password: password,
+		url:             url,
+		user:            user,
+		secretName:      secretName,
+		secretNamespace: secretNamespace,
+		backendID:       backendID,
+		accountName:     accountName,
 	}
 }
 
@@ -106,6 +130,42 @@ func (cli *Client) DuplicateClient() *Client {
 	dup.client = nil
 
 	return &dup
+}
+
+func (cli *Client) ValidateLogin(ctx context.Context) error {
+	jar, _ := cookiejar.New(nil)
+	cli.client = &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		Jar:     jar,
+		Timeout: 60 * time.Second,
+	}
+
+	log.AddContext(ctx).Infof("Try to login %s.", cli.url)
+
+	password, err := utils.GetPasswordFromSecret(ctx, cli.secretName, cli.secretNamespace)
+	if err != nil {
+		return err
+	}
+
+	data := map[string]interface{}{
+		"userName": cli.user,
+		"password": password,
+	}
+
+	_, resp, err := cli.baseCall(ctx, "POST", "/dsware/service/v1.3/sec/login", data)
+	if err != nil {
+		return err
+	}
+
+	result := int64(resp["result"].(float64))
+	if result != 0 {
+		return fmt.Errorf("validate login %s error: %+v", cli.url, resp)
+	}
+
+	log.AddContext(ctx).Infof("Login %s success", cli.url)
+	return nil
 }
 
 func (cli *Client) Login(ctx context.Context) error {
@@ -120,9 +180,14 @@ func (cli *Client) Login(ctx context.Context) error {
 
 	log.AddContext(ctx).Infof("Try to login %s.", cli.url)
 
+	password, err := pkgUtils.GetPasswordFromBackendID(ctx, cli.backendID)
+	if err != nil {
+		return err
+	}
+
 	data := map[string]interface{}{
 		"userName": cli.user,
-		"password": cli.password,
+		"password": password,
 	}
 
 	respHeader, resp, err := cli.baseCall(ctx, "POST", "/dsware/service/v1.3/sec/login", data)
@@ -132,7 +197,22 @@ func (cli *Client) Login(ctx context.Context) error {
 
 	result := int64(resp["result"].(float64))
 	if result != 0 {
-		return fmt.Errorf("login %s error: %+v", cli.url, resp)
+		msg := fmt.Sprintf("Login %s error: %+v", cli.url, resp)
+		errorCode, ok := resp["errorCode"].(float64)
+		if !ok {
+			return errors.New(msg)
+		}
+
+		// If the password is incorrect, set sbct to offline.
+		code := int64(errorCode)
+		if code == loginFailed || code == loginFailedWithArg || code == userPasswordInvalid || code == IPLock {
+			setErr := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.backendID, false)
+			if setErr != nil {
+				msg = msg + fmt.Sprintf("\nSetStorageBackendContentOffline [%s] failed. error: %v", cli.backendID, setErr)
+			}
+		}
+
+		return errors.New(msg)
 	}
 
 	cli.authToken = respHeader["X-Auth-Token"][0]

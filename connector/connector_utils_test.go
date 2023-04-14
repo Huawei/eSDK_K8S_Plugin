@@ -20,10 +20,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
 
@@ -384,9 +387,9 @@ func TestGetVirtualDevice(t *testing.T) {
 		{"NormalPhysicalSd*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"sdd"}, "", nil, nil}, "sdd", NotUseMultipath, false},
 		{"NormalPhysicalNVMe*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1"}, "", nil, nil}, "nvme1n1", NotUseMultipath, false},
 		{"ErrorMultiUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathi"}, "", nil, nil}, "", 0, true},
-		{"ErrorPartitionUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathh2"}, "", nil, nil}, "", 0, true},
-		{"ErrorPartitionDm-*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"dm-2"}, "lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha2 -> ../dm-2", nil, nil}, "", 0, true},
-		{"ErrorPartitionNvme*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1", "nvme1n1p1"}, "", nil, nil}, "", 0, true},
+		{"ErrorPartitionUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathh2"}, "", nil, nil}, "ultrapathh", UseUltraPathNVMe, false},
+		{"ErrorPartitionDm-*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"dm-2"}, "lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha2 -> ../dm-2", nil, nil}, "", 0, false},
+		{"ErrorPartitionNvme*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1", "nvme1n1p1"}, "", nil, nil}, "nvme1n1", 0, false},
 	}
 
 	stub := GetDevicesByGUID
@@ -520,6 +523,213 @@ func TestGetFsTypeByDevPath(t *testing.T) {
 			if (err != nil) != tt.wantErr || fsType != tt.want {
 				t.Errorf("Test GetFsTypeByDevPath() error = %v, wantErr: [%v]; fsType: [%s], want: [%s]", err, tt.wantErr, fsType, tt.want)
 			}
+		})
+	}
+}
+
+func TestGetDeviceTypeByName(t *testing.T) {
+	tests := []struct {
+		name       string
+		deviceName string
+		want       int
+		wantErr    bool
+	}{
+		{name: "test_for_dm", deviceName: "dm-1", want: UseDMMultipath, wantErr: false},
+		{name: "test_for_dm", deviceName: "mpathib", want: UseDMMultipath, wantErr: false},
+		{name: "test_for_sd", deviceName: "sda", want: NotUseMultipath, wantErr: false},
+		{name: "test_for_nvme", deviceName: "nvme1n1", want: NotUseMultipath, wantErr: false},
+		{name: "test_for_ultrapath", deviceName: "sdu", want: UseUltraPath, wantErr: false},
+		{name: "test_for_ultrapath-nvme", deviceName: "ultrapatha", want: UseUltraPathNVMe, wantErr: false},
+		{name: "test_for_not_found", deviceName: "tty", want: 0, wantErr: true},
+	}
+
+	isUltraPath := gomonkey.ApplyFunc(isUltraPathDevice, func(ctx context.Context, device string) bool {
+		return device == "sdu"
+	})
+	defer isUltraPath.Reset()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := getDeviceTypeByName(context.Background(), tt.deviceName)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getDeviceTypeByName() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("getDeviceTypeByName() want = %v, get = %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestGetDeviceFromMountFile(t *testing.T) {
+	tests := []struct {
+		name        string
+		targetPath  string
+		checkDevRef bool
+		want        string
+		mountMap    map[string]string
+		wantErr     bool
+	}{
+		{
+			name:        "test_device_not_exist",
+			targetPath:  "/mnt/test",
+			checkDevRef: true,
+			want:        "",
+			mountMap:    map[string]string{},
+			wantErr:     true,
+		},
+		{
+			name:        "test_device_exist_and_ref_one_path",
+			targetPath:  "/mnt/test1",
+			checkDevRef: true,
+			want:        "/dev/sda",
+			mountMap:    map[string]string{"/mnt/test1": "/dev/sda", "/mnt/test2": "/dev/sdb"},
+			wantErr:     false,
+		},
+		{
+			name:        "test_device_exist_and_ref_multiple_path",
+			targetPath:  "/mnt/test1",
+			checkDevRef: true,
+			want:        "",
+			mountMap:    map[string]string{"/mnt/test1": "/dev/sda", "/mnt/test2": "/dev/sda"},
+			wantErr:     true,
+		},
+		{
+			name:        "test_device_exist_and_ref_multiple_path_and_no_check",
+			targetPath:  "/mnt/test1",
+			checkDevRef: false,
+			want:        "/dev/sda",
+			mountMap:    map[string]string{"/mnt/test1": "/dev/sda", "/mnt/test2": "/dev/sda"},
+			wantErr:     false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			readMount := gomonkey.ApplyFunc(ReadMountPoints, func(ctx context.Context) (map[string]string, error) {
+				return tt.mountMap, nil
+			})
+			defer readMount.Reset()
+
+			got, err := GetDeviceFromMountFile(context.Background(), tt.targetPath, tt.checkDevRef)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetDeviceFromMountFile() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("GetDeviceFromMountFile() want = %v, got = %v", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestGetDeviceFromSymLink(t *testing.T) {
+	mockDeviceName := "mock-target-device"
+	mockTargetName := "mock-target-path"
+	mockTargetNameWithoutLink := "mock-target-path-without-link"
+
+	tempDir, done := helperFuncForTestGetDeviceFromSymLink(t, mockTargetNameWithoutLink,
+		mockDeviceName, mockTargetName)
+	if done {
+		return
+	}
+
+	tests := []struct {
+		name       string
+		targetPath string
+		want       string
+		wantErr    bool
+	}{
+		{
+			name:       "test_get_link_device_from_target_path",
+			targetPath: path.Join(tempDir, mockTargetName),
+			want:       path.Join(tempDir, mockDeviceName),
+			wantErr:    false,
+		},
+		{
+			name:       "test_target_path_without_link_device",
+			targetPath: path.Join(tempDir, mockTargetNameWithoutLink),
+			want:       "",
+			wantErr:    true,
+		},
+		{
+			name:       "test_target_path_not_exist",
+			targetPath: "not-exist-path",
+			want:       "",
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GetDeviceFromSymLink(tt.targetPath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetDeviceFromSymLink() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("GetDeviceFromSymLink() want = %s, got = %s", tt.want, got)
+			}
+		})
+	}
+}
+
+func helperFuncForTestGetDeviceFromSymLink(t *testing.T, mockTargetNameWithoutLink string, mockDeviceName string,
+	mockTargetName string) (string, bool) {
+	tempDir, err := os.MkdirTemp("", "test")
+	if err != nil {
+		t.Errorf("create temp dir failed, error: %v", err)
+		return "", true
+	}
+
+	withoutLinkPath, err := os.Create(path.Join(tempDir, mockTargetNameWithoutLink))
+	if err != nil {
+		t.Errorf("create mock target without link file failed, error: %v", err)
+		return "", true
+	}
+
+	deviceFile, err := os.Create(path.Join(tempDir, mockDeviceName))
+	if err != nil {
+		t.Errorf("create mock device file failed, error: %v", err)
+		return "", true
+	}
+
+	if err := os.Symlink(path.Join(tempDir, mockDeviceName), path.Join(tempDir, mockTargetName)); err != nil {
+		t.Errorf("create symlink failed, error: %v", err)
+		return "", true
+	}
+
+	t.Cleanup(func() {
+		if err := withoutLinkPath.Close(); err != nil {
+			t.Errorf("close file %s failed, error: %v", withoutLinkPath.Name(), err)
+			return
+		}
+		if err := deviceFile.Close(); err != nil {
+			t.Errorf("close file %s failed, error: %v", deviceFile.Name(), err)
+			return
+		}
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Errorf("remove dir %s failed, error: %+v", tempDir, err)
+			return
+		}
+	})
+	return tempDir, false
+}
+
+func TestRemoveWwnType(t *testing.T) {
+	tests := []struct {
+		wwn  string
+		want string
+	}{
+		{wwn: "t10.1600", want: "600"}, {wwn: "t10.600", want: "600"},
+		{wwn: "1600", want: "600"}, {wwn: "eui.2600", want: "600"},
+		{wwn: "eui.600", want: "600"}, {wwn: "2600", want: "600"},
+		{wwn: "naa.3600", want: "600"}, {wwn: "naa.600", want: "600"},
+		{wwn: "3600", want: "600"},
+	}
+	for _, tt := range tests {
+		t.Run("TestRemoveWwnType", func(t *testing.T) {
+			assert.Equalf(t, tt.want, removeWwnType(tt.wwn), "removeWwnType(%v)", tt.wwn)
 		})
 	}
 }

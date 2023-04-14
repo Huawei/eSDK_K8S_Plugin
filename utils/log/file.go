@@ -17,7 +17,6 @@
 package log
 
 import (
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -33,19 +32,7 @@ import (
 
 const (
 	logFilePermission = 0644
-	defaultFileSize   = 1024 * 1024 * 20 // 20M
-
 	backupTimeFormat  = "20060102-150405"
-	defaultMaxBackups = 9
-)
-
-var (
-	logFileSizeThreshold = flag.String("logFileSize",
-		strconv.Itoa(defaultFileSize),
-		"Maximum file size before log rotation")
-	maxBackups = flag.Uint("maxBackups",
-		defaultMaxBackups,
-		"maximum number of backup log file")
 )
 
 // FileHook sends log entries to a file.
@@ -61,7 +48,7 @@ var _ flushable = &FileHook{}
 var _ closable = &FileHook{}
 
 // newFileHook creates a new log hook for writing to a file.
-func newFileHook(logFilePath string, logFormat logrus.Formatter) (*FileHook, error) {
+func newFileHook(logFilePath, logFileSize string, logFormat logrus.Formatter) (*FileHook, error) {
 	logFileRootDir := filepath.Dir(logFilePath)
 	dir, err := os.Lstat(logFileRootDir)
 	if os.IsNotExist(err) {
@@ -73,7 +60,7 @@ func newFileHook(logFilePath string, logFormat logrus.Formatter) (*FileHook, err
 		return nil, fmt.Errorf("log path %v exists and is not a directory, please remove it", logFileRootDir)
 	}
 
-	filesizeThreshold, err := getNumInByte()
+	filesizeThreshold, err := getNumInByte(logFileSize)
 	if err != nil {
 		return nil, fmt.Errorf("error in evaluating max log file size: %v. Check 'logFileSize' flag", err)
 	}
@@ -188,8 +175,8 @@ func (f *fileHandler) rotate() error {
 		return err
 	}
 
-	if *maxBackups < uint(len(backupFiles)) {
-		oldBackupFiles := backupFiles[*maxBackups:]
+	if maxBackups < uint(len(backupFiles)) {
+		oldBackupFiles := backupFiles[maxBackups:]
 
 		for _, file := range oldBackupFiles {
 			err := os.Remove(filepath.Join(filepath.Dir(f.filePath), file.Name()))
@@ -254,11 +241,11 @@ func (by byTimeFormat) Len() int {
 	return len(by)
 }
 
-func getNumInByte() (int64, error) {
+func getNumInByte(logFileSize string) (int64, error) {
 	var sum int64 = 0
 	var err error
 
-	maxDataNum := strings.ToUpper(*logFileSizeThreshold)
+	maxDataNum := strings.ToUpper(logFileSize)
 	lastLetter := maxDataNum[len(maxDataNum)-1:]
 
 	// 1.最后一位是M

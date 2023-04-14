@@ -34,6 +34,7 @@ import (
 	"syscall"
 	"time"
 
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/utils/log"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -268,6 +269,10 @@ func GetSharePath(name string) string {
 	return "/" + strings.Replace(name, "-", "_", -1) + "/"
 }
 
+func GetOriginSharePath(name string) string {
+	return "/" + name + "/"
+}
+
 func GetFSSharePath(name string) string {
 	return "/" + strings.Replace(name, "-", "_", -1) + "/"
 }
@@ -436,6 +441,11 @@ func RoundUpSize(volumeSizeBytes int64, allocationUnitBytes int64) int64 {
 	return roundedUp
 }
 
+// TransK8SCapacity trans volume size from Sector to Bytes
+func TransK8SCapacity(volumeSizeSectors, allocationUnitBytes int64) int64 {
+	return volumeSizeSectors * allocationUnitBytes
+}
+
 func GetAlua(ctx context.Context, alua map[string]interface{}, host string) map[string]interface{} {
 	if alua == nil {
 		return nil
@@ -516,6 +526,10 @@ func GetAccessModeType(accessMode csi.VolumeCapability_AccessMode_Mode) string {
 	case csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER:
 		return "ReadWrite"
 	case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
+		return "ReadWrite"
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER:
+		return "ReadWrite"
+	case csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER:
 		return "ReadWrite"
 	default:
 		return ""
@@ -813,4 +827,44 @@ func RecoverPanic(ctx context.Context) {
 func IsDebugLog(method, url string, debugLogMap map[string]map[string]bool) bool {
 	ret, exist := debugLogMap[method]
 	return exist && ret[url]
+}
+
+// GetPasswordFromSecret used to get password from secret
+func GetPasswordFromSecret(ctx context.Context, SecretName, SecretNamespace string) (string, error) {
+	log.AddContext(ctx).Infof("Get password from secret: %s, ns: %s.", SecretName, SecretNamespace)
+	secret, err := app.GetGlobalConfig().K8sUtils.GetSecret(ctx, SecretName, SecretNamespace)
+	if err != nil {
+		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s] failed, error: [%v]",
+			SecretName, SecretNamespace, err)
+		log.AddContext(ctx).Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	if secret == nil || secret.Data == nil {
+		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s], but "+
+			"secret is nil or the data not exist in secret", SecretName, SecretNamespace)
+		log.AddContext(ctx).Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	password, exist := secret.Data["password"]
+	if !exist {
+		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s], but "+
+			"password field not exist in secret data", SecretName, SecretNamespace)
+		log.AddContext(ctx).Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	return string(password), nil
+}
+
+// StringContain return the string prefix whether in the target string list
+func StringContain(strPrefix string, stringList []string) bool {
+	for _, s := range stringList {
+		if strings.Contains(strPrefix, s) {
+			return true
+		}
+	}
+
+	return false
 }
