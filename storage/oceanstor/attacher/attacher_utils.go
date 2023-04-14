@@ -19,58 +19,74 @@ package attacher
 import (
 	"context"
 
-	"huawei-csi-driver/connector"
 	_ "huawei-csi-driver/connector/fibrechannel"
+	"huawei-csi-driver/connector/host"
 	_ "huawei-csi-driver/connector/iscsi"
 	_ "huawei-csi-driver/connector/nvme"
 	_ "huawei-csi-driver/connector/roce"
 	"huawei-csi-driver/utils"
 )
 
-func disConnectVolume(ctx context.Context, tgtLunWWN, protocol string) (*connector.DisConnectInfo, error) {
-	var conn connector.Connector
-	switch protocol {
-	case "iscsi":
-		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
-	case "fc":
-		conn = connector.GetConnector(ctx, connector.FCDriver)
-	case "roce":
-		conn = connector.GetConnector(ctx, connector.RoCEDriver)
-	case "fc-nvme":
-		conn = connector.GetConnector(ctx, connector.FCNVMeDriver)
-	default:
-		return nil, utils.Errorf(ctx, "the protocol %s is not valid", protocol)
-	}
+type InitiatorType int
 
-	return &connector.DisConnectInfo{
-		Conn:   conn,
-		TgtLun: tgtLunWWN,
-	}, nil
-}
+const (
+	ISCSI InitiatorType = iota
+	FC
+	ROCE
+)
 
-func connectVolume(ctx context.Context, attacher AttacherPlugin, lunName, protocol string,
-	parameters map[string]interface{}) (*connector.ConnectInfo, error) {
-	mappingInfo, err := attacher.ControllerAttach(ctx, lunName, parameters)
+// GetMultipleInitiators use this method when the initiator is an array e.g. fc
+func GetMultipleInitiators(ctx context.Context, protocol InitiatorType, parameters map[string]interface{}) ([]string, error) {
+	initiatorData, err := getInitiatorByProtocol(ctx, protocol, parameters)
 	if err != nil {
 		return nil, err
 	}
 
-	var conn connector.Connector
-	switch protocol {
-	case "iscsi":
-		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
-	case "fc":
-		conn = connector.GetConnector(ctx, connector.FCDriver)
-	case "roce":
-		conn = connector.GetConnector(ctx, connector.RoCEDriver)
-	case "fc-nvme":
-		conn = connector.GetConnector(ctx, connector.FCNVMeDriver)
-	default:
-		return nil, utils.Errorf(ctx, "the protocol %s is not valid", protocol)
+	if initiators, ok := initiatorData.([]string); ok {
+		return initiators, nil
 	}
 
-	return &connector.ConnectInfo{
-		Conn:        conn,
-		MappingInfo: mappingInfo,
-	}, nil
+	return nil, utils.Errorf(ctx, "convert %v initiator to string slice error:%v", protocol, initiatorData)
+}
+
+// GetSingleInitiator use this method when the initiator is single e.g. iscsi
+func GetSingleInitiator(ctx context.Context, protocol InitiatorType, parameters map[string]interface{}) (string, error) {
+	initiatorData, err := getInitiatorByProtocol(ctx, protocol, parameters)
+	if err != nil {
+		return "", err
+	}
+
+	if iscsiInitiator, ok := initiatorData.(string); ok {
+		return iscsiInitiator, nil
+	}
+
+	return "", utils.Errorf(ctx, "convert %v initiator to string error:%v", protocol, initiatorData)
+}
+
+func getInitiatorByProtocol(ctx context.Context, protocol InitiatorType, parameters map[string]interface{}) (interface{}, error) {
+	hostName, ok := parameters["HostName"].(string)
+	if !ok {
+		return nil, utils.Errorf(ctx, "Get node host name error,parameters:%v ", parameters)
+	}
+
+	hostInfo, err := host.GetNodeHostInfosFromSecret(ctx, hostName)
+	if err != nil {
+		return nil, err
+	}
+
+	mapping := map[InitiatorType]interface{}{
+		ISCSI: hostInfo.IscsiInitiator,
+		FC:    hostInfo.FCInitiators,
+		ROCE:  hostInfo.RoCEInitiator,
+	}
+
+	value, exist := mapping[protocol]
+	if !exist {
+		return nil, utils.Errorf(ctx, "unsupported protocol: %v", protocol)
+	}
+	if value == nil || value == "" {
+		return nil, utils.Errorf(ctx, "no %v initiator", protocol)
+	}
+
+	return value, nil
 }

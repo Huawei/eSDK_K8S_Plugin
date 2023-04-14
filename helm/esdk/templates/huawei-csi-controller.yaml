@@ -1,4 +1,74 @@
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: storage-backend-controller-role
+  labels:
+    provisioner: csi.huawei.com
+rules:
+  - apiGroups: [ "admissionregistration.k8s.io" ]
+    resources: [ "validatingwebhookconfigurations" ]
+    verbs: [ "create", "get", "update", "delete" ]
+  - apiGroups: [ "" ]
+    resources: [ "configmaps", "secrets", "events" ]
+    verbs: [ "create", "get", "update", "delete" ]
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "create", "get", "update", "delete" ]
+  - apiGroups: [ "xuanwu.huawei.io" ]
+    resources: [ "storagebackendclaims", "storagebackendclaims/status", "storagebackendcontents",
+                 "storagebackendcontents/status" ]
+    verbs: [ "create", "get", "list", "watch", "update", "delete" ]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: storage-backend-sidecar-role
+  labels:
+    provisioner: csi.huawei.com
+rules:
+  - apiGroups: [ "" ]
+    resources: [ "events", "configmaps" ]
+    verbs: [ "create", "get", "update", "delete" ]
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "create", "get", "update", "delete" ]
+  - apiGroups: [ "xuanwu.huawei.io" ]
+    resources: [ "storagebackendcontents", "storagebackendcontents/status" ]
+    verbs: [ "get", "list", "watch", "update" ]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-backend-controller-binding
+  labels:
+    app: xuanwu-volume-service
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-controller
+    namespace: {{ .Values.kubernetes.namespace }}
+roleRef:
+  kind: ClusterRole
+  name: storage-backend-controller-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-backend-sidecar-binding
+  labels:
+    app: xuanwu-volume-service
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-controller
+    namespace: {{ .Values.kubernetes.namespace }}
+roleRef:
+  kind: ClusterRole
+  name: storage-backend-sidecar-role
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -374,7 +444,7 @@ rules:
       - update
       - patch
 
-{{ if .Values.snapshot.enable }}
+{{ if .Values.controller.snapshot.enabled }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -546,6 +616,36 @@ rules:
       - watch
 {{ end }}
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-controller-runner
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-controller-role
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: huawei-csi-controller-runner
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-controller
+    namespace: {{ .Values.kubernetes.namespace }}
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -554,7 +654,9 @@ metadata:
   name: huawei-csi-controller
   namespace: {{ .Values.kubernetes.namespace }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.controller.controllerCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: huawei-csi-controller
@@ -565,91 +667,204 @@ spec:
         app: huawei-csi-controller
         provisioner: csi.huawei.com
     spec:
+      {{ if .Values.controller.nodeSelector }}
+      nodeSelector:
+      {{- toYaml .Values.controller.nodeSelector | nindent 8 }}
+      {{ end }}
+      {{ if .Values.controller.tolerations }}
+      tolerations:
+      {{- toYaml .Values.controller.tolerations | nindent 6 }}
+      {{ end }}
+      hostNetwork: true
+      serviceAccount: huawei-csi-controller
       containers:
-        - args:
-            - --csi-address=/csi/csi.sock
-            - --health-port=9808
+        - name: liveness-probe
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--health-port=9808"
           image: {{ .Values.images.sidecar.livenessProbe }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
-          name: liveness-probe
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        - args:
-            - --csi-address=$(ADDRESS)
-            - --timeout=6h
-            - --volume-name-prefix={{ default "pvc" ((.Values.sidecarParameter).provisioner).volumeNamePrefix }}
+        - name: csi-provisioner
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=6h"
+            - "--volume-name-prefix={{ default "pvc" (.Values.controller).volumeNamePrefix }}"
+            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
+            - "--leader-election"
+            {{ end }}
           env:
             - name: ADDRESS
               value: /csi/csi.sock
           image: {{ .Values.images.sidecar.provisioner }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
-          name: csi-provisioner
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        - args:
-            - --csi-address=$(ADDRESS)
+        {{ if .Values.attachRequired }}
+        - name: csi-attacher
+          args:
+            - "--csi-address=$(ADDRESS)"
+            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
+            - "--leader-election"
+            {{ end }}
           env:
             - name: ADDRESS
               value: /csi/csi.sock
           image: {{ .Values.images.sidecar.attacher }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
-          name: csi-attacher
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        - args:
-            - --v=5
-            - --csi-address=$(ADDRESS)
-            - --handle-volume-inuse-error=false
+        {{ end }}
+        {{ if .Values.controller.resizer.enabled }}
+        - name: csi-resizer
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--handle-volume-inuse-error=false"
+            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
+            - "--leader-election"
+            {{ end }}
           env:
             - name: ADDRESS
               value: /csi/csi.sock
           image: {{ .Values.images.sidecar.resizer }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
-          name: csi-resizer
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        {{ if .Values.snapshot.enable }}
-        - args:
-            - --v=5
-            - --csi-address=$(ADDRESS)
+        {{ end }}
+        {{ if .Values.controller.snapshot.enabled }}
+        - name: csi-snapshotter
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
+            - "--leader-election"
+            {{ end }}
           env:
             - name: ADDRESS
               value: /csi/csi.sock
           image: {{ .Values.images.sidecar.snapshotter }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
-          name: csi-snapshotter
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        - args:
-            - --v=5
+        - name: snapshot-controller
+          args:
+            - "--v=5"
+            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
+            - "--leader-election"
+            {{ end }}
           image: {{ .Values.images.sidecar.snapshotController }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
-          name: snapshot-controller
         {{ end }}
+        - name: storage-backend-controller
+          image: {{ required "Must provide the .Values.images.storageBackendController" .Values.images.storageBackendController }}
+          imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
+          env:
+            - name: CSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          args:
+            - "--logging-module={{ ((.Values.csiDriver).controllerLogging).module | default "file" }}"
+            - "--log-level={{ ((.Values.csiDriver).controllerLogging).level | default "info" }}"
+            - "--log-file-dir={{ ((.Values.csiDriver).controllerLogging).fileDir | default "/var/log/huawei" }}"
+            - "--log-file-size={{ ((.Values.csiDriver).controllerLogging).fileSize | default "20M" }}"
+            - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
+            - "--web-hook-port={{ int .Values.controller.webhookPort | default 443 }}"
+            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
+            - "--enable-leader-election=true"
+            {{ else }}
+            - "--enable-leader-election=false"
+            {{ end }}
+            {{ if (.Values.leaderElection).leaseDuration }}
+            - "--leader-lease-duration={{ .Values.leaderElection.leaseDuration }}"
+            {{ end }}
+            {{ if (.Values.leaderElection).renewDeadline }}
+            - "--leader-renew-deadline={{ .Values.leaderElection.renewDeadline }}"
+            {{ end }}
+            {{ if (.Values.leaderElection).retryPeriod }}
+            - "--leader-retry-period={{ .Values.leaderElection.retryPeriod }}"
+            {{ end }}
+          ports:
+            - containerPort: {{ int ((.Values.volumeService).storageBackendController).webhookPort | default 443 }}
+          volumeMounts:
+            - mountPath: /var/log
+              name: log
+            - mountPath: /etc/localtime
+              name: host-time
+        - name: storage-backend-sidecar
+          image: {{ required "Must provide the .Values.images.storageBackendSidecar" .Values.images.storageBackendSidecar }}
+          imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
+          env:
+            - name: DRCSI_ENDPOINT
+              value: {{ .Values.csiDriver.drEndpoint }}
+            - name: CSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          args:
+            - "--logging-module={{ ((.Values.csiDriver).controllerLogging).module | default "file" }}"
+            - "--log-level={{ ((.Values.csiDriver).controllerLogging).level | default "info" }}"
+            - "--log-file-dir={{ ((.Values.csiDriver).controllerLogging).fileDir | default "/var/log/huawei" }}"
+            - "--log-file-size={{ ((.Values.csiDriver).controllerLogging).fileSize | default "20M" }}"
+            - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
+            - "--dr-endpoint=$(DRCSI_ENDPOINT)"
+            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
+            - "--enable-leader-election=true"
+            {{ else }}
+            - "--enable-leader-election=false"
+            {{ end }}
+            {{ if (.Values.leaderElection).leaseDuration }}
+            - "--leader-lease-duration={{ .Values.leaderElection.leaseDuration }}"
+            {{ end }}
+            {{ if (.Values.leaderElection).renewDeadline }}
+            - "--leader-renew-deadline={{ .Values.leaderElection.renewDeadline }}"
+            {{ end }}
+            {{ if (.Values.leaderElection).retryPeriod }}
+            - "--leader-retry-period={{ .Values.leaderElection.retryPeriod }}"
+            {{ end }}
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/log
+              name: log
+            - mountPath: /etc/localtime
+              name: host-time
         - name: huawei-csi-driver
           image: {{ required "Must provide the CSI controller service container image." .Values.images.huaweiCSIService }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
           args:
-            - --endpoint=$(CSI_ENDPOINT)
-            - --controller
-            - --containerized
-            - --backend-update-interval={{ .Values.csi_driver.backendUpdateInterval }}
-            - --driver-name={{ .Values.csi_driver.driverName }}
-            - --loggingModule={{ .Values.csi_driver.controllerLogging.module }}
-            - --logLevel={{ .Values.csi_driver.controllerLogging.level }}
-            {{ if eq .Values.csi_driver.controllerLogging.module "file" }}
-            - --logFileDir={{ .Values.csi_driver.controllerLogging.fileDir }}
-            - --logFileSize={{ .Values.csi_driver.controllerLogging.fileSize }}
-            - --maxBackups={{ .Values.csi_driver.controllerLogging.maxBackups }}
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--dr-endpoint=$(DRCSI_ENDPOINT)"
+            - "--controller"
+            - "--backend-update-interval={{ .Values.csiDriver.backendUpdateInterval }}"
+            - "--driver-name={{ .Values.csiDriver.driverName }}"
+            - "--logging-module={{ .Values.csiDriver.controllerLogging.module }}"
+            - "--log-level={{ .Values.csiDriver.controllerLogging.level }}"
+            - "--volume-name-prefix={{ default "pvc" (.Values.controller).volumeNamePrefix }}"
+            {{ if eq .Values.csiDriver.controllerLogging.module "file" }}
+            - "--log-file-dir={{ .Values.csiDriver.controllerLogging.fileDir }}"
+            - "--log-file-size={{ .Values.csiDriver.controllerLogging.fileSize }}"
+            - "--max-backups={{ .Values.csiDriver.controllerLogging.maxBackups }}"
             {{ end }}
           env:
             - name: CSI_ENDPOINT
-              value: {{ .Values.csi_driver.endpoint }}
+              value: {{ .Values.csiDriver.endpoint }}
+            - name: DRCSI_ENDPOINT
+              value: {{ .Values.csiDriver.drEndpoint }}
+            - name: CSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
           livenessProbe:
             failureThreshold: 5
             httpGet:
@@ -667,12 +882,6 @@ spec:
               name: socket-dir
             - mountPath: /var/log
               name: log
-            - mountPath: /etc/huawei
-              name: config-map
-            - mountPath: /etc/huawei/secret
-              name: secret
-      hostNetwork: true
-      serviceAccount: huawei-csi-controller
       volumes:
         - emptyDir: null
           name: socket-dir
@@ -680,9 +889,24 @@ spec:
             path: /var/log/
             type: Directory
           name: log
-        - configMap:
-            name: huawei-csi-configmap
-          name: config-map
-        - name: secret
-          secret:
-            secretName: huawei-csi-secret
+        - hostPath:
+            path: /etc/localtime
+            type: File
+          name: host-time
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: huawei-csi-controller
+  namespace: {{ .Values.kubernetes.namespace }}
+  labels:
+    app: huawei-csi-controller
+spec:
+  selector:
+    app: huawei-csi-controller
+  ports:
+    - name: storage-backend-controller
+      protocol: TCP
+      port: {{ int .Values.controller.webhookPort | default 443 }}
+      targetPort: {{ int .Values.controller.webhookPort | default 443 }}

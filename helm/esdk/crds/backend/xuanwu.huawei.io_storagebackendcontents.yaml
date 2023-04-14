@@ -1,0 +1,153 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.8.0
+  creationTimestamp: null
+  name: storagebackendcontents.xuanwu.huawei.io
+spec:
+  group: xuanwu.huawei.io
+  names:
+    kind: StorageBackendContent
+    listKind: StorageBackendContentList
+    plural: storagebackendcontents
+    shortNames:
+      - sbct
+    singular: storagebackendcontent
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.backendClaim
+      name: Claim
+      type: string
+    - jsonPath: .status.sn
+      name: SN
+      type: string
+    - jsonPath: .status.vendorName
+      name: VendorName
+      type: string
+    - jsonPath: .status.providerVersion
+      name: ProviderVersion
+      type: string
+    - jsonPath: .status.online
+      name: Online
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: StorageBackendContent is the Schema for the StorageBackendContents
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: StorageBackendContentSpec defines the desired state of StorageBackendContent
+            properties:
+              backendClaim:
+                description: BackendClaim is the bound StorageBackendClaim namespace
+                  and name, format is <namespace>/<name>.
+                type: string
+              configmapMeta:
+                description: ConfigmapMeta is current storage configmap namespace
+                  and name, format is <namespace>/<name>. such as xuanwu/backup-instance-configmap
+                type: string
+              maxClientThreads:
+                description: maxClientThreads is used to limit the number of storage
+                  client request connections
+                type: string
+              parameters:
+                additionalProperties:
+                  type: string
+                description: User defined parameter for extension
+                type: object
+              provider:
+                description: Provider is required in StorageBackendContent, used to
+                  filter the provider to add backend
+                type: string
+              secretMeta:
+                description: SecretMeta is current storage secret namespace and name,
+                  format is <namespace>/<name>. such as xuanwu/backup-instance-secret
+                type: string
+            required:
+            - provider
+            type: object
+          status:
+            description: StorageBackendContentStatus defines the observed state of
+              StorageBackendContent
+            properties:
+              capabilities:
+                additionalProperties:
+                  type: boolean
+                description: Capabilities get the storage total capacity, used capacity
+                  and free capacity.
+                type: object
+              capacity:
+                additionalProperties:
+                  type: string
+                description: Capacity get the storage total capacity, used capacity
+                  and free capacity.
+                type: object
+              configmapMeta:
+                description: ConfigmapMeta is current storage configmap namespace
+                  and name, format is <namespace>/<name>.
+                type: string
+              contentName:
+                description: 'ContentName means the identity of the backend, the format
+                  is as follows: provider-name@backend-name#pool-name'
+                type: string
+              maxClientThreads:
+                description: maxClientThreads is used to limit the number of storage
+                  client request connections
+                type: string
+              online:
+                description: Online indicates whether the storage login is successful
+                type: boolean
+              providerVersion:
+                description: ProviderVersion means the version of the provider
+                type: string
+              secretMeta:
+                description: SecretMeta is current storage secret namespace and name,
+                  format is <namespace>/<name>.
+                type: string
+              sn:
+                description: SN is the unique identifier of a storage device.
+                type: string
+              specification:
+                additionalProperties:
+                  type: string
+                description: Specification get the storage total specification of
+                  used capacity and free capacity.
+                type: object
+              vendorName:
+                description: VendorName means the flag of the storage vendor, such
+                  as EMC/IBM/NetApp/Huawei
+                type: string
+            required:
+            - configmapMeta
+            - secretMeta
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

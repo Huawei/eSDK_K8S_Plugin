@@ -17,30 +17,34 @@
 package plugin
 
 import (
-	"os"
-	"path"
+	"context"
 	"testing"
 
+	"github.com/prashantv/gostub"
+
+	"huawei-csi-driver/csi/app"
+	cfg "huawei-csi-driver/csi/app/config"
 	"huawei-csi-driver/utils/log"
 )
 
 const (
-	logDir  string = "/var/log/huawei"
 	logName string = "csi-backend-plugin-test.log"
 )
 
-func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("Init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
+var (
+	ctx                    context.Context
+	mockOceanstorNasPlugin Plugin
+)
 
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+func TestMain(m *testing.M) {
+	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer getGlobalConfig.Reset()
+
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
+
+	mockOceanstorNasPlugin = GetPlugin("oceanstor-nas")
+	ctx = context.Background()
 
 	m.Run()
 }

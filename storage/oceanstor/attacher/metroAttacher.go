@@ -20,8 +20,6 @@ import (
 	"context"
 	"errors"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -37,30 +35,6 @@ func NewMetroAttacher(localAttacher, remoteAttacher AttacherPlugin, protocol str
 		remoteAttacher: remoteAttacher,
 		protocol:       protocol,
 	}
-}
-
-// NodeStage to do storage mapping and get the connector
-func (p *MetroAttacher) NodeStage(ctx context.Context,
-	lunName string,
-	parameters map[string]interface{}) (*connector.ConnectInfo, error) {
-	return connectVolume(ctx, p, lunName, p.protocol, parameters)
-}
-
-// NodeUnstage to get the lun unique ID for disconnect volume
-func (p *MetroAttacher) NodeUnstage(ctx context.Context,
-	lunName string,
-	parameters map[string]interface{}) (*connector.DisConnectInfo, error) {
-	lun, err := p.getLunInfo(ctx, lunName)
-	if lun == nil {
-		return nil, err
-	}
-
-	lunUniqueID, err := utils.GetLunUniqueId(ctx, p.protocol, lun)
-	if err != nil {
-		return nil, err
-	}
-
-	return disConnectVolume(ctx, lunUniqueID, p.protocol)
 }
 
 func (p *MetroAttacher) mergeMappingInfo(ctx context.Context,

@@ -18,17 +18,24 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"os"
-	"path"
+	"reflect"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/prashantv/gostub"
+	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
 
+	"huawei-csi-driver/csi/app"
+	cfg "huawei-csi-driver/csi/app/config"
+	"huawei-csi-driver/utils/k8sutils"
 	"huawei-csi-driver/utils/log"
 )
 
 const (
-	logDir  = "/var/log/huawei/"
 	logName = "utilsTest.log"
 )
 
@@ -149,17 +156,66 @@ func TestGetHostName(t *testing.T) {
 		"case name is testGetHostName, result: %v, error: %v", expectedHost, err)
 }
 
+func mockGetSecret(data map[string][]byte, err error) *gomonkey.Patches {
+	return gomonkey.ApplyMethod(reflect.TypeOf(app.GetGlobalConfig().K8sUtils),
+		"GetSecret",
+		func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
+			return &corev1.Secret{Data: data}, err
+		})
+}
+
+func TestGetPasswordFromSecret(t *testing.T) {
+	Convey("TestGetPasswordFromSecret secret is nil case", t, func() {
+		m := mockGetSecret(nil, nil)
+		defer m.Reset()
+
+		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
+		So(err, ShouldBeError)
+	})
+
+	Convey("TestGetPasswordFromSecret get secret error case", t, func() {
+		m := mockGetSecret(nil, errors.New("mock error"))
+		defer m.Reset()
+
+		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
+		So(err, ShouldBeError)
+	})
+
+	Convey("TestGetPasswordFromSecret secret data is nil case", t, func() {
+		m := mockGetSecret(map[string][]byte{}, nil)
+		defer m.Reset()
+
+		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
+		So(err, ShouldBeError)
+	})
+
+	Convey("TestGetPasswordFromSecret secret data dose not have password case", t, func() {
+		m := mockGetSecret(map[string][]byte{"user": []byte("mock-user")}, nil)
+		defer m.Reset()
+
+		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
+		So(err, ShouldBeError)
+	})
+
+	Convey("TestGetPasswordFromSecret normal case", t, func() {
+		m := mockGetSecret(map[string][]byte{
+			"user":     []byte("mock-user"),
+			"password": []byte("mock-pw"),
+		}, nil)
+		defer m.Reset()
+
+		pw, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
+		So(err, ShouldBeNil)
+		So(pw, ShouldEqual, "mock-pw")
+	})
+}
+
 func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
+
+	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer getGlobalConfig.Reset()
 
 	m.Run()
 }

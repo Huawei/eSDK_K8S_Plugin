@@ -23,9 +23,7 @@ import (
 	"net"
 	"strings"
 
-	"huawei-csi-driver/connector"
 	"huawei-csi-driver/connector/nvme"
-	"huawei-csi-driver/proto"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -39,8 +37,6 @@ const (
 type AttacherPlugin interface {
 	ControllerAttach(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
 	ControllerDetach(context.Context, string, map[string]interface{}) (string, error)
-	NodeStage(context.Context, string, map[string]interface{}) (*connector.ConnectInfo, error)
-	NodeUnstage(context.Context, string, map[string]interface{}) (*connector.DisConnectInfo, error)
 	getTargetRoCEPortals(context.Context) ([]string, error)
 	getLunInfo(context.Context, string) (map[string]interface{}, error)
 }
@@ -95,11 +91,8 @@ func (p *Attacher) getHost(ctx context.Context,
 
 	hostname, exist := parameters["HostName"].(string)
 	if !exist {
-		hostname, err = utils.GetHostName(ctx)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Get hostname error: %v", err)
-			return nil, err
-		}
+		log.AddContext(ctx).Errorf("Get hostname error: %v", err)
+		return nil, err
 	}
 
 	hostToQuery := p.getHostName(hostname)
@@ -336,29 +329,17 @@ func (p *Attacher) getISCSIProperties(ctx context.Context, wwn, hostLunId string
 		tgtHostLUNs = append(tgtHostLUNs, hostLunId)
 	}
 
-	volumeUseMultiPath, exist := parameters["volumeUseMultiPath"].(bool)
-	if !exist {
-		return nil, errors.New("key volumeUseMultiPath does not exist in parameters")
-	}
-
-	multiPathType, exist := parameters["scsiMultiPathType"].(string)
-	if !exist {
-		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
-	}
-
 	return map[string]interface{}{
-		"tgtPortals":         tgtPortals,
-		"tgtIQNs":            tgtIQNs,
-		"tgtHostLUNs":        tgtHostLUNs,
-		"tgtLunWWN":          wwn,
-		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType":      multiPathType,
+		"tgtPortals":  tgtPortals,
+		"tgtIQNs":     tgtIQNs,
+		"tgtHostLUNs": tgtHostLUNs,
+		"tgtLunWWN":   wwn,
 	}, nil
 }
 
 func (p *Attacher) getFCProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]interface{}) (
 	map[string]interface{}, error) {
-	tgtWWNs, err := p.getTargetFCProperties(ctx)
+	tgtWWNs, err := p.getTargetFCProperties(ctx, parameters)
 	if err != nil {
 		return nil, err
 	}
@@ -369,47 +350,23 @@ func (p *Attacher) getFCProperties(ctx context.Context, wwn, hostLunId string, p
 		tgtHostLUNs = append(tgtHostLUNs, hostLunId)
 	}
 
-	volumeUseMultiPath, exist := parameters["volumeUseMultiPath"].(bool)
-	if !exist {
-		return nil, errors.New("key volumeUseMultiPath does not exist in parameters")
-	}
-
-	multiPathType, exist := parameters["scsiMultiPathType"].(string)
-	if !exist {
-		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
-	}
-
 	return map[string]interface{}{
-		"tgtLunWWN":          wwn,
-		"tgtWWNs":            tgtWWNs,
-		"tgtHostLUNs":        tgtHostLUNs,
-		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType":      multiPathType,
+		"tgtLunWWN":   wwn,
+		"tgtWWNs":     tgtWWNs,
+		"tgtHostLUNs": tgtHostLUNs,
 	}, nil
 }
 
 func (p *Attacher) getFCNVMeProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]interface{}) (
 	map[string]interface{}, error) {
-	portWWNList, err := p.getTargetFCNVMeProperties(ctx)
+	portWWNList, err := p.getTargetFCNVMeProperties(ctx, parameters)
 	if err != nil {
 		return nil, err
 	}
 
-	volumeUseMultiPath, exist := parameters["volumeUseMultiPath"].(bool)
-	if !exist {
-		return nil, errors.New("key volumeUseMultiPath does not exist in parameters")
-	}
-
-	multiPathType, exist := parameters["nvmeMultiPathType"].(string)
-	if !exist {
-		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
-	}
-
 	return map[string]interface{}{
-		"portWWNList":        portWWNList,
-		"tgtLunGuid":         wwn,
-		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType":      multiPathType,
+		"portWWNList": portWWNList,
+		"tgtLunGuid":  wwn,
 	}, nil
 }
 
@@ -420,21 +377,9 @@ func (p *Attacher) getRoCEProperties(ctx context.Context, wwn, hostLunId string,
 		return nil, err
 	}
 
-	volumeUseMultiPath, exist := parameters["volumeUseMultiPath"].(bool)
-	if !exist {
-		return nil, errors.New("key volumeUseMultiPath does not exist in parameters")
-	}
-
-	multiPathType, exist := parameters["nvmeMultiPathType"].(string)
-	if !exist {
-		return nil, errors.New("key scsiMultiPathType does not exist in parameters")
-	}
-
 	return map[string]interface{}{
-		"tgtPortals":         tgtPortals,
-		"tgtLunGuid":         wwn,
-		"volumeUseMultiPath": volumeUseMultiPath,
-		"multiPathType":      multiPathType,
+		"tgtPortals": tgtPortals,
+		"tgtLunGuid": wwn,
 	}, nil
 }
 
@@ -543,8 +488,9 @@ func (p *Attacher) getTargetRoCEPortals(ctx context.Context) ([]string, error) {
 	return availablePortals, nil
 }
 
-func (p *Attacher) getTargetFCNVMeProperties(ctx context.Context) ([]nvme.PortWWNPair, error) {
-	fcInitiators, err := proto.GetFCInitiator(ctx)
+func (p *Attacher) getTargetFCNVMeProperties(ctx context.Context, parameters map[string]interface{}) ([]nvme.PortWWNPair, error) {
+
+	fcInitiators, err := GetMultipleInitiators(ctx, FC, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get fc initiator error:%v", err)
 		return nil, err
@@ -566,8 +512,8 @@ func (p *Attacher) getTargetFCNVMeProperties(ctx context.Context) ([]nvme.PortWW
 	return ret, nil
 }
 
-func (p *Attacher) getTargetFCProperties(ctx context.Context) ([]string, error) {
-	fcInitiators, err := proto.GetFCInitiator(ctx)
+func (p *Attacher) getTargetFCProperties(ctx context.Context, parameters map[string]interface{}) ([]string, error) {
+	fcInitiators, err := GetMultipleInitiators(ctx, FC, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get fc initiator error: %v", err)
 		return nil, err
@@ -603,10 +549,10 @@ func (p *Attacher) getTargetFCProperties(ctx context.Context) ([]string, error) 
 	return tgtWWNs, nil
 }
 
-func (p *Attacher) attachISCSI(ctx context.Context, hostID string) (map[string]interface{}, error) {
-	name, err := proto.GetISCSIInitiator(ctx)
+func (p *Attacher) attachISCSI(ctx context.Context, hostID string, parameters map[string]interface{}) (map[string]interface{}, error) {
+	name, err := GetSingleInitiator(ctx, ISCSI, parameters)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get ISCSI initiator name error: %v", name)
+		log.AddContext(ctx).Errorf("Get ISCSI initiator name error: %v", err)
 		return nil, err
 	}
 
@@ -642,8 +588,8 @@ func (p *Attacher) attachISCSI(ctx context.Context, hostID string) (map[string]i
 	return initiator, nil
 }
 
-func (p *Attacher) attachFC(ctx context.Context, hostID string) ([]map[string]interface{}, error) {
-	fcInitiators, err := proto.GetFCInitiator(ctx)
+func (p *Attacher) attachFC(ctx context.Context, hostID string, parameters map[string]interface{}) ([]map[string]interface{}, error) {
+	fcInitiators, err := GetMultipleInitiators(ctx, FC, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get fc initiator error: %v", err)
 		return nil, err
@@ -694,10 +640,10 @@ func (p *Attacher) attachFC(ctx context.Context, hostID string) ([]map[string]in
 	return hostInitiators, nil
 }
 
-func (p *Attacher) attachRoCE(ctx context.Context, hostID string) (map[string]interface{}, error) {
-	name, err := proto.GetRoCEInitiator(ctx)
+func (p *Attacher) attachRoCE(ctx context.Context, hostID string, parameters map[string]interface{}) (map[string]interface{}, error) {
+	name, err := GetSingleInitiator(ctx, ROCE, parameters)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get RoCE initiator name error: %v", name)
+		log.AddContext(ctx).Errorf("Get RoCE initiator name error: %v", err)
 		return nil, err
 	}
 
@@ -817,22 +763,6 @@ func (p *Attacher) doUnmapping(ctx context.Context, hostID, lunName string) (str
 		return "", err
 	}
 	return lunUniqueId, nil
-}
-
-func (p *Attacher) NodeUnstage(ctx context.Context,
-	lunName string,
-	_ map[string]interface{}) (*connector.DisConnectInfo, error) {
-	lun, err := p.getLunInfo(ctx, lunName)
-	if lun == nil {
-		return nil, err
-	}
-
-	lunUniqueId, err := utils.GetLunUniqueId(ctx, p.protocol, lun)
-	if err != nil {
-		return nil, err
-	}
-
-	return disConnectVolume(ctx, lunUniqueId, p.protocol)
 }
 
 func (p *Attacher) ControllerDetach(ctx context.Context,

@@ -32,8 +32,8 @@ var flushTimeInterval = 3 * time.Second
 
 // PortWWNPair contains initiator wwn and target wwn
 type PortWWNPair struct {
-	InitiatorPortWWN string
-	TargetPortWWN    string
+	InitiatorPortWWN string `json:"initiatorPortWWN"`
+	TargetPortWWN    string `json:"targetPortWWN"`
 }
 
 type connectorInfo struct {

@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"huawei-csi-driver/utils/log"
@@ -54,14 +55,31 @@ type Interface interface {
 
 	// GetVolumeAttributes returns volume attributes of PV
 	GetVolumeAttributes(ctx context.Context, pvName string) (map[string]string, error)
+
+	// Activate the k8s helpers when start the service
+	Activate()
+	// Deactivate the k8s helpers when stop the service
+	Deactivate()
+	secretOps
+	ConfigmapOps
+	persistentVolumeClaimOps
 }
 
-type kubeClient struct {
-	clientSet *kubernetes.Clientset
+type KubeClient struct {
+	clientSet kubernetes.Interface
+
+	// pvc resources cache
+	pvcIndexer            cache.Indexer
+	pvcController         cache.SharedIndexInformer
+	pvcControllerStopChan chan struct{}
+	pvcSource             cache.ListerWatcher
+
+	volumeNamePrefix string
+	volumeLabels     map[string]string
 }
 
 // NewK8SUtils returns an object of Kubernetes utility interface
-func NewK8SUtils(kubeConfig string) (Interface, error) {
+func NewK8SUtils(kubeConfig string, volumeNamePrefix string, volumeLabels map[string]string) (Interface, error) {
 	var (
 		config    *rest.Config
 		clientset *kubernetes.Clientset
@@ -85,10 +103,17 @@ func NewK8SUtils(kubeConfig string) (Interface, error) {
 		return nil, err
 	}
 
-	return &kubeClient{clientSet: clientset}, nil
+	helper := &KubeClient{
+		clientSet:             clientset,
+		pvcControllerStopChan: make(chan struct{}),
+		volumeNamePrefix:      volumeNamePrefix,
+		volumeLabels:          volumeLabels,
+	}
+	initPVCWatcher(context.Background(), helper)
+	return helper, nil
 }
 
-func (k *kubeClient) GetNodeTopology(ctx context.Context, nodeName string) (map[string]string, error) {
+func (k *KubeClient) GetNodeTopology(ctx context.Context, nodeName string) (map[string]string, error) {
 	k8sNode, err := k.getNode(ctx, nodeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node topology with error: %v", err)
@@ -104,12 +129,12 @@ func (k *kubeClient) GetNodeTopology(ctx context.Context, nodeName string) (map[
 	return topology, nil
 }
 
-func (k *kubeClient) getNode(ctx context.Context, nodeName string) (*corev1.Node, error) {
+func (k *KubeClient) getNode(ctx context.Context, nodeName string) (*corev1.Node, error) {
 	return k.clientSet.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 }
 
 // GetVolume gets all volumes belonging to this node from K8S side
-func (k *kubeClient) GetVolume(ctx context.Context, nodeName string, driverName string) (map[string]struct{}, error) {
+func (k *KubeClient) GetVolume(ctx context.Context, nodeName string, driverName string) (map[string]struct{}, error) {
 	podList, err := k.getPods(ctx, nodeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve pod list. %s", err)
@@ -171,7 +196,7 @@ func (k *kubeClient) GetVolume(ctx context.Context, nodeName string, driverName 
 	return k8sVolumeHandles, nil
 }
 
-func (k *kubeClient) getPods(ctx context.Context, nodeName string) (*corev1.PodList, error) {
+func (k *KubeClient) getPods(ctx context.Context, nodeName string) (*corev1.PodList, error) {
 	var (
 		podList *corev1.PodList
 		err     error
@@ -188,7 +213,7 @@ func (k *kubeClient) getPods(ctx context.Context, nodeName string) (*corev1.PodL
 	return podList, err
 }
 
-func (k *kubeClient) getPVByPVCName(ctx context.Context, namespace string,
+func (k *KubeClient) getPVByPVCName(ctx context.Context, namespace string,
 	claimName string) (*corev1.PersistentVolume, error) {
 	pvc, err := k.clientSet.CoreV1().
 		PersistentVolumeClaims(namespace).
@@ -205,14 +230,14 @@ func (k *kubeClient) getPVByPVCName(ctx context.Context, namespace string,
 	return pv, nil
 }
 
-func (k *kubeClient) getPVByName(ctx context.Context, name string) (*corev1.PersistentVolume, error) {
+func (k *KubeClient) getPVByName(ctx context.Context, name string) (*corev1.PersistentVolume, error) {
 	return k.clientSet.CoreV1().
 		PersistentVolumes().
 		Get(ctx, name, metav1.GetOptions{})
 }
 
 // GetVolumeAttributes returns volume attributes of PV
-func (k *kubeClient) GetVolumeAttributes(ctx context.Context, pvName string) (map[string]string, error) {
+func (k *KubeClient) GetVolumeAttributes(ctx context.Context, pvName string) (map[string]string, error) {
 	pv, err := k.getPVByName(ctx, pvName)
 	if err != nil {
 		return nil, err
@@ -223,4 +248,14 @@ func (k *kubeClient) GetVolumeAttributes(ctx context.Context, pvName string) (ma
 	}
 
 	return pv.Spec.CSI.VolumeAttributes, nil
+}
+
+func (k *KubeClient) Activate() {
+	log.Infoln("Activate k8S helpers.")
+	go k.pvcController.Run(k.pvcControllerStopChan)
+}
+
+func (k *KubeClient) Deactivate() {
+	log.Infoln("Deactivate k8S helpers.")
+	close(k.pvcControllerStopChan)
 }

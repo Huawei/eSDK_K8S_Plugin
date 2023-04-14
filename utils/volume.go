@@ -23,10 +23,13 @@ type Volume interface {
 	GetVolumeName() string
 	GetLunWWN() (string, error)
 	SetLunWWN(string)
+	SetSize(int64)
+	GetSize() (int64, error)
 }
 type volume struct {
 	name   string
 	lunWWN string
+	size   int64
 }
 
 // NewVolume creates volume object for the name
@@ -53,4 +56,18 @@ func (vol *volume) GetLunWWN() (string, error) {
 		return "", errors.New("empty WWN")
 	}
 	return vol.lunWWN, nil
+}
+
+// SetSize sets volume size in volume object
+func (vol *volume) SetSize(size int64) {
+	vol.size = size
+}
+
+// GetSize gets volume size in volume object
+func (vol *volume) GetSize() (int64, error) {
+	if 0 == vol.size {
+		return 0, errors.New("empty Size")
+	}
+
+	return vol.size, nil
 }

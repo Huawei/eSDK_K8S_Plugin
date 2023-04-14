@@ -22,22 +22,29 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
-	"os"
-	"path"
+	"reflect"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/golang/mock/gomock"
+	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
 
+	"huawei-csi-driver/csi/app"
+	cfg "huawei-csi-driver/csi/app/config"
+	pkgUtils "huawei-csi-driver/pkg/utils"
+	"huawei-csi-driver/utils/k8sutils"
 	"huawei-csi-driver/utils/log"
 )
 
-var testClient *BaseClient
+var (
+	testClient *BaseClient
+)
 
 type responseCode int
 
 const (
-	logDir  = "/var/log/huawei/"
 	logName = "clientTest.log"
 
 	successStatus responseCode = 200
@@ -72,25 +79,27 @@ func TestLogin(t *testing.T) {
 		},
 	}
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
-
-	temp := testClient.Client
-	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
+	m := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	m.ApplyFunc(pkgUtils.SetStorageBackendContentOnlineStatus, func(ctx context.Context, backendID string, online bool) error {
+		return nil
+	})
+	defer m.Reset()
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+		g := gomonkey.ApplyMethod(reflect.TypeOf(testClient.Client), "Do", func(_ *http.Client, req *http.Request) (*http.Response, error) {
 			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
 			return &http.Response{
 				StatusCode: 200,
 				Body:       r,
 			}, nil
-		}).AnyTimes()
+		})
 
 		err := testClient.Login(context.TODO())
 		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+		g.Reset()
 	}
 }
 
@@ -166,25 +175,28 @@ func TestReLogin(t *testing.T) {
 		},
 	}
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
+	m := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	m.ApplyFunc(pkgUtils.SetStorageBackendContentOnlineStatus, func(ctx context.Context, backendID string, online bool) error {
+		return nil
+	})
 
-	temp := testClient.Client
-	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
+	defer m.Reset()
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+		g := gomonkey.ApplyMethod(reflect.TypeOf(testClient.Client), "Do", func(_ *http.Client, req *http.Request) (*http.Response, error) {
 			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
 			return &http.Response{
-				StatusCode: int(successStatus),
+				StatusCode: 200,
 				Body:       r,
 			}, nil
-		}).AnyTimes()
+		})
 
 		err := testClient.ReLogin(context.TODO())
 		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+		g.Reset()
 	}
 }
 
@@ -1132,7 +1144,6 @@ func TestCreateMapping(t *testing.T) {
 		name         string
 		responseBody string
 		wantErr      bool
-		err          error
 	}{
 		{
 			"Normal",
@@ -1159,47 +1170,44 @@ func TestCreateMapping(t *testing.T) {
 				"\"DESCRIPTION\":\"\",\"ENABLEINBANDCOMMAND\":\"true\",\"ID\":\"1\",\"INBANDLUNWWN\":\"\",\"NAME\":" +
 				"\"MappingView001\",\"TYPE\":245},\"error\":{\"code\":0,\"description\":\"0\"}}",
 			false,
-			nil,
 		},
 		{
-			"Create mapping fail",
+			"Create mapping success",
 			"{\"data\":{},\"error\":{\"code\":0,\"description\":\"0\"}}",
-			true,
-			errors.New("create mapping fail"),
+			false,
 		},
 		{
 			"Mapping already exists",
 			"{\"data\":{},\"error\":{\"code\":1077948993,\"description\":\"0\"}}",
 			true,
-			nil,
 		},
 		{
 			"Create mapping error",
 			"{\"data\":{},\"error\":{\"code\":1077949061,\"description\":\"0\"}}",
 			true,
-			errors.New("create mapping error"),
 		},
 	}
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
-
-	temp := testClient.Client
-	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, s.err
-		}).AnyTimes()
+		m := gomonkey.ApplyMethod(reflect.TypeOf(testClient.Client),
+			"Do",
+			func(_ *http.Client, req *http.Request) (*http.Response, error) {
+				r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
+				return &http.Response{
+					StatusCode: 200,
+					Body:       r,
+				}, nil
+			})
 
 		_, err := testClient.CreateMapping(context.TODO(), "")
 		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.name, err)
+		m.Reset()
 	}
 }
 
@@ -1247,6 +1255,12 @@ func TestGetMappingByName(t *testing.T) {
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
 	testClient.Client = mockClient
+
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1302,6 +1316,12 @@ func TestDeleteMapping(t *testing.T) {
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
 	testClient.Client = mockClient
+
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1406,6 +1426,12 @@ func TestRemoveHostFromGroup(t *testing.T) {
 	defer func() { testClient.Client = temp }()
 	testClient.Client = mockClient
 
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
+
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 			r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
@@ -1414,6 +1440,7 @@ func TestRemoveHostFromGroup(t *testing.T) {
 				Body:       r,
 			}, s.err
 		}).AnyTimes()
+
 		err := testClient.RemoveHostFromGroup(context.TODO(), "", "")
 		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.name, err)
 	}
@@ -1460,6 +1487,12 @@ func TestQueryAssociateHostGroup(t *testing.T) {
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
 	testClient.Client = mockClient
+
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1522,6 +1555,12 @@ func TestAddGroupToMapping(t *testing.T) {
 	defer func() { testClient.Client = temp }()
 	testClient.Client = mockClient
 
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
+
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 			r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
@@ -1583,6 +1622,12 @@ func TestRemoveGroupFromMapping(t *testing.T) {
 	defer func() { testClient.Client = temp }()
 	testClient.Client = mockClient
 
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
+
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 			r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
@@ -1631,6 +1676,12 @@ func TestGetLunCountOfHost(t *testing.T) {
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
 	testClient.Client = mockClient
+
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
 
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -1681,6 +1732,12 @@ func TestGetLunCountOfMapping(t *testing.T) {
 	defer func() { testClient.Client = temp }()
 	testClient.Client = mockClient
 
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
+
 	for _, s := range cases {
 		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 			r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
@@ -1695,20 +1752,28 @@ func TestGetLunCountOfMapping(t *testing.T) {
 	}
 }
 
-func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+func mockGetSecret(data map[string][]byte) *gomonkey.Patches {
+	return gomonkey.ApplyMethod(reflect.TypeOf(app.GetGlobalConfig().K8sUtils),
+		"GetSecret",
+		func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
+			return &corev1.Secret{Data: data}, nil
+		})
+}
 
-	testClient = NewClient([]string{"https://192.168.125.*:8088"},
-		"dev-account", "dev-password", "dev-vStore", "")
+func TestMain(m *testing.M) {
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
+
+	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer getGlobalConfig.Reset()
+
+	testClient = NewClient([]string{"https://127.0.0.1:8088"},
+		"dev-account",
+		"mock-sec-name",
+		"mock-sec-namespace",
+		"dev-vStore",
+		"",
+		"mock-backend-id")
 
 	m.Run()
 }

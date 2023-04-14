@@ -35,6 +35,12 @@ type System interface {
 	GetLicenseFeature(ctx context.Context) (map[string]int, error)
 	// GetRemoteDeviceBySN used for get remote device by sn
 	GetRemoteDeviceBySN(ctx context.Context, sn string) (map[string]interface{}, error)
+	// GetAllRemoteDevices used for get all remote devices
+	GetAllRemoteDevices(ctx context.Context) ([]map[string]interface{}, error)
+	// GetDeviceSN used for get device sn
+	GetDeviceSN() string
+	// GetStorageVersion used for get storage version
+	GetStorageVersion() string
 }
 
 // GetPoolByName used for get pool by name
@@ -139,6 +145,7 @@ func (cli *BaseClient) GetSystem(ctx context.Context) (map[string]interface{}, e
 	}
 
 	respData := resp.Data.(map[string]interface{})
+	cli.setStorageVersion(respData)
 	return respData, nil
 }
 
@@ -168,4 +175,26 @@ func (cli *BaseClient) GetRemoteDeviceBySN(ctx context.Context, sn string) (map[
 	}
 
 	return nil, nil
+}
+
+// GetAllRemoteDevices used for get all remote devices
+func (cli *BaseClient) GetAllRemoteDevices(ctx context.Context) ([]map[string]interface{}, error) {
+	return cli.getBatchObjs(ctx, "/remote_device", true)
+}
+
+// GetDeviceSN used for get device sn
+func (cli *BaseClient) GetDeviceSN() string {
+	return cli.DeviceId
+}
+
+func (cli *BaseClient) setStorageVersion(systemInfo map[string]interface{}) {
+	storagePointVersion, ok := systemInfo["pointRelease"].(string)
+	if ok {
+		cli.StorageVersion = storagePointVersion
+	}
+}
+
+// GetStorageVersion used for get storage version
+func (cli *BaseClient) GetStorageVersion() string {
+	return cli.StorageVersion
 }

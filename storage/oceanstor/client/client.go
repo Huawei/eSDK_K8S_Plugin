@@ -32,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -41,8 +42,14 @@ const (
 	MaxParallelCount     int = 1000
 	MinParallelCount     int = 20
 	GetInfoWaitInternal      = 10
+	QueryCountPerBatch   int = 100
 
 	description string = "Created from huawei-csi for Kubernetes"
+
+	defaultVStore string = "System_vStore"
+
+	IPLockErrorCode        = 1077949071
+	WrongPasswordErrorCode = 1077987870
 )
 
 type BaseClientInterface interface {
@@ -88,6 +95,7 @@ var (
 		"GET": {
 			`/vstore_pair\?filter=ID`,
 			`/FsHyperMetroDomain\?RUNNINGSTATUS=0`,
+			`/remote_device`,
 		},
 	}
 
@@ -120,14 +128,21 @@ func isFilterLog(method, url string) bool {
 }
 
 type BaseClient struct {
-	Client       HTTP
-	Url          string
-	Urls         []string
-	User         string
-	PassWord     string
-	DeviceId     string
-	Token        string
-	VStoreName   string
+	Client HTTP
+
+	Url  string
+	Urls []string
+
+	User            string
+	SecretNamespace string
+	SecretName      string
+	VStoreName      string
+	StorageVersion  string
+	BackendID       string
+
+	DeviceId string
+	Token    string
+
 	ReLoginMutex sync.Mutex
 }
 
@@ -151,7 +166,18 @@ type Response struct {
 	Data  interface{}            `json:"data,omitempty"`
 }
 
-func NewClient(urls []string, user, password, vstoreName, parallelNum string) *BaseClient {
+// NewClientConfig stores the information needed to create a new OceanStor client
+type NewClientConfig struct {
+	Urls            []string
+	User            string
+	SecretName      string
+	SecretNamespace string
+	VstoreName      string
+	ParallelNum     string
+	BackendID       string
+}
+
+func NewClient(urls []string, user, SecretName, secretNamespace, vstoreName, parallelNum, backendID string) *BaseClient {
 	var err error
 	var parallelCount int
 
@@ -169,11 +195,13 @@ func NewClient(urls []string, user, password, vstoreName, parallelNum string) *B
 	log.Infof("Init parallel count is %d", parallelCount)
 	ClientSemaphore = utils.NewSemaphore(parallelCount)
 	return &BaseClient{
-		Urls:       urls,
-		User:       user,
-		PassWord:   password,
-		VStoreName: vstoreName,
-		Client:     newHTTPClient(),
+		Urls:            urls,
+		User:            user,
+		SecretName:      SecretName,
+		SecretNamespace: secretNamespace,
+		VStoreName:      vstoreName,
+		Client:          newHTTPClient(),
+		BackendID:       backendID,
 	}
 }
 
@@ -320,17 +348,75 @@ func (cli *BaseClient) DuplicateClient() *BaseClient {
 	return &dup
 }
 
+func (cli *BaseClient) ValidateLogin(ctx context.Context) error {
+	var resp Response
+	var err error
+
+	password, err := utils.GetPasswordFromSecret(ctx, cli.SecretName, cli.SecretNamespace)
+	if err != nil {
+		return err
+	}
+
+	data := map[string]interface{}{
+		"username": cli.User,
+		"password": password,
+		"scope":    "0",
+	}
+
+	if len(cli.VStoreName) > 0 && cli.VStoreName != defaultVStore {
+		data["vstorename"] = cli.VStoreName
+	}
+
+	cli.DeviceId = ""
+	cli.Token = ""
+	for i, url := range cli.Urls {
+		cli.Url = url + "/deviceManager/rest"
+
+		log.AddContext(ctx).Infof("Try to login %s", cli.Url)
+		resp, err = cli.BaseCall(context.Background(), "POST", "/xx/sessions", data)
+		if err == nil {
+			/* Sort the login Url to the last slot of san addresses, so that
+			   if this connection error, next time will try other Url first. */
+			cli.Urls[i], cli.Urls[len(cli.Urls)-1] = cli.Urls[len(cli.Urls)-1], cli.Urls[i]
+			break
+		} else if err.Error() != "unconnected" {
+			log.AddContext(ctx).Errorf("Login %s error", cli.Url)
+			break
+		}
+
+		log.AddContext(ctx).Warningf("Login %s error due to connection failure, gonna try another Url",
+			cli.Url)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return fmt.Errorf("validate login %s error: %+v", cli.Url, resp)
+	}
+
+	log.AddContext(ctx).Infof("Login %s success", cli.Url)
+	return nil
+}
+
 func (cli *BaseClient) Login(ctx context.Context) error {
 	var resp Response
 	var err error
 
+	password, err := pkgUtils.GetPasswordFromBackendID(ctx, cli.BackendID)
+	if err != nil {
+		return err
+	}
+
 	data := map[string]interface{}{
 		"username": cli.User,
-		"password": cli.PassWord,
+		"password": password,
 		"scope":    "0",
 	}
 
-	if len(cli.VStoreName) > 0 {
+	if len(cli.VStoreName) > 0 && cli.VStoreName != defaultVStore {
 		data["vstorename"] = cli.VStoreName
 	}
 
@@ -362,12 +448,28 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 	code := int64(resp.Error["code"].(float64))
 	if code != 0 {
 		msg := fmt.Sprintf("Login %s error: %+v", cli.Url, resp)
+		if code == WrongPasswordErrorCode || code == IPLockErrorCode {
+			err := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.BackendID, false)
+			if err != nil {
+				msg = msg + fmt.Sprintf("\nSetStorageBackendContentOffline [%s] failed. error: %v", cli.BackendID, err)
+			}
+		}
+
 		return errors.New(msg)
 	}
 
 	respData := resp.Data.(map[string]interface{})
 	cli.DeviceId = respData["deviceid"].(string)
 	cli.Token = respData["iBaseToken"].(string)
+	vStoreName, exist := respData["vstoreName"].(string)
+	_, idExist := respData["vstoreId"].(string)
+	if !exist && !idExist {
+		log.AddContext(ctx).Infof("storage client login response vstoreName is empty, set it to default %s",
+			defaultVStore)
+		cli.VStoreName = defaultVStore
+	} else if exist {
+		cli.VStoreName = vStoreName
+	}
 
 	log.AddContext(ctx).Infof("Login %s success", cli.Url)
 	return nil
@@ -473,4 +575,78 @@ func (cli *BaseClient) getSystemUTCTime(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return time, nil
+}
+
+func (cli *BaseClient) getObjByvStoreName(objList []interface{}) map[string]interface{} {
+	for _, data := range objList {
+		obj, ok := data.(map[string]interface{})
+		if !ok || obj == nil {
+			continue
+		}
+
+		vStoreName, ok := obj["vstoreName"].(string)
+		if !ok {
+			vStoreName = defaultVStore
+		}
+
+		if vStoreName == cli.GetvStoreName() {
+			return obj
+		}
+		continue
+
+	}
+	return nil
+}
+
+func (cli *BaseClient) getObj(ctx context.Context, url string, start, end int, filterLog bool) (
+	[]map[string]interface{}, error) {
+	objUrl := fmt.Sprintf("%s?range=[%d-%d]", url, start, end)
+	resp, err := cli.Get(ctx, objUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("get batch obj list error: %d", code)
+	}
+
+	if !filterLog {
+		log.AddContext(ctx).Infoln("There is no obj in storage.")
+	}
+
+	if resp.Data == nil {
+		return nil, nil
+	}
+
+	var objList []map[string]interface{}
+	respData := resp.Data.([]interface{})
+	for _, i := range respData {
+		device := i.(map[string]interface{})
+		objList = append(objList, device)
+	}
+	return objList, nil
+}
+
+func (cli *BaseClient) getBatchObjs(ctx context.Context, url string, filterLog bool) ([]map[string]interface{}, error) {
+	rangeStart := 0
+	var objList []map[string]interface{}
+	for true {
+		rangeEnd := rangeStart + QueryCountPerBatch
+		objs, err := cli.getObj(ctx, url, rangeStart, rangeEnd, filterLog)
+		if err != nil {
+			return nil, err
+		}
+
+		if objs == nil {
+			break
+		}
+
+		objList = append(objList, objs...)
+		if len(objs) < QueryCountPerBatch {
+			break
+		}
+		rangeStart = rangeEnd + QueryCountPerBatch
+	}
+	return objList, nil
 }

@@ -2,6 +2,20 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
+## Changes since v3.2.x
+
+**Enhancements**
+
+- CSI Controller supports multi-copy deployment.
+- CSI supports volume management(Static PV enhancement).
+- The oceanctl tool is added for backend management.
+- CSI nodes do not depend on the storage management network.
+- Node selection and taint tolerance can be configured.
+- Adding CSIDriver Resources for CSI.
+- CSI supports the configuration of Volume Limits.
+- Support k8s 1.26
+- Upgrade using go 1.18
+
 ## Changes since v3.1.0
 
 **Enhancements**

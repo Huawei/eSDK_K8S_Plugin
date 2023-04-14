@@ -21,8 +21,10 @@ import (
 	"errors"
 	"fmt"
 
+	"huawei-csi-driver/storage/fusionstorage/client"
 	"huawei-csi-driver/storage/fusionstorage/volume"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/log"
 )
 
 type FusionStorageNasPlugin struct {
@@ -102,26 +104,18 @@ func (p *FusionStorageNasPlugin) CreateVolume(ctx context.Context,
 	return volObj, nil
 }
 
+func (p *FusionStorageNasPlugin) QueryVolume(ctx context.Context, name string) (utils.Volume, error) {
+	nas := volume.NewNAS(p.cli)
+	return nas.Query(ctx, name)
+}
+
 func (p *FusionStorageNasPlugin) DeleteVolume(ctx context.Context, name string) error {
 	nas := volume.NewNAS(p.cli)
 	return nas.Delete(ctx, name)
 }
 
-func (p *FusionStorageNasPlugin) StageVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) error {
-	parameters["protocol"] = p.protocol
-	return p.fsStageVolume(ctx, name, p.portal, parameters)
-}
-
-func (p *FusionStorageNasPlugin) UnstageVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) error {
-	return p.unstageVolume(ctx, name, parameters)
-}
-
 // UpdateBackendCapabilities to update the backend capabilities, such as thin, thick, qos and etc.
-func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
+func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
 	capabilities := map[string]interface{}{
 		"SupportThin":  true,
 		"SupportThick": false,
@@ -132,14 +126,10 @@ func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interfa
 
 	err := p.updateNFS4Capability(capabilities)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return capabilities, nil
-}
-
-func (p *FusionStorageNasPlugin) NodeExpandVolume(context.Context, string, string, bool, int64) error {
-	return nil
+	return capabilities, nil, nil
 }
 
 func (p *FusionStorageNasPlugin) CreateSnapshot(ctx context.Context,
@@ -176,6 +166,62 @@ func (p *FusionStorageNasPlugin) updateNFS4Capability(capabilities map[string]in
 
 	if nfsServiceSetting["SupportNFS41"] {
 		capabilities["SupportNFS41"] = true
+	}
+
+	return nil
+}
+
+func (p *FusionStorageNasPlugin) Validate(ctx context.Context, param map[string]interface{}) error {
+	log.AddContext(ctx).Infoln("Start to validate FusionStorageNasPlugin parameters.")
+
+	err := p.verifyFusionStorageNasParam(ctx, param)
+	if err != nil {
+		return err
+	}
+
+	clientConfig, err := p.getNewClientConfig(ctx, param)
+	if err != nil {
+		return err
+	}
+
+	// Login verification
+	cli := client.NewClient(clientConfig.Url, clientConfig.User, clientConfig.SecretName,
+		clientConfig.SecretNamespace, clientConfig.ParallelNum, clientConfig.BackendID, clientConfig.AccountName)
+	err = cli.ValidateLogin(ctx)
+	if err != nil {
+		return err
+	}
+	cli.Logout(ctx)
+
+	return nil
+}
+
+func (p *FusionStorageNasPlugin) verifyFusionStorageNasParam(ctx context.Context, config map[string]interface{}) error {
+	parameters, exist := config["parameters"].(map[string]interface{})
+	if !exist {
+		msg := fmt.Sprintf("Verify parameters: [%v] failed. \nparameters must be provided", config["parameters"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	protocol, exist := parameters["protocol"].(string)
+	if !exist || (protocol != "nfs" && protocol != "dpc") {
+		msg := fmt.Sprintf("Verify protocol: [%v] failed. \nprotocol must be provided and be \"nfs\" or \"dpc\" "+
+			"for fusionstorage-nas backend\n", parameters["protocol"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	if protocol == "dpc" {
+		return nil
+	}
+
+	portals, exist := parameters["portals"].([]interface{})
+	if !exist || len(portals) != 1 {
+		msg := fmt.Sprintf("Verify portals: [%v] failed. \nportals must be provided for fusionstorage-nas "+
+			"backend of the nfs protocol and only one portal can be configured.\n", parameters["portals"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
 	}
 
 	return nil

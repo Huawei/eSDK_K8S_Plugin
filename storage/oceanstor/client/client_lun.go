@@ -116,8 +116,7 @@ func (cli *BaseClient) GetLunByName(ctx context.Context, name string) (map[strin
 		return nil, nil
 	}
 
-	lun := respData[0].(map[string]interface{})
-	return lun, nil
+	return cli.getObjByvStoreName(respData), nil
 }
 
 // MakeLunName v3/v5 storage support 1 to 31 characters

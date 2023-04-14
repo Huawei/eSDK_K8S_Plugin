@@ -15,9 +15,9 @@
 #  limitations under the License.
 #
 
-# usage: sh build.sh 3.2.0 X86
+# usage: bash build.sh {VER} {PLATFORM}
 
-# [3.2.0]
+# [x.y.z]
 VER=$1
 # [X86 ARM]
 PLATFORM=$2
@@ -27,37 +27,53 @@ package_name="eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64"
 echo "Start to make with Makefile"
 make -f Makefile VER=$1 PLATFORM=$2
 
-echo "Start to pull busybox image with architecture"
+echo "Platform confirmation"
 if [[ "${PLATFORM}" == "ARM" ]];then
-  docker pull --platform=arm64 busybox:stable-glibc
+  PULL_FLAG="--platform=arm64"
+  BUILD_FLAG="--platform linux/arm64"
 elif [[ "${PLATFORM}" == "X86" ]];then
-  docker pull --platform=amd64 busybox:stable-glibc
+  PULL_FLAG="--platform=amd64"
+  BUILD_FLAG="--platform linux/amd64"
 else
   echo "Wrong PLATFORM, support [X86, ARM]"
   exit
 fi
 
+echo "Start to pull busybox image with architecture"
+docker pull ${PULL_FLAG} busybox:stable-glibc
+docker pull ${PULL_FLAG} gcr.io/distroless/base:latest
+
 echo "Start to build image with Dockerfile"
 rm -rf build_dir
 rm -f ./huawei-csi
+rm -f ./storage-backend-controller
+rm -f ./storage-backend-sidecar
 unzip -d build_dir -q ${package_name}.zip
-cp build_dir/${package_name}/bin/huawei-csi ./
-if [[ "${PLATFORM}" == "ARM" ]];then
-  docker build --platform linux/arm64 -f Dockerfile -t huawei-csi:${VER} .
-elif [[ "${PLATFORM}" == "X86" ]];then
-  docker build --platform linux/amd64 -f Dockerfile -t huawei-csi:${VER} .
-fi
+mv build_dir/${package_name}/bin/huawei-csi ./
+mv build_dir/${package_name}/bin/storage-backend-controller ./
+mv build_dir/${package_name}/bin/storage-backend-sidecar ./
+
+docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target huawei-csi-driver -f Dockerfile -t huawei-csi:${VER} .
+docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target storage-backend-controller -f Dockerfile -t storage-backend-controller:${VER} .
+docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target storage-backend-sidecar -f Dockerfile -t storage-backend-sidecar:${VER} .
 
 echo "Start to save image file"
 plat=$(echo ${PLATFORM}|tr 'A-Z' 'a-z')
 docker save huawei-csi:${VER} -o huawei-csi-v${VER}-${plat}.tar
+docker save storage-backend-controller:${VER} -o storage-backend-controller-v${VER}-${plat}.tar
+docker save storage-backend-sidecar:${VER} -o storage-backend-sidecar-v${VER}-${plat}.tar
+
+echo "Start to move image file"
 mkdir build_dir/${package_name}/image
 mv huawei-csi-v${VER}-${plat}.tar build_dir/${package_name}/image
+mv storage-backend-controller-v${VER}-${plat}.tar build_dir/${package_name}/image
+mv storage-backend-sidecar-v${VER}-${plat}.tar build_dir/${package_name}/image
 
 echo "Start to packing files"
 rm -rf ${package_name}.zip
 cd build_dir
 zip -rq ../${package_name}.zip *
+cd ..
 
 echo "Start to clear temporary files"
 rm -f ./huawei-csi

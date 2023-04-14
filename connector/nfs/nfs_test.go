@@ -19,10 +19,11 @@ package nfs
 import (
 	"context"
 	"errors"
+	"io/ioutil"
 	"os"
-	"path"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
 
 	"huawei-csi-driver/connector"
@@ -31,7 +32,6 @@ import (
 )
 
 const (
-	logDir  = "/var/log/huawei/"
 	logName = "nfsTest.log"
 )
 
@@ -118,11 +118,15 @@ func TestConnectVolume(t *testing.T) {
 	defer stubs.Reset()
 
 	stubs.StubFunc(&utils.PathExist, true, nil)
-	stubs.StubFunc(&readFile, []byte("test test\n"), nil)
 	stubs.StubFunc(&connector.ResizeMountPath, nil)
 	stubs.StubFunc(&connector.IsInFormatting, false, nil)
 	stubs.StubFunc(&connector.GetDeviceSize, int64(halfTiSizeBytes), nil)
 	stubs.Stub(&utils.ExecShellCmd, testExecShellCmd)
+
+	readFile := gomonkey.ApplyFunc(ioutil.ReadFile, func(filename string) ([]byte, error) {
+		return []byte("test test\n"), nil
+	})
+	defer readFile.Reset()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -179,16 +183,8 @@ func TestDisConnectVolume(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
 
 	m.Run()
 }

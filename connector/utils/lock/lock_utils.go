@@ -30,14 +30,6 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-func checkConnectorThreads(ctx context.Context) error {
-	if *connectorThreads < minThreads || *connectorThreads > maxThreads {
-		return utils.Errorf(ctx, "the connector-threads %d should be %d~%d",
-			*connectorThreads, minThreads, maxThreads)
-	}
-	return nil
-}
-
 func clearLockFile(fileDir string) error {
 	files, err := ioutil.ReadDir(fileDir)
 	if err != nil {
@@ -141,6 +133,7 @@ func waitGetLock(ctx context.Context, lockDir, lockName string) error {
 		}
 		return false, nil
 	}, time.Second*GetLockTimeoutSec, time.Second*getLockInternalSec)
+
 	log.AddContext(ctx).Infoln("WaitGetLock finish to get lock")
 	if err != nil {
 		newErr := deleteLockFile(ctx, lockDir, lockName)

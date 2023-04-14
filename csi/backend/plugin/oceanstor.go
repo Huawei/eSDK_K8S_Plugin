@@ -19,9 +19,11 @@ package plugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/clientv6"
 	"huawei-csi-driver/storage/oceanstor/smartx"
@@ -57,15 +59,25 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		return errors.New("user must be provided")
 	}
 
-	password, exist := config["password"].(string)
+	secretName, exist := config["secretName"].(string)
 	if !exist {
-		return errors.New("password must be provided")
+		return errors.New("SecretName must be provided")
+	}
+
+	secretNamespace, exist := config["secretNamespace"].(string)
+	if !exist {
+		return errors.New("SecretNamespace must be provided")
+	}
+
+	backendID, exist := config["backendID"].(string)
+	if !exist {
+		return errors.New("backendID must be provided")
 	}
 
 	vstoreName, _ := config["vstoreName"].(string)
-	parallelNum, _ := config["parallelNum"].(string)
+	parallelNum, _ := config["maxClientThreads"].(string)
 
-	cli := client.NewClient(urls, user, password, vstoreName, parallelNum)
+	cli := client.NewClient(urls, user, secretName, secretNamespace, vstoreName, parallelNum, backendID)
 	err := cli.Login(context.Background())
 	if err != nil {
 		return err
@@ -88,7 +100,7 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 	}
 
 	if p.product == utils.OceanStorDoradoV6 {
-		clientV6 := clientv6.NewClientV6(urls, user, password, vstoreName, parallelNum)
+		clientV6 := clientv6.NewClientV6(urls, user, secretName, secretNamespace, vstoreName, parallelNum, backendID)
 		cli.Logout(context.Background())
 		err := p.switchClient(clientV6)
 		if err != nil {
@@ -101,7 +113,7 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 	return nil
 }
 
-func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
+func (p *OceanstorPlugin) updateBackendCapabilities() (map[string]interface{}, error) {
 	features, err := p.cli.GetLicenseFeature(context.Background())
 	if err != nil {
 		log.Errorf("Get license feature error: %v", err)
@@ -130,8 +142,51 @@ func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, e
 		"SupportMetroNAS":        supportMetroNAS,
 	}
 
-	p.capabilities = capabilities
 	return capabilities, nil
+}
+
+func (p *OceanstorPlugin) getRemoteDevices() (string, error) {
+	devices, err := p.cli.GetAllRemoteDevices(context.Background())
+	if err != nil {
+		log.Errorf("Get remote devices error: %v", err)
+		return "", err
+	}
+
+	var devicesSN []string
+	for _, dev := range devices {
+		deviceSN := dev["SN"].(string)
+		devicesSN = append(devicesSN, deviceSN)
+	}
+	return strings.Join(devicesSN, ";"), nil
+}
+
+func (p *OceanstorPlugin) updateBackendSpecifications() (map[string]interface{}, error) {
+	devicesSN, err := p.getRemoteDevices()
+	if err != nil {
+		log.Errorf("Get remote devices error: %v", err)
+		return nil, err
+	}
+
+	specifications := map[string]interface{}{
+		"LocalDeviceSN":   p.cli.GetDeviceSN(),
+		"RemoteDevicesSN": devicesSN,
+	}
+	return specifications, nil
+}
+
+func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
+	capabilities, err := p.updateBackendCapabilities()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	specifications, err := p.updateBackendSpecifications()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	p.capabilities = capabilities
+	return capabilities, specifications, nil
 }
 
 func (p *OceanstorPlugin) getParams(ctx context.Context, name string,
@@ -262,5 +317,72 @@ func (p *OceanstorPlugin) Logout(ctx context.Context) {
 func (p *OceanstorPlugin) switchClient(newClient client.BaseClientInterface) error {
 	log.Infoln("Using OceanStor V6 or Dorado V6 BaseClient.")
 	p.cli = newClient
-	return p.cli.Login(context.Background())
+	if err := p.cli.Login(context.Background()); err != nil {
+		return err
+	}
+
+	_, err := p.cli.GetSystem(context.Background())
+	if err != nil {
+		log.Errorf("Get system info error: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (p *OceanstorPlugin) getNewClientConfig(ctx context.Context, param map[string]interface{}) (*client.NewClientConfig, error) {
+	data := &client.NewClientConfig{}
+	configUrls, exist := param["urls"].([]interface{})
+	if !exist || len(configUrls) <= 0 {
+		msg := fmt.Sprintf("Verify urls: [%v] failed. urls must be provided.", param["urls"])
+		log.AddContext(ctx).Errorln(msg)
+		return data, errors.New(msg)
+	}
+	for _, configUrl := range configUrls {
+		url, ok := configUrl.(string)
+		if !ok {
+			msg := fmt.Sprintf("Verify url: [%v] failed. url convert to string failed.", configUrl)
+			log.AddContext(ctx).Errorln(msg)
+			return data, errors.New(msg)
+		}
+		data.Urls = append(data.Urls, url)
+	}
+
+	var urls []string
+	for _, i := range configUrls {
+		urls = append(urls, i.(string))
+	}
+
+	data.User, exist = param["user"].(string)
+	if !exist {
+		msg := fmt.Sprintf("Verify user: [%v] failed. user must be provided.", data.User)
+		log.AddContext(ctx).Errorln(msg)
+		return data, errors.New(msg)
+	}
+
+	data.SecretName, exist = param["secretName"].(string)
+	if !exist {
+		msg := fmt.Sprintf("Verify SecretName: [%v] failed. SecretName must be provided.", data.SecretName)
+		log.AddContext(ctx).Errorln(msg)
+		return data, errors.New(msg)
+	}
+
+	data.SecretNamespace, exist = param["secretNamespace"].(string)
+	if !exist {
+		msg := fmt.Sprintf("Verify SecretNamespace: [%v] failed. SecretNamespace must be provided.",
+			data.SecretNamespace)
+		log.AddContext(ctx).Errorln(msg)
+		return data, errors.New(msg)
+	}
+
+	data.BackendID, exist = param["backendID"].(string)
+	if !exist {
+		msg := fmt.Sprintf("Verify backendID: [%v] failed. backendID must be provided.",
+			param["backendID"])
+		return data, pkgUtils.Errorln(ctx, msg)
+	}
+
+	data.VstoreName, _ = param["vstoreName"].(string)
+	data.ParallelNum, _ = param["maxClientThreads"].(string)
+
+	return data, nil
 }

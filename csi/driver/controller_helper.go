@@ -41,13 +41,18 @@ const (
 	maxDescriptionLength = 255
 )
 
-var nfsProtocolMap = map[string]string{
-	// nfsvers=3.0 is not support
-	"nfsvers=3":   "nfs3",
-	"nfsvers=4":   "nfs4",
-	"nfsvers=4.0": "nfs4",
-	"nfsvers=4.1": "nfs41",
-}
+var (
+	nfsProtocolMap = map[string]string{
+		// nfsvers=3.0 is not support
+		"nfsvers=3":   "nfs3",
+		"nfsvers=4":   "nfs4",
+		"nfsvers=4.0": "nfs4",
+		"nfsvers=4.1": "nfs41",
+	}
+
+	annManageVolumeName  = "/manageVolumeName"
+	annManageBackendName = "/manageBackendName"
+)
 
 func addNFSProtocol(ctx context.Context, mountFlag string, parameters map[string]interface{}) error {
 	for _, singleFlag := range strings.Split(mountFlag, ",") {
@@ -208,11 +213,8 @@ func processVolumeContentSource(ctx context.Context, req *csi.CreateVolumeReques
 	return nil
 }
 
-func makeCreateVolumeResponse(ctx context.Context, req *csi.CreateVolumeRequest, vol utils.Volume,
-	pool *backend.StoragePool) *csi.Volume {
-	contentSource := req.GetVolumeContentSource()
-	size := req.GetCapacityRange().GetRequiredBytes()
-
+func getAccessibleTopologies(ctx context.Context, req *csi.CreateVolumeRequest,
+	pool *backend.StoragePool) []*csi.Topology {
 	accessibleTopologies := make([]*csi.Topology, 0)
 	if req.GetAccessibilityRequirements() != nil &&
 		len(req.GetAccessibilityRequirements().GetRequisite()) != 0 {
@@ -223,25 +225,41 @@ func makeCreateVolumeResponse(ctx context.Context, req *csi.CreateVolumeRequest,
 			}
 		}
 	}
+	return accessibleTopologies
+}
 
-	volName := vol.GetVolumeName()
+func getAttributes(req *csi.CreateVolumeRequest, vol utils.Volume, backendName string) map[string]string {
 	attributes := map[string]string{
-		"backend":      pool.Parent,
-		"name":         volName,
+		"backend":      backendName,
+		"name":         vol.GetVolumeName(),
 		"fsPermission": req.Parameters["fsPermission"],
 	}
 
 	if lunWWN, err := vol.GetLunWWN(); err == nil {
 		attributes["lunWWN"] = lunWWN
 	}
+	return attributes
+}
 
-	csiVolume := &csi.Volume{
-		VolumeId:           pool.Parent + "." + volName,
+func getVolumeResponse(accessibleTopologies []*csi.Topology,
+	attributes map[string]string,
+	volumeId string, size int64) *csi.Volume {
+	return &csi.Volume{
+		VolumeId:           volumeId,
 		CapacityBytes:      size,
 		VolumeContext:      attributes,
 		AccessibleTopology: accessibleTopologies,
 	}
+}
 
+func makeCreateVolumeResponse(ctx context.Context, req *csi.CreateVolumeRequest, vol utils.Volume,
+	pool *backend.StoragePool) *csi.Volume {
+	contentSource := req.GetVolumeContentSource()
+	size := req.GetCapacityRange().GetRequiredBytes()
+
+	accessibleTopologies := getAccessibleTopologies(ctx, req, pool)
+	attributes := getAttributes(req, vol, pool.Parent)
+	csiVolume := getVolumeResponse(accessibleTopologies, attributes, pool.Parent+"."+vol.GetVolumeName(), size)
 	if contentSource != nil {
 		csiVolume.ContentSource = contentSource
 	}
@@ -392,4 +410,93 @@ func processCreateVolumeParametersAfterSelect(parameters map[string]interface{},
 	}
 
 	parameters["accountName"] = backend.GetAccountName(localPool.Parent)
+}
+
+func (d *Driver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+	parameters, err := processCreateVolumeParameters(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	localPool, remotePool, err := backend.SelectStoragePool(ctx, req.GetCapacityRange().RequiredBytes, parameters)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Cannot select pool for volume creation: %v", err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	processCreateVolumeParametersAfterSelect(parameters, localPool, remotePool)
+
+	vol, err := localPool.Plugin.CreateVolume(ctx, req.GetName(), parameters)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Create volume %s error: %v", req.GetName(), err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	log.AddContext(ctx).Infof("Volume %s is created", req.GetName())
+	return &csi.CreateVolumeResponse{
+		Volume: makeCreateVolumeResponse(ctx, req, vol, localPool),
+	}, nil
+}
+
+// In the volume import scenario, only the fields in the annotation are obtained.
+// Other information are ignored (e.g. the capacity, backend, and QoS ...).
+func (d *Driver) manageVolume(ctx context.Context, req *csi.CreateVolumeRequest, volumeName, backendName string) (
+	*csi.CreateVolumeResponse, error) {
+	log.AddContext(ctx).Infof("Start to manage Volume %s for backend %s.", volumeName, backendName)
+	selectBackend := backend.GetBackendWithFresh(ctx, backendName, true)
+	if selectBackend == nil {
+		log.AddContext(ctx).Errorf("Backend %s doesn't exist. Manage Volume %s failed.", backendName, volumeName)
+		return &csi.CreateVolumeResponse{}, fmt.Errorf("backend %s doesn't exist. Manage Volume %s failed",
+			backendName, volumeName)
+	}
+
+	// clone volume can not be set when manage volume
+	if req.GetVolumeContentSource() != nil {
+		return &csi.CreateVolumeResponse{}, utils.Errorf(ctx,
+			"Manage volume %s can not set the source content.", volumeName)
+	}
+
+	parameters, err := processCreateVolumeParameters(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// valid the backend basic info, such as: volumeType, allocType, authClient
+	if err = backend.ValidateBackend(ctx, selectBackend, parameters); err != nil {
+		return nil, err
+	}
+
+	vol, err := selectBackend.Plugin.QueryVolume(ctx, volumeName)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Query volume %s error: %v", req.GetName(), err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	err = validateCapacity(ctx, req, vol)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Validate capacity %s error: %v", req.GetName(), err)
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	accessibleTopologies := getAccessibleTopologies(ctx, req, selectBackend.Pools[0])
+	attributes := getAttributes(req, vol, backendName)
+
+	log.AddContext(ctx).Infof("Volume %s is created by manage", req.GetName())
+	return &csi.CreateVolumeResponse{
+		Volume: getVolumeResponse(accessibleTopologies, attributes, backendName+"."+volumeName,
+			req.GetCapacityRange().GetRequiredBytes()),
+	}, nil
+}
+
+func validateCapacity(ctx context.Context, req *csi.CreateVolumeRequest, vol utils.Volume) error {
+	actualCapacity, err := vol.GetSize()
+	if err != nil {
+		return err
+	}
+
+	if actualCapacity != req.GetCapacityRange().RequiredBytes {
+		return utils.Errorf(ctx, "the actual capacity %d is different from PVC storage size %d",
+			actualCapacity, req.GetCapacityRange().RequiredBytes)
+	}
+	return nil
 }

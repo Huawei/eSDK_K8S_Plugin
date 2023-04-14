@@ -19,12 +19,12 @@ package lock
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -37,9 +37,6 @@ type Lock interface {
 }
 
 var (
-	connectorThreads = flag.Int("connector-threads",
-		4,
-		"The concurrency supported during disk operations.")
 	curDriverName string
 	lockMutex     sync.Mutex
 	semaphoreMap  map[string]*utils.Semaphore
@@ -55,8 +52,6 @@ const (
 
 	filePermission     = 0644
 	dirPermission      = 0755
-	minThreads         = 1
-	maxThreads         = 10
 	getLockInternalSec = 5
 
 	// GetLockTimeoutSec is the maximum number of seconds to acquire a lock
@@ -69,20 +64,15 @@ const (
 
 // InitLock provide three semaphores for device connect, disconnect and expand
 func InitLock(driverName string) error {
-	err := checkConnectorThreads(context.Background())
-	if err != nil {
-		return err
-	}
-
-	err = checkLockPath(lockDir)
+	err := checkLockPath(lockDir)
 	if err != nil {
 		return err
 	}
 
 	semaphoreMap = map[string]*utils.Semaphore{
-		connectVolume:    utils.NewSemaphore(*connectorThreads),
-		disConnectVolume: utils.NewSemaphore(*connectorThreads),
-		extendVolume:     utils.NewSemaphore(*connectorThreads),
+		connectVolume:    utils.NewSemaphore(app.GetGlobalConfig().ConnectorThreads),
+		disConnectVolume: utils.NewSemaphore(app.GetGlobalConfig().ConnectorThreads),
+		extendVolume:     utils.NewSemaphore(app.GetGlobalConfig().ConnectorThreads),
 	}
 	curDriverName = driverName
 	log.Infoln("Init lock success.")

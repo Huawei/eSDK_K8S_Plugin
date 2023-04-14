@@ -22,6 +22,8 @@ import (
 	"testing"
 
 	"bou.ke/monkey"
+	"github.com/agiledragon/gomonkey/v2"
+	. "github.com/smartystreets/goconvey/convey"
 
 	"huawei-csi-driver/storage/oceanstor/client"
 )
@@ -35,17 +37,17 @@ func TestInit(t *testing.T) {
 		wantErr    bool
 	}{
 		{"Normal",
-			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "user": "testUser", "password": "2e0273ba51d5c30866", "keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX"},
+			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "backendID": "mock-backendID", "user": "testUser", "secretName": "mock-secretname", "secretNamespace": "mock-namespace", "keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX"},
 			map[string]interface{}{"protocol": "nfs", "portals": []interface{}{"*.*.*.*"}},
 			false, false,
 		},
 		{"ProtocolErr",
-			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "user": "testUser", "password": "2e0273ba51d5c30866", "keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX"},
+			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "backendID": "mock-backendID", "user": "testUser", "secretName": "mock-secretname", "secretNamespace": "mock-namespace", "keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX"},
 			map[string]interface{}{"protocol": "wrong", "portals": []interface{}{"*.*.*.1"}},
 			false, true,
 		},
 		{"PortNotUnique",
-			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "user": "testUser", "password": "2e0273ba51d5c30866", "keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX"},
+			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "backendID": "mock-backendID", "user": "testUser", "secretName": "mock-secretname", "secretNamespace": "mock-namespace", "keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX"},
 			map[string]interface{}{"protocol": "wrong", "portals": []interface{}{"*.*.*.1", "*.*.*.2"}},
 			false, true,
 		},
@@ -69,4 +71,37 @@ func TestInit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidate(t *testing.T) {
+	Convey("Empty", t, func() {
+		err := mockOceanstorNasPlugin.Validate(ctx, map[string]interface{}{})
+		So(err, ShouldBeError)
+	})
+
+	Convey("Normal", t, func() {
+		portals := []interface{}{"127.0.0.1"}
+		parameters := map[string]interface{}{
+			"protocol": "nfs",
+			"portals":  portals,
+		}
+		urls := []interface{}{"127.0.0.1"}
+		config := map[string]interface{}{
+			"parameters":      parameters,
+			"urls":            urls,
+			"user":            "mock-user",
+			"secretName":      "mock-secretName",
+			"secretNamespace": "secretNamespace",
+			"backendID":       "mock-backendID",
+		}
+
+		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.BaseClient{}),
+			"ValidateLogin",
+			func(_ *client.BaseClient, _ context.Context) error { return nil },
+		)
+		defer m.Reset()
+
+		err := mockOceanstorNasPlugin.Validate(ctx, config)
+		So(err, ShouldBeNil)
+	})
 }

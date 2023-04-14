@@ -30,7 +30,7 @@ type ClientV6 struct {
 	client.BaseClient
 }
 
-func NewClientV6(urls []string, user, password, vstoreName, parallelNum string) *ClientV6 {
+func NewClientV6(urls []string, user, secretName, secretNamespace, vstoreName, parallelNum, backendID string) *ClientV6 {
 	var err error
 	var parallelCount int
 
@@ -49,7 +49,7 @@ func NewClientV6(urls []string, user, password, vstoreName, parallelNum string) 
 	client.ClientSemaphore = utils.NewSemaphore(parallelCount)
 
 	return &ClientV6{
-		*client.NewClient(urls, user, password, vstoreName, parallelNum),
+		*client.NewClient(urls, user, secretName, secretNamespace, vstoreName, parallelNum, backendID),
 	}
 }
 

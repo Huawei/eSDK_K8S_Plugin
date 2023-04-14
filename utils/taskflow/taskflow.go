@@ -24,6 +24,7 @@ import (
 )
 
 type TaskRunFunc func(ctx context.Context, params map[string]interface{}, result map[string]interface{}) (map[string]interface{}, error)
+type TaskWithoutRevert func(ctx context.Context, params map[string]interface{}) error
 type TaskRevertFunc func(ctx context.Context, result map[string]interface{}) error
 
 type Task struct {
@@ -97,4 +98,25 @@ func (p *TaskFlow) Revert() {
 	}
 
 	log.AddContext(p.ctx).Infof("Taskflow %s is reverted", p.name)
+}
+
+// AddTaskWithOutRevert be used when the task does not need revert function
+func (p *TaskFlow) AddTaskWithOutRevert(run TaskWithoutRevert) *TaskFlow {
+	var buildFun = func(ctx context.Context, params map[string]interface{},
+		_ map[string]interface{}) (map[string]interface{}, error) {
+		if err := run(ctx, params); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	p.AddTask("", buildFun, nil)
+	return p
+}
+
+// RunWithOutRevert run task without revert function and return only error
+func (p *TaskFlow) RunWithOutRevert(params map[string]interface{}) error {
+	if _, err := p.Run(params); err != nil {
+		return err
+	}
+	return nil
 }

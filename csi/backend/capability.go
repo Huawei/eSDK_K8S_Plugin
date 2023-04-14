@@ -20,16 +20,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"runtime/debug"
 	"sync"
 
+	"huawei-csi-driver/csi/app"
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
 func updateBackendCapabilities(backend *Backend, sync bool) error {
-	backendCapabilities, err := backend.Plugin.UpdateBackendCapabilities()
+	// If sbct is offline, delete the backend from the csiBackends.
+	backendID := pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backend.Name)
+	online, err := pkgUtils.GetSBCTOnlineStatusByClaim(context.TODO(), backendID)
+	if !online {
+		RemoveOneBackend(context.TODO(), backend.Name)
+		log.Infof("SBCT: [%s] online status is false, RemoveOneBackend: [%s]", backendID, backend.Name)
+		return nil
+	}
+
+	backendCapabilities, _, err := backend.Plugin.UpdateBackendCapabilities()
 	if err != nil {
 		log.Errorf("Cannot update backend %s capabilities: %v", backend.Name, err)
 		return err
@@ -93,20 +103,10 @@ func SyncUpdateCapabilities() error {
 	return nil
 }
 
-func AsyncUpdateCapabilities(controllerFlagFile string) {
+func AsyncUpdateCapabilities() {
 	var wait sync.WaitGroup
 
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	for _, backend := range csiBackends {
-		if len(controllerFlagFile) > 0 {
-			if _, err := os.Stat(controllerFlagFile); err != nil {
-				backend.Available = false
-				continue
-			}
-		}
-
 		wait.Add(1)
 
 		go func(b *Backend) {

@@ -22,12 +22,15 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
 
+	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend/plugin"
+	"huawei-csi-driver/pkg/finalizers"
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	fsUtils "huawei-csi-driver/storage/fusionstorage/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/k8sutils"
@@ -39,11 +42,18 @@ const (
 	Topology = "topology"
 	// supported topology key in CSI plugin configuration
 	supportedTopologiesKey = "supportedTopologies"
+
+	NoAvailablePool = "no storage pool meets the requirements"
 )
 
 var (
 	mutex       sync.Mutex
 	csiBackends = make(map[string]*Backend)
+
+	validateFilterFuncs = [][]interface{}{
+		{"backend", validateBackendName},
+		{"volumeType", validateVolumeType},
+	}
 
 	primaryFilterFuncs = [][]interface{}{
 		{"backend", filterByBackendName},
@@ -107,35 +117,23 @@ type SelectPoolPair struct {
 	remote *StoragePool
 }
 
+type CSIConfig struct {
+	Backends map[string]interface{} `json:"backends"`
+}
+
 func analyzePools(backend *Backend, config map[string]interface{}) error {
 	var pools []*StoragePool
 
-	if backend.Storage != "OceanStor-9000" {
-		configPools, _ := config["pools"].([]interface{})
-		for _, i := range configPools {
-			name := i.(string)
-			if name == "" {
-				continue
-			}
-
-			pool := &StoragePool{
-				Storage:      backend.Storage,
-				Name:         name,
-				Parent:       backend.Name,
-				Plugin:       backend.Plugin,
-				Capabilities: make(map[string]interface{}),
-			}
-
-			pools = append(pools, pool)
+	configPools, _ := config["pools"].([]interface{})
+	for _, i := range configPools {
+		name := i.(string)
+		if name == "" {
+			continue
 		}
 
-		if len(pools) == 0 {
-			return fmt.Errorf("No valid pools configured for backend %s", backend.Name)
-		}
-	} else {
 		pool := &StoragePool{
 			Storage:      backend.Storage,
-			Name:         backend.Name,
+			Name:         name,
 			Parent:       backend.Name,
 			Plugin:       backend.Plugin,
 			Capabilities: make(map[string]interface{}),
@@ -144,14 +142,28 @@ func analyzePools(backend *Backend, config map[string]interface{}) error {
 		pools = append(pools, pool)
 	}
 
+	if len(pools) == 0 {
+		return fmt.Errorf("no valid pools configured for backend %s", backend.Name)
+	}
+
 	backend.Pools = pools
 	return nil
 }
 
-func newBackend(backendName string, config map[string]interface{}) (*Backend, error) {
+func NewBackend(backendName string, config map[string]interface{}) (*Backend, error) {
+	// Verifying Common Parameters:
+	// - storage: oceanstor-san; oceanstor-nas; fusionstorage-san; fusionstorage-nas
+	// - parameters: must exist
+	// - supportedTopologies: must valid
+	// - hypermetro must valid
 	storage, exist := config["storage"].(string)
 	if !exist {
 		return nil, errors.New("storage type must be configured for backend")
+	}
+
+	targetPlugin := plugin.GetPlugin(storage)
+	if targetPlugin == nil {
+		return nil, fmt.Errorf("cannot get plugin for storage: [%s]", storage)
 	}
 
 	parameters, exist := config["parameters"].(map[string]interface{})
@@ -163,11 +175,6 @@ func newBackend(backendName string, config map[string]interface{}) (*Backend, er
 	supportedTopologies, err := getSupportedTopologies(config)
 	if err != nil {
 		return nil, err
-	}
-
-	plugin := plugin.GetPlugin(storage)
-	if plugin == nil {
-		return nil, fmt.Errorf("Cannot get plugin for storage %s", storage)
 	}
 
 	metroDomain, _ := config["hyperMetroDomain"].(string)
@@ -187,7 +194,7 @@ func newBackend(backendName string, config map[string]interface{}) (*Backend, er
 		Storage:             storage,
 		Available:           false,
 		SupportedTopologies: supportedTopologies,
-		Plugin:              plugin,
+		Plugin:              targetPlugin,
 		Parameters:          parameters,
 		MetroDomain:         metroDomain,
 		MetrovStorePairID:   metrovStorePairID,
@@ -228,6 +235,16 @@ func getSupportedTopologies(config map[string]interface{}) ([]map[string]string,
 }
 
 // addProtocolTopology add up protocol specific topological support
+// Note: Protocol is considered as special topological parameter.
+// The protocol topology is populated internally by plugin using protocol name.
+// If configured protocol for backend is "iscsi", CSI plugin internally add
+// topology.kubernetes.io/protocol.iscsi = csi.huawei.com in supportedTopologies.
+//
+// Now users can opt to provision volumes based on protocol by
+// 1. Labeling kubernetes nodes with protocol specific label (ie topology.kubernetes.io/protocol.iscsi = csi.huawei.com)
+// 2. Configure topology support in plugin
+// 3. Configure protocol topology in allowedTopologies fo Storage class
+// addProtocolTopology is called after backend plugin init as init takes care of protocol validation
 func addProtocolTopology(backend *Backend, driverName string) error {
 	proto, protocolAvailable := backend.Parameters["protocol"]
 	protocol, isString := proto.(string)
@@ -261,34 +278,6 @@ func addProtocolTopology(backend *Backend, driverName string) error {
 	return nil
 }
 
-func analyzeBackend(config map[string]interface{}) (*Backend, error) {
-	backendName, exist := config["name"].(string)
-	if !exist {
-		return nil, errors.New("Name must be configured for backend")
-	}
-
-	match, err := regexp.MatchString(`^[\w-]+$`, backendName)
-	if err != nil || !match {
-		return nil, fmt.Errorf("backend name %v is invalid, support upper&lower characters, numeric and [-_]", backendName)
-	}
-
-	if _, exist := csiBackends[backendName]; exist {
-		return nil, fmt.Errorf("Backend name %s is duplicated", backendName)
-	}
-
-	backend, err := newBackend(backendName, config)
-	if err != nil {
-		return nil, err
-	}
-
-	err = analyzePools(backend, config)
-	if err != nil {
-		return nil, err
-	}
-
-	return backend, nil
-}
-
 func updateMetroBackends() {
 	for _, i := range csiBackends {
 		if (i.MetroDomain == "" && i.MetrovStorePairID == "") || i.MetroBackend != nil {
@@ -311,70 +300,6 @@ func updateMetroBackends() {
 	}
 }
 
-func updateReplicaBackends() {
-	for _, i := range csiBackends {
-		if i.ReplicaBackend != nil {
-			continue
-		}
-
-		for _, j := range csiBackends {
-			if i.Name == j.Name || i.Storage != j.Storage || j.ReplicaBackend != nil {
-				continue
-			}
-
-			if i.ReplicaBackendName == j.Name && j.ReplicaBackendName == i.Name {
-				i.ReplicaBackend, j.ReplicaBackend = j, i
-
-				i.Plugin.UpdateReplicaRemotePlugin(j.Plugin)
-				j.Plugin.UpdateReplicaRemotePlugin(i.Plugin)
-			}
-		}
-	}
-}
-
-func RegisterBackend(backendConfigs []map[string]interface{}, keepLogin bool, driverName string) error {
-	for _, i := range backendConfigs {
-		backend, err := analyzeBackend(i)
-		if err != nil {
-			log.Errorf("Analyze backend error: %v", err)
-			return err
-		}
-
-		err = backend.Plugin.Init(i, backend.Parameters, keepLogin)
-		if err != nil {
-			log.Errorf("Init backend plugin error: %v", err)
-			return err
-		}
-
-		// Note: Protocol is considered as special topological parameter.
-		// The protocol topology is populated internally by plugin using protocol name.
-		// If configured protocol for backend is "iscsi", CSI plugin internally add
-		// topology.kubernetes.io/protocol.iscsi = csi.huawei.com in supportedTopologies.
-		//
-		// Now users can opt to provision volumes based on protocol by
-		// 1. Labeling kubernetes nodes with protocol specific label (ie topology.kubernetes.io/protocol.iscsi = csi.huawei.com)
-		// 2. Configure topology support in plugin
-		// 3. Configure protocol topology in allowedTopologies fo Storage class
-		// addProtocolTopology is called after backend plugin init as init takes care of protocol validation
-		err = addProtocolTopology(backend, driverName)
-		if err != nil {
-			log.Errorf("Add protocol topology error: %v", err)
-			return err
-		}
-
-		csiBackends[backend.Name] = backend
-	}
-
-	updateMetroBackends()
-	updateReplicaBackends()
-
-	return nil
-}
-
-func GetBackend(backendName string) *Backend {
-	return csiBackends[backendName]
-}
-
 func GetMetroDomain(backendName string) string {
 	return csiBackends[backendName].MetroDomain
 }
@@ -384,19 +309,16 @@ func GetMetrovStorePairID(backendName string) string {
 }
 
 func GetAccountName(backendName string) string {
+	if _, ok := csiBackends[backendName]; !ok {
+		return ""
+	}
 	return csiBackends[backendName].AccountName
 }
 
-func selectOnePool(ctx context.Context,
-	requestSize int64,
-	parameters map[string]interface{},
-	candidatePools []*StoragePool,
-	filterFuncs [][]interface{}) ([]*StoragePool, error) {
+func selectOnePool(ctx context.Context, requestSize int64, parameters map[string]interface{},
+	candidatePools []*StoragePool, filterFuncs [][]interface{}) ([]*StoragePool, error) {
+
 	var filterPools []*StoragePool
-
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	if len(candidatePools) == 0 {
 		for _, backend := range csiBackends {
 			if backend.Available {
@@ -408,11 +330,15 @@ func selectOnePool(ctx context.Context,
 	}
 
 	if len(filterPools) == 0 {
+		regErr := RegisterAllBackend(ctx)
+		if regErr != nil {
+			return nil, fmt.Errorf("RegisterAllBackend failed, error: [%v]", regErr)
+		}
 		return nil, fmt.Errorf("no available storage pool for volume %v", parameters)
 	}
 
 	// filter the storage pools by capability
-	filterPools, err := filterByCapability(ctx, parameters, filterPools, filterFuncs)
+	filterPools, err := filterByCapabilityWithRetry(ctx, parameters, filterPools, filterFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select pool, the capability filter failed, error: %v."+
 			" please check your storage class", err)
@@ -499,7 +425,7 @@ func weightSinglePools(
 	return selectPool, nil
 }
 
-func SelectStoragePool(ctx context.Context, requestSize int64, parameters map[string]interface{}) (*StoragePool, *StoragePool, error) {
+var SelectStoragePool = func(ctx context.Context, requestSize int64, parameters map[string]interface{}) (*StoragePool, *StoragePool, error) {
 	localPools, err := selectOnePool(ctx, requestSize, parameters, nil, primaryFilterFuncs)
 	if err != nil {
 		return nil, nil, err
@@ -696,9 +622,7 @@ func filterByReplication(ctx context.Context, replication string, candidatePools
 }
 
 // filterByTopology returns a subset of the provided pools that can support any of the topology requirement.
-func filterByTopology(parameters map[string]interface{},
-	candidatePools []*StoragePool) ([]*StoragePool, error) {
-
+func filterByTopology(parameters map[string]interface{}, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	iTopology, topologyAvailable := parameters[Topology]
 	if !topologyAvailable {
 		// ignore topology filter
@@ -866,20 +790,44 @@ func sortPoolsByPreferredTopologies(candidatePools []*StoragePool, preferredTopo
 	return append(orderedPools, remainingPools...)
 }
 
-func filterByCapability(
-	ctx context.Context,
-	parameters map[string]interface{},
-	candidatePools []*StoragePool,
+func filterByCapabilityWithRetry(ctx context.Context, parameters map[string]interface{}, candidatePools []*StoragePool,
 	filterFuncs [][]interface{}) ([]*StoragePool, error) {
+
+	filterPools, err := filterByCapability(ctx, parameters, candidatePools, filterFuncs)
+	if err == nil {
+		return filterPools, nil
+	} else if !strings.Contains(err.Error(), NoAvailablePool) {
+		return nil, fmt.Errorf("failed to select pool, the capability filter failed, error: %v."+
+			" please check your storage class", err)
+	}
+
+	regErr := RegisterAllBackend(ctx)
+	if regErr != nil {
+		return nil, fmt.Errorf("filterByCapabilityWithRetry failed, RegisterAllBackend failed, error: [%v]", regErr)
+	}
+
+	return filterByCapability(ctx, parameters, filterPools, filterFuncs)
+}
+
+func filterByCapability(ctx context.Context, parameters map[string]interface{}, candidatePools []*StoragePool,
+	filterFuncs [][]interface{}) ([]*StoragePool, error) {
+
 	var err error
 	for _, i := range filterFuncs {
 		key, filter := i[0].(string), i[1].(func(context.Context, string, []*StoragePool) ([]*StoragePool, error))
 		value, _ := parameters[key].(string)
 		candidatePools, err = filter(ctx, value, candidatePools)
-		if err != nil || len(candidatePools) == 0 {
-			return nil, fmt.Errorf("no storage pool meets the requirements. "+
-				"the final filter field: %s, filter function: %s, parameters %v. Reason: %v",
-				key, runtime.FuncForPC(reflect.ValueOf(filter).Pointer()).Name(), parameters, err)
+		if err != nil {
+			msg := fmt.Sprintf("Filter pool by capability failed, filter field: [%s], fileter function: [%s], paramters: [%v], error: [%v].",
+				value, runtime.FuncForPC(reflect.ValueOf(filter).Pointer()).Name(), parameters, err)
+			log.AddContext(ctx).Errorln(msg)
+			return nil, errors.New(msg)
+		}
+		if len(candidatePools) == 0 {
+			msg := fmt.Sprintf("%s. the final filter field: %s, filter function: %s, parameters %v.",
+				NoAvailablePool, value, runtime.FuncForPC(reflect.ValueOf(filter).Pointer()).Name(), parameters)
+			log.AddContext(ctx).Errorln(msg)
+			return nil, errors.New(msg)
 		}
 	}
 
@@ -1003,4 +951,153 @@ func filterByStorageQuota(ctx context.Context, storageQuota string, candidatePoo
 	}
 
 	return filterPools, nil
+}
+
+// ValidateBackend valid the backend basic info, such as: volumeType(authClient if nfs)
+var ValidateBackend = func(ctx context.Context, selectBackend *Backend, parameters map[string]interface{}) error {
+	for _, i := range validateFilterFuncs {
+		key, validator := i[0].(string), i[1].(func(context.Context, string, *Backend) error)
+		value, _ := parameters[key].(string)
+		if err := validator(ctx, value, selectBackend); err != nil {
+			return fmt.Errorf("validate backend error for manage Volume. "+
+				"the final validator field: %s, validator function: %s, parameters %v. Reason: %v",
+				key, runtime.FuncForPC(reflect.ValueOf(validator).Pointer()).Name(), parameters, err)
+		}
+	}
+
+	return nil
+}
+
+func validateBackendName(ctx context.Context, backendName string, selectBackend *Backend) error {
+	if backendName != "" && selectBackend.Name != backendName {
+		return utils.Errorf(ctx, "the backend name between StorageClass(%s) and PVC annotation(%s) "+
+			"is different", backendName, selectBackend.Name)
+	}
+
+	return nil
+}
+
+func validateVolumeType(ctx context.Context, volumeType string, selectBackend *Backend) error {
+	if filterPools, _ := filterByVolumeType(ctx, volumeType, selectBackend.Pools); len(filterPools) == 0 {
+		return utils.Errorf(ctx, "the volumeType between StorageClass(%s) and PVC annotation(%s) "+
+			"is different", volumeType, selectBackend.Name)
+	}
+	return nil
+}
+
+// RegisterOneBackend used to register a backend to plugin
+func RegisterOneBackend(ctx context.Context, backendID, configmapMeta, secretMeta string) (string, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	log.AddContext(ctx).Infof("Register backend: [%s], configmap: [%s], meta: [%s]",
+		backendID, configmapMeta, secretMeta)
+
+	// If the backend exists, the registration is not repeated.
+	_, backendName, err := pkgUtils.SplitMetaNamespaceKey(backendID)
+	if _, exist := csiBackends[backendName]; exist {
+		log.AddContext(ctx).Infof("Backend %s already exist, ignore current request.", backendName)
+		return backendName, nil
+	}
+
+	storageInfo, err := GetStorageBackendInfo(ctx, backendID, configmapMeta, secretMeta)
+	if err != nil {
+		return "", err
+	}
+
+	bk, err := NewBackend(backendName, storageInfo)
+	if err != nil {
+		return "", err
+	}
+
+	err = analyzePools(bk, storageInfo)
+	if err != nil {
+		return "", err
+	}
+
+	err = bk.Plugin.Init(storageInfo, bk.Parameters, true)
+	if err != nil {
+		log.Errorf("Init backend plugin error: %v", err)
+		return "", err
+	}
+
+	err = addProtocolTopology(bk, app.GetGlobalConfig().DriverName)
+	if err != nil {
+		log.Errorf("Add protocol topology error: %v", err)
+		return "", err
+	}
+
+	csiBackends[backendName] = bk
+
+	updateMetroBackends()
+
+	log.AddContext(ctx).Infof("The backend: [%s] is registered successfully. Registered: [%+v]",
+		backendName, csiBackends)
+	return backendName, nil
+}
+
+// RegisterAllBackend used to synchronize all backend from storageBackendContent to driver
+func RegisterAllBackend(ctx context.Context) error {
+	log.AddContext(ctx).Infoln("Synchronize backend from online storageBackendContent.")
+	defer log.AddContext(ctx).Infoln("Finish synchronize backend from online storageBackendContent.")
+
+	// Obtains all storageBackendClaims in the CSI namespace.
+	claims, err := pkgUtils.ListClaim(ctx, app.GetGlobalConfig().BackendUtils, app.GetGlobalConfig().Namespace)
+	if err != nil {
+		msg := fmt.Sprintf("List storageBackendClaim failed, error: [%v].", err)
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	// Get all online storageBackendContent
+	var onlineContents []*xuanwuv1.StorageBackendContent
+	for _, claim := range claims.Items {
+		content, err := pkgUtils.GetContent(ctx, app.GetGlobalConfig().BackendUtils, claim.Status.BoundContentName)
+		if err != nil {
+			log.AddContext(ctx).Warningf("Get storageBackendContent failed, error: [%v]", err)
+			continue
+		}
+		if !content.Status.Online {
+			log.AddContext(ctx).Warningf("StorageBackendContent: [%s] is offline(online: false), "+
+				"will not register.", content.Name)
+			continue
+		}
+		onlineContents = append(onlineContents, content)
+	}
+
+	// If the backend name is not in csiBackends, invoke RegisterOneBackend for registration.
+	for _, content := range onlineContents {
+		configmapMeta, secretMeta, err := pkgUtils.GetConfigMeta(ctx, content.Spec.BackendClaim)
+		if err != nil {
+			log.AddContext(ctx).Warningf("Get storageBackendClaim: [%s] ConfigMeta failed, storageBackendContent: "+
+				"[%s], error: [%v]", content.Spec.BackendClaim, content.Name, err)
+			continue
+		}
+		_, err = RegisterOneBackend(ctx, content.Spec.BackendClaim, configmapMeta, secretMeta)
+		if err != nil {
+			log.AddContext(ctx).Warningf("RegisterOneBackend failed, meta: [%s %s %s], error: %v",
+				content.Spec.BackendClaim, configmapMeta, secretMeta, err)
+		}
+	}
+
+	return nil
+}
+
+// RemoveOneBackend remove a storage backend from plugin
+func RemoveOneBackend(ctx context.Context, storageBackendId string) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	if _, exist := csiBackends[storageBackendId]; exist {
+		delete(csiBackends, storageBackendId)
+	}
+	log.AddContext(ctx).Infof("storageBackends: Successful remove backend %s. csiBackends: [%v] ",
+		storageBackendId, csiBackends)
+
+	finalizers.RemoveStorageBackendMutex(ctx, storageBackendId)
+	return
+}
+
+func IsBackendRegistered(backendName string) bool {
+	return csiBackends[backendName] != nil
 }

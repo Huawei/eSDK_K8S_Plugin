@@ -1,0 +1,142 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.8.0
+  creationTimestamp: null
+  name: storagebackendclaims.xuanwu.huawei.io
+spec:
+  group: xuanwu.huawei.io
+  names:
+    kind: StorageBackendClaim
+    listKind: StorageBackendClaimList
+    plural: storagebackendclaims
+    shortNames:
+    - sbc
+    singular: storagebackendclaim
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.boundContentName
+      name: StorageBackendContentName
+      type: string
+    - jsonPath: .status.storageType
+      name: StorageType
+      priority: 1
+      type: string
+    - jsonPath: .status.protocol
+      name: Protocol
+      priority: 1
+      type: string
+    - jsonPath: .status.metroBackend
+      name: MetroBackend
+      priority: 1
+      type: string
+    - jsonPath: .status.phase
+      name: Status
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: StorageBackendClaim is the Schema for the storageBackends API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          # After each update of the CRD, be sure to add the following lines.
+          # The role of the following lines is to limit the length of the user-created resource name to no more than 63.
+          # If the length of resource name is greater than 63, an error may occur when adding name information to labels.
+          metadata:
+            properties:
+              name:
+                maxLength: 63
+                type: string
+            type: object
+          spec:
+            description: StorageBackendClaimSpec defines the desired state of StorageBackend
+            properties:
+              configmapMeta:
+                description: ConfigMapMeta used to config the storage management info,
+                  the format is <namespace>/<name>.
+                type: string
+              maxClientThreads:
+                description: maxClientThreads is used to limit the number of storage
+                  client request connections
+                type: string
+              parameters:
+                additionalProperties:
+                  type: string
+                description: User defined parameter for extension
+                type: object
+              provider:
+                description: Provider is required in storageBackend, used to filter
+                  the provider to add backend
+                type: string
+              secretMeta:
+                description: SecretMeta used to config the storage sensitive info,
+                  the format is <namespace>/<name>.
+                type: string
+            required:
+            - provider
+            type: object
+          status:
+            description: StorageBackendClaimStatus defines the observed state of StorageBackend
+            properties:
+              boundContentName:
+                description: BoundContentName is the binding reference
+                type: string
+              configmapMeta:
+                description: ConfigmapMeta is current storage configmap namespace
+                  and name, format is <namespace>/<name>, such as xuanwu/backup-instance-configmap
+                type: string
+              maxClientThreads:
+                description: maxClientThreads is used to limit the number of storage
+                  client request connections
+                type: string
+              metroBackend:
+                description: MetroBackend is the backend that form hyperMetro
+                type: string
+              phase:
+                description: Phase represents the current phase of PersistentVolumeClaim
+                type: string
+              protocol:
+                description: Protocol is used storage protocol
+                type: string
+              secretMeta:
+                description: SecretMeta is current storage secret namespace and name,
+                  format is <namespace>/<name>, such as xuanwu/backup-instance-secret
+                type: string
+              storageBackendId:
+                description: StorageBackendId is required in storageBackend, used
+                  to filter the provider to add backend
+                type: string
+              storageType:
+                description: StorageType is storage type
+                type: string
+            required:
+            - configmapMeta
+            - secretMeta
+            - storageBackendId
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

@@ -18,32 +18,36 @@ package driver
 
 import (
 	"context"
-	"os"
-	"path"
+	"errors"
+	"reflect"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/prashantv/gostub"
 	. "github.com/smartystreets/goconvey/convey"
 
+	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
+	"huawei-csi-driver/csi/app"
+	cfg "huawei-csi-driver/csi/app/config"
+	"huawei-csi-driver/csi/backend"
+	"huawei-csi-driver/csi/backend/plugin"
+	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
+	pkgUtils "huawei-csi-driver/pkg/utils"
+	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
 const (
-	logDir  = "/var/log/huawei/"
 	logName = "controller_helper_test.log"
 )
 
 func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
-	}
+	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer getGlobalConfig.Reset()
 
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
 
 	m.Run()
 }
@@ -77,4 +81,111 @@ func TestCheckReservedSnapshotSpaceRatio(t *testing.T) {
 		So(checkReservedSnapshotSpaceRatio(context.TODO(), param), ShouldBeError)
 	})
 
+}
+
+func mockCreateRequest() *csi.CreateVolumeRequest {
+	capacity := &csi.CapacityRange{
+		RequiredBytes: 1024 * 1024 * 1024,
+	}
+	parameters := map[string]string{
+		"volumeType": "fs",
+		"allocType":  "thin",
+		"authClient": "*",
+	}
+	return &csi.CreateVolumeRequest{
+		Name:               "fake-pvc-name",
+		CapacityRange:      capacity,
+		VolumeCapabilities: []*csi.VolumeCapability{},
+		Parameters:         parameters,
+	}
+}
+
+func initDriver() *Driver {
+	return NewDriver(app.GetGlobalConfig().DriverName,
+		"csiVersion",
+		app.GetGlobalConfig().K8sUtils,
+		app.GetGlobalConfig().NodeName)
+}
+
+func TestCreateVolumeWithoutBackend(t *testing.T) {
+	driver := initDriver()
+	req := mockCreateRequest()
+	m := gomonkey.ApplyFunc(pkgUtils.ListClaim,
+		func(ctx context.Context, client clientSet.Interface, namespace string) (
+			*xuanwuv1.StorageBackendClaimList, error) {
+			return &xuanwuv1.StorageBackendClaimList{}, errors.New("mock list claim failed")
+		})
+	defer m.Reset()
+
+	_, err := driver.createVolume(context.TODO(), req)
+	if err == nil {
+		t.Error("test create without backend failed")
+	}
+}
+
+func initPool(poolName string) *backend.StoragePool {
+	return &backend.StoragePool{
+		Name:         poolName,
+		Storage:      "oceanstor-nas",
+		Parent:       "fake-bakcend",
+		Capabilities: map[string]interface{}{},
+		Plugin:       plugin.GetPlugin("oceanstor-nas"),
+	}
+}
+
+func TestCreateVolume(t *testing.T) {
+	localPool := initPool("local-pool")
+	gostub.StubFunc(&backend.SelectStoragePool, localPool, nil, nil)
+
+	plg := plugin.GetPlugin("oceanstor-nas")
+	createPatch := gomonkey.ApplyMethod(reflect.TypeOf(plg), "CreateVolume",
+		func(*plugin.OceanstorNasPlugin, context.Context, string, map[string]interface{}) (utils.Volume, error) {
+			return utils.NewVolume("fake-nfs"), nil
+		})
+	defer createPatch.Reset()
+
+	driver := initDriver()
+	req := mockCreateRequest()
+	_, err := driver.createVolume(context.TODO(), req)
+	if err != nil {
+		t.Error("test create with storage failed")
+	}
+}
+
+func TestImportVolumeWithOutBackend(t *testing.T) {
+	driver := initDriver()
+	req := mockCreateRequest()
+
+	s := gostub.StubFunc(&backend.GetBackendWithFresh, nil)
+	defer s.Reset()
+
+	_, err := driver.manageVolume(context.TODO(), req, "fake-nfs", "fake-backend")
+	if err == nil {
+		t.Error("test import without backend failed")
+	}
+}
+
+func TestImportVolume(t *testing.T) {
+	plg := plugin.GetPlugin("oceanstor-nas")
+	localPool := initPool("local-pool")
+	gostub.StubFunc(&backend.GetBackendWithFresh, &backend.Backend{
+		Name:   "fake-backend",
+		Plugin: plg,
+		Pools:  []*backend.StoragePool{localPool},
+	})
+
+	queryPatch := gomonkey.ApplyMethod(reflect.TypeOf(plg), "QueryVolume",
+		func(*plugin.OceanstorNasPlugin, context.Context, string) (utils.Volume, error) {
+			vol := utils.NewVolume("fake-nfs")
+			vol.SetSize(1024 * 1024 * 1024)
+			return vol, nil
+		})
+	defer queryPatch.Reset()
+
+	driver := initDriver()
+	req := mockCreateRequest()
+	_, err := driver.manageVolume(context.TODO(), req, "fake-nfs", "fake-backend")
+	if err != nil {
+		t.Errorf("test import with storage failed, error %v", err)
+	}
 }

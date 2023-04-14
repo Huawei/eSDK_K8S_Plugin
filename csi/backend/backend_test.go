@@ -18,22 +18,38 @@ package backend
 
 import (
 	"context"
-	"os"
-	"path"
+	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
+	. "github.com/smartystreets/goconvey/convey"
 
+	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
+	"huawei-csi-driver/csi/app"
+	cfg "huawei-csi-driver/csi/app/config"
+	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
 const (
 	logName string = "backend_test.log"
-	logDir  string = "/var/log/huawei"
 )
 
 var ctx = context.Background()
+
+func TestMain(m *testing.M) {
+	log.MockInitLogging(logName)
+	defer log.MockStopLogging(logName)
+
+	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer getGlobalConfig.Reset()
+
+	m.Run()
+}
 
 func TestAnalyzePools(t *testing.T) {
 	tests := []struct {
@@ -53,10 +69,6 @@ func TestAnalyzePools(t *testing.T) {
 		{"Normal9000",
 			&Backend{Name: "testBackend1", Storage: "OceanStor-9000"},
 			map[string]interface{}{"pools": []interface{}{"pool1", "pool2"}},
-			false},
-		{"NotHavePools9000",
-			&Backend{Name: "testBackend1", Storage: "OceanStor-9000"},
-			map[string]interface{}{"pools": []interface{}{}},
 			false},
 	}
 
@@ -111,8 +123,8 @@ func TestNewBackend(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := newBackend(tt.backendName, tt.config); (err != nil) != tt.expectErr {
-				t.Errorf("test newBackend faild. err: %v expect: %v", err, tt.expectErr)
+			if _, err := NewBackend(tt.backendName, tt.config); (err != nil) != tt.expectErr {
+				t.Errorf("test NewBackend faild. err: %v expect: %v", err, tt.expectErr)
 			}
 		})
 	}
@@ -786,18 +798,94 @@ func TestFilterByStorageQuota(t *testing.T) {
 	}
 }
 
-func TestMain(m *testing.M) {
-	if err := log.InitLogging(logName); err != nil {
-		log.Errorf("Init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
+func mockStoragePool(features ...string) []*StoragePool {
+	var pools []*StoragePool
+	for i, feature := range features {
+		pool := &StoragePool{
+			Name:         fmt.Sprintf("pool-%d", i),
+			Capabilities: map[string]interface{}{feature: true},
+			Storage:      "oceanstor-nas",
+		}
+		pools = append(pools, pool)
 	}
 
-	logFile := path.Join(logDir, logName)
-	defer func() {
-		if err := os.RemoveAll(logFile); err != nil {
-			log.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		}
-	}()
+	return pools
+}
 
-	m.Run()
+func mockStorageBackend(storage string, pool []*StoragePool) *Backend {
+	return &Backend{
+		Name:       "mock-backend",
+		Storage:    storage,
+		Available:  true,
+		Plugin:     nil,
+		Pools:      pool,
+		Parameters: nil,
+	}
+}
+
+func TestInValidBackendName(t *testing.T) {
+	features := []string{"SupportThin", "SupportQoS"}
+	mockBackend := mockStorageBackend("oceanstor-nas", mockStoragePool(features...))
+	parameters := map[string]interface{}{"backend": "fake-backend"}
+	err := ValidateBackend(ctx, mockBackend, parameters)
+	if err == nil {
+		t.Error("test inValidBackendName error")
+	}
+}
+
+func TestInValidVolumeType(t *testing.T) {
+	features := []string{"SupportThin", "SupportQoS"}
+	mockBackend := mockStorageBackend("oceanstor-nas", mockStoragePool(features...))
+	parameters := map[string]interface{}{"volumeType": "lun"}
+	err := ValidateBackend(ctx, mockBackend, parameters)
+	if err == nil {
+		t.Error("test inValidVolumeType error")
+	}
+}
+
+func TestValidateBackend(t *testing.T) {
+	features := []string{"SupportThin", "SupportQoS"}
+	mockBackend := mockStorageBackend("oceanstor-nas", mockStoragePool(features...))
+	parameters := map[string]interface{}{"volumeType": "fs"}
+	err := ValidateBackend(ctx, mockBackend, parameters)
+	if err != nil {
+		t.Errorf("test validateBackend error %v", err)
+	}
+}
+
+func TestRegisterAllBackend(t *testing.T) {
+	Convey("List claim failed", t, func() {
+		m := gomonkey.ApplyFunc(pkgUtils.ListClaim,
+			func(ctx context.Context, client clientSet.Interface, namespace string) (
+				*xuanwuv1.StorageBackendClaimList, error) {
+				return &xuanwuv1.StorageBackendClaimList{}, errors.New("mock list claim failed")
+			})
+		defer m.Reset()
+
+		So(RegisterAllBackend(ctx), ShouldBeError)
+	})
+
+	Convey("Get content failed", t, func() {
+		m := gomonkey.ApplyFunc(pkgUtils.ListClaim,
+			func(ctx context.Context, client clientSet.Interface, namespace string) (
+				*xuanwuv1.StorageBackendClaimList, error) {
+				claim := &xuanwuv1.StorageBackendClaim{
+					Status: &xuanwuv1.StorageBackendClaimStatus{
+						BoundContentName: "mock content name",
+					},
+				}
+				return &xuanwuv1.StorageBackendClaimList{
+					Items: []xuanwuv1.StorageBackendClaim{*claim},
+				}, nil
+			})
+		defer m.Reset()
+
+		m.ApplyFunc(pkgUtils.GetContent,
+			func(ctx context.Context, client clientSet.Interface, contentName string) (
+				*xuanwuv1.StorageBackendContent, error) {
+				return &xuanwuv1.StorageBackendContent{}, errors.New("mock get content failed")
+			})
+
+		So(RegisterAllBackend(ctx), ShouldBeNil)
+	})
 }

@@ -32,7 +32,11 @@ const (
 	HYPER_METRO_VSTORE_PAIR_LINK_STATUS_CONNECTED = "1"
 	HYPER_METRO_DOMAIN_ACTIVE                     = "1"
 	HYPER_METRO_DOMAIN_RUNNING_STATUS_NORMAL      = "0"
+
+	ConsistentSnapshotsSpecification = "128"
 )
+
+var supportConsistentSnapshotsVersions = []string{"6.1.6"}
 
 type OceanstorNasPlugin struct {
 	OceanstorPlugin
@@ -121,6 +125,11 @@ func (p *OceanstorNasPlugin) getClient() (client.BaseClientInterface, client.Bas
 	return p.cli, replicaRemoteCli
 }
 
+func (p *OceanstorNasPlugin) QueryVolume(ctx context.Context, name string) (utils.Volume, error) {
+	nas := p.getNasObj()
+	return nas.Query(ctx, name)
+}
+
 func (p *OceanstorNasPlugin) DeleteVolume(ctx context.Context, name string) error {
 	nas := p.getNasObj()
 	return nas.Delete(ctx, name)
@@ -137,18 +146,6 @@ func (p *OceanstorNasPlugin) ExpandVolume(ctx context.Context, name string, size
 	return false, nas.Expand(ctx, name, newSize)
 }
 
-func (p *OceanstorNasPlugin) StageVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) error {
-	return p.fsStageVolume(ctx, name, p.portal, parameters)
-}
-
-func (p *OceanstorNasPlugin) UnstageVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) error {
-	return p.unstageVolume(ctx, name, parameters)
-}
-
 func (p *OceanstorNasPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
 	return p.updatePoolCapabilities(poolNames, "2")
 }
@@ -159,10 +156,6 @@ func (p *OceanstorNasPlugin) UpdateReplicaRemotePlugin(remote Plugin) {
 
 func (p *OceanstorNasPlugin) UpdateMetroRemotePlugin(remote Plugin) {
 	p.metroRemotePlugin = remote.(*OceanstorNasPlugin)
-}
-
-func (p *OceanstorNasPlugin) NodeExpandVolume(context.Context, string, string, bool, int64) error {
-	return nil
 }
 
 func (p *OceanstorNasPlugin) CreateSnapshot(ctx context.Context,
@@ -190,28 +183,34 @@ func (p *OceanstorNasPlugin) DeleteSnapshot(ctx context.Context, snapshotParentI
 	return nil
 }
 
-func (p *OceanstorNasPlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
-	capabilities, err := p.OceanstorPlugin.UpdateBackendCapabilities()
+func (p *OceanstorNasPlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
+	capabilities, specifications, err := p.OceanstorPlugin.UpdateBackendCapabilities()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	err = p.updateHyperMetroCapability(capabilities)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	err = p.updateReplicationCapability(capabilities)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	err = p.updateNFS4Capability(capabilities)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return capabilities, nil
+	// update the SupportConsistentSnapshot capability and specification
+	err = p.updateConsistentSnapshotCapability(capabilities, specifications)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return capabilities, specifications, nil
 }
 
 func (p *OceanstorNasPlugin) updateHyperMetroCapability(capabilities map[string]interface{}) error {
@@ -265,6 +264,17 @@ func (p *OceanstorNasPlugin) updateHyperMetroCapability(capabilities map[string]
 	return nil
 }
 
+func (p *OceanstorNasPlugin) updateConsistentSnapshotCapability(
+	capabilities, specifications map[string]interface{}) error {
+	var supportConsistentSnapshot bool
+	if utils.StringContain(p.cli.GetStorageVersion(), supportConsistentSnapshotsVersions) {
+		supportConsistentSnapshot = true
+		specifications["ConsistentSnapshotLimits"] = ConsistentSnapshotsSpecification
+	}
+	capabilities["SupportConsistentSnapshot"] = supportConsistentSnapshot
+	return nil
+}
+
 func (p *OceanstorNasPlugin) updateReplicationCapability(capabilities map[string]interface{}) error {
 	if capabilities["SupportReplication"] == true && p.replicaRemotePlugin == nil {
 		capabilities["SupportReplication"] = false
@@ -314,4 +324,57 @@ func (p *OceanstorNasPlugin) UpdateRemoteCapabilities(capabilities map[string]in
 
 	capabilities["SupportMetro"] = capabilities["SupportMetro"].(bool) &&
 		utils.IsSupportFeature(features, "HyperMetroNAS")
+}
+
+func (p *OceanstorNasPlugin) verifyOceanstorNasParam(ctx context.Context, config map[string]interface{}) error {
+	parameters, exist := config["parameters"].(map[string]interface{})
+	if !exist {
+		msg := fmt.Sprintf("Verify parameters: [%v] failed. \nparameters must be provided", config["parameters"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	// verify protocol portals
+	protocol, exist := parameters["protocol"].(string)
+	if !exist || protocol != "nfs" {
+		msg := fmt.Sprintf("Verify protocol: [%v] failed. \nProtocol must be provided and must be \"nfs\" for "+
+			"oceanstor-nas backend\n", parameters["protocol"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	portals, exist := parameters["portals"].([]interface{})
+	if !exist || len(portals) != 1 {
+		msg := fmt.Sprintf("Verify portals: [%v] failed. \nportals must be provided for oceanstor-nas backend "+
+			"and just support one portal\n", parameters["portals"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	return nil
+}
+
+func (p *OceanstorNasPlugin) Validate(ctx context.Context, param map[string]interface{}) error {
+	log.AddContext(ctx).Infoln("Start to validate OceanstorNasPlugin parameters.")
+
+	err := p.verifyOceanstorNasParam(ctx, param)
+	if err != nil {
+		return err
+	}
+
+	clientConfig, err := p.getNewClientConfig(ctx, param)
+	if err != nil {
+		return err
+	}
+
+	// Login verification
+	cli := client.NewClient(clientConfig.Urls, clientConfig.User, clientConfig.SecretName,
+		clientConfig.SecretNamespace, clientConfig.VstoreName, clientConfig.ParallelNum, clientConfig.BackendID)
+	err = cli.ValidateLogin(ctx)
+	if err != nil {
+		return err
+	}
+	cli.Logout(ctx)
+
+	return nil
 }

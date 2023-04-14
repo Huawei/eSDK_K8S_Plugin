@@ -24,7 +24,6 @@ import (
 	"reflect"
 	"sync"
 
-	"huawei-csi-driver/connector"
 	"huawei-csi-driver/proto"
 	"huawei-csi-driver/storage/oceanstor/attacher"
 	"huawei-csi-driver/storage/oceanstor/client"
@@ -142,6 +141,11 @@ func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
 	return volObl, nil
 }
 
+func (p *OceanstorSanPlugin) QueryVolume(ctx context.Context, name string) (utils.Volume, error) {
+	san := p.getSanObj()
+	return san.Query(ctx, name)
+}
+
 func (p *OceanstorSanPlugin) DeleteVolume(ctx context.Context, name string) error {
 	san := p.getSanObj()
 	return san.Delete(ctx, name)
@@ -237,6 +241,48 @@ func (p *OceanstorSanPlugin) handler(ctx context.Context, req handlerRequest) ([
 	return out, err
 }
 
+// AttachVolume attach volume to node,return storage mapping info.
+func (p *OceanstorSanPlugin) AttachVolume(ctx context.Context, name string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
+	var localCli, metroCli client.BaseClientInterface
+	if p.storageOnline {
+		localCli = p.cli
+	}
+
+	if p.metroRemotePlugin != nil && p.metroRemotePlugin.storageOnline {
+		metroCli = p.metroRemotePlugin.cli
+	}
+
+	lunName := p.cli.MakeLunName(name)
+	lun, err := p.getLunInfo(ctx, localCli, metroCli, lunName)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)
+		return nil, err
+	}
+
+	var out []reflect.Value
+	out, err = p.handler(ctx, handlerRequest{localCli: localCli, metroCli: metroCli,
+		lun: lun, parameters: parameters, method: "ControllerAttach"})
+	if err != nil {
+		return nil, utils.Errorf(ctx, "Storage connect for volume %s error: %v", lunName, err)
+	}
+
+	if len(out) != reflectResultLength {
+		return nil, utils.Errorf(ctx, "attach volume %s error", lunName)
+	}
+
+	result := out[1].Interface()
+	if result != nil {
+		return nil, result.(error)
+	}
+
+	connectInfo, ok := out[0].Interface().(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("controller attach volume %s error", lunName)
+	}
+	return connectInfo, nil
+}
+
 func (p *OceanstorSanPlugin) DetachVolume(ctx context.Context, name string, parameters map[string]interface{}) error {
 	var localCli, metroCli client.BaseClientInterface
 	if p.storageOnline {
@@ -298,135 +344,6 @@ func (p *OceanstorSanPlugin) releaseClient(ctx context.Context, cli, metroCli cl
 	}
 }
 
-func (p *OceanstorSanPlugin) getStageVolumeInfo(ctx context.Context,
-	name string, parameters map[string]interface{}) (
-	*connector.ConnectInfo, error) {
-	cli, metroCli, err := p.getClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer p.releaseClient(ctx, cli, metroCli)
-
-	lunName := p.cli.MakeLunName(name)
-	lun, err := p.getLunInfo(ctx, cli, metroCli, lunName)
-	if err != nil {
-		return nil, err
-	}
-	if lun == nil {
-		return nil, fmt.Errorf("LUN %s to stage doesn't exist", lunName)
-	}
-
-	lunWWN, err := utils.GetLunUniqueId(ctx, p.protocol, lun)
-	if err != nil {
-		return nil, err
-	}
-
-	err = connector.ClearResidualPath(ctx, lunWWN, parameters["volumeMode"])
-	if err != nil {
-		return nil, err
-	}
-
-	var out []reflect.Value
-	out, err = p.handler(ctx, handlerRequest{localCli: cli, metroCli: metroCli,
-		lun: lun, parameters: parameters, method: "NodeStage"})
-	if err != nil {
-		return nil, utils.Errorf(ctx, "Storage connect for volume %s error: %v", lunName, err)
-	}
-
-	if len(out) != reflectResultLength {
-		return nil, utils.Errorf(ctx, "stage volume %s error", lunName)
-	}
-
-	result := out[1].Interface()
-	if result != nil {
-		return nil, result.(error)
-	}
-
-	connectInfo, ok := out[0].Interface().(*connector.ConnectInfo)
-	if !ok {
-		return nil, fmt.Errorf("stage volume %s error", lunName)
-	}
-	return connectInfo, nil
-}
-
-func (p *OceanstorSanPlugin) StageVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) error {
-	connectInfo, err := p.getStageVolumeInfo(ctx, name, parameters)
-	if err != nil {
-		return err
-	}
-	devPath, err := p.lunConnectVolume(ctx, connectInfo)
-	if err != nil {
-		return err
-	}
-	return p.lunStageVolume(ctx, name, devPath, parameters)
-}
-
-func (p *OceanstorSanPlugin) getUnStageVolumeInfo(ctx context.Context,
-	name string, parameters map[string]interface{}) (
-	*connector.DisConnectInfo, error) {
-	cli, metroCli, err := p.getClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer p.releaseClient(ctx, cli, metroCli)
-
-	lunName := p.cli.MakeLunName(name)
-	lun, err := p.getLunInfo(ctx, cli, metroCli, lunName)
-	if err != nil {
-		return nil, err
-	}
-
-	if lun == nil {
-		log.AddContext(ctx).Debugf("Get lun [%s] info is empty.", lunName)
-		return nil, nil
-	}
-
-	var out []reflect.Value
-	out, err = p.handler(ctx, handlerRequest{localCli: cli, metroCli: metroCli,
-		lun: lun, parameters: parameters, method: "NodeUnstage"})
-	if err != nil {
-		return nil, utils.Errorf(ctx, "Storage disconnect for volume %s error: %v", lunName, err)
-	}
-
-	if len(out) != reflectResultLength {
-		return nil, fmt.Errorf("unstage volume %s error", lunName)
-	}
-
-	result := out[1].Interface()
-	if result != nil {
-		return nil, result.(error)
-	}
-
-	disconnectInfo, ok := out[0].Interface().(*connector.DisConnectInfo)
-	if !ok {
-		return nil, fmt.Errorf("unstage volume %s error", lunName)
-	}
-	return disconnectInfo, nil
-}
-
-func (p *OceanstorSanPlugin) UnstageVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) error {
-	err := p.unstageVolume(ctx, name, parameters)
-	if err != nil {
-		return err
-	}
-
-	disconnectInfo, err := p.getUnStageVolumeInfo(ctx, name, parameters)
-	if err != nil {
-		return err
-	}
-
-	if disconnectInfo == nil {
-		log.AddContext(ctx).Debugf("Volume [%s] disconnect info is empty.", name)
-		return nil
-	}
-
-	return p.lunDisconnectVolume(ctx, disconnectInfo)
-}
-
 func (p *OceanstorSanPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
 	return p.updatePoolCapabilities(poolNames, "1")
 }
@@ -437,49 +354,6 @@ func (p *OceanstorSanPlugin) UpdateReplicaRemotePlugin(remote Plugin) {
 
 func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(remote Plugin) {
 	p.metroRemotePlugin = remote.(*OceanstorSanPlugin)
-}
-
-func (p *OceanstorSanPlugin) NodeExpandVolume(ctx context.Context,
-	name, volumePath string,
-	isBlock bool, requiredBytes int64) error {
-	cli, metroCli, err := p.getClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer p.releaseClient(ctx, cli, metroCli)
-
-	lunName := p.cli.MakeLunName(name)
-	lun, err := p.getLunInfo(ctx, cli, metroCli, lunName)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)
-		return err
-	}
-	if lun == nil {
-		msg := fmt.Sprintf("LUN %s to expand doesn't exist", lunName)
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-
-	lunUniqueId, err := utils.GetLunUniqueId(ctx, p.protocol, lun)
-	if err != nil {
-		return err
-	}
-
-	err = connector.ResizeBlock(ctx, lunUniqueId, requiredBytes)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Lun %s resize error: %v", lunUniqueId, err)
-		return err
-	}
-
-	if !isBlock {
-		err = connector.ResizeMountPath(ctx, volumePath)
-		if err != nil {
-			log.AddContext(ctx).Errorf("MountPath %s resize error: %v", volumePath, err)
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (p *OceanstorSanPlugin) CreateSnapshot(ctx context.Context,
@@ -559,17 +433,17 @@ func (p *OceanstorSanPlugin) getLunInfo(ctx context.Context,
 }
 
 // UpdateBackendCapabilities to update the block storage capabilities
-func (p *OceanstorSanPlugin) UpdateBackendCapabilities() (map[string]interface{}, error) {
-	capabilities, err := p.OceanstorPlugin.UpdateBackendCapabilities()
+func (p *OceanstorSanPlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
+	capabilities, specifications, err := p.OceanstorPlugin.UpdateBackendCapabilities()
 	if err != nil {
 		p.storageOnline = false
-		return nil, err
+		return nil, nil, err
 	}
 
 	p.storageOnline = true
 	p.updateHyperMetroCapability(capabilities)
 	p.updateReplicaCapability(capabilities)
-	return capabilities, nil
+	return capabilities, specifications, nil
 }
 
 func (p *OceanstorSanPlugin) updateHyperMetroCapability(capabilities map[string]interface{}) {
@@ -589,20 +463,61 @@ func (p *OceanstorSanPlugin) updateReplicaCapability(capabilities map[string]int
 	capabilities["SupportReplication"] = p.replicaRemotePlugin != nil
 }
 
-// UnstageVolumeWithWWN does node side volume cleanup using lun WWN
-func (p *OceanstorSanPlugin) UnstageVolumeWithWWN(ctx context.Context, tgtLunWWN string) error {
-	var conn connector.Connector
-	switch p.protocol {
-	case "iscsi":
-		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
-	case "fc":
-		conn = connector.GetConnector(ctx, connector.FCDriver)
-	case "roce":
-		conn = connector.GetConnector(ctx, connector.RoCEDriver)
-	case "fc-nvme":
-		conn = connector.GetConnector(ctx, connector.FCNVMeDriver)
-	default:
-		return utils.Errorf(ctx, "the protocol %s is not valid", p.protocol)
+func (p *OceanstorSanPlugin) Validate(ctx context.Context, param map[string]interface{}) error {
+	log.AddContext(ctx).Infoln("Start to validate OceanstorSanPlugin parameters.")
+
+	err := p.verifyOceanstorSanParam(ctx, param)
+	if err != nil {
+		return err
 	}
-	return conn.DisConnectVolume(ctx, tgtLunWWN)
+
+	clientConfig, err := p.getNewClientConfig(ctx, param)
+	if err != nil {
+		return err
+	}
+
+	// Login verification
+	cli := client.NewClient(clientConfig.Urls, clientConfig.User, clientConfig.SecretName,
+		clientConfig.SecretNamespace, clientConfig.VstoreName, clientConfig.ParallelNum, clientConfig.BackendID)
+	err = cli.ValidateLogin(ctx)
+	if err != nil {
+		return err
+	}
+	cli.Logout(ctx)
+
+	return nil
+}
+
+func (p *OceanstorSanPlugin) verifyOceanstorSanParam(ctx context.Context, config map[string]interface{}) error {
+	parameters, exist := config["parameters"].(map[string]interface{})
+	if !exist {
+		msg := fmt.Sprintf("Verify parameters: [%v] failed. \nparameters must be provided", config["parameters"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	protocol, exist := parameters["protocol"].(string)
+	if !exist || (protocol != "iscsi" && protocol != "fc" && protocol != "roce" && protocol != "fc-nvme") {
+		msg := fmt.Sprintf("Verify protocol: [%v] failed. \nprotocol must be provided and be one of "+
+			"[iscsi, fc, roce, fc-nvme] for oceanstor-san backend\n", parameters["protocol"])
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
+
+	if protocol == "iscsi" || protocol == "roce" {
+		portals, exist := parameters["portals"].([]interface{})
+		if !exist {
+			msg := fmt.Sprintf("Verify portals: [%v] failed. \nportals are required to configure for "+
+				"iscsi or roce for oceanstor-san backend\n", parameters["portals"])
+			log.AddContext(ctx).Errorln(msg)
+			return errors.New(msg)
+		}
+
+		_, err := proto.VerifyIscsiPortals(portals)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
