@@ -27,7 +27,7 @@ Step 1. Download the package and **cd** into the package
 Step 2. Run following command to compile the Huawei CSI Driver
 
     // PLATFORM support [X86|ARM]
-    make -f Makefile VER=3.2.0 PLATFORM=X86
+    make -f Makefile VER=3.2.2 PLATFORM=X86
 
 Step 3. After the compilation is finished, a bin directory will be created in the current 
 directory, the structure is as follows:

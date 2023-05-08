@@ -19,6 +19,7 @@ package lock
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -156,17 +157,15 @@ func waitGetLock(ctx context.Context, lockDir, lockName string) error {
 	return nil
 }
 
-func acquireSemaphore(ctx context.Context, operationType string) bool {
+func acquireSemaphore(ctx context.Context, operationType string) chan int {
 	semaphore, exist := semaphoreMap[operationType]
 	if !exist {
 		log.AddContext(ctx).Errorf("Acquire semaphore type: %s not exist in %v.", operationType, semaphoreMap)
-		return false
+		return nil
 	}
 
 	log.AddContext(ctx).Infof("Before acquire, available permits is %d", semaphore.AvailablePermits())
-	semaphore.Acquire()
-	log.AddContext(ctx).Infof("After acquire, available permits is %d", semaphore.AvailablePermits())
-	return true
+	return semaphore.GetChannel()
 }
 
 func releaseSemaphore(ctx context.Context, operationType string) {
@@ -179,28 +178,20 @@ func releaseSemaphore(ctx context.Context, operationType string) {
 	log.AddContext(ctx).Infof("After release, available permits is %d", semaphore.AvailablePermits())
 }
 
-func waitGetSemaphore(ctx context.Context, cancel context.CancelFunc, operationType string) error {
-	go func(ctx context.Context, cancel context.CancelFunc, operationType string) {
-		defer cancel()
-
-		acquireSemaphore(ctx, operationType)
-		select {
-		case <-ctx.Done():
-			log.AddContext(ctx).Warningf("acquire [%s] semaphore timeout, release this semaphore.", operationType)
-			releaseSemaphore(ctx, operationType)
-		default:
-			log.AddContext(ctx).Debugf("acquire [%s] semaphore finish.", operationType)
-		}
-	}(ctx, cancel, operationType)
-
+func waitGetSemaphore(ctx context.Context, operationType string) error {
+	c := acquireSemaphore(ctx, operationType)
+	if c == nil {
+		msg := fmt.Sprintf("acquire semaphore failed, wrong type: [%s]", operationType)
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
+	}
 	select {
-	case <-ctx.Done():
-		if strings.Contains(ctx.Err().Error(), "context deadline exceeded") {
-			// If the exit is due to timeout, "context deadline exceeded" is contains in ctx.Err().Error()
-			return utils.Errorf(ctx, "%s, operation type: [%s] .", GetSemaphoreTimeout, operationType)
-		}
-
-		log.AddContext(ctx).Debugf("get [%s] semaphore finish.", operationType)
+	case c <- 0:
+		log.AddContext(ctx).Infof("acquire [%s] semaphore finish. Used: [%d]", operationType, len(c))
 		return nil
+	case <-time.After(GetLockTimeoutSec * time.Second):
+		msg := fmt.Sprintf("acquire [%s] semaphore timeout", operationType)
+		log.AddContext(ctx).Errorln(msg)
+		return errors.New(msg)
 	}
 }

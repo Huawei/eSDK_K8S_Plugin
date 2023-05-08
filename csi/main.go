@@ -36,6 +36,7 @@ import (
 	"huawei-csi-driver/connector"
 	connutils "huawei-csi-driver/connector/utils"
 	"huawei-csi-driver/connector/utils/lock"
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/csi/driver"
 	"huawei-csi-driver/utils"
@@ -53,7 +54,7 @@ const (
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "3.2.1"
+	csiVersion        = "3.2.2"
 	defaultDriverName = "csi.huawei.com"
 	endpointDirPerm   = 0755
 
@@ -104,6 +105,9 @@ var (
 		3,
 		"The timeout for waiting for multipath aggregation "+
 			"when DM-multipath is used on the host")
+	allPathOnline = flag.Bool("all-path-online",
+		false,
+		"Whether to check the number of online paths for DM-multipath aggregation, default false")
 
 	config CSIConfig
 	secret CSISecret
@@ -321,6 +325,12 @@ func checkMultiPathType() {
 			notify.Stop("The nvme-multipath-type=%v configuration is incorrect.", nvmeMultiPathType)
 		}
 	}
+	// set connect config to global config.
+	app.Builder().WithVolumeUseMultipath(*volumeUseMultiPath).
+		WithScsiMultipathType(*scsiMultiPathType).
+		WithNvmeMultipathType(*nvmeMultiPathType).
+		WithAllPathOnline(*allPathOnline).
+		Build()
 }
 
 func checkMultiPathService() {
@@ -358,12 +368,10 @@ func triggerGarbageCollector(k8sUtils k8sutils.Interface) {
 	// Trigger stale device clean up and exit after cleanup completion or during timeout
 	log.Debugf("Enter func triggerGarbageCollector")
 	cleanupReport := make(chan error, 1)
-	defer func() {
-		close(cleanupReport)
-	}()
 	go func(ch chan error) {
 		res := nodeStaleDeviceCleanup(context.Background(), k8sUtils, *kubeletRootDir, *driverName, *nodeName)
 		ch <- res
+		close(ch)
 	}(cleanupReport)
 	timeoutInterval := time.Second * time.Duration(*deviceCleanupTimeout)
 	select {

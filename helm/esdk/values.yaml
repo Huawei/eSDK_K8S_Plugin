@@ -18,7 +18,7 @@ snapshot:
 images:
   # The image name and tag for the Huawei CSI Service container
   # Replace the appropriate tag name
-  huaweiCSIService: huawei-csi:3.2.0
+  huaweiCSIService: huawei-csi:3.2.2
 
   # The image name and tag for the sidecars. These must match the appropriate Kubernetes version.
   sidecar:
@@ -57,6 +57,12 @@ csi_driver:
   nvmeMultipathType: HW-UltraPath-NVMe
   # Timeout interval for waiting for multipath aggregation when DM-multipath is used on the host. support 1~600
   scanVolumeTimeout: 3
+  # check the number of paths for multipath aggregation
+  # Allowed values:
+  #   true: the number of paths aggregated by DM-multipath is equal to the number of online paths
+  #   false: the number of paths aggregated by DM-multipath is not checked.
+  # Default value: false
+  allPathOnline: false
   # Interval for updating backend capabilities. support 60~600
   backendUpdateInterval: 60
   # Huawei-csi-controller log configuration

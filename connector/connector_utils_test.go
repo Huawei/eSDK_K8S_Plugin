@@ -27,6 +27,7 @@ import (
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
 
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/utils"
 )
 
@@ -384,9 +385,9 @@ func TestGetVirtualDevice(t *testing.T) {
 		{"NormalPhysicalSd*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"sdd"}, "", nil, nil}, "sdd", NotUseMultipath, false},
 		{"NormalPhysicalNVMe*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1"}, "", nil, nil}, "nvme1n1", NotUseMultipath, false},
 		{"ErrorMultiUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathi"}, "", nil, nil}, "", 0, true},
-		{"ErrorPartitionUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathh2"}, "", nil, nil}, "", 0, true},
-		{"ErrorPartitionDm-*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"dm-2"}, "lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha2 -> ../dm-2", nil, nil}, "", 0, true},
-		{"ErrorPartitionNvme*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1", "nvme1n1p1"}, "", nil, nil}, "", 0, true},
+		{"ErrorPartitionUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathh2"}, "", nil, nil}, "ultrapathh", UseUltraPathNVMe, false},
+		{"ErrorPartitionDm-*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"dm-2"}, "lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha2 -> ../dm-2", nil, nil}, "", 0, false},
+		{"ErrorPartitionNvme*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1", "nvme1n1p1"}, "", nil, nil}, "nvme1n1", 0, false},
 	}
 
 	stub := GetDevicesByGUID
@@ -462,7 +463,7 @@ func TestWatchDMDevice(t *testing.T) {
 
 	for _, c := range cases {
 		var startTime = time.Now()
-
+		app.Builder().WithAllPathOnline(true).Build()
 		stubs.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
 			if time.Now().Sub(startTime) > c.aggregatedTime {
 				return fmt.Sprintf("name    sysfs uuid                             \nmpathja %s  %s", c.lunName, c.lunWWN), nil

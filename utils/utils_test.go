@@ -79,7 +79,7 @@ func TestMaskSensitiveInfo(t *testing.T) {
 		{
 			"stringMaskInfo",
 			"iscsiadm -m node -T iqn.2003-01.io.k8s:e2e.volume -p 192.168.0.2 --interface default --op new",
-			"iscsiadm -m node -T *** 192.168.0.2 --interface default --op new",
+			"iscsiadm -m node -T ***-p 192.168.0.2 --interface default --op new",
 		},
 	}
 	for _, c := range testCases {

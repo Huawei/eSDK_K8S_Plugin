@@ -1,6 +1,6 @@
-# usage: make -f Makefile VER=3.2.0 PLATFORM=X86 RELEASE_VER=2.5.RC2
+# usage: make -f Makefile VER=3.2.2 PLATFORM=X86 RELEASE_VER=2.5.RC3
 
-# (required) [3.2.0]
+# (required) [3.2.2]
 VER=VER
 # (required) [X86 ARM]
 PLATFORM=PLATFORM
