@@ -31,6 +31,7 @@ import (
 
 	"huawei-csi-driver/connector"
 	connutils "huawei-csi-driver/connector/utils"
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -805,9 +806,8 @@ func disconnectSessions(ctx context.Context, devConnectorInfos []singleConnector
 	for _, connectorInfo := range devConnectorInfos {
 		tgtPortal := connectorInfo.tgtPortal
 		tgtIQN := connectorInfo.tgtIQN
-		cmd := fmt.Sprintf("ls /dev/disk/by-path/ |grep -w %s |grep -w %s |wc -l |awk '{if($1>0) print 1; "+
-			"else print 0}'", tgtPortal, utils.MaskSensitiveInfo(tgtIQN))
-		output, err := utils.ExecShellCmd(ctx, cmd)
+		cmd := buildCheckSessionCmd(tgtPortal, tgtIQN)
+		output, err := utils.ExecShellCmdFilterLog(ctx, cmd)
 		if err != nil {
 			log.AddContext(ctx).Infof("Disconnect iSCSI target %s failed, err: %v", tgtPortal, err)
 			return err
@@ -818,6 +818,22 @@ func disconnectSessions(ctx context.Context, devConnectorInfos []singleConnector
 		}
 	}
 	return nil
+}
+
+// buildCheckSessionCmd build check iscsi session cmd
+func buildCheckSessionCmd(tgtPortal, tgtIQN string) string {
+	// If using UltraPath , exec 'upadmin show path' .
+	// the terminal echo is as follows:
+	// $ upadmin show path
+	// Path ID  Initiator Port   Array Name  Controller  Target Port        Path State  Check State  Port Type  Port ID
+	//   1      127.0.0.1::2      101_112      0A        iqn.xxx:127.0.0.1    Normal        --       iSCSI      CTE0.A.x
+	countCmd := "|wc -l |awk '{if($1>0) print 1; else print 0}'"
+	if app.GetGlobalConfig().VolumeUseMultiPath && app.GetGlobalConfig().ScsiMultiPathType == connector.HWUltraPath {
+		return fmt.Sprintf("upadmin show path |grep -w %s %s", tgtIQN, countCmd)
+	}
+
+	return fmt.Sprintf("ls /dev/disk/by-path/ |grep -w %s |grep -w %s %s",
+		tgtPortal, tgtIQN, countCmd)
 }
 
 func tryDisConnectVolume(ctx context.Context, tgtLunWWN string) error {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,32 +14,19 @@
  *  limitations under the License.
  */
 
-package utils
+package app
 
-type Semaphore struct {
-	permits int
-	channel chan int
+var globalCfg *Config
+
+// Config contains the configurations from env
+type Config struct {
+	VolumeUseMultiPath bool
+	ScsiMultiPathType  string
+	NvmeMultiPathType  string
+	AllPathOnline      bool
 }
 
-func NewSemaphore(permits int) *Semaphore {
-	return &Semaphore{
-		channel: make(chan int, permits),
-		permits: permits,
-	}
-}
-
-func (s *Semaphore) Acquire() {
-	s.channel <- 0
-}
-
-func (s *Semaphore) Release() {
-	<-s.channel
-}
-
-func (s *Semaphore) GetChannel() chan int {
-	return s.channel
-}
-
-func (s *Semaphore) AvailablePermits() int {
-	return s.permits - len(s.channel)
+// GetGlobalConfig used to get global configuration
+func GetGlobalConfig() *Config {
+	return globalCfg
 }

@@ -113,7 +113,7 @@ func MaskSensitiveInfo(info interface{}) string {
 
 	for _, value := range maskObject {
 		if strings.Contains(strings.ToLower(message), strings.ToLower(value)) {
-			rePattern := fmt.Sprintf(`(?is)%s.*\s-p`, value)
+			rePattern := fmt.Sprintf(`(?is)%s.*?\s`, value)
 			re := regexp.MustCompile(rePattern)
 			message = re.ReplaceAllString(message, substitute)
 		}

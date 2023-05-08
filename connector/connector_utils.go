@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -166,7 +167,7 @@ var GetVirtualDevice = func(ctx context.Context, tgtLunGUID string) (string, int
 		if err != nil {
 			return "", 0, utils.Errorf(ctx, "check device: %s is a partition device failed. error: %v", device, err)
 		} else if partitionDev {
-			log.AddContext(ctx).Infof("Device: %s is a partition device, skip", device)
+			log.AddContext(ctx).Infof("Device: %s is a partition device，skip", device)
 			continue
 		}
 
@@ -440,7 +441,7 @@ func WatchDMDevice(ctx context.Context, lunWWN string, expectPathNumber int) (DM
 
 		dm, err = findDMDeviceByWWN(ctx, lunWWN)
 		if err == nil {
-			if len(dm.Devices) == expectPathNumber {
+			if !app.GetGlobalConfig().AllPathOnline || len(dm.Devices) == expectPathNumber {
 				return dm, nil
 			}
 			log.AddContext(ctx).Warningf("Querying DM Disk Path Information. "+

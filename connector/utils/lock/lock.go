@@ -103,8 +103,7 @@ func SyncLock(ctx context.Context, lockName, operationType string) error {
 		return err
 	}
 
-	subCtx, cancel := context.WithTimeout(ctx, GetLockTimeoutSec*time.Second)
-	err = waitGetSemaphore(subCtx, cancel, operationType)
+	err = waitGetSemaphore(ctx, operationType)
 	if err != nil {
 		newErr := deleteLockFile(ctx, lockDir, lockName)
 		if newErr != nil {

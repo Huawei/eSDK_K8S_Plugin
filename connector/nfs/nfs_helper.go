@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+
 	"huawei-csi-driver/connector"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -240,7 +241,8 @@ func mountUnix(ctx context.Context, sourcePath, targetPath string, flags mountPa
 		}
 
 		// if the checkSourcePath is false, check the filesystem by comparing the sourcePath and mountPath
-		if value == sourcePath || path.Base(path.Dir(targetPath)) == path.Base(path.Dir(sourcePath)) {
+		if value == sourcePath || path.Base(path.Dir(targetPath)) == path.Base(path.Dir(sourcePath)) ||
+			containSourceDevice(ctx, sourcePath, value) {
 			log.AddContext(ctx).Infof("Mount %s to %s is already exist", sourcePath, targetPath)
 			return nil
 		}
@@ -266,6 +268,26 @@ func mountUnix(ctx context.Context, sourcePath, targetPath string, flags mountPa
 	}
 
 	return nil
+}
+
+// containSourceDevice used to check target path referenced source device is equal sourceDev
+func containSourceDevice(ctx context.Context, targetPath, sourceDev string) bool {
+	for _, value := range findSourceDevice(ctx, targetPath) {
+		if value == sourceDev {
+			return true
+		}
+	}
+	return false
+}
+
+// findSourceDevice use findmnt command to find mountPath referenced source device
+func findSourceDevice(ctx context.Context, targetPath string) []string {
+	output, err := utils.ExecShellCmd(ctx, "findmnt -o source --noheadings --target %s", targetPath)
+	if err != nil {
+		return []string{}
+	}
+
+	return strings.Split(output, "\n")
 }
 
 func getFSType(ctx context.Context, sourcePath string) (string, error) {
