@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -93,8 +93,7 @@ func SyncLock(ctx context.Context, lockName, operationType string) error {
 		return err
 	}
 
-	subCtx, cancel := context.WithTimeout(ctx, GetLockTimeoutSec*time.Second)
-	err = waitGetSemaphore(subCtx, cancel, operationType)
+	err = waitGetSemaphore(ctx, operationType)
 	if err != nil {
 		newErr := deleteLockFile(ctx, lockDir, lockName)
 		if newErr != nil {

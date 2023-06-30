@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import (
 	"time"
 
 	pkgUtils "huawei-csi-driver/pkg/utils"
+	"huawei-csi-driver/storage/fusionstorage/types"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -80,7 +81,9 @@ type Client struct {
 	secretNamespace string
 	secretName      string
 	backendID       string
-	accountName     string
+
+	accountName string
+	accountId   int
 
 	authToken string
 	client    *http.Client
@@ -164,7 +167,7 @@ func (cli *Client) ValidateLogin(ctx context.Context) error {
 		return fmt.Errorf("validate login %s error: %+v", cli.url, resp)
 	}
 
-	log.AddContext(ctx).Infof("Login %s success", cli.url)
+	log.AddContext(ctx).Infof("Validate login [%s] success", cli.url)
 	return nil
 }
 
@@ -215,9 +218,40 @@ func (cli *Client) Login(ctx context.Context) error {
 		return errors.New(msg)
 	}
 
-	cli.authToken = respHeader["X-Auth-Token"][0]
-	log.AddContext(ctx).Infof("Login %s success", cli.url)
+	if respHeader["X-Auth-Token"] == nil || len(respHeader["X-Auth-Token"]) == 0 {
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("get respHeader[\"X-Auth-Token\"]: %v failed.",
+			respHeader["X-Auth-Token"]))
+	}
 
+	cli.authToken = respHeader["X-Auth-Token"][0]
+
+	err = cli.setAccountId(ctx)
+	if err != nil {
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("setAccountId failed, error: %v", err))
+	}
+
+	log.AddContext(ctx).Infof("Login %s success", cli.url)
+	return nil
+}
+
+func (cli *Client) setAccountId(ctx context.Context) error {
+	if cli.accountName == "" {
+		cli.accountName = types.DefaultAccountName
+		cli.accountId = types.DefaultAccountId
+		return nil
+	}
+
+	accountId, err := cli.GetAccountIdByName(ctx, cli.accountName)
+	if err != nil {
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("Get account id by name: [%s] failed, error: %v",
+			cli.accountName, err))
+	}
+	id, err := strconv.Atoi(accountId)
+	if err != nil {
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("Convert account id: [%s] to int failed", accountId))
+	}
+	cli.accountId = id
+	log.AddContext(ctx).Infof("setAccountId finish, account name: %s, account id: %d", cli.accountName, cli.accountId)
 	return nil
 }
 
@@ -355,23 +389,24 @@ func (cli *Client) call(ctx context.Context,
 		return nil, nil, err
 	}
 
-	if errorCode, ok := body["errorCode"].(string); ok && errorCode == offLineCode {
-		log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
-		goto RETRY
-	}
+	if errorCodeInterface, exist := body["errorCode"]; exist {
+		if errorCode, ok := errorCodeInterface.(string); ok && errorCode == offLineCode {
+			log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
+			goto RETRY
+		}
 
-	// Compatible with int error code 1077949069
-	if errorCode, ok := body["errorCode"].(float64); ok && int64(errorCode) == offLineCodeInt {
-		log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
-		goto RETRY
-	}
+		// Compatible with int error code 1077949069
+		if errorCode, ok := errorCodeInterface.(float64); ok && int64(errorCode) == offLineCodeInt {
+			log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
+			goto RETRY
+		}
 
-	// Compatible with FusionStorage 6.3
-	if errorCode, ok := body["errorCode"].(float64); ok && int64(errorCode) == noAuthenticated {
-		log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
-		goto RETRY
+		// Compatible with FusionStorage 6.3
+		if errorCode, ok := errorCodeInterface.(float64); ok && int64(errorCode) == noAuthenticated {
+			log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
+			goto RETRY
+		}
 	}
-
 	return respHeader, body, nil
 
 RETRY:

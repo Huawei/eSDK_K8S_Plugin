@@ -30,16 +30,29 @@ func init() {
 	options.NewFlagsOptions(createBackendCmd).
 		WithNameSpace(false).
 		WithFilename(true).
+		WithInputFileType().
+		WithProvisioner().
+		WithNotValidateName().
 		WithParent(CreateCmd)
 }
 
 var (
 	createBackendExample = helper.Examples(`
-		# Create a new backend in default(huawei-csi) namespace based on backend.yaml file
-		oceanctl create backend -f /path/to/backend.yaml
+		# Create backend in default(huawei-csi) namespace based on backend.yaml file
+		oceanctl create backend -f /path/to/backend.yaml -i yaml
 		
-		# Create a new backend in specified namespace based on backend.yaml file
-		oceanctl create backend -f /path/to/backend.yaml -n <namespace>`)
+		# Create backend in specified namespace based on backend.yaml file
+		oceanctl create backend -f /path/to/backend.yaml -i yaml -n <namespace>
+
+		# Create backend in specified namespace based on config.json file
+		oceanctl create backend -f /path/to/configmap.json -i json -n <namespace>
+
+		# Create backend with specified provisioner
+		oceanctl create backend -f /path/to/backend.yaml -i yaml --provisioner=csi.huawei.com -n <namespace>
+
+		# Create backend with not validate backend name
+		oceanctl create backend -f /path/to/backend.yaml -i yaml --not-validate-name
+	`)
 )
 
 var createBackendCmd = &cobra.Command{
@@ -55,8 +68,8 @@ func runCreateBackend() error {
 	res := resources.NewResourceBuilder().
 		ResourceTypes(string(client.Storagebackendclaim)).
 		NamespaceParam(config.Namespace).
-		DefaultNamespace().
 		FileName(config.FileName).
+		FileType(config.FileType).
 		Build()
 
 	return resources.NewBackend(res).Create()

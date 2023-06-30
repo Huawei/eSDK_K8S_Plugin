@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"huawei-csi-driver/cli/config"
+	"huawei-csi-driver/utils/log"
 )
 
 type FlagsOptions struct {
@@ -41,9 +42,7 @@ func (b *FlagsOptions) WithParent(parentCmd *cobra.Command) {
 func (b *FlagsOptions) WithNameSpace(required bool) *FlagsOptions {
 	b.cmd.PersistentFlags().StringVarP(&config.Namespace, "namespace", "n", "", "namespace of resources")
 	if required {
-		// Because only 'no such flag' error will be returned, and we have ensured
-		// that the incoming parameters are correct, so no err will be handled.
-		_ = b.cmd.MarkPersistentFlagRequired("namespace")
+		b.markPersistentFlagRequired("namespace")
 	}
 	return b
 }
@@ -53,9 +52,7 @@ func (b *FlagsOptions) WithNameSpace(required bool) *FlagsOptions {
 func (b *FlagsOptions) WithFilename(required bool) *FlagsOptions {
 	b.cmd.PersistentFlags().StringVarP(&config.FileName, "filename", "f", "", "path to yaml file")
 	if required {
-		// Because only 'no such flag' error will be returned, and we have ensured
-		// that the incoming parameters are correct, so no err will be handled.
-		_ = b.cmd.MarkPersistentFlagRequired("filename")
+		b.markPersistentFlagRequired("filename")
 	}
 	return b
 }
@@ -77,7 +74,37 @@ func (b *FlagsOptions) WithDeleteAll() *FlagsOptions {
 func (b *FlagsOptions) WithPassword(required bool) *FlagsOptions {
 	b.cmd.PersistentFlags().BoolVarP(&config.ChangePassword, "password", "", false, "Update account password")
 	if required {
-		_ = b.cmd.MarkPersistentFlagRequired("password")
+		b.markPersistentFlagRequired("password")
 	}
 	return b
+}
+
+// WithInputFileType This function will add filetype
+func (b *FlagsOptions) WithInputFileType() *FlagsOptions {
+	b.cmd.PersistentFlags().StringVarP(&config.FileType, "input", "i", "", "input file format. one of "+
+		"json|yaml")
+	b.markPersistentFlagRequired("input")
+	return b
+}
+
+// WithProvisioner This function will add provisioner
+func (b *FlagsOptions) WithProvisioner() *FlagsOptions {
+	b.cmd.PersistentFlags().StringVarP(&config.Provisioner, "provisioner", "p", "", "huawei-csi driver name, "+
+		"default csi.huawei.com")
+	return b
+}
+
+// WithNotValidateName This function will add notValidateName
+func (b *FlagsOptions) WithNotValidateName() *FlagsOptions {
+	b.cmd.PersistentFlags().BoolVarP(&config.NotValidateName, "not-validate-name", "", false,
+		"not validate backend name, for example, uppercase characters or '-'.")
+	return b
+}
+
+func (b *FlagsOptions) markPersistentFlagRequired(name string) {
+	// Because only 'no such flag' error will be returned, and we have ensured
+	// that the incoming parameters are correct, so no err will be handled.
+	if err := b.cmd.MarkPersistentFlagRequired(name); err != nil {
+		log.Errorf("MarkPersistentFlagRequired failed, error: %v", err)
+	}
 }

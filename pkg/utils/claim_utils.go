@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@ import (
 func GetClaim(ctx context.Context, client clientSet.Interface, storageBackend *xuanwuv1.StorageBackendClaim) (
 	*xuanwuv1.StorageBackendClaim, error) {
 
-	log.AddContext(ctx).Infof("Start to get claim %s.", StorageBackendClaimKey(storageBackend))
-	defer log.AddContext(ctx).Infof("Finished get claim %s.", StorageBackendClaimKey(storageBackend))
+	log.AddContext(ctx).Debugf("Start to get claim %s.", StorageBackendClaimKey(storageBackend))
+	defer log.AddContext(ctx).Debugf("Finished get claim %s.", StorageBackendClaimKey(storageBackend))
 
 	return client.XuanwuV1().StorageBackendClaims(storageBackend.Namespace).Get(
 		ctx, storageBackend.Name, metav1.GetOptions{})

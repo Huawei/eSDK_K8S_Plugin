@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -116,9 +116,13 @@ func getPvPathInfo(absPvFilePath string, lastIndex int) ([]pvPathInfo, error) {
 	}
 	for _, filePath := range pvFilePaths {
 		dirNameList := strings.Split(filePath, string(os.PathSeparator))
+		targetIndex := len(dirNameList) - lastIndex
+		if targetIndex >= len(dirNameList) {
+			continue
+		}
 		info := pvPathInfo{
 			pvFilePath: filePath,
-			VolumeName: dirNameList[len(dirNameList)-lastIndex],
+			VolumeName: dirNameList[targetIndex],
 		}
 		pvPathInfos = append(pvPathInfos, info)
 	}
@@ -157,7 +161,6 @@ func getNodeVolumes(ctx context.Context, pvPathInfos []pvPathInfo, driverName st
 func loadPVFileData(ctx context.Context, dataFilePath string) (*PVFileData, error) {
 	// Check if the node pv data directory exists
 	exists, err := utils.PathExist(dataFilePath)
-
 	if err != nil {
 		return nil, err
 	}
@@ -165,6 +168,7 @@ func loadPVFileData(ctx context.Context, dataFilePath string) (*PVFileData, erro
 		log.AddContext(ctx).Infof("Volume data file %s does not exist. Returning here", dataFilePath)
 		return nil, nil
 	}
+
 	file, err := os.Open(dataFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open volume data file [%s], %v", dataFilePath, err)
@@ -185,7 +189,7 @@ func isNodePvValid(nodePVVolumeHandle string, k8sVolumes map[string]struct{}) bo
 }
 
 func cleanStaleDevicesWithRetry(ctx context.Context, retry int, volumeHandle, lunWWN string,
-	staleDeviceCleanupChan chan struct{}) {
+	staleDeviceCleanupChan chan bool) {
 	for i := 0; i < retry; i++ {
 		err := cleanStaleDevices(ctx, volumeHandle, lunWWN)
 		if err != nil {
@@ -198,14 +202,14 @@ func cleanStaleDevicesWithRetry(ctx context.Context, retry int, volumeHandle, lu
 		}
 		break
 	}
-	staleDeviceCleanupChan <- struct{}{}
+	staleDeviceCleanupChan <- true
 }
 
 // checkAndClearStaleDevices checks and triggers cleanup if needed
 func checkAndClearStaleDevices(ctx context.Context, k8sUtils k8sutils.Interface, k8sVolumes map[string]struct{},
 	nodePVs []NodePVData) {
 	var staleVolumesCnt int
-	staleDeviceCleanupChan := make(chan struct{})
+	staleDeviceCleanupChan := make(chan bool)
 	defer close(staleDeviceCleanupChan)
 
 	retry := app.GetGlobalConfig().DeviceCleanupTimeout / lock.GetLockTimeoutSec

@@ -35,13 +35,19 @@ func init() {
 
 var (
 	getBackendExample = helper.Examples(`
-		# List all backend in specified namespace
+		# List all backends in default(huawei-csi) namespace
 		oceanctl get backend -n <namespace>
 
+		# List all backends in specified namespace
+		oceanctl get backend -n <namespace>
+
+		# List specified backends in specified namespace
+		oceanctl get backend <name...> -n <namespace>
+
 		# List all backend in specified namespace with more information (such as storageType)
-		oceanctl get backend -n <namespace> -owide 
+		oceanctl get backends -n <namespace> -o wide 
 		
-		# List a single backend with JSON output format in default(huawei-csi) namespace
+		# Get a single backend with JSON output format in default(huawei-csi) namespace
 		oceanctl get backend <name> -o json`)
 )
 
@@ -67,11 +73,5 @@ func runGetBackend(backendNames []string) error {
 		return helper.PrintlnError(err)
 	}
 
-	out, err := resources.NewBackend(res).Get()
-	if err != nil {
-		return helper.PrintError(err)
-	}
-
-	helper.PrintResult(string(out))
-	return nil
+	return resources.NewBackend(res).Get()
 }

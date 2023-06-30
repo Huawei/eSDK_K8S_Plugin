@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,7 +34,9 @@ import (
 	"syscall"
 	"time"
 
+	"huawei-csi-driver/cli/helper"
 	"huawei-csi-driver/csi/app"
+	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/utils/log"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -114,7 +116,7 @@ func MaskSensitiveInfo(info interface{}) string {
 
 	for _, value := range maskObject {
 		if strings.Contains(strings.ToLower(message), strings.ToLower(value)) {
-			rePattern := fmt.Sprintf(`(?is)%s.*\s-p`, value)
+			rePattern := fmt.Sprintf(`(?is)%s.*?\s`, value)
 			re := regexp.MustCompile(rePattern)
 			message = re.ReplaceAllString(message, substitute)
 		}
@@ -154,7 +156,7 @@ func execShellCmdTimeout(ctx context.Context,
 	case <-done:
 		return output, err
 	case <-timeCh:
-		return "", errors.New("timeout")
+		return "", constants.TimeoutError
 	}
 }
 
@@ -269,6 +271,10 @@ func GetSharePath(name string) string {
 	return "/" + strings.Replace(name, "-", "_", -1) + "/"
 }
 
+func GetDtreeSharePath(name string) string {
+	return "/" + strings.Replace(name, "-", "_", -1)
+}
+
 func GetOriginSharePath(name string) string {
 	return "/" + name + "/"
 }
@@ -288,10 +294,13 @@ func GetHostName(ctx context.Context) (string, error) {
 
 func SplitVolumeId(volumeId string) (string, string) {
 	splits := strings.SplitN(volumeId, ".", 2)
+	var backendName, pvName string
 	if len(splits) == 2 {
-		return splits[0], splits[1]
+		backendName, pvName = splits[0], splits[1]
+	} else {
+		backendName, pvName = splits[0], ""
 	}
-	return splits[0], ""
+	return helper.GetBackendName(backendName), pvName
 }
 
 func SplitSnapshotId(snapshotId string) (string, string, string) {
@@ -627,9 +636,10 @@ func getBackendStorages(ctx context.Context, backendConfigs []map[string]interfa
 	return storages
 }
 
-// IsContain used to determine whether stringList contains target.
-func IsContain(target string, stringList []string) bool {
-	for _, val := range stringList {
+// IsContain used to determine whether list contains target.
+// type support FileType, string now and can be extended
+func IsContain[T constants.FileType | string](target T, list []T) bool {
+	for _, val := range list {
 		if val == target {
 			return true
 		}
@@ -749,7 +759,26 @@ func IsPathSymlink(targetPath string) (symlink bool, err error) {
 		}
 		return false, err
 	}
-	return (info.Mode()&os.ModeSymlink == os.ModeSymlink), nil
+	return info.Mode()&os.ModeSymlink == os.ModeSymlink, nil
+}
+
+// IsPathSymlinkWithTimeout checks weather this targetPath is symlink
+func IsPathSymlinkWithTimeout(targetPath string, duration time.Duration) (bool, error) {
+	var symlink bool
+	var err error
+	finish := make(chan struct{})
+	go func() {
+		defer close(finish)
+		symlink, err = IsPathSymlink(targetPath)
+		finish <- struct{}{}
+	}()
+
+	select {
+	case <-finish:
+		return symlink, err
+	case <-time.After(duration):
+		return symlink, errors.New(fmt.Sprintf("Access path %s timeout", targetPath))
+	}
 }
 
 // CreateSymlink between source and target
@@ -867,4 +896,37 @@ func StringContain(strPrefix string, stringList []string) bool {
 	}
 
 	return false
+}
+
+// ResCodeExist if code not 0 then return error
+func ResCodeExist(code interface{}) bool {
+	if code == nil {
+		return false
+	}
+
+	code, ok := code.(float64)
+	if ok {
+		return int64(code.(float64)) != 0
+	}
+
+	return false
+}
+
+// ToStringWithFlag if success return true, or return false
+func ToStringWithFlag(i interface{}) (string, bool) {
+	if i == nil {
+		return "", false
+	}
+
+	result, ok := i.(string)
+	if ok {
+		return result, true
+	}
+	return "", false
+}
+
+// ToStringSafe convert to string with default "" safe
+func ToStringSafe(i interface{}) string {
+	r, _ := ToStringWithFlag(i)
+	return r
 }

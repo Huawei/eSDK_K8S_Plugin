@@ -39,12 +39,6 @@ func Examples(s string) string {
 	return NewNormalizer(s).trim().indent().string
 }
 
-// NIndent used to indent n
-func (s Normalizer) NIndent(spaces int) string {
-	pad := strings.Repeat(" ", spaces)
-	return "\n" + pad + strings.Replace(s.string, "\n", "\n"+pad, -1)
-}
-
 func (s Normalizer) trim() Normalizer {
 	s.string = strings.TrimSpace(s.string)
 	return s

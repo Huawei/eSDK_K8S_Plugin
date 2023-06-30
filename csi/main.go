@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ const (
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 
-	csiVersion      = "4.0.0"
+	csiVersion      = "4.1.0"
 	endpointDirPerm = 0755
 )
 
@@ -138,10 +138,15 @@ func mergeData(config CSIConfig, secret CSISecret) error {
 	return nil
 }
 
-func updateBackendCapabilities() {
-	err := backend.SyncUpdateCapabilities()
+func updateBackendCapabilities(ctx context.Context) {
+	err := backend.RegisterAllBackend(ctx)
 	if err != nil {
-		notify.Stop("Update backend capabilities error: %v", err)
+		log.AddContext(ctx).Warningf("RegisterAllBackend failed, error: %v", err)
+	}
+
+	err = backend.SyncUpdateCapabilities()
+	if err != nil {
+		log.AddContext(ctx).Warningf("Update backend capabilities error: %v", err)
 	}
 
 	ticker := time.NewTicker(time.Second * time.Duration(app.GetGlobalConfig().BackendUpdateInterval))
@@ -170,11 +175,15 @@ func releaseStorageClient() {
 }
 
 func runCSIController(ctx context.Context) {
-	go exitClean(true)
-
-	go updateBackendCapabilities()
+	log.AddContext(ctx).Infoln("Run as huawei-csi-controller.")
 
 	app.GetGlobalConfig().K8sUtils.Activate()
+
+	// Clean up before exiting
+	go exitClean(true)
+
+	// Refresh backend and pool
+	go updateBackendCapabilities(ctx)
 
 	// register the kahu community DRCSI service
 	go registerDRCSIServer()
@@ -209,9 +218,6 @@ func runCSINode(ctx context.Context) {
 		}
 		log.Infof("save node info to secret success")
 	}()
-
-	// register the kahu community DRCSI service
-	go registerDRCSIServer()
 
 	// register the K8S community CSI service
 	registerCSIServer()

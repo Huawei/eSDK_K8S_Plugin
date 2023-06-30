@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -15,8 +15,10 @@
 // Package constants is related with provider constants
 package constants
 
+type FileType string
+
 const (
-	ProviderVersion       = "4.0.0"
+	ProviderVersion       = "4.1.0"
 	ProviderVendorName    = "Huawei"
 	EndpointDirPermission = 0755
 
@@ -32,6 +34,12 @@ const (
 	NamespaceEnv = "CSI_NAMESPACE"
 	// DefaultNamespace is driver default namespace
 	DefaultNamespace = "huawei-csi"
+
+	// Ext2 list the fileType
+	Ext2 FileType = "ext2"
+	Ext3 FileType = "ext3"
+	Ext4 FileType = "ext4"
+	Xfs  FileType = "xfs"
 )
 
 // DRCSIConfig contains storage normal configuration

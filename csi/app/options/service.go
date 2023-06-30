@@ -128,6 +128,7 @@ func (opt *serviceOptions) ApplyFlags(cfg *config.Config) {
 	cfg.NodeName = opt.nodeName
 	cfg.KubeletRootDir = opt.kubeletRootDir
 	cfg.VolumeNamePrefix = opt.volumeNamePrefix
+	cfg.MaxVolumesPerNode = opt.maxVolumesPerNode
 	cfg.WebHookPort = opt.webHookPort
 	cfg.EnableLeaderElection = opt.enableLeaderElection
 	cfg.LeaderRetryPeriod = opt.leaderRetryPeriod

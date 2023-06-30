@@ -38,16 +38,16 @@ var (
 		# Delete a backend in default(huawei-csi) namespace
 		oceanctl delete backend <name> 
 		
-		# Delete a backend in specified namespace
-		oceanctl delete backend <name> -n <namespace>
+		# Delete specified backends in specified namespace
+		oceanctl delete backend <name...> -n <namespace>
 
         # Delete all backends in specified namespace
 		oceanctl delete backend -n <namespace> --all`)
 )
 
 var deleteBackendCmd = &cobra.Command{
-	Use:     "backend <name> [<name>...]",
-	Short:   "Delete one or more backends from Ocean Storage in Kubernetes",
+	Use:     "backend <name>",
+	Short:   "Delete one or all backends from Ocean Storage in Kubernetes",
 	Example: deleteBackendExample,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runDeleteBackends(args)

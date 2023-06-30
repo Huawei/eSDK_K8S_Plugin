@@ -17,10 +17,14 @@
 package resources
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	k8string "k8s.io/utils/strings"
 
 	"huawei-csi-driver/cli/client"
@@ -33,20 +37,6 @@ import (
 type Backend struct {
 	// resource of request
 	resource *Resource
-
-	// backend and reference resource's name
-	backendName   string
-	configMapName string
-	secretName    string
-
-	// create backend needs yaml files
-	backendYaml   helper.YamlValues
-	configMapYaml string
-	secretYaml    string
-	sbcYaml       string
-
-	// backend config fields
-	maxClientThreads string
 }
 
 // NewBackend initialize a Backend instance
@@ -55,322 +45,505 @@ func NewBackend(resource *Resource) *Backend {
 }
 
 // Get query backend resources
-func (b *Backend) Get() ([]byte, error) {
-	return config.Client.GetResource(b.resource.names, b.resource.namespace, b.resource.output,
-		client.Storagebackendclaim)
-}
-
-// Create used to create a backend
-func (b *Backend) Create() error {
-	if err := b.parseBackendYaml(); err != nil {
-		return helper.LogErrorf("parse backend yaml failed, error: %v", err)
+func (b *Backend) Get() error {
+	storageBackendClaimClient := client.NewCommonCallHandler[xuanwuV1.StorageBackendClaim](config.Client)
+	claims, err := storageBackendClaimClient.QueryList(b.resource.namespace, b.resource.names...)
+	if err != nil {
+		return helper.LogErrorf("query sbc resource failed, error: %v", err)
 	}
 
-	if err := b.checkBackendExist(); err != nil {
-		return helper.LogErrorf("check backend exists failed, error: %v", err)
+	if len(claims) == 0 && len(b.resource.names) == 0 {
+		helper.PrintNoResourceBackend(b.resource.namespace)
+		return nil
 	}
 
-	if err := b.deleteBackedReferenceResources(); err != nil {
-		return helper.LogErrorf("delete backend reference resources failed, error: %v", err)
+	notFoundBackends := getNotFoundBackends(claims, b.resource.names)
+	if len(claims) == 0 {
+		helper.PrintBackend([]BackendShow{}, notFoundBackends, helper.PrintWithTable[BackendShow])
+		return nil
 	}
 
-	if err := b.GenerateNeedsYaml(); err != nil {
-		return helper.LogErrorf("generate create backend needs yaml files failed, error: %v", err)
+	if b.resource.output == "json" || b.resource.output == "yaml" {
+		printFunc := helper.GetPrintFunc[xuanwuV1.StorageBackendClaim](b.resource.output)
+		helper.PrintBackend(claims, notFoundBackends, printFunc)
+		return nil
 	}
 
-	if err := b.executeCreate(b.toYamlFiles()); err != nil {
-		if err := b.deleteBackedReferenceResources(); err != nil {
-			log.Errorf("execute create revert failed, error: %v", err)
+	wideShows, err := fetchBackendShows(claims, b.resource.namespace)
+	if err != nil {
+		return helper.LogErrorf("fetch backend shows failed, error: %v", err)
+	}
+
+	if b.resource.output == "wide" {
+		helper.PrintBackend(wideShows, notFoundBackends, helper.PrintWithTable[BackendShowWide])
+		return nil
+	}
+
+	backendShow := helper.MapTo(wideShows, func(wide BackendShowWide) BackendShow {
+		return BackendShow{
+			Namespace:   wide.Namespace,
+			Name:        wide.Name,
+			Protocol:    wide.Protocol,
+			StorageType: wide.StorageType,
+			Sn:          wide.Sn,
+			Status:      wide.Status,
+			Online:      wide.Online,
+			Url:         wide.Url,
 		}
-		return helper.LogErrorf("execute create backend failed, error: %v", err)
-	}
-
-	helper.PrintOperateResult([]string{b.backendName}, "backend", "created")
+	})
+	helper.PrintBackend(backendShow, notFoundBackends, helper.PrintWithTable[BackendShow])
 	return nil
 }
 
 func (b *Backend) Delete() error {
-	claims, err := b.GetStorageBackendClaims()
+	storageBackendClaimClient := client.NewCommonCallHandler[xuanwuV1.StorageBackendClaim](config.Client)
+	claims, err := storageBackendClaimClient.QueryList(b.resource.namespace, b.resource.names...)
 	if err != nil {
-		return helper.PrintlnError(err)
+		return err
+	}
+	if len(claims) == 0 {
+		helper.PrintNotFoundBackend(b.resource.names...)
+		return nil
 	}
 
 	var deleteResult []string
 	for _, claim := range claims {
-		qualifiedNames := buildQualifiedNameByClaim(claim)
-		if err := deleteResourceByQualifiedNames(qualifiedNames, claim.Namespace); err != nil {
+		if err := deleteSbcReferenceResources(claim); err != nil {
 			return helper.LogErrorf("delete backend reference resource failed, error: %v", err)
 		}
+
+		helper.PrintOperateResult("backend", "deleted", claim.Name)
 		deleteResult = append(deleteResult, claim.Name)
 	}
 
-	helper.PrintOperateResult(deleteResult, "backend", "deleted")
+	notFoundBackends := getNotFoundBackends(claims, b.resource.names)
+	helper.PrintNotFoundBackend(notFoundBackends...)
 	return nil
 }
 
+// Update update backend
 func (b *Backend) Update() error {
-	// Query whether the storageBackendClaim exists, and print an error if it does not exist
-	b.backendName = b.resource.names[0]
-	claims, err := b.GetStorageBackendClaims()
-	if err != nil {
-		return helper.PrintlnError(err)
-	}
-	claim := claims[0]
-
-	// Create a new secret with an uid name
-	secretConfig, err := b.CreateSecretWithUid(err, claims)
+	storageBackendClaimClient := client.NewCommonCallHandler[xuanwuV1.StorageBackendClaim](config.Client)
+	oldClaim, err := storageBackendClaimClient.QueryByName(b.resource.namespace, b.resource.names[0])
 	if err != nil {
 		return err
 	}
 
-	// Update storageBackendClaim
-	if err := b.updateStorageBackendClaim(claim, secretConfig); err != nil {
+	if reflect.DeepEqual(oldClaim, xuanwuV1.StorageBackendClaim{}) {
+		helper.PrintNotFoundBackend(b.resource.names[0])
+		return nil
+	}
+
+	nameWithUUid := helper.AppendUid(oldClaim.Name, config.DefaultUidLength)
+	if err = createSecretWithUid(oldClaim, nameWithUUid); err != nil {
 		return err
 	}
 
-	// Update successful, delete the old secret referenced with the storageBackendClaim
-	_, oldSecretName := k8string.SplitQualifiedName(claim.Spec.SecretMeta)
-	if err := deleteSecret(oldSecretName, claim.Namespace); err != nil {
-		log.Errorf("delete secret failed, error: %v", err)
+	secretClient := client.NewCommonCallHandler[corev1.Secret](config.Client)
+	newClaim := oldClaim.DeepCopy()
+	newClaim.Spec.SecretMeta = k8string.JoinQualifiedName(newClaim.Namespace, nameWithUUid)
+
+	if err = storageBackendClaimClient.Update(*newClaim); err != nil {
+		if err := storageBackendClaimClient.Update(oldClaim); err != nil {
+			log.Errorf("apply storageBackendClaim failed, error: %v", err)
+		}
+
+		if err := secretClient.DeleteByNames(newClaim.Namespace, nameWithUUid); err != nil {
+			log.Errorf("delete new created secret failed, error: %v", err)
+		}
+		return err
+	}
+
+	_, oldSecretName := k8string.SplitQualifiedName(oldClaim.Spec.SecretMeta)
+	if err := secretClient.DeleteByNames(newClaim.Namespace, oldSecretName); err != nil {
+		log.Errorf("delete old created secret failed, error: %v", err)
 	}
 
 	// print update result
-	helper.PrintOperateResult([]string{b.backendName}, "backend", "updated")
+	helper.PrintOperateResult("backend", "updated", b.resource.names[0])
 	return nil
 }
 
-// CreateSecretWithUid create secret with uid
-func (b *Backend) CreateSecretWithUid(err error, claims []xuanwuV1.StorageBackendClaim) (helper.SecretConfig, error) {
-	// Generate new secret yaml with an uid name
-	secretConfig, err := b.toSecretConfig()
+func createSecretWithUid(claim xuanwuV1.StorageBackendClaim, uuid string) error {
+	backendConfig := &BackendConfiguration{
+		Name:      uuid,
+		NameSpace: claim.Namespace,
+	}
+
+	secretConfig, err := backendConfig.ToSecretConfig()
 	if err != nil {
-		return helper.SecretConfig{}, err
-	}
-
-	secretConfig.Name = helper.AppendUid(claims[0].Name, config.DefaultUidLength)
-	newSecretYaml := helper.GenerateSecretYaml(secretConfig)
-
-	// Create a secret with an uid name
-	err = config.Client.OperateResourceByYaml(newSecretYaml, client.Create, false)
-	if err != nil {
-		return helper.SecretConfig{}, err
-	}
-	return secretConfig, nil
-}
-
-// updateStorageBackendClaim update storageBackendClaim with new secret.
-// If update failed, restore and delete new secret.
-func (b *Backend) updateStorageBackendClaim(claim xuanwuV1.StorageBackendClaim, secretConfig helper.SecretConfig) error {
-	claimConfig := helper.StorageBackendClaimConfig{
-		Name:             claim.Name,
-		Namespace:        claim.Namespace,
-		ConfigmapMeta:    claim.Spec.ConfigMapMeta,
-		SecretMeta:       k8string.JoinQualifiedName(claim.Namespace, secretConfig.Name),
-		MaxClientThreads: claim.Spec.MaxClientThreads,
-	}
-	// Apply storageBackendClaim with a new secret
-	if err := applyStorageBackendClaim(claimConfig); err != nil {
-		// Apply failed.
-		// First, restore the secret referenced with the storageBackendClaim.
-		claimConfig.SecretMeta = claim.Spec.SecretMeta
-		if err := applyStorageBackendClaim(claimConfig); err != nil {
-			log.Errorf("apply storageBackendClaim failed, error: %v", err)
-		}
-		// Next, delete the new secret.
-		if err := deleteSecret(secretConfig.Name, claim.Namespace); err != nil {
-			log.Errorf("delete secret failed, error: %v", err)
-		}
-		// Finally, return apply failed error.
 		return err
 	}
-	return nil
+
+	secretClient := client.NewCommonCallHandler[corev1.Secret](config.Client)
+	return secretClient.Create(secretConfig.ToSecret())
 }
 
-func buildQualifiedNameByClaim(claim xuanwuV1.StorageBackendClaim) []string {
+func getNotFoundBackends(queryResult []xuanwuV1.StorageBackendClaim, queryNames []string) []string {
+	if len(queryNames) == len(queryResult) {
+		return []string{}
+	}
+
+	notFoundBackends := make([]string, len(queryNames))
+	copy(notFoundBackends, queryNames)
+	for _, claim := range queryResult {
+		notFoundBackends = removeExistBackend(notFoundBackends, claim.Name)
+	}
+	return notFoundBackends
+}
+
+func fetchBackendShows(claims []xuanwuV1.StorageBackendClaim, namespace string) ([]BackendShowWide, error) {
+	var contentNames []string
+	var configmapNames []string
+
+	for _, claim := range claims {
+		if claim.Status != nil {
+			contentNames = append(contentNames, claim.Status.BoundContentName)
+		}
+		_, configName := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
+		configmapNames = append(configmapNames, configName)
+	}
+
+	storageBackendContentClient := client.NewCommonCallHandler[xuanwuV1.StorageBackendContent](config.Client)
+	contentList, err := storageBackendContentClient.QueryList(namespace, contentNames...)
+	if err != nil {
+		return nil, err
+	}
+
+	backendConfigs, err := FetchBackendConfig(namespace, configmapNames...)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildBackendShow(claims, contentList, backendConfigs), nil
+}
+
+func buildBackendShow(claims []xuanwuV1.StorageBackendClaim, contentList []xuanwuV1.StorageBackendContent,
+	config map[string]*BackendConfiguration) []BackendShowWide {
+	var contentMapping = make(map[string]xuanwuV1.StorageBackendContent)
+	for _, content := range contentList {
+		contentMapping[content.Name] = content
+	}
+
+	var result []BackendShowWide
+	for _, claim := range claims {
+		item := &BackendShowWide{}
+		item.ShowWithClaimOption(claim)
+		if claim.Status != nil {
+			if content, ok := contentMapping[claim.Status.BoundContentName]; ok {
+				item.ShowWithContentOption(content)
+			}
+		}
+
+		_, name := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
+		if configuration, ok := config[name]; ok {
+			item.ShowWithConfigOption(*configuration)
+		}
+
+		result = append(result, *item)
+	}
+
+	return result
+}
+
+func deleteSbcReferenceResources(claim xuanwuV1.StorageBackendClaim) error {
 	_, secretName := k8string.SplitQualifiedName(claim.Spec.SecretMeta)
 	_, configmapName := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
 
-	return []string{
-		k8string.JoinQualifiedName(string(client.Storagebackendclaim), claim.Name),
+	referenceResources := []string{
 		k8string.JoinQualifiedName(string(client.Secret), secretName),
 		k8string.JoinQualifiedName(string(client.ConfigMap), configmapName),
+		k8string.JoinQualifiedName(string(client.Storagebackendclaim), claim.Name),
 	}
+
+	_, err := config.Client.DeleteResourceByQualifiedNames(referenceResources, claim.Namespace)
+	return err
 }
 
-// GetStorageBackendClaims used to get storageBackendClaims
-func (b *Backend) GetStorageBackendClaims() ([]xuanwuV1.StorageBackendClaim, error) {
-	b.resource.Output("json")
-	out, _ := b.Get()
-
-	var claims xuanwuV1.StorageBackendClaimList
-	if err := b.jsonToStorageBackendClaims(out, &claims); err != nil {
-		log.Errorf("parse json to storageBackendClaims failed, error: %v", err)
-		return nil, fmt.Errorf("Get resources failed in %s namespace.", b.resource.namespace)
-	}
-
-	if len(claims.Items) == 0 {
-		return nil, fmt.Errorf("No resources found in %s namespace.", b.resource.namespace)
-	}
-	return claims.Items, nil
-}
-
-// jsonToStorageBackendClaims convert json data to v1.StorageBackendClaimList
-func (b *Backend) jsonToStorageBackendClaims(out []byte, claims *xuanwuV1.StorageBackendClaimList) error {
-	jsonData := string(out)
-	if !(b.resource.selectAll || len(b.resource.resources) > 1) {
-		jsonData = "{ \"items\":[" + jsonData + "]}"
-	}
-	return json.Unmarshal([]byte(jsonData), claims)
-}
-
-// parseBackendYaml parse backend yaml,
-func (b *Backend) parseBackendYaml() error {
-	yamlValue, err := helper.ReadYamlFile(b.resource.fileName)
-	if err != nil {
-		return helper.LogErrorf("read yaml file failed, error: %v", err)
-	}
-	b.backendYaml = yamlValue
-
-	// if name doesn't was specified in backend yaml, will return an error
-	backendName, ok := yamlValue["name"].(string)
-	if !ok {
-		return errors.New("name must was specified in backend yaml")
-	}
-	b.backendName = backendName
-	b.configMapName = backendName
-	b.secretName = backendName
-
-	// Because yaml cannot express the difference between string and numeric types,
-	// it is necessary to determine its exact type
-	b.maxClientThreads = config.DefaultMaxClientThreads
-	if maxClientThreads, ok := yamlValue["maxClientThreads"]; !ok {
-		b.maxClientThreads = helper.ParseNumericString(maxClientThreads)
-	}
-
-	if namespace, ok := yamlValue["namespace"].(string); ok {
-		if b.resource.namespace == "" || config.Namespace == "" {
-			b.resource.namespace = namespace
-		}
-		delete(yamlValue, "namespace")
-	}
-
-	return nil
-}
-
-// checkBackendExist used to check whether the backend exists.
-// If it exists, an AlreadyExists error is returned.
-// If it doesn't exist, nothing is done.
-func (b *Backend) checkBackendExist() error {
-	if exist, err := config.Client.CheckResourceExist(b.backendName, b.resource.namespace,
-		client.Storagebackendclaim); err != nil {
-		return err
-	} else if exist {
-		msg := fmt.Sprintf("Error from server (AlreadyExists): error when creating "+
-			"storagebackendclaim: storagebackendclaim %s already exists in %s", b.backendName, b.resource.namespace)
-		return errors.New(msg)
-	}
-	return nil
-}
-
-// deleteBackedReferenceResources delete backend reference resource, e.g. configmap and secret.
-func (b *Backend) deleteBackedReferenceResources() error {
-	qualifiedNames := buildQualifiedNameByBackend(b)
-	return deleteResourceByQualifiedNames(qualifiedNames, b.resource.namespace)
-}
-
-// buildQualifiedNameByBackend build backend reference resource qualified name.
-func buildQualifiedNameByBackend(b *Backend) []string {
-	return []string{
-		k8string.JoinQualifiedName(string(client.ConfigMap), b.backendName),
-		k8string.JoinQualifiedName(string(client.Secret), b.backendName),
-	}
-}
-
-// deleteResourceByQualifiedNames delete resource by qualified names.
-// the qualified name format is resourceType/resourceName
-func deleteResourceByQualifiedNames(qualifiedNames []string, namespace string) error {
-	if _, err := config.Client.DeleteResourceByQualifiedNames(qualifiedNames, namespace); err != nil {
-		return err
-	}
-	return nil
-}
-
-// GenerateNeedsYaml used to prepare yaml required to create the backend, including configmap yaml, secret yaml and
-// storageBackendClaim yaml.
-func (b *Backend) GenerateNeedsYaml() error {
-	b.configMapYaml = helper.GenerateConfigMapYaml(b.toConfigMapConfig())
-	b.sbcYaml = helper.GenerateStorageBackendClaimYaml(b.toStorageBackendClaimConfig())
-	secretConfig, err := b.toSecretConfig()
-	if err != nil {
-		return err
-	}
-	b.secretYaml = helper.GenerateSecretYaml(secretConfig)
-	return nil
-}
-
-// toStorageBackendClaimConfig covert backend to helper.StorageBackendClaimConfig
-func (b *Backend) toStorageBackendClaimConfig() helper.StorageBackendClaimConfig {
-	return helper.StorageBackendClaimConfig{
-		Name:             b.backendName,
-		Namespace:        b.resource.namespace,
-		ConfigmapMeta:    k8string.JoinQualifiedName(b.resource.namespace, b.configMapName),
-		SecretMeta:       k8string.JoinQualifiedName(b.resource.namespace, b.secretName),
-		MaxClientThreads: b.maxClientThreads,
-	}
-}
-
-// toConfigMapConfig convert backend to helper.ConfigMapConfig
-func (b *Backend) toConfigMapConfig() helper.ConfigMapConfig {
-	jsonData := b.backendYaml.ToPrettyJson()
-
-	return helper.ConfigMapConfig{
-		Name:      b.backendName,
-		Namespace: b.resource.namespace,
-		JsonData:  jsonData,
-	}
-}
-
-// toSecretConfig convert backend to helper.SecretConfig
-// If start stdin failed, an error will return.
-func (b *Backend) toSecretConfig() (helper.SecretConfig, error) {
-	userName, password, err := helper.StartStdInput()
-	if err != nil {
-		return helper.SecretConfig{}, err
-	}
-
-	return helper.SecretConfig{
-		Name:      b.backendName,
-		Namespace: b.resource.namespace,
-		User:      userName,
-		Pwd:       password,
-	}, nil
-}
-
-// executeCreate used to execute create task, if create resource failed,
-// an error calling the CreateResource() function will be returned
-func (b *Backend) executeCreate(yamlFiles []string) error {
-	for _, yaml := range yamlFiles {
-		if err := config.Client.OperateResourceByYaml(yaml, client.Create, false); err != nil {
-			return err
+func removeExistBackend(allBackend []string, backendName string) []string {
+	index := 0
+	for _, name := range allBackend {
+		if backendName != name {
+			allBackend[index] = name
+			index++
 		}
 	}
-	return nil
+	return allBackend[:index]
 }
 
-// toYamlFiles used to build yaml files required to create a backend
-func (b *Backend) toYamlFiles() []string {
-	return []string{b.configMapYaml, b.secretYaml, b.sbcYaml}
+// FetchBackendConfig fetch backend config from configmap
+func FetchBackendConfig(namespace string, names ...string) (map[string]*BackendConfiguration, error) {
+	configMapClient := client.NewCommonCallHandler[corev1.ConfigMap](config.Client)
+	configMapList, err := configMapClient.QueryList(namespace, names...)
+	if err != nil {
+		return map[string]*BackendConfiguration{}, err
+	}
+
+	result := make(map[string]*BackendConfiguration)
+	for _, configMap := range configMapList {
+		backendConfig, err := LoadBackendsFromConfigMap(configMap)
+		if err != nil {
+			return result, err
+		}
+		for _, configuration := range backendConfig {
+			configuration.Configured = true
+			result[configuration.Name] = configuration
+		}
+	}
+	return result, nil
 }
 
-func applyStorageBackendClaim(claimConfig helper.StorageBackendClaimConfig) error {
-	claimYaml := helper.GenerateStorageBackendClaimYaml(claimConfig)
-	return config.Client.OperateResourceByYaml(claimYaml, client.Apply, false)
-}
+func (b *Backend) Create() error {
+	creatingBackends, err := b.LoadBackendFile()
+	if err != nil {
+		return helper.LogErrorf("load backend failed: error: %v", err)
+	}
+	notConfiguredBackends, err := b.preProcessBackend(creatingBackends)
+	if err != nil {
+		return helper.LogErrorf("pre process backend failed: error: %v", err)
+	}
 
-func deleteSecret(name, namespace string) error {
-	qualifiedNames := []string{k8string.JoinQualifiedName(string(client.Secret), name)}
-	if _, err := config.Client.DeleteResourceByQualifiedNames(qualifiedNames, namespace); err != nil {
-		return err
+	configuredBackends, err := FetchConfiguredBackends(b.resource.namespace)
+	if err != nil {
+		return helper.LogErrorf("fetch configured backend failed: error: %v", err)
+	}
+
+	backends := MergeBackends(notConfiguredBackends, configuredBackends)
+	for {
+		selectedBackend, err := selectOneBackend(backends)
+		if err != nil {
+			break
+		}
+
+		if selectedBackend.Configured {
+			fmt.Printf("backend [%s] has been Configured, please select another\n", selectedBackend.Name)
+			continue
+		}
+
+		if err := ConfigOneBackend(selectedBackend); err != nil {
+			fmt.Printf("failed to configure the backend account. %v\n", err)
+			continue
+		}
+
+		selectedBackend.Configured = true
 	}
 	return nil
+}
+
+func FetchConfiguredBackends(namespace string) (map[string]*BackendConfiguration, error) {
+	storageBackendClaimClient := client.NewCommonCallHandler[xuanwuV1.StorageBackendClaim](config.Client)
+	sbcList, err := storageBackendClaimClient.QueryList(namespace)
+	if err != nil || len(sbcList) == 0 {
+		return map[string]*BackendConfiguration{}, err
+	}
+
+	configuredBackend := helper.MapTo(sbcList, func(claim xuanwuV1.StorageBackendClaim) string {
+		_, name := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
+		return name
+	})
+
+	return FetchBackendConfig(namespace, configuredBackend...)
+}
+
+func MergeBackends(notConfigured, configured map[string]*BackendConfiguration) []*BackendConfiguration {
+	var backends []*BackendConfiguration
+	for name, configuration := range configured {
+		if _, ok := notConfigured[name]; ok {
+			delete(notConfigured, name)
+		}
+		configuration.Configured = true
+		backends = append(backends, configuration)
+	}
+	for _, configuration := range notConfigured {
+		backends = append(backends, configuration)
+	}
+
+	return backends
+}
+
+// ConfigOneBackend config one backend
+func ConfigOneBackend(backendConfig *BackendConfiguration) error {
+	claimConfig := backendConfig.ToStorageBackendClaimConfig()
+	claim := claimConfig.ToStorageBackendClaim()
+
+	var err error
+	defer func() {
+		if err != nil {
+			// Roll back the remnants of this failed creation
+			if err := deleteSbcReferenceResources(claim); err != nil {
+				log.Errorf("roll back delete backend reference resource failed, error: %v", err)
+			}
+		}
+	}()
+
+	// remove residual of failed history creation
+	if err = deleteSbcReferenceResources(claim); err != nil {
+		return helper.LogErrorf("remove residual resource failed, error: %v", err)
+	}
+
+	// create configmap resource
+	mapConfig, err := backendConfig.ToConfigMapConfig()
+	if err != nil {
+		return err
+	}
+	configMapClient := client.NewCommonCallHandler[corev1.ConfigMap](config.Client)
+	if err = configMapClient.Create(mapConfig.ToConfigMap()); err != nil {
+		return err
+	}
+
+	// get input account info
+	secretConfig, err := backendConfig.ToSecretConfig()
+	if err != nil {
+		return err
+	}
+
+	// create secret resource
+	secretClient := client.NewCommonCallHandler[corev1.Secret](config.Client)
+	if err = secretClient.Create(secretConfig.ToSecret()); err != nil {
+		return err
+	}
+
+	// create storageBackendClaim resource
+	storageBackendClaimClient := client.NewCommonCallHandler[xuanwuV1.StorageBackendClaim](config.Client)
+	if err = storageBackendClaimClient.Create(claim); err != nil {
+		return err
+	}
+
+	// out create success tips
+	helper.PrintResult(fmt.Sprintf("Backend %s is configured\n", backendConfig.Name))
+	return nil
+}
+
+func selectOneBackend(backendList []*BackendConfiguration) (*BackendConfiguration, error) {
+	printBackendsStatusTable(backendList)
+	number, err := helper.GetSelectedNumber("Please enter the backend number to configure "+
+		"(Enter 'exit' to exit):", len(backendList))
+	if err != nil {
+		log.Errorf("failed to get backend number entered by user. %v", err)
+		return nil, err
+	}
+
+	if number > len(backendList) {
+		number = len(backendList)
+	}
+	return backendList[number-1], nil
+}
+
+func (b *Backend) LoadBackendFile() (map[string]*BackendConfiguration, error) {
+	data, err := os.ReadFile(b.resource.fileName)
+	if err != nil {
+		return nil, err
+	}
+
+	switch b.resource.fileType {
+	case "json":
+		return LoadBackendsFromJson(data)
+	case "yaml":
+		return LoadBackendsFromYaml(data)
+	default:
+		return nil, errors.New(fmt.Sprintf("file type [%s] is not supported", b.resource.fileType))
+	}
+}
+
+func (b *Backend) preProcessBackend(backends map[string]*BackendConfiguration) (map[string]*BackendConfiguration,
+	error) {
+	initFunc := []func(*BackendConfiguration){
+		b.setBackendNamespace,
+		b.setProvisioner,
+		b.setMaxClients,
+	}
+
+	result := make(map[string]*BackendConfiguration)
+	for _, configuration := range backends {
+		mappingName, err := b.processBackendName(configuration)
+		if err != nil {
+			return map[string]*BackendConfiguration{}, err
+		}
+		for _, init := range initFunc {
+			init(configuration)
+		}
+		result[mappingName] = configuration
+	}
+
+	return result, nil
+}
+func (b *Backend) processBackendName(configuration *BackendConfiguration) (string, error) {
+	if configuration.Name == "" {
+		return "", errors.New("backend name cannot be empty, please check your backend file")
+	}
+
+	mappingName := configuration.Name
+	if b.resource.fileType == "json" {
+		config.NotValidateName = true
+	}
+
+	isDNSFormat := helper.IsDNSFormat(configuration.Name)
+	errFormat := "backend name [%s] must consist of lower case alphanumeric characters or '-'," +
+		" and must start and end with an alphanumeric character(e.g. 'backend-nfs'), and must be no more than" +
+		" %d characters."
+	if !config.NotValidateName && !isDNSFormat {
+		errMsg := fmt.Sprintf(errFormat, configuration.Name, helper.BackendNameMaxLength)
+		return mappingName, errors.New(errMsg)
+	}
+
+	if config.NotValidateName && !isDNSFormat {
+		mappingName = helper.BuildBackendName(configuration.Name)
+		configuration.Name = mappingName
+	}
+
+	if !helper.IsDNSFormat(configuration.Name) {
+		errMsg := fmt.Sprintf(errFormat, configuration.Name, helper.BackendNameMaxLength)
+		return mappingName, errors.New(errMsg)
+	}
+
+	return mappingName, nil
+}
+
+func (b *Backend) setBackendNamespace(configuration *BackendConfiguration) {
+	// Prioritize the namespace specified by the command
+	if config.Namespace != "" {
+		configuration.NameSpace = config.Namespace
+		return
+	}
+
+	// If not set, use the default namespace
+	if configuration.NameSpace == "" {
+		configuration.NameSpace = config.DefaultNamespace
+	}
+	b.resource.NamespaceParam(configuration.NameSpace)
+}
+
+func (b *Backend) setMaxClients(configuration *BackendConfiguration) {
+	// If not set, use the default max clients num
+	if configuration.MaxClientThreads == "" {
+		configuration.MaxClientThreads = config.DefaultMaxClientThreads
+	}
+}
+
+func (b *Backend) setProvisioner(configuration *BackendConfiguration) {
+	// Prioritize the provisioner specified by the command
+	if config.Provisioner != "" {
+		configuration.Provisioner = config.Provisioner
+		return
+	}
+
+	// If not set, use the default provisioner
+	if configuration.Provisioner == "" {
+		configuration.Provisioner = config.DefaultProvisioner
+	}
+}
+
+func printBackendsStatusTable(statusList []*BackendConfiguration) {
+	var shows []BackendConfigShow
+	for i, configuration := range statusList {
+		shows = append(shows, BackendConfigShow{
+			Number:     strconv.Itoa(i + 1),
+			Storage:    configuration.Storage,
+			Name:       configuration.Name,
+			Urls:       strings.Join(configuration.Urls, ";"),
+			Configured: strconv.FormatBool(configuration.Configured),
+		})
+	}
+
+	helper.PrintWithTable(shows)
 }

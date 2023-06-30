@@ -129,7 +129,7 @@ func GetConfigMeta(ctx context.Context, claimNameMeta string) (string, string, e
 }
 
 func GetContentByClaimMeta(ctx context.Context, claimNameMeta string) (*xuanwuv1.StorageBackendContent, error) {
-	log.AddContext(ctx).Infof("Start to get storageBackendContent by claimMeta: [%s].", claimNameMeta)
+	log.AddContext(ctx).Debugf("Start to get storageBackendContent by claimMeta: [%s].", claimNameMeta)
 
 	claim, err := GetClaimByMeta(ctx, claimNameMeta)
 	if err != nil {

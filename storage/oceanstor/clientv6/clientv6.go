@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,12 +30,12 @@ type ClientV6 struct {
 	client.BaseClient
 }
 
-func NewClientV6(urls []string, user, secretName, secretNamespace, vstoreName, parallelNum, backendID string) *ClientV6 {
+func NewClientV6(param *client.NewClientConfig) *ClientV6 {
 	var err error
 	var parallelCount int
 
-	if len(parallelNum) > 0 {
-		parallelCount, err = strconv.Atoi(parallelNum)
+	if len(param.ParallelNum) > 0 {
+		parallelCount, err = strconv.Atoi(param.ParallelNum)
 		if err != nil || parallelCount > client.MaxParallelCount || parallelCount < client.MinParallelCount {
 			log.Warningf("The config parallelNum %d is invalid, set it to the default value %d",
 				parallelCount, client.DefaultParallelCount)
@@ -49,7 +49,7 @@ func NewClientV6(urls []string, user, secretName, secretNamespace, vstoreName, p
 	client.ClientSemaphore = utils.NewSemaphore(parallelCount)
 
 	return &ClientV6{
-		*client.NewClient(urls, user, secretName, secretNamespace, vstoreName, parallelNum, backendID),
+		*client.NewClient(param),
 	}
 }
 

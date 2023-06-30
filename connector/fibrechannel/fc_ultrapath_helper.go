@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,12 +38,17 @@ func getVirtualLunPath(ctx context.Context, lunWWN string) (string, error) {
 }
 
 func checkConnectSuccess(ctx context.Context, lunWWN, devicePath string) bool {
-	if exist, _ := utils.PathExist(devicePath); !exist {
+	exist, err := utils.PathExist(devicePath)
+	if err != nil {
+		log.AddContext(ctx).Infof("get device path [%s] failed, err: %v.", devicePath, err)
+		return false
+	}
+	if !exist {
 		log.AddContext(ctx).Infof("The device %s is not exist.", devicePath)
 		return false
 	}
 
-	_, err := connector.ReadDevice(ctx, devicePath)
+	_, err = connector.ReadDevice(ctx, devicePath)
 	if err != nil {
 		log.AddContext(ctx).Infof("The device %s is not readable.", devicePath)
 		return false

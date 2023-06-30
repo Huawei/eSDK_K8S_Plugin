@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -218,7 +218,8 @@ func (ctrl *BackendController) enqueueContent(obj interface{}) {
 }
 
 func (ctrl *BackendController) runClaimWorker(ctx context.Context) {
-	for ctrl.processNextClaimWorkItem(ctx) {
+	for !ctrl.processNextClaimWorkItem(ctx) {
+		return
 	}
 }
 
@@ -262,7 +263,8 @@ func (ctrl *BackendController) handleClaimWork(ctx context.Context, obj interfac
 }
 
 func (ctrl *BackendController) runContentWorker(ctx context.Context) {
-	for ctrl.processNextContentWorkItem(ctx) {
+	for !ctrl.processNextContentWorkItem(ctx) {
+		return
 	}
 }
 

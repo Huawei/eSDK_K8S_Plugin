@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,9 +23,11 @@ import (
 	"testing"
 
 	"bou.ke/monkey"
+	"github.com/agiledragon/gomonkey/v2"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"huawei-csi-driver/storage/fusionstorage/client"
+	"huawei-csi-driver/storage/fusionstorage/types"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -34,12 +36,56 @@ const (
 )
 
 var testClient *client.Client
+var ctx context.Context
 
 func TestMain(m *testing.M) {
 	log.MockInitLogging(logName)
 	defer log.MockStopLogging(logName)
 
+	ctx = context.TODO()
+
 	m.Run()
+}
+
+func TestPreCreate(t *testing.T) {
+	Convey("Normal", t, func() {
+		m := gomonkey.ApplyMethod(reflect.TypeOf(testClient),
+			"GetPoolByName",
+			func(_ *client.Client, ctx context.Context, poolName string) (map[string]interface{}, error) {
+				return map[string]interface{}{"mock": "mock"}, nil
+			})
+		defer m.Reset()
+
+		nas := NewNAS(testClient)
+		err := nas.preCreate(context.TODO(), map[string]interface{}{
+			"authclient": "*",
+			"name":       "mock-name",
+		})
+		So(err, ShouldBeNil)
+	})
+
+	Convey("Auth client empty", t, func() {
+		nas := NewNAS(testClient)
+		err := nas.preCreate(context.TODO(), map[string]interface{}{
+			"name": "mock-name",
+		})
+		So(err, ShouldBeError)
+	})
+
+	Convey("Name is empty", t, func() {
+		m := gomonkey.ApplyMethod(reflect.TypeOf(testClient),
+			"GetPoolByName",
+			func(_ *client.Client, ctx context.Context, poolName string) (map[string]interface{}, error) {
+				return map[string]interface{}{"mock": "mock"}, nil
+			})
+		defer m.Reset()
+
+		nas := NewNAS(testClient)
+		err := nas.preCreate(context.TODO(), map[string]interface{}{
+			"authclient": "*",
+		})
+		So(err, ShouldBeError)
+	})
 }
 
 func TestExpandWithNormal(t *testing.T) {
@@ -253,5 +299,78 @@ func TestExpandWithUpdateQuotaFail(t *testing.T) {
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
 		So(err, ShouldBeError)
+	})
+}
+
+func TestCreateConvergedQoS(t *testing.T) {
+	Convey("Empty", t, func() {
+		nas := NewNAS(testClient)
+		param := map[string]interface{}{}
+		taskResult := map[string]interface{}{}
+		_, err := nas.createConvergedQoS(ctx, param, taskResult)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("No fsName", t, func() {
+		nas := NewNAS(testClient)
+		param := map[string]interface{}{
+			"qos": map[string]int{"maxIOPS": 999, "maxMBPS": 999},
+		}
+		taskResult := map[string]interface{}{}
+		_, err := nas.createConvergedQoS(ctx, param, taskResult)
+		So(err, ShouldBeError)
+	})
+}
+
+func TestPreProcessConvergedQoS(t *testing.T) {
+	Convey("Empty", t, func() {
+		nas := NewNAS(testClient)
+		param := map[string]interface{}{}
+		err := nas.preProcessConvergedQoS(ctx, param)
+		So(err, ShouldBeNil)
+	})
+
+	Convey("not json", t, func() {
+		nas := NewNAS(testClient)
+		param := map[string]interface{}{
+			"qos": "not json",
+		}
+		err := nas.preProcessConvergedQoS(ctx, param)
+		So(err, ShouldBeError)
+	})
+
+	Convey("normal", t, func() {
+		nas := NewNAS(testClient)
+		param := map[string]interface{}{
+			"qos": "{\"maxMBPS\":999,\"maxIOPS\":999}",
+		}
+		err := nas.preProcessConvergedQoS(ctx, param)
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestDeleteConvergedQoSByFsName(t *testing.T) {
+	Convey("GetQoSPolicyIdByFsName failed", t, func() {
+		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.Client{}),
+			"GetQoSPolicyIdByFsName",
+			func(_ *client.Client, _ context.Context, _ string) (int, error) { return 0, errors.New("mock-error") },
+		)
+		defer m.Reset()
+
+		nas := NewNAS(testClient)
+		err := nas.deleteConvergedQoSByFsName(ctx, "mock-fs-name")
+		So(err, ShouldBeError)
+	})
+
+	Convey("GetQoSPolicyIdByFsName empty", t, func() {
+		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.Client{}),
+			"GetQoSPolicyIdByFsName",
+			func(_ *client.Client, _ context.Context, _ string) (int, error) { return types.NoQoSPolicyId, nil },
+		)
+		defer m.Reset()
+
+		nas := NewNAS(testClient)
+		err := nas.deleteConvergedQoSByFsName(ctx, "mock-fs-name")
+		So(err, ShouldBeNil)
 	})
 }

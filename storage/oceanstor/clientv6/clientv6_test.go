@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -81,13 +81,15 @@ func TestMain(m *testing.M) {
 	log.MockInitLogging(logName)
 	defer log.MockStopLogging(logName)
 
-	testClient = NewClientV6([]string{"https://192.168.125.*:8088"},
-		"dev-account",
-		"mock-sec-name",
-		"mock-sec-namespace",
-		"dev-vStore",
-		"",
-		"mock-backend-id")
+	testClient = NewClientV6(&client.NewClientConfig{
+		Urls:            []string{"https://192.168.125.*:8088"},
+		User:            "dev-account",
+		SecretName:      "mock-sec-name",
+		SecretNamespace: "mock-sec-namespace",
+		VstoreName:      "dev-vStore",
+		ParallelNum:     "",
+		BackendID:       "mock-backend-id",
+	})
 
 	m.Run()
 }

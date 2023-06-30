@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import (
 
 	"huawei-csi-driver/connector"
 	connutils "huawei-csi-driver/connector/utils"
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -321,6 +322,9 @@ func getHostChannelTargetLun(session, tgtLun string) []string {
 	if paths != nil {
 		_, file := filepath.Split(paths[0])
 		splitPath := strings.Split(file, ":")
+		if len(splitPath) <= 2 {
+			return nil
+		}
 		channel = splitPath[1]
 		target = splitPath[2]
 	} else {
@@ -339,6 +343,9 @@ func getHostChannelTargetLun(session, tgtLun string) []string {
 }
 
 func scanISCSI(ctx context.Context, hostChannelTargetLun []string) {
+	if len(hostChannelTargetLun) <= 3 {
+		return
+	}
 	channelTargetLun := fmt.Sprintf("%s %s %s", hostChannelTargetLun[1], hostChannelTargetLun[2],
 		hostChannelTargetLun[3])
 	scanCommand := fmt.Sprintf("echo \"%s\" > /sys/class/scsi_host/host%s/scan",
@@ -462,6 +469,12 @@ func constructISCSIInfo(ctx context.Context, conn connectorInfo) []singleConnect
 		ok := connector.CheckHostConnectivity(ctx, portal)
 		if !ok {
 			log.AddContext(ctx).Errorf("failed to check the host connectivity. %s", portal)
+			continue
+		}
+
+		if index >= len(conn.tgtIQNs) || index >= len(conn.tgtHostLUNs) {
+			log.AddContext(ctx).Errorf("index: [%d] is bigger than conn.tgtIQNs length: [%d] or "+
+				"conn.tgtHostLUNs length: [%d]", index, len(conn.tgtIQNs), len(conn.tgtHostLUNs))
 			continue
 		}
 
@@ -805,9 +818,8 @@ func disconnectSessions(ctx context.Context, devConnectorInfos []singleConnector
 	for _, connectorInfo := range devConnectorInfos {
 		tgtPortal := connectorInfo.tgtPortal
 		tgtIQN := connectorInfo.tgtIQN
-		cmd := fmt.Sprintf("ls /dev/disk/by-path/ |grep -w %s |grep -w %s |wc -l |awk '{if($1>0) print 1; "+
-			"else print 0}'", tgtPortal, utils.MaskSensitiveInfo(tgtIQN))
-		output, err := utils.ExecShellCmd(ctx, cmd)
+		cmd := buildCheckSessionCmd(tgtPortal, tgtIQN)
+		output, err := utils.ExecShellCmdFilterLog(ctx, cmd)
 		if err != nil {
 			log.AddContext(ctx).Infof("Disconnect iSCSI target %s failed, err: %v", tgtPortal, err)
 			return err
@@ -818,6 +830,22 @@ func disconnectSessions(ctx context.Context, devConnectorInfos []singleConnector
 		}
 	}
 	return nil
+}
+
+// buildCheckSessionCmd build check iscsi session cmd
+func buildCheckSessionCmd(tgtPortal, tgtIQN string) string {
+	// If using UltraPath , exec 'upadmin show path' .
+	// the terminal echo is as follows:
+	// $ upadmin show path
+	// Path ID  Initiator Port   Array Name  Controller  Target Port        Path State  Check State  Port Type  Port ID
+	//   1      127.0.0.1::2      101_112      0A        iqn.xxx:127.0.0.1    Normal        --       iSCSI      CTE0.A.x
+	countCmd := "|wc -l |awk '{if($1>0) print 1; else print 0}'"
+	if app.GetGlobalConfig().VolumeUseMultiPath && app.GetGlobalConfig().ScsiMultiPathType == connector.HWUltraPath {
+		return fmt.Sprintf("upadmin show path |grep -w %s %s", tgtIQN, countCmd)
+	}
+
+	return fmt.Sprintf("ls /dev/disk/by-path/ |grep -w %s |grep -w %s %s",
+		tgtPortal, tgtIQN, countCmd)
 }
 
 func tryDisConnectVolume(ctx context.Context, tgtLunWWN string) error {

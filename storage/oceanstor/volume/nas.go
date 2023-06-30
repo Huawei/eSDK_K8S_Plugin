@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -204,6 +204,34 @@ func (p *NAS) Create(ctx context.Context, params map[string]interface{}) (utils.
 	return volObj, nil
 }
 
+func (p *NAS) validateManage(ctx context.Context, params, fs map[string]interface{}) error {
+	return p.validateManageWorkLoadType(ctx, params, fs)
+}
+
+func (p *NAS) validateManageWorkLoadType(ctx context.Context, params, fs map[string]interface{}) error {
+	err := p.setWorkLoadID(ctx, p.cli, params)
+	if err != nil {
+		return err
+	}
+
+	newWorkloadTypeID, ok := params["workloadTypeID"].(string)
+	if !ok {
+		return nil
+	}
+
+	oldWorkloadTypeID, ok := fs["workloadTypeId"].(string)
+	if !ok {
+		return nil
+	}
+
+	if newWorkloadTypeID != oldWorkloadTypeID {
+		return fmt.Errorf(" the workload type is different between new [%s] and old [%s].",
+			newWorkloadTypeID, oldWorkloadTypeID)
+	}
+
+	return nil
+}
+
 func (p *NAS) createLocalFS(ctx context.Context, params, taskResult map[string]interface{}) (
 	map[string]interface{}, error) {
 
@@ -214,26 +242,25 @@ func (p *NAS) createLocalFS(ctx context.Context, params, taskResult map[string]i
 		return nil, err
 	}
 
+	var isClone bool
 	if fs == nil {
 		params["parentid"] = params["poolID"].(string)
 		params["vstoreId"] = params["localVStoreID"].(string)
 
 		if _, exist := params["clonefrom"]; exist {
 			fs, err = p.clone(ctx, params)
+			isClone = true
 		} else if _, exist := params["fromSnapshot"]; exist {
 			fs, err = p.createFromSnapshot(ctx, params)
+			isClone = true
 		} else {
 			fs, err = p.cli.CreateFileSystem(ctx, params)
 		}
 	} else {
-		if fs["ISCLONEFS"].(string) == "false" {
-			return map[string]interface{}{
-				"localFSID": fs["ID"].(string),
-			}, nil
+		if fs["ISCLONEFS"].(string) != "false" {
+			fsID := fs["ID"].(string)
+			err = p.waitFSSplitDone(ctx, fsID)
 		}
-
-		fsID := fs["ID"].(string)
-		err = p.waitFSSplitDone(ctx, fsID)
 	}
 
 	if err != nil {
@@ -241,9 +268,50 @@ func (p *NAS) createLocalFS(ctx context.Context, params, taskResult map[string]i
 		return nil, err
 	}
 
+	localFSID := fs["ID"].(string)
+	if err = p.updateFileSystem(ctx, isClone, localFSID, params); err != nil {
+		log.AddContext(ctx).Errorf("Update filesystem %s error: %v", fsName, err)
+		return nil, err
+	}
+
 	return map[string]interface{}{
-		"localFSID": fs["ID"].(string),
+		"localFSID": localFSID,
 	}, nil
+}
+
+func (p *NAS) updateFileSystem(ctx context.Context, isClone bool, objID string, params map[string]interface{}) error {
+	if !isClone {
+		return nil
+	}
+
+	log.AddContext(ctx).Infof("The fileSystem %s is cloned, now to update some fields.",
+		params["name"].(string))
+	data := make(map[string]interface{})
+	if val, exist := params["reservedsnapshotspaceratio"].(int); exist {
+		data["SNAPSHOTRESERVEPER"] = val
+	}
+
+	if val, exist := params["isshowsnapdir"].(bool); exist {
+		data["ISSHOWSNAPDIR"] = val
+	}
+
+	if val, exist := params["description"].(string); exist {
+		data["DESCRIPTION"] = val
+	}
+
+	if data == nil {
+		log.AddContext(ctx).Infof("The fileSystem %s is cloned, but no field need to update.",
+			params["name"].(string))
+		return nil
+	}
+
+	// Only update the local FS, the remote FS is created separately, no need to update
+	err := p.cli.UpdateFileSystem(ctx, objID, data)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Update FileSystem %s field [%v], error: %v", objID, data, err)
+		return err
+	}
+	return nil
 }
 
 func (p *NAS) clone(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error) {
@@ -662,7 +730,7 @@ func (p *NAS) revertShareAccess(ctx context.Context, taskResult map[string]inter
 	return nil
 }
 
-func (p *NAS) Query(ctx context.Context, fsName string) (utils.Volume, error) {
+func (p *NAS) Query(ctx context.Context, fsName string, params map[string]interface{}) (utils.Volume, error) {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Query filesystem %s error: %v", fsName, err)
@@ -671,6 +739,10 @@ func (p *NAS) Query(ctx context.Context, fsName string) (utils.Volume, error) {
 
 	if fs == nil {
 		return nil, utils.Errorf(ctx, "Filesystem [%s] to query does not exist", fsName)
+	}
+
+	if err = p.validateManage(ctx, params, fs); err != nil {
+		return nil, err
 	}
 
 	volObj := utils.NewVolume(fsName)

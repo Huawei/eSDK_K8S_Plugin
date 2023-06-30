@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -100,8 +100,14 @@ func checkNVMeVersion(ctx context.Context) error {
 // GetNVMeDevice used to get device name by channel
 func GetNVMeDevice(ctx context.Context, devicePort string, tgtLunGUID string) (string, error) {
 	nvmePortPath := path.Join("/sys/devices/virtual/nvme-fabrics/ctl/", devicePort)
-	if exist, _ := utils.PathExist(nvmePortPath); !exist {
+	exist, err := utils.PathExist(nvmePortPath)
+	if !exist {
 		return "", utils.Errorf(ctx, "NVMe device path %s is not exist.", nvmePortPath)
+	}
+
+	if err != nil {
+		log.AddContext(ctx).Errorf("get NVMe device path failed, error:%v", err)
+		return "", err
 	}
 
 	output, err := utils.ExecShellCmd(ctx, fmt.Sprintf("ls %s |grep nvme", nvmePortPath))

@@ -1,8 +1,8 @@
 images:
   # Images provided by Huawei
-  huaweiCSIService: huawei-csi:4.0.0
-  storageBackendSidecar: storage-backend-sidecar:4.0.0
-  storageBackendController: storage-backend-controller:4.0.0
+  huaweiCSIService: huawei-csi:4.1.0
+  storageBackendSidecar: storage-backend-sidecar:4.1.0
+  storageBackendController: storage-backend-controller:4.1.0
 
   # CSI-related sidecar images provided by the Kubernetes community.
   # These must match the appropriate Kubernetes version.
@@ -62,9 +62,9 @@ controller:
   # Examples: "volumes", "vol"
   volumeNamePrefix: pvc
 
-  # Port used by the webhook service. The default port is 443.
+  # Port used by the webhook service. The default port is 4433.
   # You can change the port to another port that is not occupied.
-  webhookPort: 443
+  webhookPort: 4433
 
   snapshot:
     # enabled: Enable/Disable volume snapshot feature
@@ -151,6 +151,7 @@ node:
 # The CSI driver parameter configuration
 csiDriver:
   # Driver name, it is strongly recommended not to modify this parameter
+  # The CCE platform needs to modify this parameter, e.g. csi.oceanstor.com
   driverName: csi.huawei.com
   # Endpoint, it is strongly recommended not to modify this parameter
   endpoint: /csi/csi.sock
@@ -166,6 +167,12 @@ csiDriver:
   nvmeMultipathType: HW-UltraPath-NVMe
   # Timeout interval for waiting for multipath aggregation when DM-multipath is used on the host. support 1~600
   scanVolumeTimeout: 3
+  # check the number of paths for multipath aggregation
+  # Allowed values:
+  #   true: the number of paths aggregated by DM-multipath is equal to the number of online paths
+  #   false: the number of paths aggregated by DM-multipath is not checked.
+  # Default value: false
+  allPathOnline: false
   # Interval for updating backend capabilities. support 60~600
   backendUpdateInterval: 60
   # Huawei-csi-controller log configuration

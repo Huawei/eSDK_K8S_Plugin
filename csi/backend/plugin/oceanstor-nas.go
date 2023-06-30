@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -125,9 +125,11 @@ func (p *OceanstorNasPlugin) getClient() (client.BaseClientInterface, client.Bas
 	return p.cli, replicaRemoteCli
 }
 
-func (p *OceanstorNasPlugin) QueryVolume(ctx context.Context, name string) (utils.Volume, error) {
+func (p *OceanstorNasPlugin) QueryVolume(ctx context.Context, name string, parameters map[string]interface{}) (
+	utils.Volume, error) {
+	params := p.getParams(ctx, name, parameters)
 	nas := p.getNasObj()
-	return nas.Query(ctx, name)
+	return nas.Query(ctx, name, params)
 }
 
 func (p *OceanstorNasPlugin) DeleteVolume(ctx context.Context, name string) error {
@@ -283,6 +285,10 @@ func (p *OceanstorNasPlugin) updateReplicationCapability(capabilities map[string
 }
 
 func (p *OceanstorNasPlugin) updateNFS4Capability(capabilities map[string]interface{}) error {
+	if capabilities == nil {
+		capabilities = make(map[string]interface{})
+	}
+
 	nfsServiceSetting, err := p.cli.GetNFSServiceSetting(context.Background())
 	if err != nil {
 		return err
@@ -368,8 +374,7 @@ func (p *OceanstorNasPlugin) Validate(ctx context.Context, param map[string]inte
 	}
 
 	// Login verification
-	cli := client.NewClient(clientConfig.Urls, clientConfig.User, clientConfig.SecretName,
-		clientConfig.SecretNamespace, clientConfig.VstoreName, clientConfig.ParallelNum, clientConfig.BackendID)
+	cli := client.NewClient(clientConfig)
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err
@@ -377,4 +382,12 @@ func (p *OceanstorNasPlugin) Validate(ctx context.Context, param map[string]inte
 	cli.Logout(ctx)
 
 	return nil
+}
+
+func (p *OceanstorNasPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
+	return errors.New("not implement")
+}
+
+func (p *OceanstorNasPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
+	return false, errors.New("not implement")
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -46,7 +46,8 @@ const (
 
 	description string = "Created from huawei-csi for Kubernetes"
 
-	defaultVStore string = "System_vStore"
+	defaultVStore   string = "System_vStore"
+	defaultVStoreID string = "0"
 
 	IPLockErrorCode        = 1077949071
 	WrongPasswordErrorCode = 1077987870
@@ -70,6 +71,8 @@ type BaseClientInterface interface {
 	RoCE
 	System
 	VStore
+	DTree
+	OceanStorQuota
 
 	Call(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
 	BaseCall(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
@@ -137,6 +140,7 @@ type BaseClient struct {
 	SecretNamespace string
 	SecretName      string
 	VStoreName      string
+	VStoreID        string
 	StorageVersion  string
 	BackendID       string
 
@@ -177,12 +181,12 @@ type NewClientConfig struct {
 	BackendID       string
 }
 
-func NewClient(urls []string, user, SecretName, secretNamespace, vstoreName, parallelNum, backendID string) *BaseClient {
+func NewClient(param *NewClientConfig) *BaseClient {
 	var err error
 	var parallelCount int
 
-	if len(parallelNum) > 0 {
-		parallelCount, err = strconv.Atoi(parallelNum)
+	if len(param.ParallelNum) > 0 {
+		parallelCount, err = strconv.Atoi(param.ParallelNum)
 		if err != nil || parallelCount > MaxParallelCount || parallelCount < MinParallelCount {
 			log.Warningf("The config parallelNum %d is invalid, set it to the default value %d",
 				parallelCount, DefaultParallelCount)
@@ -195,13 +199,13 @@ func NewClient(urls []string, user, SecretName, secretNamespace, vstoreName, par
 	log.Infof("Init parallel count is %d", parallelCount)
 	ClientSemaphore = utils.NewSemaphore(parallelCount)
 	return &BaseClient{
-		Urls:            urls,
-		User:            user,
-		SecretName:      SecretName,
-		SecretNamespace: secretNamespace,
-		VStoreName:      vstoreName,
+		Urls:            param.Urls,
+		User:            param.User,
+		SecretName:      param.SecretName,
+		SecretNamespace: param.SecretNamespace,
+		VStoreName:      param.VstoreName,
 		Client:          newHTTPClient(),
-		BackendID:       backendID,
+		BackendID:       param.BackendID,
 	}
 }
 
@@ -397,7 +401,7 @@ func (cli *BaseClient) ValidateLogin(ctx context.Context) error {
 		return fmt.Errorf("validate login %s error: %+v", cli.Url, resp)
 	}
 
-	log.AddContext(ctx).Infof("Login %s success", cli.Url)
+	log.AddContext(ctx).Infof("Validate login %s success", cli.Url)
 	return nil
 }
 
@@ -458,17 +462,51 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 		return errors.New(msg)
 	}
 
-	respData := resp.Data.(map[string]interface{})
-	cli.DeviceId = respData["deviceid"].(string)
-	cli.Token = respData["iBaseToken"].(string)
+	err = cli.setDataFromRespData(ctx, resp)
+	if err != nil {
+		setErr := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.BackendID, false)
+		if setErr != nil {
+			log.AddContext(ctx).Errorf("SetStorageBackendContentOffline [%s] failed. error: %v", cli.BackendID, setErr)
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (cli *BaseClient) setDataFromRespData(ctx context.Context, resp Response) error {
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("convert resp.Data: [%v] to map[string]interface{} failed",
+			resp.Data))
+	}
+	cli.DeviceId, ok = respData["deviceid"].(string)
+	if !ok {
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("convert respData[\"deviceid\"]: [%v] to string failed",
+			respData["deviceid"]))
+	}
+	cli.Token, ok = respData["iBaseToken"].(string)
+	if !ok {
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("convert respData[\"iBaseToken\"]: [%v] to string failed",
+			respData["iBaseToken"]))
+	}
+
 	vStoreName, exist := respData["vstoreName"].(string)
-	_, idExist := respData["vstoreId"].(string)
-	if !exist && !idExist {
+	if !exist {
 		log.AddContext(ctx).Infof("storage client login response vstoreName is empty, set it to default %s",
 			defaultVStore)
 		cli.VStoreName = defaultVStore
-	} else if exist {
+	} else {
 		cli.VStoreName = vStoreName
+	}
+
+	vStoreID, idExist := respData["vstoreId"].(string)
+	if !idExist {
+		log.AddContext(ctx).Infof("storage client login response vstoreID is empty, set it to default %s",
+			defaultVStoreID)
+		cli.VStoreID = defaultVStoreID
+	} else {
+		cli.VStoreID = vStoreID
 	}
 
 	log.AddContext(ctx).Infof("Login %s success", cli.Url)

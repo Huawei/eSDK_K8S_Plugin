@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -175,7 +175,7 @@ func TestImportVolume(t *testing.T) {
 	})
 
 	queryPatch := gomonkey.ApplyMethod(reflect.TypeOf(plg), "QueryVolume",
-		func(*plugin.OceanstorNasPlugin, context.Context, string) (utils.Volume, error) {
+		func(*plugin.OceanstorNasPlugin, context.Context, string, map[string]interface{}) (utils.Volume, error) {
 			vol := utils.NewVolume("fake-nfs")
 			vol.SetSize(1024 * 1024 * 1024)
 			return vol, nil

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -672,6 +672,9 @@ func TestGetDeviceFromSymLink(t *testing.T) {
 			}
 		})
 	}
+	if err := os.RemoveAll(tempDir); err != nil {
+		t.Errorf("remove dir %s failed, error: %+v", tempDir, err)
+	}
 }
 
 func helperFuncForTestGetDeviceFromSymLink(t *testing.T, mockTargetNameWithoutLink string, mockDeviceName string,
@@ -687,11 +690,17 @@ func helperFuncForTestGetDeviceFromSymLink(t *testing.T, mockTargetNameWithoutLi
 		t.Errorf("create mock target without link file failed, error: %v", err)
 		return "", true
 	}
+	if err := withoutLinkPath.Close(); err != nil {
+		t.Errorf("close file %s failed, error: %v", withoutLinkPath.Name(), err)
+	}
 
 	deviceFile, err := os.Create(path.Join(tempDir, mockDeviceName))
 	if err != nil {
 		t.Errorf("create mock device file failed, error: %v", err)
 		return "", true
+	}
+	if err := deviceFile.Close(); err != nil {
+		t.Errorf("close file %s failed, error: %v", deviceFile.Name(), err)
 	}
 
 	if err := os.Symlink(path.Join(tempDir, mockDeviceName), path.Join(tempDir, mockTargetName)); err != nil {
@@ -699,20 +708,6 @@ func helperFuncForTestGetDeviceFromSymLink(t *testing.T, mockTargetNameWithoutLi
 		return "", true
 	}
 
-	t.Cleanup(func() {
-		if err := withoutLinkPath.Close(); err != nil {
-			t.Errorf("close file %s failed, error: %v", withoutLinkPath.Name(), err)
-			return
-		}
-		if err := deviceFile.Close(); err != nil {
-			t.Errorf("close file %s failed, error: %v", deviceFile.Name(), err)
-			return
-		}
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("remove dir %s failed, error: %+v", tempDir, err)
-			return
-		}
-	})
 	return tempDir, false
 }
 

@@ -74,6 +74,7 @@ func mockConnectorConfig() connectorConfig {
 		DeviceCleanupTimeout: 5,
 		ScanVolumeTimeout:    5,
 		ConnectorThreads:     5,
+		AllPathOnline:        true,
 	}
 }
 

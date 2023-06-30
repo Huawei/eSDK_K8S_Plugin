@@ -65,6 +65,7 @@ type connectorConfig struct {
 	DeviceCleanupTimeout int
 	ScanVolumeTimeout    int
 	ConnectorThreads     int
+	AllPathOnline        bool
 }
 
 type k8sConfig struct {

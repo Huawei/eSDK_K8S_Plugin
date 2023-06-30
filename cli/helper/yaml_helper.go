@@ -18,48 +18,34 @@ package helper
 
 import (
 	"encoding/json"
-	"os"
 
 	"github.com/ghodss/yaml"
 )
 
-// YamlValues represents a collection of yaml values.
-type YamlValues map[string]interface{}
-
-// YAML encodes the Values into a YAML string.
-func (v YamlValues) YAML() (string, error) {
-	b, err := yaml.Marshal(v)
-	return string(b), err
-}
-
-// AsMap is a utility function for converting YamlValues to a map[string]interface{}.
-func (v YamlValues) AsMap() map[string]interface{} {
-	if len(v) == 0 {
-		return map[string]interface{}{}
-	}
-	return v
-}
-
-// ReadYamlValues will parse YAML byte data into a YamlValues.
-func ReadYamlValues(data []byte) (val YamlValues, err error) {
-	err = yaml.Unmarshal(data, &val)
-	if len(val) == 0 {
-		val = YamlValues{}
-	}
-	return val, err
-}
-
-// ReadYamlFile will parse a YAML file into a map of YamlValues.
-func ReadYamlFile(filename string) (YamlValues, error) {
-	data, err := os.ReadFile(filename)
+// StructToYAML convert struct to yaml
+func StructToYAML[T any](t T) ([]byte, error) {
+	jsonBytes, err := json.Marshal(t)
 	if err != nil {
-		return map[string]interface{}{}, err
+		return nil, err
 	}
-	return ReadYamlValues(data)
+
+	return JSONToYAML(jsonBytes)
 }
 
-// ToPrettyJson encodes an item into a pretty (indented) JSON string
-func (v YamlValues) ToPrettyJson() string {
-	output, _ := json.MarshalIndent(v, "", "  ")
-	return string(output)
+// JSONToYAML Converts JSON to YAML.
+func JSONToYAML(j []byte) ([]byte, error) {
+	// Convert the JSON to an object.
+	var jsonObj interface{}
+	// We are using yaml.Unmarshal here (instead of json.Unmarshal) because the
+	// Go JSON library doesn't try to pick the right number type (int, float,
+	// etc.) when unmarshalling to interface{}, it just picks float64
+	// universally. go-yaml does go through the effort of picking the right
+	// number type, so we can preserve number type throughout this process.
+	err := yaml.Unmarshal(j, &jsonObj)
+	if err != nil {
+		return nil, err
+	}
+
+	// Marshal this object into YAML.
+	return yaml.Marshal(jsonObj)
 }

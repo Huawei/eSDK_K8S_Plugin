@@ -29,6 +29,7 @@ import (
 	"huawei-csi-driver/connector"
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend"
+	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -137,6 +138,24 @@ func WithVolumeCapability(ctx context.Context, req *csi.NodeStageVolumeRequest) 
 	}
 }
 
+// CheckParam check node stage volume request parameters
+func CheckParam(ctx context.Context, req *csi.NodeStageVolumeRequest) error {
+	switch req.VolumeCapability.GetAccessType().(type) {
+	case *csi.VolumeCapability_Block:
+	case *csi.VolumeCapability_Mount:
+		fsType := utils.ToStringSafe(req.GetVolumeCapability().GetMount().GetFsType())
+		if fsType != "" && !utils.IsContain(constants.FileType(fsType),
+			[]constants.FileType{constants.Ext2, constants.Ext3, constants.Ext4, constants.Xfs}) {
+			return utils.Errorf(ctx, "fsType %v is not correct. [%v, %v, %v, %v] are support,"+
+				" Please check the storage class", fsType, constants.Ext2, constants.Ext3, constants.Ext4, constants.Xfs)
+		}
+	default:
+		return errors.New("invalid volume capability")
+	}
+	return nil
+
+}
+
 // ReflectToMap use reflection to convert ControllerPublishInfo to map, where key of map is json tag
 // and value of map is field value
 func (c *ControllerPublishInfo) ReflectToMap() map[string]interface{} {
@@ -189,7 +208,7 @@ func Unmount(ctx context.Context, targetPath string) error {
 
 // NewManager build a manager instance, such as NasManager, SanManager
 func NewManager(ctx context.Context, backendName string) (Manager, error) {
-	config, err := getBackendConfig(ctx, backendName)
+	config, err := GetBackendConfig(ctx, backendName)
 	if err != nil {
 		return nil, err
 	}
@@ -202,19 +221,18 @@ func NewManager(ctx context.Context, backendName string) (Manager, error) {
 	if config.protocol == "nfs" {
 		portal = config.portals[0]
 	}
-
 	if config.protocol == "nfs" || config.protocol == "dpc" {
-		return NewNasManager(ctx, config.protocol, portal)
+		return NewNasManager(ctx, config.protocol, portal, config.dTreeParentName)
 	}
 
 	return NewSanManager(ctx, config.protocol)
 }
 
-// getBackendConfig returns a BackendConfig if specified backendName exists in configmap.
+// GetBackendConfig returns a BackendConfig if specified backendName exists in configmap.
 // If backend doesn't exist in configmap, returns an error from call backend.GetBackendConfigmapByClaimName().
 // If parameters and protocol doesn't exist, a custom error will be returned.
 // If protocol exist and equal to nfs, portals in parameters must exist, otherwise an error will be returned.
-func getBackendConfig(ctx context.Context, backendName string) (*BackendConfig, error) {
+func GetBackendConfig(ctx context.Context, backendName string) (*BackendConfig, error) {
 	claimMeta := pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backendName)
 	configmap, err := pkgUtils.GetBackendConfigmapByClaimName(ctx, claimMeta)
 	if err != nil {
@@ -245,12 +263,83 @@ func getBackendConfig(ctx context.Context, backendName string) (*BackendConfig, 
 		for _, elem := range portalList {
 			portal, ok := elem.(string)
 			if !ok {
-				return nil, fmt.Errorf("portals not string slice, current portal type :%s",
-					reflect.TypeOf(portals[0]).Name())
+				return nil, fmt.Errorf("portals not string slice, current portal :%v", elem)
 			}
 			portals = append(portals, portal)
 		}
 	}
 
-	return &BackendConfig{protocol: protocol, portals: portals}, nil
+	storage, ok := backendInfo["storage"]
+	var dTreeParentName string
+	if ok && storage == "oceanstor-dtree" {
+		dTreeParentName, _ = utils.ToStringWithFlag(parameters["parentname"])
+	}
+
+	return &BackendConfig{protocol: protocol, portals: portals, dTreeParentName: dTreeParentName}, nil
+}
+
+// PublishBlock publish block device
+func PublishBlock(ctx context.Context, req *csi.NodePublishVolumeRequest) error {
+	volumeId := req.GetVolumeId()
+	sourcePath := req.GetStagingTargetPath()
+	targetPath := req.GetTargetPath()
+	// If the request is to publish raw block device then create symlink of the device
+	// from the staging are to publish. Do not create fs and mount
+	log.AddContext(ctx).Infoln("Creating symlink for the staged device on the node to publish")
+	sourcePath = sourcePath + "/" + volumeId
+	err := utils.CreateSymlink(ctx, sourcePath, targetPath)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Failed to create symlink for the staging path [%v] to target path [%v]",
+			sourcePath, targetPath)
+		return err
+	}
+	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().GetMode())
+	if accessMode == "ReadOnly" {
+		_, err = utils.ExecShellCmd(ctx, "chmod 440 %s", targetPath)
+		if err != nil {
+			log.AddContext(ctx).Errorln("Unable to set ReadOnlyMany permission")
+			return err
+		}
+	}
+	log.AddContext(ctx).Infof("Raw Block Volume %s is node published to %s", volumeId, targetPath)
+	return nil
+}
+
+// PublishFilesystem publish filesystem
+func PublishFilesystem(ctx context.Context, req *csi.NodePublishVolumeRequest) error {
+	volumeId := req.GetVolumeId()
+	sourcePath := req.GetStagingTargetPath()
+	targetPath := req.GetTargetPath()
+	backendName, volumeName := utils.SplitVolumeId(volumeId)
+	manager, err := NewManager(ctx, backendName)
+	if err != nil {
+		log.AddContext(ctx).Errorf("publish init manager fail, backend: %s, error: %v", backendName, err)
+		return err
+	}
+	opts := []string{"bind"}
+
+	// process volume with type is dTree
+	nfsShare, isDTree := manager.GetDTreeVolume(ctx)
+	if isDTree {
+		sourcePath = nfsShare + "/" + volumeName
+		opts = make([]string, 0)
+	}
+	if req.GetReadonly() {
+		opts = append(opts, "ro")
+	}
+
+	connectInfo := map[string]interface{}{
+		"srcType":    connector.MountFSType,
+		"sourcePath": sourcePath,
+		"targetPath": targetPath,
+		"mountFlags": strings.Join(opts, ","),
+	}
+
+	if err = Mount(ctx, connectInfo); err != nil {
+		log.AddContext(ctx).Errorf("Mount share %s to %s error: %v", sourcePath, targetPath, err)
+		return err
+	}
+
+	log.AddContext(ctx).Infof("Volume %s is node published to %s", volumeId, targetPath)
+	return nil
 }

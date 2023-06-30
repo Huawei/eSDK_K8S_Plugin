@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ type Plugin interface {
 	NewPlugin() Plugin
 	Init(map[string]interface{}, map[string]interface{}, bool) error
 	CreateVolume(context.Context, string, map[string]interface{}) (utils.Volume, error)
-	QueryVolume(context.Context, string) (utils.Volume, error)
+	QueryVolume(context.Context, string, map[string]interface{}) (utils.Volume, error)
 	DeleteVolume(context.Context, string) error
 	ExpandVolume(context.Context, string, int64) (bool, error)
 	AttachVolume(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
@@ -43,6 +43,9 @@ type Plugin interface {
 	Logout(context.Context)
 	// Validate used to check parameters, include login verification
 	Validate(context.Context, map[string]interface{}) error
+
+	DeleteDTreeVolume(context.Context, map[string]interface{}) error
+	ExpandDTreeVolume(context.Context, map[string]interface{}) (bool, error)
 }
 
 // SmartXQoSQuery provides Quality of Service(QoS) Query operations

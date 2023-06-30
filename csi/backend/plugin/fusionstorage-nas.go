@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -72,13 +72,13 @@ func (p *FusionStorageNasPlugin) updateNasCapacity(ctx context.Context, params, 
 	return nil
 }
 
-func (p *FusionStorageNasPlugin) CreateVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) (utils.Volume, error) {
+func (p *FusionStorageNasPlugin) CreateVolume(ctx context.Context, name string, parameters map[string]interface{}) (
+	utils.Volume, error) {
+
 	size, ok := parameters["size"].(int64)
 	// for fusionStorage filesystem, the unit is KiB
 	if !ok || !utils.IsCapacityAvailable(size, fileCapacityUnit) {
-		return nil, utils.Errorf(ctx, "Create Volume: the capacity %d is not an integer multiple of %d.",
+		return nil, utils.Errorf(ctx, "Create Volume: the capacity %d is not an integer or not multiple of %d.",
 			size, fileCapacityUnit)
 	}
 
@@ -104,7 +104,8 @@ func (p *FusionStorageNasPlugin) CreateVolume(ctx context.Context,
 	return volObj, nil
 }
 
-func (p *FusionStorageNasPlugin) QueryVolume(ctx context.Context, name string) (utils.Volume, error) {
+func (p *FusionStorageNasPlugin) QueryVolume(ctx context.Context, name string, params map[string]interface{}) (
+	utils.Volume, error) {
 	nas := volume.NewNAS(p.cli)
 	return nas.Query(ctx, name)
 }
@@ -119,7 +120,7 @@ func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interfa
 	capabilities := map[string]interface{}{
 		"SupportThin":  true,
 		"SupportThick": false,
-		"SupportQoS":   false,
+		"SupportQoS":   true,
 		"SupportQuota": true,
 		"SupportClone": false,
 	}
@@ -154,6 +155,10 @@ func (p *FusionStorageNasPlugin) UpdatePoolCapabilities(poolNames []string) (map
 }
 
 func (p *FusionStorageNasPlugin) updateNFS4Capability(capabilities map[string]interface{}) error {
+	if capabilities == nil {
+		capabilities = make(map[string]interface{})
+	}
+
 	nfsServiceSetting, err := p.cli.GetNFSServiceSetting(context.Background())
 	if err != nil {
 		return err
@@ -225,4 +230,12 @@ func (p *FusionStorageNasPlugin) verifyFusionStorageNasParam(ctx context.Context
 	}
 
 	return nil
+}
+
+func (p *FusionStorageNasPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
+	return errors.New("not implement")
+}
+
+func (p *FusionStorageNasPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
+	return false, errors.New("not implement")
 }

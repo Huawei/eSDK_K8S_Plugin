@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -129,7 +130,7 @@ func TestReadWwnFileFail(t *testing.T) {
 
 func TestReadWwnFileButFileNotExist(t *testing.T) {
 	_, err := ReadWwnFile(context.Background(), testVolumeId)
-	if err == nil || !os.IsNotExist(err) {
+	if err == nil || !strings.Contains(err.Error(), "not found wwn file") {
 		t.Errorf("TestReadWwnFileButFileNotExist() want got an file not exist error "+
 			"but got error: %v", err)
 	}

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,6 +29,39 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+func updatePoolCapabilitiesByBackend(backend *Backend, backendCapabilities, poolCapabilities map[string]interface{}) {
+	for _, pool := range backend.Pools {
+		for k, v := range backendCapabilities {
+			if cur, exist := pool.Capabilities[k]; !exist || cur != v {
+				log.Infof("Update backend capability [%s] of pool [%s] of backend [%s] from %v to %v",
+					k, pool.Name, pool.Parent, cur, v)
+				pool.Capabilities[k] = v
+			}
+		}
+
+		// The storage pool capability does not need to be updated in the DTree scenario.
+		if backend.Storage == "oceanstor-dtree" {
+			continue
+		}
+
+		capabilities, exist := poolCapabilities[pool.Name].(map[string]interface{})
+		if !exist {
+			log.Warningf("Pool %s of backend %s does not exist, set it unavailable", pool.Name, pool.Parent)
+			pool.Capabilities["FreeCapacity"] = 0
+			continue
+		}
+
+		for k, v := range capabilities {
+			if cur, exist := pool.Capabilities[k]; !exist || !reflect.DeepEqual(cur, v) {
+				log.FilteredLog(context.TODO(), false, k == "FreeCapacity",
+					fmt.Sprintf("Update pool capability [%s] of pool [%s] of backend [%s] from %v to %v",
+						k, pool.Name, pool.Parent, cur, v))
+				pool.Capabilities[k] = v
+			}
+		}
+	}
+}
+
 func updateBackendCapabilities(backend *Backend, sync bool) error {
 	// If sbct is offline, delete the backend from the csiBackends.
 	backendID := pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backend.Name)
@@ -38,7 +71,6 @@ func updateBackendCapabilities(backend *Backend, sync bool) error {
 		log.Infof("SBCT: [%s] online status is false, RemoveOneBackend: [%s]", backendID, backend.Name)
 		return nil
 	}
-
 	backendCapabilities, _, err := backend.Plugin.UpdateBackendCapabilities()
 	if err != nil {
 		log.Errorf("Cannot update backend %s capabilities: %v", backend.Name, err)
@@ -49,7 +81,6 @@ func updateBackendCapabilities(backend *Backend, sync bool) error {
 	for _, pool := range backend.Pools {
 		poolNames = append(poolNames, pool.Name)
 	}
-
 	poolCapabilities, err := backend.Plugin.UpdatePoolCapabilities(poolNames)
 	if err != nil {
 		log.Errorf("Cannot update pool capabilities of backend %s: %v", backend.Name, err)
@@ -62,35 +93,13 @@ func updateBackendCapabilities(backend *Backend, sync bool) error {
 		return errors.New(msg)
 	}
 
-	for _, pool := range backend.Pools {
-		for k, v := range backendCapabilities {
-			if cur, exist := pool.Capabilities[k]; !exist || cur != v {
-				log.Infof("Update backend capability [%s] of pool [%s] of backend [%s] from %v to %v",
-					k, pool.Name, pool.Parent, cur, v)
-				pool.Capabilities[k] = v
-			}
-		}
-
-		capabilities, exist := poolCapabilities[pool.Name].(map[string]interface{})
-		if exist {
-			for k, v := range capabilities {
-				if cur, exist := pool.Capabilities[k]; !exist || !reflect.DeepEqual(cur, v) {
-					log.FilteredLog(context.TODO(), false, k == "FreeCapacity",
-						fmt.Sprintf("Update pool capability [%s] of pool [%s] of backend [%s] from %v to %v",
-							k, pool.Name, pool.Parent, cur, v))
-					pool.Capabilities[k] = v
-				}
-			}
-		} else {
-			log.Warningf("Pool %s of backend %s does not exist, set it unavailable", pool.Name, pool.Parent)
-			pool.Capabilities["FreeCapacity"] = 0
-		}
-	}
+	updatePoolCapabilitiesByBackend(backend, backendCapabilities, poolCapabilities)
 
 	return nil
 }
 
 func SyncUpdateCapabilities() error {
+	log.Debugln("main SyncUpdateCapabilities")
 	for _, backend := range csiBackends {
 		err := updateBackendCapabilities(backend, true)
 		if err != nil {
@@ -104,6 +113,7 @@ func SyncUpdateCapabilities() error {
 }
 
 func AsyncUpdateCapabilities() {
+	log.Debugln("main AsyncUpdateCapabilities")
 	var wait sync.WaitGroup
 
 	for _, backend := range csiBackends {
@@ -123,7 +133,7 @@ func AsyncUpdateCapabilities() {
 
 			err := updateBackendCapabilities(b, false)
 			if err != nil {
-				log.Warningf("Update %s capabilities error, set it unavailable", b.Name)
+				log.Warningf("update backend %s capabilities failed, error: %v", b.Name, err)
 				b.Available = false
 			} else {
 				b.Available = true

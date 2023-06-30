@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -117,8 +117,10 @@ func parseFCInfo(ctx context.Context, connectionProperties map[string]interface{
 
 func constructFCInfo(conn *connectorInfo) {
 	for index := range conn.tgtWWNs {
-		conn.tgtTargets = append(conn.tgtTargets, target{conn.tgtWWNs[index],
-			conn.tgtHostLUNs[index]})
+		if index >= len(conn.tgtHostLUNs) {
+			continue
+		}
+		conn.tgtTargets = append(conn.tgtTargets, target{conn.tgtWWNs[index], conn.tgtHostLUNs[index]})
 	}
 }
 
@@ -373,7 +375,10 @@ func getPossibleDeices(hbas []map[string]string, targets []target) []rawDevice {
 
 func getPci(devPath []string) (string, string) {
 	var platform string
-	platformSupport := len(devPath) > 3 && devPath[3] == "platform"
+	if len(devPath) <= 3 {
+		return "", ""
+	}
+	platformSupport := devPath[3] == "platform"
 	for index, value := range devPath {
 		if platformSupport && strings.HasPrefix(value, "pci") {
 			platform = fmt.Sprintf("platform-%s", devPath[index-1])
@@ -487,7 +492,16 @@ func getHBAChannelSCSITargetLun(ctx context.Context, hba map[string]string, targ
 		var tempCtl [][]string
 		for _, line := range lines {
 			if strings.HasPrefix(line, path) {
-				ctl := append(strings.Split(strings.Split(line, "/")[4], ":")[1:], tar.tgtHostLun)
+				lineList := strings.Split(line, "/")
+				if len(lineList) <= 4 {
+					continue
+				}
+				ctlStr := lineList[4]
+				ctlList := strings.Split(ctlStr, ":")
+				if len(ctlList) <= 1 {
+					continue
+				}
+				ctl := append(ctlList[1:], tar.tgtHostLun)
 				tempCtl = append(tempCtl, ctl)
 			}
 		}
@@ -505,7 +519,7 @@ func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorI
 		ctls, lunWildCards := getHBAChannelSCSITargetLun(ctx, hba, conn.tgtTargets)
 		if ctls != nil {
 			process = append(process, []interface{}{hba, ctls})
-		} else if process == nil {
+		} else if len(process) == 0 {
 			var lunInfo [][]string
 			for _, lun := range lunWildCards {
 				lunInfo = append(lunInfo, []string{"-", "-", lun})
@@ -514,7 +528,7 @@ func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorI
 		}
 	}
 
-	if process == nil {
+	if len(process) == 0 {
 		process = skipped
 	}
 
@@ -560,6 +574,9 @@ func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorI
 }
 
 func scanFC(ctx context.Context, channelTargetLun []string, hostDevice string) {
+	if len(channelTargetLun) <= 2 {
+		return
+	}
 	scanCommand := fmt.Sprintf("echo \"%s %s %s\" > /sys/class/scsi_host/%s/scan",
 		channelTargetLun[0], channelTargetLun[1], channelTargetLun[2], hostDevice)
 	output, err := utils.ExecShellCmd(ctx, scanCommand)

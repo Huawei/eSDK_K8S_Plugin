@@ -1,12 +1,10 @@
-# Kubernetes CSI Driver for Huawei Storage
+# CSI Driver for Huawei Storage
 
 ![GitHub](https://img.shields.io/github/license/Huawei/eSDK_K8S_Plugin)
 [![Go Report Card](https://goreportcard.com/badge/github.com/huawei/esdk_k8s_plugin)](https://goreportcard.com/report/github.com/huawei/esdk_k8s_plugin)
 ![GitHub go.mod Go version (subdirectory of monorepo)](https://img.shields.io/github/go-mod/go-version/Huawei/eSDK_K8S_Plugin)
 ![GitHub Release Date](https://img.shields.io/github/release-date/Huawei/eSDK_K8S_Plugin)
 ![GitHub release (latest by date)](https://img.shields.io/github/downloads/Huawei/eSDK_K8S_Plugin/latest/total)
-
-<img src="logo/csi.png" alt="Huawei CSI" width="100" height="100">
 
 ## Description
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -156,21 +156,21 @@ func (p *SAN) Delete(ctx context.Context, name string) error {
 
 	taskflow := taskflow.NewTaskFlow(ctx, "Delete-LUN-Volume")
 
-	if rss["HyperMetro"] == "TRUE" {
+	if hyperMetro, ok := rss["HyperMetro"]; ok && hyperMetro == "TRUE" {
 		taskflow.AddTask("Delete-HyperMetro", p.deleteHyperMetro, nil)
 		taskflow.AddTask("Delete-HyperMetro-Remote-LUN", p.deleteHyperMetroRemoteLun, nil)
 	}
 
-	if rss["RemoteReplication"] == "TRUE" {
+	if remoteReplication, ok := rss["RemoteReplication"]; ok && remoteReplication == "TRUE" {
 		taskflow.AddTask("Delete-Replication-Pair", p.deleteReplicationPair, nil)
 		taskflow.AddTask("Delete-Replication-Remote-LUN", p.deleteReplicationRemoteLun, nil)
 	}
 
-	if rss["LunCopy"] == "TRUE" {
+	if lunCopy, ok := rss["LunCopy"]; ok && lunCopy == "TRUE" {
 		taskflow.AddTask("Delete-Local-LunCopy", p.deleteLocalLunCopy, nil)
 	}
 
-	if rss["HyperCopy"] == "TRUE" {
+	if hyPerCopy, ok := rss["HyperCopy"]; ok && hyPerCopy == "TRUE" {
 		taskflow.AddTask("Delete-Local-HyperCopy", p.deleteLocalHyperCopy, nil)
 	}
 
@@ -212,14 +212,14 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 	expandTask := taskflow.NewTaskFlow(ctx, "Expand-LUN-Volume")
 	expandTask.AddTask("Expand-PreCheck-Capacity", p.preExpandCheckCapacity, nil)
 
-	if rss["HyperMetro"] == "TRUE" {
+	if hyperMetro, ok := rss["HyperMetro"]; ok && hyperMetro == "TRUE" {
 		expandTask.AddTask("Expand-HyperMetro-Remote-PreCheck-Capacity",
 			p.preExpandHyperMetroCheckRemoteCapacity, nil)
 		expandTask.AddTask("Suspend-HyperMetro", p.suspendHyperMetro, nil)
 		expandTask.AddTask("Expand-HyperMetro-Remote-LUN", p.expandHyperMetroRemoteLun, nil)
 	}
 
-	if rss["RemoteReplication"] == "TRUE" {
+	if remoteReplication, ok := rss["RemoteReplication"]; ok && remoteReplication == "TRUE" {
 		expandTask.AddTask("Expand-Replication-Remote-PreCheck-Capacity",
 			p.preExpandReplicationCheckRemoteCapacity, nil)
 		expandTask.AddTask("Split-Replication", p.splitReplication, nil)
@@ -228,11 +228,11 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 
 	expandTask.AddTask("Expand-Local-Lun", p.expandLocalLun, nil)
 
-	if rss["HyperMetro"] == "TRUE" {
+	if hyperMetro, ok := rss["HyperMetro"]; ok && hyperMetro == "TRUE" {
 		expandTask.AddTask("Sync-HyperMetro", p.syncHyperMetro, nil)
 	}
 
-	if rss["RemoteReplication"] == "TRUE" {
+	if remoteReplication, ok := rss["RemoteReplication"]; ok && remoteReplication == "TRUE" {
 		expandTask.AddTask("Sync-Replication", p.syncReplication, nil)
 	}
 

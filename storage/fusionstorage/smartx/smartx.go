@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -78,13 +78,13 @@ func NewQoS(cli *client.Client) *QoS {
 	}
 }
 
-func (p *QoS) getQosName(objType string) string {
+func ConstructQosNameByCurrentTime(objType string) string {
 	now := time.Now().Format("20060102150405")
 	return fmt.Sprintf("k8s_%s_%s", objType, now)
 }
 
 func (p *QoS) AddQoS(ctx context.Context, volName string, params map[string]int) (string, error) {
-	qosName := p.getQosName("volume")
+	qosName := ConstructQosNameByCurrentTime("volume")
 	err := p.cli.CreateQoS(ctx, qosName, params)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create qos %v error: %v", params, err)

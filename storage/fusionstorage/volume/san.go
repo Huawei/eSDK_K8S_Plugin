@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -236,8 +236,9 @@ func (p *SAN) revertLun(ctx context.Context, taskResult map[string]interface{}) 
 	return err
 }
 
-func (p *SAN) createQoS(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+func (p *SAN) createQoS(ctx context.Context, params, taskResult map[string]interface{}) (
+	map[string]interface{}, error) {
+
 	qos, exist := params["qos"].(map[string]int)
 	if !exist {
 		return nil, nil

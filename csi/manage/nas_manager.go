@@ -27,17 +27,19 @@ import (
 )
 
 type NasManager struct {
-	protocol string
-	portal   string
-	Conn     connector.Connector
+	protocol        string
+	portal          string
+	dTreeParentName string
+	Conn            connector.Connector
 }
 
 // NewNasManager build a nas manager instance according to the protocol
-func NewNasManager(ctx context.Context, protocol, portal string) (Manager, error) {
+func NewNasManager(ctx context.Context, protocol, portal, dTreeParentName string) (Manager, error) {
 	return &NasManager{
-		protocol: protocol,
-		portal:   portal,
-		Conn:     connector.GetConnector(ctx, connector.NFSDriver),
+		protocol:        protocol,
+		portal:          portal,
+		dTreeParentName: dTreeParentName,
+		Conn:            connector.GetConnector(ctx, connector.NFSDriver),
 	}, nil
 }
 
@@ -48,7 +50,7 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		WithVolumeCapability(ctx, req),
 	)
 	if err != nil {
-		log.AddContext(ctx).Errorf("build nas parameters filed, error: %v", err)
+		log.AddContext(ctx).Errorf("build nas parameters failed, error: %v", err)
 		return err
 	}
 
@@ -90,4 +92,12 @@ func (m *NasManager) ExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 func (m *NasManager) UnStageWithWwn(ctx context.Context, wwn, volumeId string) error {
 	log.AddContext(ctx).Infof("start to unstage nas volume with wwn, wwn: %s, volumeId: %s", wwn, volumeId)
 	return nil
+}
+
+// IsDTreeVolume use for valid volume type
+func (m *NasManager) GetDTreeVolume(ctx context.Context) (string, bool) {
+	if m.dTreeParentName != "" {
+		return m.portal + ":/" + m.dTreeParentName, true
+	}
+	return "", false
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	logFilePermission = 0644
+	logFilePermission = 0640
 	backupTimeFormat  = "20060102-150405"
 )
 
@@ -52,7 +52,7 @@ func newFileHook(logFilePath, logFileSize string, logFormat logrus.Formatter) (*
 	logFileRootDir := filepath.Dir(logFilePath)
 	dir, err := os.Lstat(logFileRootDir)
 	if os.IsNotExist(err) {
-		if err := os.MkdirAll(logFileRootDir, 0755); err != nil {
+		if err := os.MkdirAll(logFileRootDir, 0750); err != nil {
 			return nil, fmt.Errorf("could not create log directory %v. %v", logFileRootDir, err)
 		}
 	}
@@ -167,6 +167,9 @@ func (f *fileHandler) rotate() error {
 	rotatedLogFileLocation := f.filePath + time.Now().Format(backupTimeFormat)
 	if err := os.Rename(f.filePath, rotatedLogFileLocation); err != nil {
 		return fmt.Errorf("failed to create backup file. %s", err)
+	}
+	if err := os.Chmod(rotatedLogFileLocation, 0440); err != nil {
+		return fmt.Errorf("failed to chmod backup file. %s", err)
 	}
 
 	// try to remove old backup files

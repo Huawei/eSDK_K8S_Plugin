@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import (
 
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend"
+	"huawei-csi-driver/csi/backend/plugin"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -68,7 +69,6 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	volumeId := req.GetVolumeId()
-
 	log.AddContext(ctx).Infof("Start to delete volume %s", volumeId)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
@@ -79,7 +79,15 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
-	err := backend.Plugin.DeleteVolume(ctx, volName)
+	var err error
+	if backend.Storage == plugin.DTreeStorage {
+		err = backend.Plugin.DeleteDTreeVolume(ctx, map[string]interface{}{
+			"parentname": backend.Parameters["parentname"],
+			"name":       volName,
+		})
+	} else {
+		err = backend.Plugin.DeleteVolume(ctx, volName)
+	}
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete volume %s error: %v", volumeId, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -120,7 +128,17 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	nodeExpansionRequired, err := backend.Plugin.ExpandVolume(ctx, volName, minSize)
+	var nodeExpansionRequired bool
+	var err error
+	if backend.Storage == plugin.DTreeStorage {
+		nodeExpansionRequired, err = backend.Plugin.ExpandDTreeVolume(ctx, map[string]interface{}{
+			"name":           volName,
+			"parentname":     backend.Parameters["parentname"],
+			"spacehardquota": minSize,
+		})
+	} else {
+		nodeExpansionRequired, err = backend.Plugin.ExpandVolume(ctx, volName, minSize)
+	}
 	if err != nil {
 		log.AddContext(ctx).Errorf("Expand volume %s error: %v", volumeId, err)
 		return nil, status.Error(codes.Internal, err.Error())

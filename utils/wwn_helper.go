@@ -18,9 +18,12 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"huawei-csi-driver/utils/log"
 )
@@ -29,6 +32,7 @@ const (
 	defaultWwnFileDir        = "/csi/disks"
 	defaultWwnDirPermission  = 0700
 	defaultWwnFilePermission = 0600
+	defaultWwnFileLength     = 64
 )
 
 // WriteWWNFile write the wwn info for use in unstage call.
@@ -36,8 +40,8 @@ func WriteWWNFile(ctx context.Context, wwn, volumeId string) error {
 	if err := createWwnDir(ctx); err != nil {
 		return err
 	}
-
-	wwnFileName := buildWwnFile(volumeId)
+	wwnName := buildWwnFileName(volumeId)
+	wwnFileName := buildWwnFilePath(wwnName)
 	err := ioutil.WriteFile(wwnFileName, []byte(wwn), defaultWwnFilePermission)
 	if err != nil {
 		log.AddContext(ctx).Errorf("write wwn file error, fileName: %s, error: %v", wwnFileName, err)
@@ -58,16 +62,12 @@ func WriteWWNFileIfNotExist(ctx context.Context, wwn, volumeId string) error {
 
 // ReadWwnFile read the wwn info file.
 func ReadWwnFile(ctx context.Context, volumeId string) (string, error) {
-	wwnFileName := buildWwnFile(volumeId)
-	log.AddContext(ctx).Infof("start to read wwn file, fileName: %s", wwnFileName)
-
-	if _, err := os.Stat(wwnFileName); err != nil {
-		log.AddContext(ctx).Warningf("stat wwn file failed, volumeId: %s, error: %v",
-			volumeId, err)
+	log.AddContext(ctx).Infof("start to read wwn file, volumeId: %s", volumeId)
+	wwnFile, err := statWwnFile(ctx, volumeId)
+	if err != nil {
 		return "", err
 	}
-
-	wwnBytes, err := ioutil.ReadFile(wwnFileName)
+	wwnBytes, err := ioutil.ReadFile(wwnFile)
 	if err != nil {
 		log.AddContext(ctx).Warningf("read wwn file failed, volumeId: %s, error: %v",
 			volumeId, err)
@@ -78,9 +78,15 @@ func ReadWwnFile(ctx context.Context, volumeId string) (string, error) {
 
 // RemoveWwnFile remove the wwn info file.
 func RemoveWwnFile(ctx context.Context, volumeId string) error {
-	wwnFileName := buildWwnFile(volumeId)
+	wwnFilePath, err := statWwnFile(ctx, volumeId)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found wwn file") {
+			return nil
+		}
+		return err
+	}
 
-	err := os.Remove(wwnFileName)
+	err = os.Remove(wwnFilePath)
 	if err != nil && !os.IsNotExist(err) {
 		log.AddContext(ctx).Errorf("remove wwn file error, volumeId: %s, error: %v",
 			volumeId, err)
@@ -105,6 +111,37 @@ func createWwnDir(ctx context.Context) error {
 	return nil
 }
 
-func buildWwnFile(volumeId string) string {
+func buildWwnFilePath(volumeId string) string {
 	return fmt.Sprintf("%s/%s.wwn", defaultWwnFileDir, volumeId)
+}
+
+func buildWwnFileName(volumeId string) string {
+	if len(volumeId) > defaultWwnFileLength {
+		volumeId = volumeId[len(volumeId)-64:]
+	}
+	return volumeId
+}
+
+func statWwnFile(ctx context.Context, volumeId string) (string, error) {
+	wwnName := buildWwnFileName(volumeId)
+	wwnFilePath := buildWwnFilePath(wwnName)
+	oldWwnFilePath := buildWwnFilePath(volumeId)
+
+	for _, filePath := range []string{wwnFilePath, oldWwnFilePath} {
+		_, err := os.Stat(filePath)
+		if err == nil {
+			return filePath, nil
+		}
+
+		if err != nil && os.IsNotExist(err) {
+			continue
+		}
+
+		if err != nil && !os.IsNotExist(err) {
+			log.AddContext(ctx).Warningf("stat wwn file failed, volumeId: %s, error: %v",
+				filepath.Base(filePath), err)
+			return "", err
+		}
+	}
+	return "", errors.New("not found wwn file")
 }

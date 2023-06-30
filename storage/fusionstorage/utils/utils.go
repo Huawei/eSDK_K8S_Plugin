@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ package utils
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"huawei-csi-driver/utils"
 )
@@ -82,4 +83,34 @@ func ExtractStorageQuotaParameters(ctx context.Context, storageQuotaConfig strin
 	}
 
 	return params, nil
+}
+
+// CheckErrorCode used to check Response
+func CheckErrorCode(response map[string]interface{}) error {
+	// Response example
+	// Response: {
+	//   "data": {
+	// 	    "id": 14
+	//    },
+	//   "result": {
+	// 	    "code": 0,
+	//      "description": ""
+	//    }
+	// }
+
+	result, ok := response["result"].(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("convert result [%v] to map[string]interface{} failed", response["result"])
+	}
+
+	code, ok := result["code"].(float64)
+	if !ok {
+		return fmt.Errorf("convert errCode [%v] to float64 failed", result["code"])
+	}
+
+	if int(code) != 0 {
+		return fmt.Errorf("invoking failed., code: [%d], description: [%v]", int(code), result["description"])
+	}
+
+	return nil
 }

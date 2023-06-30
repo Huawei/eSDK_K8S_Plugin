@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,13 +21,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"huawei-csi-driver/connector"
+	_ "huawei-csi-driver/connector/nfs" // init the nfs connector
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/manage"
-
-	// init the nfs connector
-	_ "huawei-csi-driver/connector/nfs"
+	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 
@@ -42,10 +42,15 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	volumeId := req.GetVolumeId()
 	log.AddContext(ctx).Infof("Start to stage volume %s", volumeId)
 	backendName, volName := utils.SplitVolumeId(volumeId)
+
 	manager, err := manage.NewManager(ctx, backendName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Stage init manager fail, backend: %s, error: %v", backendName, err)
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if _, isDTree := manager.GetDTreeVolume(ctx); isDTree {
+		log.AddContext(ctx).Infof("Stage Dtree Volume, volumeID: %s", volumeId)
+		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
 	err = manager.StageVolume(ctx, req)
@@ -63,12 +68,17 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	targetPath := req.GetStagingTargetPath()
 
 	log.AddContext(ctx).Infof("Start to unstage volume %s from %s", volumeId, targetPath)
-
 	backendName, volName := utils.SplitVolumeId(volumeId)
+
 	manager, err := manage.NewManager(ctx, backendName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("UnStage init manager fail, backend: %s, error: %v", backendName, err)
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if _, isDTree := manager.GetDTreeVolume(ctx); isDTree {
+		log.AddContext(ctx).Infof("Unstage Dtree Volume, volumeID: %s", volumeId)
+		return &csi.NodeUnstageVolumeResponse{}, nil
 	}
 
 	err = manager.UnStageVolume(ctx, req)
@@ -84,83 +94,56 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 func (d *Driver) NodePublishVolume(ctx context.Context,
 	req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	volumeId := req.GetVolumeId()
-	sourcePath := req.GetStagingTargetPath()
 	targetPath := req.GetTargetPath()
 
 	log.AddContext(ctx).Infof("Start to node publish volume %s to %s", volumeId, targetPath)
 	if req.GetVolumeCapability().GetBlock() != nil {
-		// If the request is to publish raw block device then create symlink of the device
-		// from the staging are to publish. Do not create fs and mount
-		log.AddContext(ctx).Infoln("Creating symlink for the staged device on the node to publish")
-		sourcePath = sourcePath + "/" + volumeId
-		err := utils.CreateSymlink(ctx, sourcePath, targetPath)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Failed to create symlink for the staging path [%v] to target path [%v]",
-				sourcePath, targetPath)
-			return nil, err
+		if err := manage.PublishBlock(ctx, req); err != nil {
+			log.AddContext(ctx).Errorf("publish block volume fail, volume: %s, error: %v", volumeId, err)
+			return nil, status.Error(codes.Internal, err.Error())
 		}
-		accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().GetMode())
-		if accessMode == "ReadOnly" {
-			_, err = utils.ExecShellCmd(ctx, "chmod 440 %s", targetPath)
-			if err != nil {
-				log.AddContext(ctx).Errorln("Unable to set ReadOnlyMany permission")
-				return nil, err
-			}
-		}
-		log.AddContext(ctx).Infof("Raw Block Volume %s is node published to %s", volumeId, targetPath)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
-
-	opts := []string{"bind"}
-	if req.GetReadonly() {
-		opts = append(opts, "ro")
-	}
-
-	connectInfo := map[string]interface{}{
-		"srcType":    connector.MountFSType,
-		"sourcePath": sourcePath,
-		"targetPath": targetPath,
-		"mountFlags": strings.Join(opts, ","),
-	}
-
-	conn := connector.GetConnector(ctx, connector.NFSDriver)
-	_, err := conn.ConnectVolume(ctx, connectInfo)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Mount share %s to %s error: %v", sourcePath, targetPath, err)
+	if err := manage.PublishFilesystem(ctx, req); err != nil {
+		log.AddContext(ctx).Errorf("publish filesystem volume fail, volume: %s, error: %v", volumeId, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
-	log.AddContext(ctx).Infof("Volume %s is node published to %s", volumeId, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+func (d *Driver) NodeUnpublishVolume(ctx context.Context,
+	req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+
 	volumeId := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
 
 	log.AddContext(ctx).Infof("Start to node unpublish volume %s from %s", volumeId, targetPath)
-
-	pathExist, err := utils.PathExist(targetPath)
-	if !pathExist {
-		log.AddContext(ctx).Warningf("TargetPath [%v] doesn't exist", targetPath)
-		return &csi.NodeUnpublishVolumeResponse{}, nil
+	symLink, err := utils.IsPathSymlinkWithTimeout(targetPath, 10*time.Second)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Failed to Access path %s, error: %v", targetPath, err)
+		return nil, status.Error(codes.Internal, err.Error())
 	}
-
-	symLink, _ := utils.IsPathSymlink(targetPath)
 	if symLink {
 		log.AddContext(ctx).Infof("Removing the symlink [%s]", targetPath)
-		err = utils.RemoveSymlink(ctx, targetPath)
+		err := utils.RemoveSymlink(ctx, targetPath)
 		if err != nil {
 			log.AddContext(ctx).Errorf("Failed to remove symlink for target path [%v]", targetPath)
 			return nil, err
 		}
 	} else {
 		log.AddContext(ctx).Infof("Unmounting the targetPath [%s]", targetPath)
-		output, err := utils.ExecShellCmd(ctx, "umount %s", targetPath)
-		if err != nil && !strings.Contains(output, "not mounted") {
-			msg := fmt.Sprintf("umount %s for volume %s error: %s", targetPath, volumeId, output)
-			log.AddContext(ctx).Errorln(msg)
-			return nil, status.Error(codes.Internal, msg)
+		mounted, err := connector.MountPathIsExist(ctx, targetPath)
+		if err != nil {
+			log.AddContext(ctx).Errorf("Failed to get mount point [%s], error: %v", targetPath, err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if mounted {
+			umountRes, err := utils.ExecShellCmd(ctx, "umount %s", targetPath)
+			if err != nil && !strings.Contains(umountRes, constants.NotMountStr) {
+				log.AddContext(ctx).Errorf("umount %s for volume %s msg:%s error: %s", targetPath, volumeId,
+					umountRes, err)
+				return nil, err
+			}
 		}
 	}
 	log.AddContext(ctx).Infof("Volume %s is node unpublished from %s", volumeId, targetPath)
@@ -244,14 +227,14 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 		return nil, status.Error(codes.InvalidArgument, msg)
 	}
 
-	VolumePath := req.GetVolumePath()
-	if len(VolumePath) == 0 {
+	volumePath := req.GetVolumePath()
+	if len(volumePath) == 0 {
 		msg := fmt.Sprintf("no volume Path provided")
 		log.AddContext(ctx).Errorln(msg)
 		return nil, status.Error(codes.InvalidArgument, msg)
 	}
 
-	volumeMetrics, err := utils.GetVolumeMetrics(VolumePath)
+	volumeMetrics, err := utils.GetVolumeMetrics(volumePath)
 	if err != nil {
 		msg := fmt.Sprintf("get volume metrics failed, reason %v", err)
 		log.AddContext(ctx).Errorln(msg)

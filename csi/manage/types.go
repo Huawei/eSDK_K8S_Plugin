@@ -29,6 +29,7 @@ type Manager interface {
 	UnStageVolume(context.Context, *csi.NodeUnstageVolumeRequest) error
 	ExpandVolume(context.Context, *csi.NodeExpandVolumeRequest) error
 	UnStageWithWwn(ctx context.Context, wwn, volumeId string) error
+	GetDTreeVolume(ctx context.Context) (string, bool)
 }
 
 // ControllerPublishInfo context passed by ControllerPublishVolume
@@ -52,6 +53,7 @@ type ControllerPublishInfo struct {
 
 // BackendConfig backend configuration
 type BackendConfig struct {
-	protocol string
-	portals  []string
+	protocol        string
+	dTreeParentName string
+	portals         []string
 }

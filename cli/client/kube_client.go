@@ -29,9 +29,10 @@ const (
 	CLIKubernetes = "kubectl"
 	CLIOpenShift  = "oc"
 
-	ConfigMap           ResourceType = "configmap"
-	Secret              ResourceType = "secret"
-	Storagebackendclaim ResourceType = "storagebackendclaim"
+	ConfigMap                  ResourceType = "configmap"
+	Secret                     ResourceType = "secret"
+	Storagebackendclaim        ResourceType = "storagebackendclaim"
+	StoragebackendclaimContent ResourceType = "storagebackendcontent"
 
 	Create = "create" // used to create resource
 	Delete = "delete" // used to delete resource
@@ -84,6 +85,7 @@ func (k *KubernetesCLI) GetResource(name []string, namespace, outputType string,
 		output := fmt.Sprintf("-o=%s", outputType)
 		args = append(args, output)
 	}
+	args = append(args, "--ignore-not-found")
 	return helper.ExecReturnStdOut(k.cli, args)
 }
 

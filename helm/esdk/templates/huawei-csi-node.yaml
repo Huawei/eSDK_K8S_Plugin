@@ -142,7 +142,7 @@ spec:
         - name: csi-node-driver-registrar
           args:
             - "--csi-address=/csi/csi.sock"
-            - "--kubelet-registration-path={{ .Values.kubeletConfigDir }}/plugins/csi.huawei.com/csi.sock"
+            - "--kubelet-registration-path={{ .Values.kubeletConfigDir }}/plugins/{{ .Values.csiDriver.driverName }}/csi.sock"
           image: {{ .Values.images.sidecar.registrar }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
           volumeMounts:
@@ -158,6 +158,7 @@ spec:
             - "--driver-name={{ .Values.csiDriver.driverName }}"
             - "--connector-threads={{ .Values.csiDriver.connectorThreads }}"
             - "--volume-use-multipath={{ .Values.csiDriver.volumeUseMultipath }}"
+            - "--all-path-online={{ default false .Values.csiDriver.allPathOnline }}"
             {{ if .Values.csiDriver.volumeUseMultipath }}
             - "--scsi-multipath-type={{ .Values.csiDriver.scsiMultipathType }}"
             - "--nvme-multipath-type={{ .Values.csiDriver.nvmeMultipathType }}"
@@ -229,7 +230,7 @@ spec:
       serviceAccountName: huawei-csi-node
       volumes:
         - hostPath:
-            path: {{ .Values.kubeletConfigDir }}/plugins/csi.huawei.com
+            path: {{ .Values.kubeletConfigDir }}/plugins/{{ .Values.csiDriver.driverName }}
             type: DirectoryOrCreate
           name: socket-dir
         - hostPath:

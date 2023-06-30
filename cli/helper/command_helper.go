@@ -21,10 +21,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"huawei-csi-driver/utils/log"
 )
+
+const exitCommand = "exit"
 
 // ExecWithStdin used to exec command, enter parameters using stdin
 func ExecWithStdin(cli string, data []byte, args []string) error {
@@ -49,6 +52,7 @@ func ExecWithStdin(cli string, data []byte, args []string) error {
 
 // ExecReturnStdOut used to exec command, and return stdout.
 func ExecReturnStdOut(cli string, args []string) ([]byte, error) {
+	log.Infof("query args: %v\n", args)
 	cmd := exec.Command(cli, args...)
 	stdout, err := cmd.CombinedOutput()
 	if err != nil {
@@ -95,4 +99,25 @@ func getInputString(tips string, isVisible bool) (string, error) {
 		return getInputString(tips, isVisible)
 	}
 	return str, nil
+}
+
+// GetSelectedNumber get the number entered by the user
+func GetSelectedNumber(tips string, maxValue int) (int, error) {
+	input, err := getInputString(tips, true)
+	if err != nil {
+		return 0, err
+	}
+
+	if strings.ToLower(input) == exitCommand {
+		os.Exit(0)
+		return 0, nil
+	}
+
+	number, err := strconv.Atoi(input)
+	if err == nil && number > 0 && number <= maxValue {
+		return number, nil
+	}
+
+	fmt.Printf("Input invalid. The valid backend number is [1-%d].\n", maxValue)
+	return GetSelectedNumber(tips, maxValue)
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,11 +25,14 @@ type Volume interface {
 	SetLunWWN(string)
 	SetSize(int64)
 	GetSize() (int64, error)
+	SetDTreeParentName(string)
+	GetDTreeParentName() string
 }
 type volume struct {
-	name   string
-	lunWWN string
-	size   int64
+	name            string
+	lunWWN          string
+	size            int64
+	dTreeParentName string
 }
 
 // NewVolume creates volume object for the name
@@ -70,4 +73,13 @@ func (vol *volume) GetSize() (int64, error) {
 	}
 
 	return vol.size, nil
+}
+
+func (vol *volume) SetDTreeParentName(dTreeParentName string) {
+	vol.dTreeParentName = dTreeParentName
+}
+
+func (vol *volume) GetDTreeParentName() string {
+
+	return vol.dTreeParentName
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -173,7 +173,10 @@ func (p *Attacher) createHostGroup(ctx context.Context, hostID, mappingID string
 		}
 	}
 
-	hostGroupID = hostGroup["ID"].(string)
+	hostGroupID, ok := hostGroup["ID"].(string)
+	if !ok {
+		return errors.New("createHostGroup failed, caused by not found hostGroup id")
+	}
 
 	err = p.cli.AddHostToGroup(ctx, hostID, hostGroupID)
 	if err != nil {
@@ -245,7 +248,10 @@ func (p *Attacher) createLunGroup(ctx context.Context, lunID, hostID, mappingID 
 		}
 	}
 
-	lunGroupID = lunGroup["ID"].(string)
+	lunGroupID, ok := lunGroup["ID"].(string)
+	if !ok {
+		return errors.New("createLunGroup failed, caused by not found lun group id")
+	}
 	err = p.cli.AddLunToGroup(ctx, lunID, lunGroupID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Add lun %s to group %s error: %v", lunID, lunGroupID, err)
@@ -440,7 +446,7 @@ func (p *Attacher) getTargetISCSIProperties(ctx context.Context) ([]string, []st
 		tgtIQNs = append(tgtIQNs, validIQNs[ip])
 	}
 
-	if tgtPortals == nil {
+	if len(tgtPortals) == 0 {
 		msg := fmt.Sprintf("All config portal %s is not valid", p.portals)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, nil, errors.New(msg)
@@ -479,7 +485,7 @@ func (p *Attacher) getTargetRoCEPortals(ctx context.Context) ([]string, error) {
 		availablePortals = append(availablePortals, ip)
 	}
 
-	if availablePortals == nil {
+	if len(availablePortals) == 0 {
 		msg := fmt.Sprintf("All config portal %s is not valid", p.portals)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
@@ -540,7 +546,7 @@ func (p *Attacher) getTargetFCProperties(ctx context.Context, parameters map[str
 		tgtWWNs = append(tgtWWNs, tgtWWN)
 	}
 
-	if tgtWWNs == nil {
+	if len(tgtWWNs) == 0 {
 		msg := fmt.Sprintf("There is no alaivable target wwn of host initiators %v in storage.", fcInitiators)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)

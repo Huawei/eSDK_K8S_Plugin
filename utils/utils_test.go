@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"huawei-csi-driver/pkg/constants"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
@@ -86,7 +88,7 @@ func TestMaskSensitiveInfo(t *testing.T) {
 		{
 			"stringMaskInfo",
 			"iscsiadm -m node -T iqn.2003-01.io.k8s:e2e.volume -p 192.168.0.2 --interface default --op new",
-			"iscsiadm -m node -T *** 192.168.0.2 --interface default --op new",
+			"iscsiadm -m node -T ***-p 192.168.0.2 --interface default --op new",
 		},
 	}
 	for _, c := range testCases {
@@ -208,6 +210,31 @@ func TestGetPasswordFromSecret(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(pw, ShouldEqual, "mock-pw")
 	})
+}
+
+func TestIsContainFileType(t *testing.T) {
+	type IsContainParam struct {
+		target   constants.FileType
+		list     []constants.FileType
+		expected bool
+	}
+	var testCases = []IsContainParam{
+		{
+			"ext3",
+			[]constants.FileType{constants.Ext3, constants.Ext4, constants.Ext2, constants.Xfs},
+			true,
+		},
+		{
+			"ext1",
+			[]constants.FileType{constants.Ext3, constants.Ext4, constants.Ext2, constants.Xfs},
+			false,
+		},
+	}
+
+	for _, c := range testCases {
+		expected := IsContain(c.target, c.list)
+		assert.Equal(t, c.expected, expected)
+	}
 }
 
 func TestMain(m *testing.M) {

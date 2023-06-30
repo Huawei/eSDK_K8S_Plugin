@@ -777,7 +777,7 @@ spec:
             - "--log-file-dir={{ ((.Values.csiDriver).controllerLogging).fileDir | default "/var/log/huawei" }}"
             - "--log-file-size={{ ((.Values.csiDriver).controllerLogging).fileSize | default "20M" }}"
             - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
-            - "--web-hook-port={{ int .Values.controller.webhookPort | default 443 }}"
+            - "--web-hook-port={{ int .Values.controller.webhookPort | default 4433 }}"
             {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
             - "--enable-leader-election=true"
             {{ else }}
@@ -793,12 +793,10 @@ spec:
             - "--leader-retry-period={{ .Values.leaderElection.retryPeriod }}"
             {{ end }}
           ports:
-            - containerPort: {{ int ((.Values.volumeService).storageBackendController).webhookPort | default 443 }}
+            - containerPort: {{ int .Values.controller.webhookPort | default 4433 }}
           volumeMounts:
             - mountPath: /var/log
               name: log
-            - mountPath: /etc/localtime
-              name: host-time
         - name: storage-backend-sidecar
           image: {{ required "Must provide the .Values.images.storageBackendSidecar" .Values.images.storageBackendSidecar }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
@@ -836,8 +834,6 @@ spec:
               name: socket-dir
             - mountPath: /var/log
               name: log
-            - mountPath: /etc/localtime
-              name: host-time
         - name: huawei-csi-driver
           image: {{ required "Must provide the CSI controller service container image." .Values.images.huaweiCSIService }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
@@ -889,10 +885,6 @@ spec:
             path: /var/log/
             type: Directory
           name: log
-        - hostPath:
-            path: /etc/localtime
-            type: File
-          name: host-time
 
 ---
 apiVersion: v1
@@ -908,5 +900,5 @@ spec:
   ports:
     - name: storage-backend-controller
       protocol: TCP
-      port: {{ int .Values.controller.webhookPort | default 443 }}
-      targetPort: {{ int .Values.controller.webhookPort | default 443 }}
+      port: {{ int .Values.controller.webhookPort | default 4433 }}
+      targetPort: {{ int .Values.controller.webhookPort | default 4433 }}

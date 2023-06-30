@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/prashantv/gostub"
+
+	"huawei-csi-driver/csi/app"
+	cfg "huawei-csi-driver/csi/app/config"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -96,6 +100,9 @@ func TestGetConnector(t *testing.T) {
 func TestMain(m *testing.M) {
 	log.MockInitLogging(logName)
 	defer log.MockStopLogging(logName)
+
+	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer getGlobalConfig.Reset()
 
 	m.Run()
 }

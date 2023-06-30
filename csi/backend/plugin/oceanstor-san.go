@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -141,7 +141,8 @@ func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
 	return volObl, nil
 }
 
-func (p *OceanstorSanPlugin) QueryVolume(ctx context.Context, name string) (utils.Volume, error) {
+func (p *OceanstorSanPlugin) QueryVolume(ctx context.Context, name string, params map[string]interface{}) (
+	utils.Volume, error) {
 	san := p.getSanObj()
 	return san.Query(ctx, name)
 }
@@ -163,12 +164,23 @@ func (p *OceanstorSanPlugin) ExpandVolume(ctx context.Context, name string, size
 	return isAttach, err
 }
 
-func (p *OceanstorSanPlugin) isHyperMetro(lun map[string]interface{}) bool {
-	var rss map[string]string
-	rssStr := lun["HASRSSOBJECT"].(string)
-	json.Unmarshal([]byte(rssStr), &rss)
+func (p *OceanstorSanPlugin) isHyperMetro(ctx context.Context, lun map[string]interface{}) bool {
+	rssStr, ok := lun["HASRSSOBJECT"].(string)
+	if !ok {
+		log.AddContext(ctx).Errorf("get lun HASRSSOBJECT failed, lun[\"HASRSSOBJECT\"]:%v", lun["HASRSSOBJECT"])
+		return false
+	}
 
-	return rss["HyperMetro"] == "TRUE"
+	var rss map[string]string
+	if err := json.Unmarshal([]byte(rssStr), &rss); err != nil {
+		log.AddContext(ctx).Errorf("unmarshal lun HASRSSOBJECT failed, lun[\"HASRSSOBJECT\"]:%s", rssStr)
+		return false
+	}
+
+	if hyperMetro, ok := rss["HyperMetro"]; ok && hyperMetro == "TRUE" {
+		return true
+	}
+	return false
 }
 
 func (p *OceanstorSanPlugin) metroHandler(ctx context.Context, req handlerRequest) ([]reflect.Value, error) {
@@ -222,7 +234,7 @@ func (p *OceanstorSanPlugin) handler(ctx context.Context, req handlerRequest) ([
 	var out []reflect.Value
 	var err error
 
-	if !p.isHyperMetro(req.lun) {
+	if !p.isHyperMetro(ctx, req.lun) {
 		return p.commonHandler(ctx, p, req.lun, req.parameters, req.method)
 	}
 
@@ -258,6 +270,9 @@ func (p *OceanstorSanPlugin) AttachVolume(ctx context.Context, name string,
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)
 		return nil, err
+	}
+	if lun == nil {
+		return nil, utils.Errorf(ctx, "Get empty lun info, lunName: %v", lunName)
 	}
 
 	var out []reflect.Value
@@ -416,8 +431,7 @@ func (p *OceanstorSanPlugin) getClient(ctx context.Context) (client.BaseClientIn
 	return cli, metroCli, nil
 }
 
-func (p *OceanstorSanPlugin) getLunInfo(ctx context.Context,
-	localCli, remoteCli client.BaseClientInterface,
+func (p *OceanstorSanPlugin) getLunInfo(ctx context.Context, localCli, remoteCli client.BaseClientInterface,
 	lunName string) (map[string]interface{}, error) {
 	var lun map[string]interface{}
 	var err error
@@ -477,8 +491,7 @@ func (p *OceanstorSanPlugin) Validate(ctx context.Context, param map[string]inte
 	}
 
 	// Login verification
-	cli := client.NewClient(clientConfig.Urls, clientConfig.User, clientConfig.SecretName,
-		clientConfig.SecretNamespace, clientConfig.VstoreName, clientConfig.ParallelNum, clientConfig.BackendID)
+	cli := client.NewClient(clientConfig)
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err
@@ -520,4 +533,12 @@ func (p *OceanstorSanPlugin) verifyOceanstorSanParam(ctx context.Context, config
 	}
 
 	return nil
+}
+
+func (p *OceanstorSanPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
+	return errors.New("not implement")
+}
+
+func (p *OceanstorSanPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
+	return false, errors.New("not implement")
 }

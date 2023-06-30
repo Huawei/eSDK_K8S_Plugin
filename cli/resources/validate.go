@@ -69,10 +69,6 @@ func (b *ValidatorBuilder) ValidateSelector() *ValidatorBuilder {
 		b.errs = append(b.errs, fmt.Errorf("resources were provided, but no name or selector was specified"))
 	}
 
-	if !b.resource.selectAll && len(b.resource.names) > 1 {
-		return b.ValidateNameIsSingle()
-	}
-
 	return b
 }
 

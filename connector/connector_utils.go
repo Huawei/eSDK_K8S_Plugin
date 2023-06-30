@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -45,6 +46,10 @@ const (
 	UseUltraPath
 	// UseUltraPathNVMe means the device use huawei-UltraPath-NVMe service
 	UseUltraPathNVMe
+	// How many times to retry for a consistent read of /proc/mounts.
+	maxListTries = 10
+	// Location of the mount file to use
+	procMountsPath = "/proc/mounts"
 )
 
 var (
@@ -437,12 +442,12 @@ func WatchDMDevice(ctx context.Context, lunWWN string, expectPathNumber int) (DM
 		case <-timeout:
 			return dm, err
 		default:
-			<-time.After(100 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 		}
 
 		dm, err = findDMDeviceByWWN(ctx, lunWWN)
 		if err == nil {
-			if len(dm.Devices) == expectPathNumber {
+			if !app.GetGlobalConfig().AllPathOnline || len(dm.Devices) == expectPathNumber {
 				return dm, nil
 			}
 			log.AddContext(ctx).Warningf("Querying DM Disk Path Information. "+
@@ -529,7 +534,11 @@ func getSCSIWwnByScsiID(ctx context.Context, hostDevice string) (string, error) 
 	priorityCmd := fmt.Sprintf("/usr/lib/udev/scsi_id --page 0x83 --whitelisted %s", hostDevice)
 	output, err := utils.ExecShellCmd(ctx, priorityCmd)
 	if err != nil {
-		if strings.Contains(strings.ToLower(output), "no such file or directory") {
+		// /bin/sh echo "not found"
+		// /bin/bash echo "no such file or directory"
+		lowerOutput := strings.ToLower(output)
+		if strings.Contains(lowerOutput, "no such file or directory") ||
+			strings.Contains(lowerOutput, "not found") {
 			alternateCmd := fmt.Sprintf("/lib/udev/scsi_id --page 0x83 --whitelisted %s", hostDevice)
 			output, err = utils.ExecShellCmd(ctx, alternateCmd)
 		}
@@ -1834,7 +1843,7 @@ func getDevicePathRefs(device string, mountMap map[string]string) []string {
 // ReadMountPoints read mount file
 // mountMap[mountPath] = devicePath
 func ReadMountPoints(ctx context.Context) (map[string]string, error) {
-	data, err := ioutil.ReadFile("/proc/mounts")
+	data, err := ConsistentRead(procMountsPath, maxListTries)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Read the mount file error: %v", err)
 		return nil, err
@@ -1850,6 +1859,38 @@ func ReadMountPoints(ctx context.Context) (map[string]string, error) {
 		}
 	}
 	return mountMap, nil
+}
+
+// ConsistentRead repeatedly reads a file until it gets the same content twice.
+// This is useful when reading files in /proc/mount that are larger than page size
+// and kernel may modify them between individual read() syscalls
+func ConsistentRead(filename string, attempts int) ([]byte, error) {
+	oldContent, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < attempts; i++ {
+		newContent, err := ioutil.ReadFile(filename)
+		if err != nil {
+			return nil, err
+		}
+		if bytes.Equal(oldContent, newContent) {
+			return newContent, nil
+		}
+		// Files are different, continue reading
+		oldContent = newContent
+	}
+	return nil, fmt.Errorf("could not get consistent content of %s after %d attempts", filename, attempts)
+}
+
+// MountPathIsExist if mount point exist in /proc/mounts file, this function will return true
+func MountPathIsExist(ctx context.Context, mountPoint string) (bool, error) {
+	mountMap, err := ReadMountPoints(ctx)
+	if err != nil {
+		return false, err
+	}
+	_, ok := mountMap[mountPoint]
+	return ok, nil
 }
 
 func removeWwnType(wwn string) string {

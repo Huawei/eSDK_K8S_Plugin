@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,7 +28,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"huawei-csi-driver/cli/helper"
 	"huawei-csi-driver/csi/backend"
+	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -39,6 +41,10 @@ const (
 	FileSystem = "FileSystem"
 
 	maxDescriptionLength = 255
+
+	volumeTypeDTree      = "dtree"
+	volumeTypeFileSystem = "fs"
+	volumeTypeLun        = "lun"
 )
 
 var (
@@ -95,7 +101,7 @@ func processNFSProtocol(ctx context.Context, req *csi.CreateVolumeRequest,
 
 func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest, b *backend.Backend) (
 	bool, error) {
-	if b.Storage == "fusionstorage-nas" || b.Storage == "oceanstor-nas" {
+	if b.Storage == "fusionstorage-nas" || b.Storage == "oceanstor-nas" || b.Storage == "oceanstor-dtree" {
 		log.AddContext(ctx).Debugf("Storage is [%s], support expand volume.", b.Storage)
 		return true, nil
 	}
@@ -122,7 +128,7 @@ func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeR
 func validateModeAndType(req *csi.CreateVolumeRequest, parameters map[string]interface{}) string {
 	// validate volumeMode and volumeType
 	volumeCapabilities := req.GetVolumeCapabilities()
-	if volumeCapabilities == nil {
+	if len(volumeCapabilities) == 0 {
 		return "Volume Capabilities missing in request"
 	}
 
@@ -134,19 +140,27 @@ func validateModeAndType(req *csi.CreateVolumeRequest, parameters map[string]int
 		} else {
 			volumeMode = FileSystem
 		}
-
 		if mode.GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
 			accessMode = RWX
 		}
 	}
 
-	if volumeMode == Block && parameters["volumeType"] == "fs" {
-		return "VolumeMode is block but volumeType is fs. Please check the storage class"
+	if volumeMode == Block &&
+		(parameters["volumeType"] == volumeTypeFileSystem || parameters["volumeType"] == volumeTypeDTree) {
+		return fmt.Sprintf("VolumeMode is block but volumeType is %s. Please check the storage class",
+			parameters["volumeType"])
 	}
 
-	if accessMode == RWX && volumeMode == FileSystem && parameters["volumeType"] == "lun" {
+	if accessMode == RWX && volumeMode == FileSystem && parameters["volumeType"] == volumeTypeLun {
 		return "If volumeType in the sc.yaml file is set to \"lun\" and volumeMode in the pvc.yaml file is " +
 			"set to \"Filesystem\", accessModes in the pvc.yaml file cannot be set to \"ReadWriteMany\"."
+	}
+
+	fsType := utils.ToStringSafe(parameters["fsType"])
+	if fsType != "" && !utils.IsContain(constants.FileType(fsType), []constants.FileType{constants.Ext2,
+		constants.Ext3, constants.Ext4, constants.Xfs}) {
+		return fmt.Sprintf("fsType %v is not correct, [%v, %v, %v, %v] are support."+
+			" Please check the storage class ", fsType, constants.Ext2, constants.Ext3, constants.Ext4, constants.Xfs)
 	}
 
 	return ""
@@ -189,25 +203,28 @@ func processAccessibilityRequirements(ctx context.Context, req *csi.CreateVolume
 
 func processVolumeContentSource(ctx context.Context, req *csi.CreateVolumeRequest,
 	parameters map[string]interface{}) error {
+
 	contentSource := req.GetVolumeContentSource()
-	if contentSource != nil {
-		if contentSnapshot := contentSource.GetSnapshot(); contentSnapshot != nil {
-			sourceSnapshotId := contentSnapshot.GetSnapshotId()
-			sourceBackendName, snapshotParentId, sourceSnapshotName := utils.SplitSnapshotId(sourceSnapshotId)
-			parameters["sourceSnapshotName"] = sourceSnapshotName
-			parameters["snapshotParentId"] = snapshotParentId
-			parameters["backend"] = sourceBackendName
-			log.AddContext(ctx).Infof("Start to create volume from snapshot %s", sourceSnapshotName)
-		} else if contentVolume := contentSource.GetVolume(); contentVolume != nil {
-			sourceVolumeId := contentVolume.GetVolumeId()
-			sourceBackendName, sourceVolumeName := utils.SplitVolumeId(sourceVolumeId)
-			parameters["sourceVolumeName"] = sourceVolumeName
-			parameters["backend"] = sourceBackendName
-			log.AddContext(ctx).Infof("Start to create volume from volume %s", sourceVolumeName)
-		} else {
-			log.AddContext(ctx).Errorf("The source %s is not snapshot either volume", contentSource)
-			return status.Error(codes.InvalidArgument, "no source ID provided is invalid")
-		}
+	if contentSource == nil {
+		return nil
+	}
+
+	if contentSnapshot := contentSource.GetSnapshot(); contentSnapshot != nil {
+		sourceSnapshotId := contentSnapshot.GetSnapshotId()
+		sourceBackendName, snapshotParentId, sourceSnapshotName := utils.SplitSnapshotId(sourceSnapshotId)
+		parameters["sourceSnapshotName"] = sourceSnapshotName
+		parameters["snapshotParentId"] = snapshotParentId
+		parameters["backend"] = sourceBackendName
+		log.AddContext(ctx).Infof("Start to create volume from snapshot %s", sourceSnapshotName)
+	} else if contentVolume := contentSource.GetVolume(); contentVolume != nil {
+		sourceVolumeId := contentVolume.GetVolumeId()
+		sourceBackendName, sourceVolumeName := utils.SplitVolumeId(sourceVolumeId)
+		parameters["sourceVolumeName"] = sourceVolumeName
+		parameters["backend"] = sourceBackendName
+		log.AddContext(ctx).Infof("Start to create volume from volume %s", sourceVolumeName)
+	} else {
+		log.AddContext(ctx).Errorf("The source [%+v] is not snapshot either volume", contentSource)
+		return status.Error(codes.InvalidArgument, "the source ID provided by user is invalid")
 	}
 
 	return nil
@@ -230,9 +247,10 @@ func getAccessibleTopologies(ctx context.Context, req *csi.CreateVolumeRequest,
 
 func getAttributes(req *csi.CreateVolumeRequest, vol utils.Volume, backendName string) map[string]string {
 	attributes := map[string]string{
-		"backend":      backendName,
-		"name":         vol.GetVolumeName(),
-		"fsPermission": req.Parameters["fsPermission"],
+		"backend":         backendName,
+		"name":            vol.GetVolumeName(),
+		"fsPermission":    req.Parameters["fsPermission"],
+		"dTreeParentName": vol.GetDTreeParentName(),
 	}
 
 	if lunWWN, err := vol.GetLunWWN(); err == nil {
@@ -368,21 +386,25 @@ func checkCreateVolumeRequest(ctx context.Context, req *csi.CreateVolumeRequest)
 func processCreateVolumeParameters(ctx context.Context, req *csi.CreateVolumeRequest) (map[string]interface{}, error) {
 	parameters := utils.CopyMap(req.GetParameters())
 
-	size := req.GetCapacityRange().RequiredBytes
-	parameters["size"] = size
+	parameters["size"] = req.GetCapacityRange().RequiredBytes
+
+	backendName, exist := parameters["backend"].(string)
+	if exist {
+		parameters["backend"] = helper.GetBackendName(backendName)
+	}
 
 	cloneFrom, exist := parameters["cloneFrom"].(string)
 	if exist && cloneFrom != "" {
 		parameters["backend"], parameters["cloneFrom"] = utils.SplitVolumeId(cloneFrom)
 	}
 
-	// process volume content source. snapshot or clone
+	// process volume content source, snapshot or clone
 	err := processVolumeContentSource(ctx, req, parameters)
 	if err != nil {
 		return parameters, err
 	}
 
-	// process accessibility requirements. Topology
+	// process accessibility requirements, topology
 	processAccessibilityRequirements(ctx, req, parameters)
 
 	err = processNFSProtocol(ctx, req, parameters)
@@ -466,7 +488,7 @@ func (d *Driver) manageVolume(ctx context.Context, req *csi.CreateVolumeRequest,
 		return nil, err
 	}
 
-	vol, err := selectBackend.Plugin.QueryVolume(ctx, volumeName)
+	vol, err := selectBackend.Plugin.QueryVolume(ctx, volumeName, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Query volume %s error: %v", req.GetName(), err)
 		return nil, status.Error(codes.Internal, err.Error())

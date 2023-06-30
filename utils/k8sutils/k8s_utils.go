@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -166,6 +166,10 @@ func (k *KubeClient) GetVolume(ctx context.Context, nodeName string, driverName 
 	// aggregate all volume information
 	for claimName := range pvcList {
 		pvcInfo := strings.Split(claimName, "@")
+		if len(pvcInfo) <= 1 {
+			log.AddContext(ctx).Errorf("The length of pvcInfo: [%d] is less than 2", len(pvcInfo))
+			continue
+		}
 		go func(claimName string, namespace string,
 			volChan chan<- *corev1.PersistentVolume,
 			errorChan chan<- error) {

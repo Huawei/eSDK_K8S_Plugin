@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -47,8 +47,8 @@ func DeleteContent(ctx context.Context, client clientSet.Interface, contentName 
 func GetContent(ctx context.Context, client clientSet.Interface, contentName string) (
 	*xuanwuv1.StorageBackendContent, error) {
 
-	log.AddContext(ctx).Infof("Start to get content with content %s.", contentName)
-	defer log.AddContext(ctx).Infof("Finished get content with content %s.", contentName)
+	log.AddContext(ctx).Debugf("Start to get content with content %s.", contentName)
+	defer log.AddContext(ctx).Debugf("Finished get content with content %s.", contentName)
 
 	return client.XuanwuV1().StorageBackendContents().Get(ctx, contentName, metav1.GetOptions{})
 }
@@ -79,6 +79,6 @@ func UpdateContentStatus(ctx context.Context, client clientSet.Interface, conten
 func ListContent(ctx context.Context, client clientSet.Interface) (*xuanwuv1.StorageBackendContentList, error) {
 	log.AddContext(ctx).Infoln("Start to list contents.")
 	defer log.AddContext(ctx).Infoln("Finished list contents.")
-	
+
 	return client.XuanwuV1().StorageBackendContents().List(ctx, metav1.ListOptions{})
 }

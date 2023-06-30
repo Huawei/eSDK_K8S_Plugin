@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -1767,13 +1767,15 @@ func TestMain(m *testing.M) {
 	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
 	defer getGlobalConfig.Reset()
 
-	testClient = NewClient([]string{"https://127.0.0.1:8088"},
-		"dev-account",
-		"mock-sec-name",
-		"mock-sec-namespace",
-		"dev-vStore",
-		"",
-		"mock-backend-id")
+	testClient = NewClient(&NewClientConfig{
+		Urls:            []string{"https://127.0.0.1:8088"},
+		User:            "dev-account",
+		SecretName:      "mock-sec-name",
+		SecretNamespace: "mock-sec-namespace",
+		ParallelNum:     "",
+		BackendID:       "mock-backend-id",
+		VstoreName:      "dev-vStore",
+	})
 
 	m.Run()
 }

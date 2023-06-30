@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,69 +38,43 @@ const (
 type OceanstorPlugin struct {
 	basePlugin
 
+	vStoreId string
+
 	cli          client.BaseClientInterface
 	product      string
 	capabilities map[string]interface{}
 }
 
 func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) error {
-	configUrls, exist := config["urls"].([]interface{})
-	if !exist || len(configUrls) <= 0 {
-		return errors.New("urls must be provided")
-	}
-
-	var urls []string
-	for _, i := range configUrls {
-		urls = append(urls, i.(string))
-	}
-
-	user, exist := config["user"].(string)
-	if !exist {
-		return errors.New("user must be provided")
-	}
-
-	secretName, exist := config["secretName"].(string)
-	if !exist {
-		return errors.New("SecretName must be provided")
-	}
-
-	secretNamespace, exist := config["secretNamespace"].(string)
-	if !exist {
-		return errors.New("SecretNamespace must be provided")
-	}
-
-	backendID, exist := config["backendID"].(string)
-	if !exist {
-		return errors.New("backendID must be provided")
-	}
-
-	vstoreName, _ := config["vstoreName"].(string)
-	parallelNum, _ := config["maxClientThreads"].(string)
-
-	cli := client.NewClient(urls, user, secretName, secretNamespace, vstoreName, parallelNum, backendID)
-	err := cli.Login(context.Background())
+	backendClientConfig, err := p.formatInitParam(config)
 	if err != nil {
+		return err
+	}
+
+	cli := client.NewClient(backendClientConfig)
+	err = cli.Login(context.Background())
+	if err != nil {
+		log.Errorf("plugin init login failed, err: %v", err)
 		return err
 	}
 
 	system, err := cli.GetSystem(context.Background())
 	if err != nil {
-		log.Errorf("Get system info error: %v", err)
+		log.Errorf("get system info error: %v", err)
 		return err
 	}
 
 	p.product, err = utils.GetProductVersion(system)
 	if err != nil {
-		log.Errorf("Get product version error: %v", err)
+		log.Errorf("get product version error: %v", err)
 		return err
 	}
-
 	if !keepLogin {
 		cli.Logout(context.Background())
 	}
 
 	if p.product == utils.OceanStorDoradoV6 {
-		clientV6 := clientv6.NewClientV6(urls, user, secretName, secretNamespace, vstoreName, parallelNum, backendID)
+		clientV6 := clientv6.NewClientV6(backendClientConfig)
 		cli.Logout(context.Background())
 		err := p.switchClient(clientV6)
 		if err != nil {
@@ -109,8 +83,44 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 	} else {
 		p.cli = cli
 	}
-
+	p.vStoreId = cli.VStoreID
 	return nil
+}
+
+func (p *OceanstorPlugin) formatInitParam(config map[string]interface{}) (res *client.NewClientConfig, err error) {
+	res = &client.NewClientConfig{}
+
+	configUrls, exist := config["urls"].([]interface{})
+	if !exist || len(configUrls) <= 0 {
+		err = errors.New("urls must be provided")
+		return
+	}
+	for _, i := range configUrls {
+		res.Urls = append(res.Urls, i.(string))
+	}
+	res.User, exist = config["user"].(string)
+	if !exist {
+		err = errors.New("user must be provided")
+		return
+	}
+	res.SecretName, exist = config["secretName"].(string)
+	if !exist {
+		err = errors.New("SecretName must be provided")
+		return
+	}
+	res.SecretNamespace, exist = config["secretNamespace"].(string)
+	if !exist {
+		err = errors.New("SecretNamespace must be provided")
+		return
+	}
+	res.BackendID, exist = config["backendID"].(string)
+	if !exist {
+		err = errors.New("backendID must be provided")
+		return
+	}
+	res.VstoreName, _ = config["vstoreName"].(string)
+	res.ParallelNum, _ = config["maxClientThreads"].(string)
+	return
 }
 
 func (p *OceanstorPlugin) updateBackendCapabilities() (map[string]interface{}, error) {
@@ -191,18 +201,18 @@ func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, m
 
 func (p *OceanstorPlugin) getParams(ctx context.Context, name string,
 	parameters map[string]interface{}) map[string]interface{} {
-
 	params := map[string]interface{}{
 		"name":        name,
 		"description": parameters["description"].(string),
 		"capacity":    utils.RoundUpSize(parameters["size"].(int64), 512),
+		"vstoreId":    "0",
 	}
-
-	paramKeys := []string{
+	for _, key := range []string{
 		"storagepool",
 		"allocType",
 		"qos",
 		"authClient",
+		"backend",
 		"cloneFrom",
 		"cloneSpeed",
 		"metroDomain",
@@ -216,24 +226,21 @@ func (p *OceanstorPlugin) getParams(ctx context.Context, name string,
 		"fsPermission",
 		"snapshotDirectoryVisibility",
 		"reservedSnapshotSpaceRatio",
-	}
-
-	for _, key := range paramKeys {
+		"parentname",
+		"vstoreId",
+	} {
 		if v, exist := parameters[key]; exist && v != "" {
 			params[strings.ToLower(key)] = v
 		}
 	}
 
-	if v, exist := parameters["hyperMetro"].(string); exist && v != "" {
-		params["hypermetro"] = utils.StrToBool(ctx, v)
-	}
-
 	// Add new bool parameter here
 	for _, i := range []string{
 		"replication",
+		"hyperMetro",
 	} {
 		if v, exist := parameters[i].(string); exist && v != "" {
-			params[i] = utils.StrToBool(ctx, v)
+			params[strings.ToLower(i)] = utils.StrToBool(ctx, v)
 		}
 	}
 

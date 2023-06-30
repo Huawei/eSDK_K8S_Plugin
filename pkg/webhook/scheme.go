@@ -1,5 +1,5 @@
 /*
-Copyright (c) Huawei Technologies Co., Ltd. 2022-2022. All rights reserved.
+Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import (
 )
 
 var scheme = runtime.NewScheme()
+
 // Codecs means a code factory
 var Codecs = serializer.NewCodecFactory(scheme)
 

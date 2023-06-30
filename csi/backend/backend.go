@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -124,6 +124,16 @@ type CSIConfig struct {
 func analyzePools(backend *Backend, config map[string]interface{}) error {
 	var pools []*StoragePool
 
+	if backend.Storage == plugin.DTreeStorage {
+		pools = append(pools, &StoragePool{
+			Storage:      backend.Storage,
+			Name:         backend.Name,
+			Parent:       backend.Name,
+			Plugin:       backend.Plugin,
+			Capabilities: make(map[string]interface{}),
+		})
+	}
+
 	configPools, _ := config["pools"].([]interface{})
 	for _, i := range configPools {
 		name := i.(string)
@@ -152,7 +162,7 @@ func analyzePools(backend *Backend, config map[string]interface{}) error {
 
 func NewBackend(backendName string, config map[string]interface{}) (*Backend, error) {
 	// Verifying Common Parameters:
-	// - storage: oceanstor-san; oceanstor-nas; fusionstorage-san; fusionstorage-nas
+	// - storage: oceanstor-san; oceanstor-nas; oceanstor-dtree; fusionstorage-san; fusionstorage-nas;
 	// - parameters: must exist
 	// - supportedTopologies: must valid
 	// - hypermetro must valid
@@ -400,7 +410,7 @@ func selectRemotePool(ctx context.Context,
 		return nil, fmt.Errorf("select remote pool failed: %v", err)
 	}
 
-	if remotePools == nil {
+	if len(remotePools) == 0 {
 		return nil, nil
 	}
 	// weight the remote pool
@@ -513,6 +523,10 @@ func filterByVolumeType(ctx context.Context, volumeType string, candidatePools [
 			}
 		} else if volumeType == "fs" {
 			if pool.Storage == "oceanstor-nas" || pool.Storage == "oceanstor-9000" || pool.Storage == "fusionstorage-nas" {
+				filterPools = append(filterPools, pool)
+			}
+		} else if volumeType == "dtree" {
+			if pool.Storage == "oceanstor-dtree" {
 				filterPools = append(filterPools, pool)
 			}
 		}
@@ -842,11 +856,14 @@ func filterByNFSProtocol(ctx context.Context, nfsProtocol string, candidatePools
 
 	var filterPools []*StoragePool
 	for _, pool := range candidatePools {
-		if nfsProtocol == "nfs3" && pool.Capabilities["SupportNFS3"].(bool) {
+		if nfsProtocol == "nfs3" &&
+			pool.Capabilities["SupportNFS3"] != nil && pool.Capabilities["SupportNFS3"].(bool) {
 			filterPools = append(filterPools, pool)
-		} else if nfsProtocol == "nfs4" && pool.Capabilities["SupportNFS4"].(bool) {
+		} else if nfsProtocol == "nfs4" &&
+			pool.Capabilities["SupportNFS4"] != nil && pool.Capabilities["SupportNFS4"].(bool) {
 			filterPools = append(filterPools, pool)
-		} else if nfsProtocol == "nfs41" && pool.Capabilities["SupportNFS41"].(bool) {
+		} else if nfsProtocol == "nfs41" &&
+			pool.Capabilities["SupportNFS41"] != nil && pool.Capabilities["SupportNFS41"].(bool) {
 			filterPools = append(filterPools, pool)
 		}
 	}

@@ -2,6 +2,16 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
+## Changes since v4.0.0
+
+**Enhancements**
+
+- Support OpenShift 4.12
+- Support Debian 9 x86_64
+- Support EulerOS V2R9 X86_64
+- Support Kylin 7.6 x86_64
+- The number of path groups aggregated by DM-multipath can be configured
+
 ## Changes since v3.2.x
 
 **Enhancements**

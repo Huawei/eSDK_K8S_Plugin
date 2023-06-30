@@ -415,7 +415,7 @@ func TestNewManagerAndProtocolNotExist(t *testing.T) {
 
 // newManagerTest is a helper function called from multiple test cases
 func newManagerTest(t *testing.T, testCase testCaseStructForNewManager) {
-	getBackendConfig := gomonkey.ApplyFunc(getBackendConfig, func(ctx context.Context, backendName string) (*BackendConfig, error) {
+	getBackendConfig := gomonkey.ApplyFunc(GetBackendConfig, func(ctx context.Context, backendName string) (*BackendConfig, error) {
 		if backendName != "test_backend_name" {
 			return nil, errors.New("not found backend")
 		}

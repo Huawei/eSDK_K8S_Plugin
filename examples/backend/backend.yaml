@@ -11,5 +11,4 @@ parameters:
   protocol: <protocol>
   portals:
     - portal1
-    - portal2
 maxClientThreads: "30"

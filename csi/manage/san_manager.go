@@ -56,6 +56,11 @@ func NewSanManager(ctx context.Context, protocol string) (Manager, error) {
 
 // StageVolume stage volume
 func (m *SanManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) error {
+	if err := CheckParam(ctx, req); err != nil {
+		log.AddContext(ctx).Errorf("check san parameters filed, error: %v", err)
+		return err
+	}
+
 	parameters, err := BuildParameters(
 		WithProtocol(m.protocol),
 		WithConnector(m.Conn),
@@ -153,6 +158,11 @@ func (m *SanManager) UnStageWithWwn(ctx context.Context, wwn, volumeId string) e
 			"volumeId: %s, error: %v", volumeId, err)
 	}
 	return nil
+}
+
+// GetDTreeVolume use to get volume with type is dtree
+func (m *SanManager) GetDTreeVolume(ctx context.Context) (string, bool) {
+	return "", false
 }
 
 func getDeviceWwn(ctx context.Context, volumeId, targetPath string,

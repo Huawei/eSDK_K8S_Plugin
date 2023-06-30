@@ -45,8 +45,11 @@ type ResourceBuilder struct {
 	defaultNamespace bool
 
 	fileName string
+	fileType string
 
 	output string
+
+	notValidateName bool
 }
 
 // NewResourceBuilder initialize a ResourceBuilder instance
@@ -140,5 +143,14 @@ func (b *ResourceBuilder) Output(output string) *ResourceBuilder {
 // FileName instructs the builder to request file name.
 func (b *ResourceBuilder) FileName(fileName string) *ResourceBuilder {
 	b.fileName = fileName
+	return b
+}
+
+// FileType instructs the builder to request file type.
+func (b *ResourceBuilder) FileType(fileType string) *ResourceBuilder {
+	if fileType == "" {
+		fileType = config.DefaultInputFormat
+	}
+	b.fileType = fileType
 	return b
 }

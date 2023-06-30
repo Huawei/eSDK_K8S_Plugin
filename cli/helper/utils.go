@@ -17,25 +17,32 @@
 package helper
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
-	"strconv"
+	"os"
+	"reflect"
+	"regexp"
 	"strings"
 
+	"github.com/olekukonko/tablewriter"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"huawei-csi-driver/utils/log"
 )
 
+const BackendNameMaxLength = 63
+const BackendNameUidMaxLength = 5
+
+const dns1123LabelFmt = "[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+const dns1123SubdomainFmt = dns1123LabelFmt + "(" + dns1123LabelFmt + ")*"
+
+var dns1123SubdomainRegexp = regexp.MustCompile("^" + dns1123SubdomainFmt + "$")
+
 // LogErrorf write error log and return the error
 func LogErrorf(format string, err error) error {
 	log.Errorf(format, err)
 	return err
-}
-
-// PrintError used to print error to terminal
-func PrintError(err error) error {
-	fmt.Printf("%v", err)
-	return nil
 }
 
 // PrintlnError used to print error to terminal
@@ -51,21 +58,10 @@ func PrintResult(out string) {
 
 // PrintOperateResult used to print operate result to terminal
 // e.g. backend/backend-name created
-func PrintOperateResult(resourceNames []string, resourceType, operate string) {
+func PrintOperateResult(resourceType, operate string, resourceNames ...string) {
 	for _, name := range resourceNames {
 		fmt.Printf("%s/%s %s\n", resourceType, name, operate)
 	}
-}
-
-// ParseNumericString parse numeric string
-func ParseNumericString(v interface{}) string {
-	if strVal, ok := v.(string); !ok {
-		return strVal
-	}
-	if intVal, ok := v.(int); ok {
-		return strconv.Itoa(intVal)
-	}
-	return ""
 }
 
 // AppendUid append uid after the name
@@ -75,4 +71,168 @@ func AppendUid(name string, uidLen int) string {
 		uid = uid[:uidLen-1]
 	}
 	return name + "-" + uid
+}
+
+// PrintWithYaml print yaml
+func PrintWithYaml[T any](data []T) {
+	if len(data) == 0 {
+		return
+	}
+
+	marshal, err := StructToYAML(data)
+	if err != nil {
+		fmt.Printf("format to json failed: %v\n", err)
+	}
+	fmt.Println(string(marshal))
+}
+
+// PrintWithJson print json
+func PrintWithJson[T any](data []T) {
+	if len(data) == 0 {
+		return
+	}
+
+	marshal, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		fmt.Printf("format to json failed: %v\n", err)
+		return
+	}
+	fmt.Println(string(marshal))
+}
+
+// PrintWithTable print table
+func PrintWithTable[T any](data []T) {
+	if len(data) == 0 {
+		return
+	}
+
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetAlignment(tablewriter.ALIGN_CENTER)
+	table.SetRowLine(true)
+	table.SetHeader(ReadHeader(data[0]))
+	for _, row := range data {
+		table.Append(ReadRow(row))
+	}
+	table.Render()
+}
+
+// PrintBackend print backend
+func PrintBackend[T any](t []T, notFound []string, printFunc func(t []T)) {
+	printFunc(t)
+	PrintNotFoundBackend(notFound...)
+}
+
+// PrintNotFoundBackend print not found backend
+func PrintNotFoundBackend(names ...string) {
+	for _, name := range names {
+		fmt.Printf("Error from server (NotFound): backend \"%s\" not found\n", name)
+	}
+}
+
+// PrintNoResourceBackend print not found backend
+func PrintNoResourceBackend(namespace string) {
+	fmt.Printf("No backends found in %s namespace\n", namespace)
+}
+
+// GetPrintFunc get print function by format type
+func GetPrintFunc[T any](format string) func(t []T) {
+	switch format {
+	case "json":
+		return PrintWithJson[T]
+	case "yaml":
+		return PrintWithYaml[T]
+	default:
+		return PrintWithTable[T]
+	}
+}
+
+// ReadHeader read struct tag name
+// T is a struct
+func ReadHeader[T any](t T) []string {
+	return ReadStruct(t, func(field reflect.StructField, value reflect.Value) (string, bool) {
+		showName, ok := field.Tag.Lookup("show")
+		return showName, ok
+	})
+}
+
+// ReadRow read struct filed value
+// T is a struct
+func ReadRow[T any](t T) []string {
+	return ReadStruct(t, func(field reflect.StructField, value reflect.Value) (string, bool) {
+		if showName, ok := field.Tag.Lookup("show"); !ok {
+			return showName, ok
+		}
+
+		result, ok := value.Interface().(string)
+		return result, ok
+	})
+}
+
+// ReadStruct read struct
+// T is a struct
+// readFunc is a read struct func, e.g. read struct filed value
+func ReadStruct[T any, O any](t T, readFunc func(field reflect.StructField, value reflect.Value) (O, bool)) []O {
+	var result []O
+	filedType := reflect.TypeOf(t)
+	filedValue := reflect.ValueOf(t)
+	for i := 0; i < filedType.NumField(); i++ {
+		if item, ok := readFunc(filedType.Field(i), filedValue.Field(i)); ok {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+// MapTo  Returns an array consisting of the results of applying the given function to the elements of this list.
+func MapTo[I any, O any](list []I, consumer func(I) O) []O {
+	var result []O
+	for _, item := range list {
+		result = append(result, consumer(item))
+	}
+	return result
+}
+
+// IsDNSFormat Determine if the DNS format is met
+func IsDNSFormat(source string) bool {
+	if len(source) > BackendNameMaxLength {
+		return false
+	}
+	return dns1123SubdomainRegexp.MatchString(source)
+}
+
+// GenerateHashCode generate hash code
+func GenerateHashCode(txt string, max int) string {
+	hashInstance := sha256.New()
+	hashInstance.Write([]byte(txt))
+	sum := hashInstance.Sum(nil)
+	result := fmt.Sprintf("%x", sum)
+	if len(result) < max {
+		return result
+	}
+	return result[:max]
+}
+
+// BuildBackendName build backend name
+func BuildBackendName(name string) string {
+	nameLen := BackendNameMaxLength - BackendNameUidMaxLength - 1
+	if len(name) > nameLen {
+		name = name[:nameLen]
+	}
+	hashCode := GenerateHashCode(name, BackendNameUidMaxLength)
+	mappingName := BackendNameMapping(name)
+	return fmt.Sprintf("%s-%s", mappingName, hashCode)
+}
+
+// BackendNameMapping mapping backend name
+func BackendNameMapping(name string) string {
+	removeUnderline := strings.ReplaceAll(name, "_", "-")
+	removePoint := strings.ReplaceAll(removeUnderline, ".", "-")
+	return strings.ToLower(removePoint)
+}
+
+func GetBackendName(name string) string {
+	if IsDNSFormat(name) {
+		return name
+	}
+	return BuildBackendName(name)
 }

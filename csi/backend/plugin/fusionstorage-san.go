@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -129,17 +129,18 @@ func (p *FusionStorageSanPlugin) getParams(name string,
 	return params, nil
 }
 
-func (p *FusionStorageSanPlugin) CreateVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) (utils.Volume, error) {
+func (p *FusionStorageSanPlugin) CreateVolume(ctx context.Context, name string, parameters map[string]interface{}) (
+	utils.Volume, error) {
+
 	size, ok := parameters["size"].(int64)
 	// for fusionStorage block, the unit is MiB
 	if !ok || !utils.IsCapacityAvailable(size, CAPACITY_UNIT) {
-		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of %d.",
+		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer or not multiple of %d.",
 			size, CAPACITY_UNIT)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
+
 	params, err := p.getParams(name, parameters)
 	if err != nil {
 		return nil, err
@@ -154,7 +155,8 @@ func (p *FusionStorageSanPlugin) CreateVolume(ctx context.Context,
 	return volObj, nil
 }
 
-func (p *FusionStorageSanPlugin) QueryVolume(ctx context.Context, name string) (utils.Volume, error) {
+func (p *FusionStorageSanPlugin) QueryVolume(ctx context.Context, name string, params map[string]interface{}) (
+	utils.Volume, error) {
 	san := volume.NewSAN(p.cli)
 	return san.Query(ctx, name)
 }
@@ -331,4 +333,12 @@ func (p *FusionStorageSanPlugin) verifyFusionStorageSanParam(ctx context.Context
 	}
 
 	return nil
+}
+
+func (p *FusionStorageSanPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
+	return errors.New("not implement")
+}
+
+func (p *FusionStorageSanPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
+	return false, errors.New("not implement")
 }

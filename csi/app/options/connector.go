@@ -44,6 +44,7 @@ type connectorOptions struct {
 	deviceCleanupTimeout int
 	scanVolumeTimeout    int
 	connectorThreads     int
+	allPathOnline        bool
 }
 
 // NewConnectorOptions returns connector configurations
@@ -55,6 +56,7 @@ func NewConnectorOptions() *connectorOptions {
 		deviceCleanupTimeout: defaultCleanupTimeout,
 		scanVolumeTimeout:    defaultScanVolumeTimeout,
 		connectorThreads:     defaultConnectorThreads,
+		allPathOnline:        false,
 	}
 }
 
@@ -78,6 +80,9 @@ func (opt *connectorOptions) AddFlags(ff *flag.FlagSet) {
 	ff.IntVar(&opt.connectorThreads, "connector-threads",
 		4,
 		"The concurrency supported during disk operations.")
+	ff.BoolVar(&opt.allPathOnline, "all-path-online",
+		false,
+		"Whether to check the number of online paths for DM-multipath aggregation, default false")
 }
 
 // ApplyFlags assign the connector flags
@@ -88,6 +93,7 @@ func (opt *connectorOptions) ApplyFlags(cfg *config.Config) {
 	cfg.DeviceCleanupTimeout = opt.deviceCleanupTimeout
 	cfg.ScanVolumeTimeout = opt.scanVolumeTimeout
 	cfg.ConnectorThreads = opt.connectorThreads
+	cfg.AllPathOnline = opt.allPathOnline
 }
 
 // ValidateFlags validate the connector flags

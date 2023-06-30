@@ -22,7 +22,7 @@ import (
 
 const (
 	//CliVersion oceanctl version
-	CliVersion = "v4.0.0"
+	CliVersion = "v4.1.0"
 
 	// DefaultMaxClientThreads default max client threads
 	DefaultMaxClientThreads = "30"
@@ -32,6 +32,12 @@ const (
 
 	// DefaultNamespace default namespace
 	DefaultNamespace = "huawei-csi"
+
+	// DefaultProvisioner default driver name
+	DefaultProvisioner = "csi.huawei.com"
+
+	// DefaultInputFormat default input format
+	DefaultInputFormat = "yaml"
 )
 
 var (
@@ -49,11 +55,20 @@ var (
 	// FileName the value of filename flag, set by options.WithFilename().
 	FileName string
 
+	// FileType the value of input format flag, set by options.WithInputFileType().
+	FileType string
+
 	//DeleteAll the value of all flag, set by options.DeleteAll().
 	DeleteAll bool
 
 	// ChangePassword the value of password flag, set by options.WithPassword().
 	ChangePassword bool
+
+	// Provisioner the value of password flag, set by options.WithProvisioner().
+	Provisioner string
+
+	// NotValidateName the value of validate flag, set by options.WithNotValidateName
+	NotValidateName bool
 
 	// Client when the discoverOperating() function executes successfully, this field will be set.
 	Client client.KubernetesClient

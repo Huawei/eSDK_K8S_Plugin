@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2022. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,6 +34,10 @@ func (s *Semaphore) Acquire() {
 
 func (s *Semaphore) Release() {
 	<-s.channel
+}
+
+func (s *Semaphore) GetChannel() chan int {
+	return s.channel
 }
 
 func (s *Semaphore) AvailablePermits() int {
