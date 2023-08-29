@@ -1,0 +1,12 @@
+storage: "oceanstor-dtree"
+name: <BACKEND-NAME>
+namespace: <NAMESPACE>
+urls:
+  - "https://*.*.*.*:8088"
+  - "https://*.*.*.*:8088"
+parameters:
+  protocol: <protocol>
+  parentname: <parent-filesystem>
+  portals:
+    - portal1
+maxClientThreads: "30"
