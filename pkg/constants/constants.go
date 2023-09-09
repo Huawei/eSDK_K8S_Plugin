@@ -18,7 +18,7 @@ package constants
 type FileType string
 
 const (
-	ProviderVersion       = "4.1.0"
+	ProviderVersion       = "4.1.1"
 	ProviderVendorName    = "Huawei"
 	EndpointDirPermission = 0755
 

@@ -492,15 +492,15 @@ func (cli *BaseClient) setDataFromRespData(ctx context.Context, resp Response) e
 	}
 
 	vStoreName, exist := respData["vstoreName"].(string)
-	if !exist {
+	vStoreID, idExist := respData["vstoreId"].(string)
+	if !exist && !idExist {
 		log.AddContext(ctx).Infof("storage client login response vstoreName is empty, set it to default %s",
 			defaultVStore)
 		cli.VStoreName = defaultVStore
-	} else {
+	} else if exist {
 		cli.VStoreName = vStoreName
 	}
 
-	vStoreID, idExist := respData["vstoreId"].(string)
 	if !idExist {
 		log.AddContext(ctx).Infof("storage client login response vstoreID is empty, set it to default %s",
 			defaultVStoreID)

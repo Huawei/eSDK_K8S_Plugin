@@ -54,7 +54,7 @@ const (
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 
-	csiVersion      = "4.1.0"
+	csiVersion      = "4.1.1"
 	endpointDirPerm = 0755
 )
 

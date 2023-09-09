@@ -1,0 +1,10 @@
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: mysc
+provisioner: csi.huawei.com
+parameters:
+  backend: nfs_dtree
+  volumeType: dtree
+  allocType: thin
+  authClient: "*"

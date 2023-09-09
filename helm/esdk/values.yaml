@@ -1,8 +1,8 @@
 images:
   # Images provided by Huawei
-  huaweiCSIService: huawei-csi:4.1.0
-  storageBackendSidecar: storage-backend-sidecar:4.1.0
-  storageBackendController: storage-backend-controller:4.1.0
+  huaweiCSIService: huawei-csi:4.1.1
+  storageBackendSidecar: storage-backend-sidecar:4.1.1
+  storageBackendController: storage-backend-controller:4.1.1
 
   # CSI-related sidecar images provided by the Kubernetes community.
   # These must match the appropriate Kubernetes version.

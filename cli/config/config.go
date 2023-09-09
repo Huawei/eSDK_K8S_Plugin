@@ -22,7 +22,7 @@ import (
 
 const (
 	//CliVersion oceanctl version
-	CliVersion = "v4.1.0"
+	CliVersion = "v4.1.1"
 
 	// DefaultMaxClientThreads default max client threads
 	DefaultMaxClientThreads = "30"
