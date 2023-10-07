@@ -15,6 +15,10 @@
 
 package v1
 
+// ResourceTopologyListerExpansion allows custom methods to be added to
+// ResourceTopologyLister.
+type ResourceTopologyListerExpansion interface{}
+
 // StorageBackendClaimListerExpansion allows custom methods to be added to
 // StorageBackendClaimLister.
 type StorageBackendClaimListerExpansion interface{}

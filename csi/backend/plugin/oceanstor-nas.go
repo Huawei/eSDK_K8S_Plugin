@@ -28,10 +28,10 @@ import (
 )
 
 const (
-	HYPER_METRO_VSTORE_PAIR_ACTIVE                = "0"
-	HYPER_METRO_VSTORE_PAIR_LINK_STATUS_CONNECTED = "1"
-	HYPER_METRO_DOMAIN_ACTIVE                     = "1"
-	HYPER_METRO_DOMAIN_RUNNING_STATUS_NORMAL      = "0"
+	HyperMetroVstorePairActive              = "0"
+	HyperMetroVstorePairLinkStatusConnected = "1"
+	HyperMetroDomainActive                  = "1"
+	HyperMetroDomainRunningStatusNormal     = "0"
 
 	ConsistentSnapshotsSpecification = "128"
 )
@@ -73,7 +73,11 @@ func (p *OceanstorNasPlugin) Init(config, parameters map[string]interface{}, kee
 		return err
 	}
 
-	p.portal = portals[0].(string)
+	p.portal, exist = portals[0].(string)
+	if !exist {
+		return errors.New("portals must be string")
+	}
+
 	p.vStorePairID, exist = config["metrovStorePairID"].(string)
 	if exist {
 		log.Infof("The metro vStorePair ID is %s", p.vStorePairID)
@@ -152,12 +156,12 @@ func (p *OceanstorNasPlugin) UpdatePoolCapabilities(poolNames []string) (map[str
 	return p.updatePoolCapabilities(poolNames, "2")
 }
 
-func (p *OceanstorNasPlugin) UpdateReplicaRemotePlugin(remote Plugin) {
-	p.replicaRemotePlugin = remote.(*OceanstorNasPlugin)
-}
-
 func (p *OceanstorNasPlugin) UpdateMetroRemotePlugin(remote Plugin) {
-	p.metroRemotePlugin = remote.(*OceanstorNasPlugin)
+	var ok bool
+	p.metroRemotePlugin, ok = remote.(*OceanstorNasPlugin)
+	if !ok {
+		log.Warningf("convert metroRemotePlugin to OceanstorNasPlugin failed, data: %v", remote)
+	}
 }
 
 func (p *OceanstorNasPlugin) CreateSnapshot(ctx context.Context,
@@ -235,6 +239,7 @@ func (p *OceanstorNasPlugin) updateHyperMetroCapability(capabilities map[string]
 		return err
 	}
 
+	var ok bool
 	if p.product == "DoradoV6" && vStorePair != nil {
 		fsHyperMetroDomain, err := p.cli.GetFSHyperMetroDomain(context.Background(),
 			vStorePair["DOMAINNAME"].(string))
@@ -243,21 +248,24 @@ func (p *OceanstorNasPlugin) updateHyperMetroCapability(capabilities map[string]
 		}
 
 		if fsHyperMetroDomain == nil ||
-			fsHyperMetroDomain["RUNNINGSTATUS"] != HYPER_METRO_DOMAIN_RUNNING_STATUS_NORMAL {
+			fsHyperMetroDomain["RUNNINGSTATUS"] != HyperMetroDomainRunningStatusNormal {
 			capabilities["SupportMetro"] = false
 			return nil
 		}
 
 		p.nasHyperMetro = volume.NASHyperMetro{
-			FsHyperMetroActiveSite: fsHyperMetroDomain["CONFIGROLE"] == HYPER_METRO_DOMAIN_ACTIVE,
+			FsHyperMetroActiveSite: fsHyperMetroDomain["CONFIGROLE"] == HyperMetroDomainActive,
 			LocVStoreID:            vStorePair["LOCALVSTOREID"].(string),
 			RmtVStoreID:            vStorePair["REMOTEVSTOREID"].(string),
 		}
-		p.metroDomainID = vStorePair["DOMAINID"].(string)
+		p.metroDomainID, ok = vStorePair["DOMAINID"].(string)
+		if !ok {
+			return fmt.Errorf("convert DOMAINID: %v to string failed", vStorePair["DOMAINID"])
+		}
 	} else {
 		if vStorePair == nil ||
-			vStorePair["ACTIVEORPASSIVE"] != HYPER_METRO_VSTORE_PAIR_ACTIVE ||
-			vStorePair["LINKSTATUS"] != HYPER_METRO_VSTORE_PAIR_LINK_STATUS_CONNECTED ||
+			vStorePair["ACTIVEORPASSIVE"] != HyperMetroVstorePairActive ||
+			vStorePair["LINKSTATUS"] != HyperMetroVstorePairLinkStatusConnected ||
 			vStorePair["LOCALVSTORENAME"] != p.cli.GetvStoreName() {
 			capabilities["SupportMetro"] = false
 		}
@@ -374,7 +382,11 @@ func (p *OceanstorNasPlugin) Validate(ctx context.Context, param map[string]inte
 	}
 
 	// Login verification
-	cli := client.NewClient(clientConfig)
+	cli, err := client.NewClient(clientConfig)
+	if err != nil {
+		return err
+	}
+
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err

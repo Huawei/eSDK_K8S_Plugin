@@ -18,6 +18,7 @@ package attacher
 
 import (
 	"context"
+	"errors"
 
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
@@ -77,7 +78,10 @@ func (p *DoradoV6Attacher) ControllerAttach(ctx context.Context,
 		return nil, err
 	}
 
-	hostID := host["ID"].(string)
+	hostID, ok := host["ID"].(string)
+	if !ok {
+		return nil, errors.New("convert host[\"ID\"] to string failed")
+	}
 	hostAlua := utils.GetAlua(ctx, p.alua, host["NAME"].(string))
 
 	if hostAlua != nil && p.needUpdateHost(host, hostAlua) {

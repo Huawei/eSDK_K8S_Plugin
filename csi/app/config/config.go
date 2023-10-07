@@ -37,6 +37,7 @@ type loggingConfig struct {
 type serviceConfig struct {
 	Controller           bool
 	EnableLeaderElection bool
+	EnableLabel          bool
 
 	Endpoint         string
 	DrEndpoint       string
@@ -66,6 +67,7 @@ type connectorConfig struct {
 	ScanVolumeTimeout    int
 	ConnectorThreads     int
 	AllPathOnline        bool
+	ExecCommandTimeout   int
 }
 
 type k8sConfig struct {

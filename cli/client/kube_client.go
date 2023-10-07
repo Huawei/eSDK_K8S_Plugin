@@ -17,6 +17,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -124,4 +125,46 @@ func (k *KubernetesCLI) GetNameSpace() (string, error) {
 
 	namespace := serviceAccount.ObjectMeta.Namespace
 	return namespace, nil
+}
+
+// GetObject used to get the specified format data of the object with specified conditions and unmarshal to the data.
+func (k *KubernetesCLI) GetObject(ctx context.Context, objectType ObjectType, namespace, nodeName string,
+	outputType OutputType, data interface{}, objectName ...string) error {
+	return NewKubernetesCLIArgs(k.CLI()).
+		SelectObject(objectType, objectName...).
+		WithSpecifiedNamespace(namespace).
+		WithSpecifiedNode(nodeName).
+		WithOutPutFormat(outputType).
+		Get(ctx, &data)
+}
+
+// ExecCmdInSpecifiedContainer used to executes the specified command in the container with specified conditions.
+func (k *KubernetesCLI) ExecCmdInSpecifiedContainer(ctx context.Context, namespace, containerName, cmd string,
+	podName ...string) ([]byte, error) {
+	return NewKubernetesCLIArgs(k.CLI()).
+		SelectObject(Pod, podName...).
+		WithSpecifiedNamespace(namespace).
+		WithSpecifiedContainer(containerName).
+		Exec(ctx, cmd)
+}
+
+// CopyContainerFileToLocal used to copying a Local File to a Container with Specified Conditions
+func (k *KubernetesCLI) CopyContainerFileToLocal(ctx context.Context, namespace, containerName, src, dst string,
+	podName ...string) ([]byte, error) {
+	return NewKubernetesCLIArgs(k.CLI()).
+		SelectObject(Pod, podName...).
+		WithSpecifiedNamespace(namespace).
+		WithSpecifiedContainer(containerName).
+		Copy(ctx, src, dst, ContainerToLocal)
+}
+
+// GetConsoleLogs used to get the console logs of a specified container.
+func (k *KubernetesCLI) GetConsoleLogs(ctx context.Context, namespace, containerName string, isHistoryLogs bool,
+	podName ...string) ([]byte, error) {
+	return NewKubernetesCLIArgs(k.CLI()).
+		SelectObject(Pod, podName...).
+		WithSpecifiedNamespace(namespace).
+		WithSpecifiedContainer(containerName).
+		WithHistoryLogs(isHistoryLogs).
+		Logs(ctx)
 }

@@ -38,6 +38,15 @@ type StorageBackendClaimSpec struct {
 	// User defined parameter for extension
 	// +optional
 	Parameters map[string]string `json:"parameters,omitempty" protobuf:"bytes,8,opt,name=parameters"`
+
+	// UseCert is used to decide whether to use the certificate
+	// +kubebuilder:default=false
+	// +optional
+	UseCert bool `json:"useCert,omitempty" protobuf:"bytes,9,opt,name=useCert"`
+
+	// CertSecret is the name of the secret that holds the certificate
+	// +optional
+	CertSecret string `json:"certSecret,omitempty" protobuf:"bytes,9,opt,name=certSecret"`
 }
 
 // StorageBackendClaimStatus defines the observed state of StorageBackend
@@ -72,6 +81,12 @@ type StorageBackendClaimStatus struct {
 
 	// MetroBackend is the backend that form hyperMetro
 	MetroBackend string `json:"metroBackend,omitempty" protobuf:"bytes,2,opt,name=metroBackend"`
+
+	// UseCert is used to decide whether to use the certificate
+	UseCert bool `json:"useCert,omitempty" protobuf:"bytes,9,opt,name=useCert"`
+
+	// CertSecret is the name of the secret that holds the certificate
+	CertSecret string `json:"certSecret,omitempty" protobuf:"bytes,9,opt,name=certSecret"`
 }
 
 // StorageBackendPhase defines the phase of StorageBackend

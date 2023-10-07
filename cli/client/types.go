@@ -16,6 +16,8 @@
 
 package client
 
+import "context"
+
 // ResourceType Defines the resource type, e.g. secret, configmap...
 type ResourceType string
 
@@ -27,4 +29,13 @@ type KubernetesClient interface {
 	DeleteResourceByQualifiedNames(qualifiedNames []string, namespace string) (string, error)
 	GetResource(name []string, namespace, outputType string, resourceType ResourceType) ([]byte, error)
 	CheckResourceExist(name, namespace string, resourceType ResourceType) (bool, error)
+
+	GetObject(ctx context.Context, objectType ObjectType, namespace, nodeName string, outputType OutputType,
+		data interface{}, objectName ...string) error
+	ExecCmdInSpecifiedContainer(ctx context.Context, namespace, containerName, cmd string,
+		podName ...string) ([]byte, error)
+	CopyContainerFileToLocal(ctx context.Context, namespace, containerName, src, dst string,
+		podName ...string) ([]byte, error)
+	GetConsoleLogs(ctx context.Context, namespace, containerName string, isHistoryLogs bool,
+		podName ...string) ([]byte, error)
 }

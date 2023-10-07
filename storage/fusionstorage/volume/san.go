@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strconv"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/fusionstorage/client"
 	"huawei-csi-driver/storage/fusionstorage/smartx"
 	"huawei-csi-driver/utils"
@@ -58,7 +59,10 @@ func (p *SAN) getQoS(ctx context.Context, params map[string]interface{}) error {
 }
 
 func (p *SAN) preCreate(ctx context.Context, params map[string]interface{}) error {
-	name := params["name"].(string)
+	name, ok := params["name"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "convert sanName to string failed, data: %v", name)
+	}
 	params["name"] = utils.GetFusionStorageLunName(name)
 
 	if v, exist := params["storagepool"].(string); exist {
@@ -123,8 +127,10 @@ func (p *SAN) prepareVolObj(ctx context.Context, params, res map[string]interfac
 
 func (p *SAN) createLun(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	name := params["name"].(string)
-
+	name, ok := params["name"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert sanName to string failed, data: %v", params["name"])
+	}
 	vol, err := p.cli.GetVolumeByName(ctx, name)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get LUN %s error: %v", name, err)
@@ -152,8 +158,10 @@ func (p *SAN) createLun(ctx context.Context,
 }
 
 func (p *SAN) clone(ctx context.Context, params map[string]interface{}) error {
-	cloneFrom := params["clonefrom"].(string)
-
+	cloneFrom, ok := params["clonefrom"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "convert cloneFrom to string failed, data: %v", params["clonefrom"])
+	}
 	srcVol, err := p.cli.GetVolumeByName(ctx, cloneFrom)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get clone src vol %s error: %v", cloneFrom, err)
@@ -165,7 +173,10 @@ func (p *SAN) clone(ctx context.Context, params map[string]interface{}) error {
 		return errors.New(msg)
 	}
 
-	volCapacity := params["capacity"].(int64)
+	volCapacity, ok := params["capacity"].(int64)
+	if !ok {
+		log.AddContext(ctx).Warningf("convert volCapacity to int64 failed, data: %v", params["capacity"])
+	}
 	if volCapacity < int64(srcVol["volSize"].(float64)) {
 		msg := fmt.Sprintf("Clone vol capacity must be >= src %s", cloneFrom)
 		log.AddContext(ctx).Errorln(msg)
@@ -184,8 +195,10 @@ func (p *SAN) clone(ctx context.Context, params map[string]interface{}) error {
 		p.cli.DeleteSnapshot(ctx, snapshotName)
 	}()
 
-	volName := params["name"].(string)
-
+	volName, ok := params["name"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "convert volName to string failed, data: %v", params["name"])
+	}
 	err = p.cli.CreateVolumeFromSnapshot(ctx, volName, volCapacity, snapshotName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create volume %s from %s error: %v", volName, snapshotName, err)
@@ -196,8 +209,10 @@ func (p *SAN) clone(ctx context.Context, params map[string]interface{}) error {
 }
 
 func (p *SAN) createFromSnapshot(ctx context.Context, params map[string]interface{}) error {
-	srcSnapshotName := params["fromSnapshot"].(string)
-
+	srcSnapshotName, ok := params["fromSnapshot"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "convert srcSnapshotName to string failed, data: %v", params["fromSnapshot"])
+	}
 	srcSnapshot, err := p.cli.GetSnapshotByName(ctx, srcSnapshotName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get clone src snapshot %s error: %v", srcSnapshotName, err)
@@ -209,15 +224,20 @@ func (p *SAN) createFromSnapshot(ctx context.Context, params map[string]interfac
 		return errors.New(msg)
 	}
 
-	volCapacity := params["capacity"].(int64)
+	volCapacity, ok := params["capacity"].(int64)
+	if !ok {
+		log.AddContext(ctx).Warningf("convert volCapacity to int64 failed, data: %v", params["capacity"])
+	}
 	if volCapacity < int64(srcSnapshot["snapshotSize"].(float64)) {
 		msg := fmt.Sprintf("Clone vol capacity must be >= src snapshot %s", srcSnapshotName)
 		log.AddContext(ctx).Errorln(msg)
 		return errors.New(msg)
 	}
 
-	volName := params["name"].(string)
-
+	volName, ok := params["name"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "convert volName to string failed, data: %v", params["name"])
+	}
 	err = p.cli.CreateVolumeFromSnapshot(ctx, volName, volCapacity, srcSnapshotName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Clone snapshot %s to %s error: %v", srcSnapshotName, volName, err)
@@ -244,7 +264,10 @@ func (p *SAN) createQoS(ctx context.Context, params, taskResult map[string]inter
 		return nil, nil
 	}
 
-	volName := taskResult["volumeName"].(string)
+	volName, ok := taskResult["volumeName"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert volName to string failed, data: %v", taskResult["volumeName"])
+	}
 	qosName, err := p.cli.GetQoSNameByVolume(ctx, volName)
 	if err != nil {
 		return nil, err
@@ -344,7 +367,10 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 func (p *SAN) preExpandCheckCapacity(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	// check the local pool
-	localParentId := params["localParentId"].(int64)
+	localParentId, ok := params["localParentId"].(int64)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert localParentId to string failed, data: %v", params["localParentId"])
+	}
 	pool, err := p.cli.GetPoolById(ctx, localParentId)
 	if err != nil || pool == nil {
 		log.AddContext(ctx).Errorf("Get storage pool %s info error: %v", localParentId, err)
@@ -356,8 +382,14 @@ func (p *SAN) preExpandCheckCapacity(ctx context.Context,
 
 func (p *SAN) expandLocalLun(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunName := params["lunName"].(string)
-	newSize := params["size"].(int64)
+	lunName, ok := params["lunName"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert lunName to string failed, data: %v", params["lunName"])
+	}
+	newSize, ok := params["size"].(int64)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert newSize to int64 failed, data: %v", params["size"])
+	}
 
 	err := p.cli.ExtendVolume(ctx, lunName, newSize)
 	if err != nil {
@@ -393,10 +425,9 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 			log.AddContext(ctx).Errorln(msg)
 			return nil, errors.New(msg)
 		} else {
-			snapshotCreated, _ := strconv.ParseInt(snapshot["createTime"].(string), 10, 64)
 			snapshotSize := int64(snapshot["snapshotSize"].(float64)) * 1024 * 1024
 			return map[string]interface{}{
-				"CreationTime": snapshotCreated,
+				"CreationTime": utils.ParseIntWithDefault(snapshot["createTime"].(string), 10, 64, 0),
 				"SizeBytes":    snapshotSize,
 				"ParentID":     strconv.FormatInt(int64(lun["volId"].(float64)), 10),
 			}, nil
@@ -421,7 +452,7 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 		return nil, err
 	}
 
-	snapshotCreated, _ := strconv.ParseInt(snapshot["createTime"].(string), 10, 64)
+	snapshotCreated := utils.ParseIntWithDefault(snapshot["createTime"].(string), 10, 64, 0)
 	snapshotSize := int64(snapshot["snapshotSize"].(float64)) * 1024 * 1024
 	return map[string]interface{}{
 		"CreationTime": snapshotCreated,
@@ -453,9 +484,14 @@ func (p *SAN) DeleteSnapshot(ctx context.Context, snapshotName string) error {
 
 func (p *SAN) createSnapshot(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunName := params["lunName"].(string)
-	snapshotName := params["snapshotName"].(string)
-
+	lunName, ok := params["lunName"].(string)
+	if !ok {
+		log.AddContext(ctx).Warningf("convert lunName to string failed, data: %v", params["lunName"])
+	}
+	snapshotName, ok := params["snapshotName"].(string)
+	if !ok {
+		log.AddContext(ctx).Warningf("convert snapshotName to string failed, data: %v", params["snapshotName"])
+	}
 	err := p.cli.CreateSnapshot(ctx, snapshotName, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create snapshot %s for lun %s error: %v", snapshotName, lunName, err)

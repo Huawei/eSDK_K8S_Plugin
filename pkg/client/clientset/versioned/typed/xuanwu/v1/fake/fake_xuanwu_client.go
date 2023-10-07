@@ -17,12 +17,17 @@ package fake
 
 import (
 	v1 "huawei-csi-driver/pkg/client/clientset/versioned/typed/xuanwu/v1"
+
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
 
 type FakeXuanwuV1 struct {
 	*testing.Fake
+}
+
+func (c *FakeXuanwuV1) ResourceTopologies() v1.ResourceTopologyInterface {
+	return &FakeResourceTopologies{c}
 }
 
 func (c *FakeXuanwuV1) StorageBackendClaims(namespace string) v1.StorageBackendClaimInterface {

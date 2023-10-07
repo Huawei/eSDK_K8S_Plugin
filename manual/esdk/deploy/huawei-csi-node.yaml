@@ -1,0 +1,267 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-node
+  namespace: huawei-csi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-driver-registrar-role
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: huawei-csi-driver-registrar-runner
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-node
+    namespace: huawei-csi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-driver-registrar-runner
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumes
+      - persistentvolumeclaims
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-node-runner
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - update
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+  - apiGroups:
+      - "xuanwu.huawei.io"
+    resources:
+      - storagebackendclaims
+      - storagebackendcontents
+    verbs:
+      - get
+  - apiGroups: [ "xuanwu.huawei.io" ]
+    resources: [ "resourcetopologies" ]
+    verbs: [ "create", "get", "update", "delete" ]
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - list
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-node-role
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: huawei-csi-node-runner
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-node
+    namespace: huawei-csi
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-node
+  namespace: huawei-csi
+spec:
+  selector:
+    matchLabels:
+      app: huawei-csi-node
+      provisioner: csi.huawei.com
+  template:
+    metadata:
+      labels:
+        app: huawei-csi-node
+        provisioner: csi.huawei.com
+    spec:
+      containers:
+        - name: liveness-probe
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--health-port=9800"
+          image: k8s.gcr.io/sig-storage/livenessprobe:v2.5.0
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+        - name: csi-node-driver-registrar
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.huawei.com/csi.sock"
+          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /registration
+              name: registration-dir
+        - name: huawei-csi-driver
+          image: huawei-csi:4.2.0
+          imagePullPolicy: "IfNotPresent"
+          args:
+            - "--endpoint=/csi/csi.sock"
+            - "--driver-name=csi.huawei.com"
+            - "--connector-threads=4"
+            - "--volume-use-multipath=true"
+            - "--all-path-online=false"
+            - "--scsi-multipath-type=DM-multipath"
+            - "--nvme-multipath-type=HW-UltraPath-NVMe"
+            - "--scan-volume-timeout=3"
+            - "--exec-command-timeout=30"
+            - "--logging-module=file"
+            - "--log-level=info"
+            - "--log-file-dir=/var/log/huawei"
+            - "--log-file-size=20M"
+            - "--max-backups=9"
+          env:
+            - name: CSI_NODENAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: CSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - rm -f /csi/csi.sock
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            periodSeconds: 60
+            timeoutSeconds: 3
+          ports:
+            - containerPort: 9800
+              name: healthz
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+            privileged: true
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/lib/kubelet
+              mountPropagation: Bidirectional
+              name: pods-dir
+            - mountPath: /var/log
+              name: log-dir
+            - mountPath: /dev
+              mountPropagation: HostToContainer
+              name: dev-dir
+            - mountPath: /var/lib/iscsi
+              name: iscsi-dir
+            - mountPath: /etc/iscsi
+              name: iscsi-config-dir
+            - mountPath: /etc/nvme
+              name: nvme-config-dir
+          resources:
+            limits:
+              cpu: 300m
+              memory: 500Mi
+            requests:
+              cpu: 50m
+              memory: 100Mi
+      hostNetwork: true
+      hostPID: true
+      serviceAccountName: huawei-csi-node
+      volumes:
+        - hostPath:
+            path: /var/lib/kubelet/plugins/csi.huawei.com
+            type: DirectoryOrCreate
+          name: socket-dir
+        - hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+          name: registration-dir
+        - hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+          name: pods-dir
+        - hostPath:
+            path: /dev
+            type: Directory
+          name: dev-dir
+        - hostPath:
+            path: /var/lib/iscsi
+          name: iscsi-dir
+        - hostPath:
+            path: /var/log/
+            type: Directory
+          name: log-dir
+        - hostPath:
+            path: /etc/iscsi
+            type: DirectoryOrCreate
+          name: iscsi-config-dir
+        - hostPath:
+            path: /etc/nvme
+            type: DirectoryOrCreate
+          name: nvme-config-dir

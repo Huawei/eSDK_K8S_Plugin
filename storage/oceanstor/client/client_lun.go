@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"strconv"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
+	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -87,7 +89,10 @@ func (cli *BaseClient) QueryAssociateLunGroup(ctx context.Context, objType int, 
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -110,7 +115,10 @@ func (cli *BaseClient) GetLunByName(ctx context.Context, name string) (map[strin
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) <= 0 {
 		log.AddContext(ctx).Infof("Lun %s does not exist", name)
 		return nil, nil
@@ -141,7 +149,11 @@ func (cli *BaseClient) GetLunByID(ctx context.Context, id string) (map[string]in
 		return nil, errors.New(msg)
 	}
 
-	lun := resp.Data.(map[string]interface{})
+	lun, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert lun to map failed, data: %v", resp.Data)
+	}
+
 	return lun, nil
 }
 
@@ -216,13 +228,20 @@ func (cli *BaseClient) GetLunGroupByName(ctx context.Context, name string) (map[
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) <= 0 {
 		log.AddContext(ctx).Infof("Lungroup %s does not exist", name)
 		return nil, nil
 	}
 
-	group := respData[0].(map[string]interface{})
+	group, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert group to arr failed, data: %v", respData[0])
+	}
+
 	return group, nil
 }
 
@@ -247,7 +266,10 @@ func (cli *BaseClient) CreateLunGroup(ctx context.Context, name string) (map[str
 		return nil, errors.New(msg)
 	}
 
-	lunGroup := resp.Data.(map[string]interface{})
+	lunGroup, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert lunGroup to map failed, data: %v", resp.Data)
+	}
 	return lunGroup, nil
 }
 
@@ -300,7 +322,10 @@ func (cli *BaseClient) CreateLun(ctx context.Context, params map[string]interfac
 		return nil, fmt.Errorf("create volume %v error: %d", data, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -359,9 +384,16 @@ func (cli *BaseClient) GetLunCountOfMapping(ctx context.Context, mappingID strin
 		return 0, errors.New(msg)
 	}
 
-	respData := resp.Data.(map[string]interface{})
-	countStr := respData["COUNT"].(string)
-	count, _ := strconv.ParseInt(countStr, 10, 64)
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return 0, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
+	countStr, ok := respData["COUNT"].(string)
+	if !ok {
+		return 0, pkgUtils.Errorf(ctx, "convert countStr to string failed, data: %v", respData["COUNT"])
+	}
+
+	count := utils.ParseIntWithDefault(countStr, 10, 64, 0)
 	return count, nil
 }
 
@@ -379,9 +411,16 @@ func (cli *BaseClient) GetLunCountOfHost(ctx context.Context, hostID string) (in
 		return 0, errors.New(msg)
 	}
 
-	respData := resp.Data.(map[string]interface{})
-	countStr := respData["COUNT"].(string)
-	count, _ := strconv.ParseInt(countStr, 10, 64)
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return 0, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
+
+	countStr, ok := respData["COUNT"].(string)
+	if !ok {
+		return 0, pkgUtils.Errorf(ctx, "convert countStr to string failed, data: %v", respData["COUNT"])
+	}
+	count := utils.ParseIntWithDefault(countStr, 10, 64, 0)
 	return count, nil
 }
 
@@ -399,9 +438,18 @@ func (cli *BaseClient) GetHostLunId(ctx context.Context, hostID, lunID string) (
 		return "", fmt.Errorf("Get hostLunId of host %s, lun %s error: %d", hostID, lunID, code)
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return "", pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
+
 	for _, i := range respData {
-		hostLunInfo := i.(map[string]interface{})
+		hostLunInfo, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf(fmt.Sprintf("convert hostLunInfo to map failed, data: %v", i))
+			continue
+		}
+
 		if hostLunInfo["ID"].(string) == lunID {
 			var associateData map[string]interface{}
 			associateDataBytes := []byte(hostLunInfo["ASSOCIATEMETADATA"].(string))

@@ -288,7 +288,10 @@ func TestFilterByVolumeType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := filterByVolumeType(ctx, tt.volumeType, tt.candidatePools)
+			got, err := filterByVolumeType(ctx, tt.volumeType, tt.candidatePools)
+			if err != nil {
+				t.Errorf("test filterByVolumeType faild. err: %v", err)
+			}
 			if !reflect.DeepEqual(got, tt.expect) {
 				t.Errorf("test filterByVolumeType faild. got: %v, expect: %v", got, tt.expect)
 			}

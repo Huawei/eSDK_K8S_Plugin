@@ -31,6 +31,7 @@ import (
 	"huawei-csi-driver/cli/helper"
 	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/pkg/constants"
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -215,7 +216,8 @@ func processVolumeContentSource(ctx context.Context, req *csi.CreateVolumeReques
 		parameters["sourceSnapshotName"] = sourceSnapshotName
 		parameters["snapshotParentId"] = snapshotParentId
 		parameters["backend"] = sourceBackendName
-		log.AddContext(ctx).Infof("Start to create volume from snapshot %s", sourceSnapshotName)
+		log.AddContext(ctx).Infof("Start to create volume from snapshot %s, param: %+v",
+			sourceSnapshotName, parameters)
 	} else if contentVolume := contentSource.GetVolume(); contentVolume != nil {
 		sourceVolumeId := contentVolume.GetVolumeId()
 		sourceBackendName, sourceVolumeName := utils.SplitVolumeId(sourceVolumeId)
@@ -434,6 +436,7 @@ func processCreateVolumeParametersAfterSelect(parameters map[string]interface{},
 	parameters["accountName"] = backend.GetAccountName(localPool.Parent)
 }
 
+// createVolume used to create a lun/filesystem in huawei storage
 func (d *Driver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	parameters, err := processCreateVolumeParameters(ctx, req)
 	if err != nil {
@@ -455,9 +458,14 @@ func (d *Driver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	log.AddContext(ctx).Infof("Volume %s is created", req.GetName())
-	return &csi.CreateVolumeResponse{
+	res := &csi.CreateVolumeResponse{
 		Volume: makeCreateVolumeResponse(ctx, req, vol, localPool),
-	}, nil
+	}
+
+	// The topology creation result does not affect current task.
+	go pkgUtils.CreatePVLabel(req.GetName(), res.GetVolume().GetVolumeId())
+
+	return res, nil
 }
 
 // In the volume import scenario, only the fields in the annotation are obtained.
@@ -465,9 +473,10 @@ func (d *Driver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 func (d *Driver) manageVolume(ctx context.Context, req *csi.CreateVolumeRequest, volumeName, backendName string) (
 	*csi.CreateVolumeResponse, error) {
 	log.AddContext(ctx).Infof("Start to manage Volume %s for backend %s.", volumeName, backendName)
-	selectBackend := backend.GetBackendWithFresh(ctx, backendName, true)
+	selectBackend := backend.GetBackendWithFresh(ctx, helper.GetBackendName(backendName), true)
 	if selectBackend == nil {
-		log.AddContext(ctx).Errorf("Backend %s doesn't exist. Manage Volume %s failed.", backendName, volumeName)
+		log.AddContext(ctx).Errorf("Backend %s doesn't exist. Manage Volume %s failed.",
+			helper.GetBackendName(backendName), volumeName)
 		return &csi.CreateVolumeResponse{}, fmt.Errorf("backend %s doesn't exist. Manage Volume %s failed",
 			backendName, volumeName)
 	}
@@ -504,10 +513,16 @@ func (d *Driver) manageVolume(ctx context.Context, req *csi.CreateVolumeRequest,
 	attributes := getAttributes(req, vol, backendName)
 
 	log.AddContext(ctx).Infof("Volume %s is created by manage", req.GetName())
-	return &csi.CreateVolumeResponse{
+
+	res := &csi.CreateVolumeResponse{
 		Volume: getVolumeResponse(accessibleTopologies, attributes, backendName+"."+volumeName,
 			req.GetCapacityRange().GetRequiredBytes()),
-	}, nil
+	}
+
+	// The topology creation result does not affect current task.
+	go pkgUtils.CreatePVLabel(req.GetName(), res.GetVolume().GetVolumeId())
+
+	return res, nil
 }
 
 func validateCapacity(ctx context.Context, req *csi.CreateVolumeRequest, vol utils.Volume) error {

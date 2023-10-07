@@ -13,6 +13,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
+
 // Package plugin provide storage function
 package plugin
 
@@ -68,9 +69,15 @@ func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{},
 	}
 
 	if strings.ToLower(protocol) == "scsi" {
-		scsi := portals[0].(map[string]interface{})
+		scsi, ok := portals[0].(map[string]interface{})
+		if !ok {
+			return errors.New("scsi portals convert to map[string]interface{} failed")
+		}
 		for k, v := range scsi {
-			manageIP := v.(string)
+			manageIP, ok := v.(string)
+			if !ok {
+				continue
+			}
 			ip := net.ParseIP(manageIP)
 			if ip == nil {
 				return fmt.Errorf("Manage IP %s of host %s is invalid", manageIP, k)
@@ -204,26 +211,6 @@ func (p *FusionStorageSanPlugin) DetachVolume(ctx context.Context,
 	return nil
 }
 
-func (p *FusionStorageSanPlugin) mutexGetClient(ctx context.Context) (*client.Client, error) {
-	p.clientMutex.Lock()
-	var err error
-	if !p.storageOnline || p.clientCount == 0 {
-		err = p.cli.Login(ctx)
-		p.storageOnline = err == nil
-		if err == nil {
-			p.clientCount++
-		}
-	} else {
-		p.clientCount++
-	}
-	p.clientMutex.Unlock()
-	return p.cli, err
-}
-
-func (p *FusionStorageSanPlugin) getClient(ctx context.Context) (*client.Client, error) {
-	return p.mutexGetClient(ctx)
-}
-
 func (p *FusionStorageSanPlugin) mutexReleaseClient(ctx context.Context,
 	plugin *FusionStorageSanPlugin,
 	cli *client.Client) {
@@ -248,8 +235,8 @@ func (p *FusionStorageSanPlugin) UpdateBackendCapabilities() (map[string]interfa
 		"SupportThick": false,
 		"SupportQoS":   true,
 		"SupportClone": true,
+		"SupportLabel": false,
 	}
-
 	return capabilities, nil, nil
 }
 
@@ -297,8 +284,7 @@ func (p *FusionStorageSanPlugin) Validate(ctx context.Context, param map[string]
 	}
 
 	// Login verification
-	cli := client.NewClient(clientConfig.Url, clientConfig.User, clientConfig.SecretName,
-		clientConfig.SecretNamespace, clientConfig.ParallelNum, clientConfig.BackendID, clientConfig.AccountName)
+	cli := client.NewClient(clientConfig)
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err

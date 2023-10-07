@@ -18,9 +18,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/signal"
@@ -32,7 +29,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
-	"huawei-csi-driver/connector"
 	"huawei-csi-driver/connector/host"
 	connutils "huawei-csi-driver/connector/utils"
 	"huawei-csi-driver/connector/utils/lock"
@@ -48,13 +44,11 @@ import (
 )
 
 const (
-	configFile        = "/etc/huawei/csi.json"
-	secretFile        = "/etc/huawei/secret/secret.json"
 	versionFile       = "/csi/version"
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 
-	csiVersion      = "4.1.0"
+	csiVersion      = "4.2.0"
 	endpointDirPerm = 0755
 )
 
@@ -69,73 +63,6 @@ type CSIConfig struct {
 
 type CSISecret struct {
 	Secrets map[string]interface{} `json:"secrets"`
-}
-
-func parseConfig() {
-	data, err := ioutil.ReadFile(configFile)
-	if err != nil {
-		notify.Stop("Read config file %s error: %v", configFile, err)
-	}
-
-	err = json.Unmarshal(data, &config)
-	if err != nil {
-		notify.Stop("Unmarshal config file %s error: %v", configFile, err)
-	}
-
-	if len(config.Backends) <= 0 {
-		notify.Stop("Must configure at least one backend")
-	}
-
-	secretData, err := ioutil.ReadFile(secretFile)
-	if err != nil {
-		notify.Stop("Read config file %s error: %v", secretFile, err)
-	}
-
-	err = json.Unmarshal(secretData, &secret)
-	if err != nil {
-		notify.Stop("Unmarshal config file %s error: %v", secretFile, err)
-	}
-
-	err = mergeData(config, secret)
-	if err != nil {
-		notify.Stop("Merge configs error: %v", err)
-	}
-
-	// nodeName flag is only considered for node plugin
-	if "" == app.GetGlobalConfig().NodeName && !app.GetGlobalConfig().Controller {
-		log.Warningln("Node name is empty. Topology aware volume provisioning feature may not behave normal")
-	}
-
-	connector.ScanVolumeTimeout = time.Second * time.Duration(app.GetGlobalConfig().ScanVolumeTimeout)
-}
-
-func getSecret(backendSecret, backendConfig map[string]interface{}, secretKey string) {
-	if secretValue, exist := backendSecret[secretKey].(string); exist {
-		backendConfig[secretKey] = secretValue
-	} else {
-		log.Fatalln(fmt.Sprintf("The key %s is not in secret %v.", secretKey, backendSecret))
-	}
-}
-
-func mergeData(config CSIConfig, secret CSISecret) error {
-	for _, backendConfig := range config.Backends {
-		backendName, exist := backendConfig["name"].(string)
-		if !exist {
-			return fmt.Errorf("the key name does not exist in backend")
-		}
-		Secret, exist := secret.Secrets[backendName]
-		if !exist {
-			return fmt.Errorf("the key %s is not in secret", backendName)
-		}
-
-		backendSecret := Secret.(map[string]interface{})
-		getSecret(backendSecret, backendConfig, "user")
-		getSecret(backendSecret, backendConfig, "password")
-		// 兼容之前的后端注册，后续删除所有相关代码
-		backendConfig["secretName"] = backendName
-		backendConfig["secretNamespace"] = "huawei-csi"
-	}
-	return nil
 }
 
 func updateBackendCapabilities(ctx context.Context) {

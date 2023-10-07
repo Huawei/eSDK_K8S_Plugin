@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -62,13 +63,19 @@ func (cli *BaseClient) GetPoolByName(ctx context.Context, name string) (map[stri
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert resp.Data to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) <= 0 {
 		log.AddContext(ctx).Infof("Pool %s does not exist", name)
 		return nil, nil
 	}
 
-	pool := respData[0].(map[string]interface{})
+	pool, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData[0] to map failed, data: %v", respData[0])
+	}
 	return pool, nil
 }
 
@@ -92,10 +99,21 @@ func (cli *BaseClient) GetAllPools(ctx context.Context) (map[string]interface{},
 
 	pools := make(map[string]interface{})
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert resp.Data to arr failed, data: %v", resp.Data)
+	}
 	for _, p := range respData {
-		pool := p.(map[string]interface{})
-		name := pool["NAME"].(string)
+		pool, ok := p.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf(fmt.Sprintf("convert pool to map failed, data: %v", p))
+			continue
+		}
+		name, ok := pool["NAME"].(string)
+		if !ok {
+			log.AddContext(ctx).Warningf(fmt.Sprintf("convert name to map failed, data: %v", pool["NAME"]))
+			continue
+		}
 		pools[name] = pool
 	}
 
@@ -121,9 +139,16 @@ func (cli *BaseClient) GetLicenseFeature(ctx context.Context) (map[string]int, e
 		return result, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert resp.Data to arr failed, data: %v", resp.Data)
+	}
 	for _, i := range respData {
-		feature := i.(map[string]interface{})
+		feature, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf(fmt.Sprintf("convert feature to map failed, data: %v", i))
+			continue
+		}
 		for k, v := range feature {
 			result[k] = int(v.(float64))
 		}
@@ -144,7 +169,10 @@ func (cli *BaseClient) GetSystem(ctx context.Context) (map[string]interface{}, e
 		return nil, errors.New(msg)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	cli.setStorageVersion(respData)
 	return respData, nil
 }
@@ -166,9 +194,16 @@ func (cli *BaseClient) GetRemoteDeviceBySN(ctx context.Context, sn string) (map[
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert resp.Data to arr failed, data: %v", resp.Data)
+	}
 	for _, i := range respData {
-		device := i.(map[string]interface{})
+		device, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert device to map failed, data: %v", i)
+			continue
+		}
 		if device["SN"] == sn {
 			return device, nil
 		}

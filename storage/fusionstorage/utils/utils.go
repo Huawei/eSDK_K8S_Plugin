@@ -86,17 +86,14 @@ func ExtractStorageQuotaParameters(ctx context.Context, storageQuotaConfig strin
 }
 
 // CheckErrorCode used to check Response
+// Response data struct
+// Response
+//   data
+//     ...
+//   result:
+//     code: 0
+//     description: ""
 func CheckErrorCode(response map[string]interface{}) error {
-	// Response example
-	// Response: {
-	//   "data": {
-	// 	    "id": 14
-	//    },
-	//   "result": {
-	// 	    "code": 0,
-	//      "description": ""
-	//    }
-	// }
 
 	result, ok := response["result"].(map[string]interface{})
 	if !ok {

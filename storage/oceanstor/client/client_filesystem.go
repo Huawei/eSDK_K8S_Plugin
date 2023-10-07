@@ -113,7 +113,10 @@ func (cli *BaseClient) GetFileSystemByName(ctx context.Context, name string) (ma
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	return cli.getObjByvStoreName(respData), nil
 }
 
@@ -131,7 +134,10 @@ func (cli *BaseClient) GetFileSystemByID(ctx context.Context, id string) (map[st
 		return nil, errors.New(msg)
 	}
 
-	fs := resp.Data.(map[string]interface{})
+	fs, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
 	return fs, nil
 }
 
@@ -162,13 +168,19 @@ func (cli *BaseClient) GetNfsShareByPath(ctx context.Context, path, vStoreID str
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	if len(respData) == 0 {
 		log.AddContext(ctx).Infof("Nfs share of path %s does not exist", path)
 		return nil, nil
 	}
 
-	share := respData[0].(map[string]interface{})
+	share, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert respData[0] to map[string]interface{} failed")
+	}
 	return share, nil
 }
 
@@ -192,7 +204,11 @@ func (cli *BaseClient) GetNfsShareAccess(ctx context.Context,
 		}
 
 		for _, ac := range clients {
-			access := ac.(map[string]interface{})
+			access, ok := ac.(map[string]interface{})
+			if !ok {
+				log.AddContext(ctx).Warningf("convert ac: %v to map[string]interface{} failed.", ac)
+				continue
+			}
 			if access["NAME"].(string) == name {
 				return access, nil
 			}
@@ -219,10 +235,15 @@ func (cli *BaseClient) GetNfsShareAccessCount(ctx context.Context, parentID, vSt
 		return 0, fmt.Errorf("Get nfs share access count of %s error: %d", parentID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
-	countStr := respData["COUNT"].(string)
-	count, _ := strconv.ParseInt(countStr, 10, 64)
-
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return 0, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
+	countStr, ok := respData["COUNT"].(string)
+	if !ok {
+		return 0, errors.New("convert respData[\"COUNT\"] to string failed")
+	}
+	count := utils.ParseIntWithDefault(countStr, 10, 64, 0)
 	return count, nil
 }
 
@@ -249,7 +270,10 @@ func (cli *BaseClient) GetNfsShareAccessRange(ctx context.Context, parentID, vSt
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	return respData, nil
 }
 
@@ -348,7 +372,10 @@ func (cli *BaseClient) CreateNfsShare(ctx context.Context,
 
 	code := int64(resp.Error["code"].(float64))
 	if code == shareAlreadyExist || code == sharePathAlreadyExist {
-		sharePath := params["sharepath"].(string)
+		sharePath, ok := params["sharepath"].(string)
+		if !ok {
+			return nil, errors.New("convert sharepath to string failed")
+		}
 		log.AddContext(ctx).Infof("Nfs share %s already exists while creating", sharePath)
 
 		share, err := cli.GetNfsShareByPath(ctx, sharePath, vStoreID)
@@ -372,7 +399,10 @@ func (cli *BaseClient) CreateNfsShare(ctx context.Context,
 		return nil, fmt.Errorf("create nfs share %v error: %d", data, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
 	return respData, nil
 }
 
@@ -446,7 +476,10 @@ func (cli *BaseClient) GetNFSServiceSetting(ctx context.Context) (map[string]boo
 		"SupportNFS4":  false,
 		"SupportNFS41": false,
 	}
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
 	for k, v := range respData {
 		var err error
 		if k == "SUPPORTV3" {

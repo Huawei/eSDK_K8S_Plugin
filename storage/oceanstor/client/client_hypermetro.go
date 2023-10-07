@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -64,9 +65,16 @@ func (cli *BaseClient) GetHyperMetroDomainByName(ctx context.Context, name strin
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	for _, i := range respData {
-		domain := i.(map[string]interface{})
+		domain, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert domain to map failed, data: %v", i)
+			continue
+		}
 		if domain["NAME"].(string) == name {
 			return domain, nil
 		}
@@ -88,7 +96,10 @@ func (cli *BaseClient) GetHyperMetroDomain(ctx context.Context, domainID string)
 		return nil, fmt.Errorf("Get HyperMetroDomain %s error: %d", domainID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -109,9 +120,16 @@ func (cli *BaseClient) GetFSHyperMetroDomain(ctx context.Context, domainName str
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	for _, d := range respData {
-		domain := d.(map[string]interface{})
+		domain, ok := d.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert domain to map failed, data: %v", d)
+			continue
+		}
 		if domain["NAME"].(string) == domainName {
 			return domain, nil
 		}
@@ -140,13 +158,19 @@ func (cli *BaseClient) GetHyperMetroPair(ctx context.Context, pairID string) (ma
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) <= 0 {
 		log.AddContext(ctx).Infof("Hypermetro %s does not exist", pairID)
 		return nil, nil
 	}
 
-	pair := respData[0].(map[string]interface{})
+	pair, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert pair to map failed, data: %v", respData[0])
+	}
 	return pair, nil
 }
 
@@ -169,9 +193,16 @@ func (cli *BaseClient) GetHyperMetroPairByLocalObjID(ctx context.Context, objID 
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	for _, i := range respData {
-		pair := i.(map[string]interface{})
+		pair, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert pair to map failed, data: %v", i)
+			continue
+		}
 		if pair["LOCALOBJID"] == objID {
 			return pair, nil
 		}
@@ -195,7 +226,10 @@ func (cli *BaseClient) CreateHyperMetroPair(ctx context.Context, data map[string
 		return nil, fmt.Errorf("Create hypermetro %v error: %d", data, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 

@@ -44,40 +44,21 @@ type FusionStoragePlugin struct {
 }
 
 func (p *FusionStoragePlugin) init(config map[string]interface{}, keepLogin bool) error {
-	configUrls, exist := config["urls"].([]interface{})
-	if !exist || len(configUrls) <= 0 {
-		return errors.New("urls must be provided")
-	}
 
-	url := configUrls[0].(string)
-
-	user, exist := config["user"].(string)
-	if !exist {
-		return errors.New("user must be provided")
-	}
-
-	secretName, exist := config["secretName"].(string)
-	if !exist {
-		return errors.New("SecretName must be provided")
-	}
-
-	secretNamespace, exist := config["secretNamespace"].(string)
-	if !exist {
-		return errors.New("SecretNamespace must be provided")
-	}
-
-	backendID, exist := config["backendID"].(string)
-	if !exist {
-		return errors.New("backendID must be provided")
-	}
-
-	accountName, _ := config["accountName"].(string)
-	parallelNum, _ := config["maxClientThreads"].(string)
-
-	cli := client.NewClient(url, user, secretName, secretNamespace, parallelNum, backendID, accountName)
-	err := cli.Login(context.Background())
+	clientConfig, err := p.getNewClientConfig(context.Background(), config)
 	if err != nil {
 		return err
+	}
+
+	cli := client.NewClient(clientConfig)
+	err = cli.Login(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = cli.SetAccountId(context.TODO())
+	if err != nil {
+		return pkgUtils.Errorln(context.TODO(), fmt.Sprintf("setAccountId failed, error: %v", err))
 	}
 
 	if !keepLogin {
@@ -152,7 +133,10 @@ func (p *FusionStoragePlugin) updatePoolCapabilities(poolNames []string, storage
 
 	for _, name := range poolNames {
 		if i, exist := pools[name]; exist {
-			pool := i.(map[string]interface{})
+			pool, ok := i.(map[string]interface{})
+			if !ok {
+				continue
+			}
 
 			totalCapacity := int64(pool["totalCapacity"].(float64))
 			usedCapacity := int64(pool["usedCapacity"].(float64))
@@ -229,6 +213,9 @@ func (p *FusionStoragePlugin) getNewClientConfig(ctx context.Context, config map
 
 	newClientConfig.AccountName, _ = config["accountName"].(string)
 	newClientConfig.ParallelNum, _ = config["maxClientThreads"].(string)
+
+	newClientConfig.UseCert, _ = config["useCert"].(bool)
+	newClientConfig.CertSecretMeta, _ = config["certSecret"].(string)
 
 	return newClientConfig, nil
 }

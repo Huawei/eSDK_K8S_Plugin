@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -35,10 +36,10 @@ type qosParameterList map[string]struct{}
 
 var (
 	oceanStorQosValidators = map[string]qosParameterValidators{
-		utils.OceanStorDoradoV6: doradoV6ParameterValidators,
-		utils.OceanStorDoradoV3: doradoParameterValidators,
-		utils.OceanStorV3:       oceanStorV3V5ParameterValidators,
-		utils.OceanStorV5:       oceanStorV3V5ParameterValidators,
+		constants.OceanStorDoradoV6: doradoV6ParameterValidators,
+		constants.OceanStorDoradoV3: doradoParameterValidators,
+		constants.OceanStorV3:       oceanStorV3V5ParameterValidators,
+		constants.OceanStorV5:       oceanStorV3V5ParameterValidators,
 	}
 
 	doradoParameterValidators = map[string]func(int) bool{
@@ -111,13 +112,13 @@ var (
 
 	// one of parameter is mandatory for respective products
 	oceanStorQoSMandatoryParameters = map[string]qosParameterList{
-		utils.OceanStorDoradoV6: oceanStorCommonParameters,
-		utils.OceanStorDoradoV3: {
+		constants.OceanStorDoradoV6: oceanStorCommonParameters,
+		constants.OceanStorDoradoV3: {
 			"MAXBANDWIDTH": struct{}{},
 			"MAXIOPS":      struct{}{},
 		},
-		utils.OceanStorV3: oceanStorCommonParameters,
-		utils.OceanStorV5: oceanStorCommonParameters,
+		constants.OceanStorV3: oceanStorCommonParameters,
+		constants.OceanStorV5: oceanStorCommonParameters,
 	}
 )
 
@@ -163,7 +164,7 @@ func validateQoSParametersSupport(ctx context.Context, product string, qosParam 
 		}
 	}
 
-	if product != utils.OceanStorDoradoV6 && lowerLimit && upperLimit {
+	if product != constants.OceanStorDoradoV6 && lowerLimit && upperLimit {
 		return utils.Errorf(ctx, "Cannot specify both lower and upper limits in qos for OceanStor %s", product)
 	}
 
@@ -190,7 +191,7 @@ func ExtractQoSParameters(ctx context.Context, product string, qosConfig string)
 				key, val, product)
 		}
 
-		if product == utils.OceanStorDoradoV6 && key == "LATENCY" {
+		if product == constants.OceanStorDoradoV6 && key == "LATENCY" {
 			// convert OceanStoreDoradoV6 Latency from millisecond to microsecond
 			params[key] = value * 1000
 			continue

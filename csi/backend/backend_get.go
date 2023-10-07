@@ -96,7 +96,14 @@ var GetBackendWithFresh = func(ctx context.Context, backendName string, update b
 		log.AddContext(ctx).Errorf("GetConfigMeta %s failed, error %v", backendMeta, err)
 		return nil
 	}
-	_, err = RegisterOneBackend(ctx, backendMeta, configmapMeta, secretMeta)
+
+	useCert, certSecret, err := pkgUtils.GetCertMeta(ctx, backendMeta)
+	if err != nil {
+		log.AddContext(ctx).Errorf("GetCertMeta %s failed, error %v", backendMeta, err)
+		return nil
+	}
+
+	_, err = RegisterOneBackend(ctx, backendMeta, configmapMeta, secretMeta, certSecret, useCert)
 	if err != nil {
 		msg := fmt.Sprintf("RegisterBackend %s failed, error %v", backendMeta, err)
 		log.AddContext(ctx).Errorln(msg)
@@ -183,7 +190,8 @@ func addSecretInfo(secret *coreV1.Secret, storageConfig map[string]interface{}) 
 }
 
 // GetStorageBackendInfo used to get storage config info
-func GetStorageBackendInfo(ctx context.Context, backendID, configmapMeta, secretMeta string) (map[string]interface{}, error) {
+func GetStorageBackendInfo(ctx context.Context, backendID, configmapMeta, secretMeta, certSecret string,
+	useCert bool) (map[string]interface{}, error) {
 	log.AddContext(ctx).Infof("start GetStorageBackendInfo: %s.", backendID)
 	backendMapData, err := GetBackendConfigmapMap(ctx, configmapMeta)
 	if err != nil {
@@ -207,6 +215,9 @@ func GetStorageBackendInfo(ctx context.Context, backendID, configmapMeta, secret
 	}
 
 	backendMapData["backendID"] = backendID
+
+	backendMapData["useCert"] = useCert
+	backendMapData["certSecret"] = certSecret
 
 	return backendMapData, nil
 }

@@ -19,8 +19,6 @@ package connector
 import (
 	"context"
 	"fmt"
-	"time"
-
 	"huawei-csi-driver/utils/log"
 )
 
@@ -62,8 +60,7 @@ const (
 )
 
 var (
-	connectors        = map[string]Connector{}
-	ScanVolumeTimeout = 3 * time.Second
+	connectors = map[string]Connector{}
 )
 
 type Connector interface {

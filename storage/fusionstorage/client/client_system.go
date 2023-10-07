@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strings"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -133,7 +134,11 @@ func (cli *Client) GetAllAccounts(ctx context.Context) ([]string, error) {
 
 	var accounts []string
 	for _, d := range respData {
-		data := d.(map[string]interface{})
+		data, ok := d.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert responseData to map failed, data: %v", d)
+			continue
+		}
 		accountName, exist := data["name"].(string)
 		if !exist || accountName == "" {
 			continue
@@ -169,7 +174,10 @@ func (cli *Client) GetAllPools(ctx context.Context) (map[string]interface{}, err
 			log.AddContext(ctx).Errorln(msg)
 			return nil, errors.New(msg)
 		}
-		name := pool["poolName"].(string)
+		name, ok := pool["poolName"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "convert poolName to string failed, data: %v", pool["poolName"])
+		}
 		pools[name] = pool
 	}
 
@@ -236,7 +244,10 @@ func (cli *Client) GetNFSServiceSetting(ctx context.Context) (map[string]bool, e
 
 	for k, v := range data {
 		if k == "nfsv41_status" {
-			setting["SupportNFS41"] = v.(bool)
+			setting["SupportNFS41"], ok = v.(bool)
+			if !ok {
+				log.AddContext(ctx).Warningf("convert map[SupportNFS41] to bool failed, data: %v", v)
+			}
 			break
 		}
 	}

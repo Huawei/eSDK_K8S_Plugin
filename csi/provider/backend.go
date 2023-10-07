@@ -37,8 +37,14 @@ func (p *Provider) AddStorageBackend(ctx context.Context, req *drcsi.AddStorageB
 	log.AddContext(ctx).Infof("Start to add storage backend %s.", req.Name)
 	defer log.AddContext(ctx).Infof("Finished to add storage backend %s.", req.Name)
 
+	useCert, certSecret, err := pkgUtils.GetCertMeta(ctx, req.Name)
+	if err != nil {
+		msg := fmt.Sprintf("GetCertMeta %s failed. error: %v", req.Name, err)
+		return nil, pkgUtils.Errorln(ctx, msg)
+	}
+
 	// backendId: <namespace>/<backend-name> eg:huawei-csi/nfs-180
-	backendId, err := backend.RegisterOneBackend(ctx, req.Name, req.ConfigmapMeta, req.SecretMeta)
+	backendId, err := backend.RegisterOneBackend(ctx, req.Name, req.ConfigmapMeta, req.SecretMeta, certSecret, useCert)
 	if err != nil {
 		msg := fmt.Sprintf("RegisterBackend %s failed, error %v", req.Name, err)
 		return nil, pkgUtils.Errorln(ctx, msg)
@@ -95,8 +101,14 @@ func (p *Provider) UpdateStorageBackend(ctx context.Context, req *drcsi.UpdateSt
 		return &drcsi.UpdateStorageBackendResponse{}, pkgUtils.Errorln(ctx, msg)
 	}
 
+	useCert, certSecret, err := pkgUtils.GetCertMeta(ctx, req.BackendId)
+	if err != nil {
+		msg := fmt.Sprintf("GetCertMeta [%s] failed. error: %v", req.BackendId, err)
+		return &drcsi.UpdateStorageBackendResponse{}, pkgUtils.Errorln(ctx, msg)
+	}
+
 	// backendId: <namespace>/<backend-name> eg:huawei-csi/nfs-180
-	_, err = backend.RegisterOneBackend(ctx, req.BackendId, req.ConfigmapMeta, req.SecretMeta)
+	_, err = backend.RegisterOneBackend(ctx, req.BackendId, req.ConfigmapMeta, req.SecretMeta, certSecret, useCert)
 	if err != nil {
 		msg := fmt.Sprintf("RegisterBackend %s failed, error %v", req.Name, err)
 		return nil, pkgUtils.Errorln(ctx, msg)

@@ -50,6 +50,11 @@ type ResourceBuilder struct {
 	output string
 
 	notValidateName bool
+
+	backend string
+
+	isAllNodes bool
+	nodeName   string
 }
 
 // NewResourceBuilder initialize a ResourceBuilder instance
@@ -152,5 +157,23 @@ func (b *ResourceBuilder) FileType(fileType string) *ResourceBuilder {
 		fileType = config.DefaultInputFormat
 	}
 	b.fileType = fileType
+	return b
+}
+
+// BoundBackend instructs the builder to request backend name.
+func (b *ResourceBuilder) BoundBackend(backend string) *ResourceBuilder {
+	b.backend = backend
+	return b
+}
+
+// AllNodes instructs the builder to request isAllNodes options.
+func (b *ResourceBuilder) AllNodes(isAllNodes bool) *ResourceBuilder {
+	b.isAllNodes = isAllNodes
+	return b
+}
+
+// NodeName instructs the builder to request node name.
+func (b *ResourceBuilder) NodeName(nodeName string) *ResourceBuilder {
+	b.nodeName = nodeName
 	return b
 }

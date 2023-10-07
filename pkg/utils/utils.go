@@ -230,9 +230,31 @@ func Errorf(ctx context.Context, format string, a ...interface{}) error {
 
 // NeedChangeContent returns need update content or not
 func NeedChangeContent(storageBackend *xuanwuv1.StorageBackendClaim) bool {
-	return storageBackend.Status != nil && storageBackend.Status.BoundContentName != "" &&
-		(storageBackend.Status.SecretMeta != storageBackend.Spec.SecretMeta ||
-			storageBackend.Status.MaxClientThreads != storageBackend.Spec.MaxClientThreads)
+	if storageBackend.Status == nil {
+		return false
+	}
+
+	if storageBackend.Status.BoundContentName == "" {
+		return false
+	}
+
+	if storageBackend.Status.SecretMeta != storageBackend.Spec.SecretMeta {
+		return true
+	}
+
+	if storageBackend.Status.MaxClientThreads != storageBackend.Spec.MaxClientThreads {
+		return true
+	}
+
+	if storageBackend.Status.UseCert != storageBackend.Spec.UseCert {
+		return true
+	}
+
+	if storageBackend.Status.CertSecret != storageBackend.Spec.CertSecret {
+		return true
+	}
+
+	return false
 }
 
 // GetNameSpaceFromEnv get the namespace from the env

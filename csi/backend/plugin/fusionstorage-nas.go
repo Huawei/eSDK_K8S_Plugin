@@ -53,7 +53,10 @@ func (p *FusionStorageNasPlugin) Init(config, parameters map[string]interface{},
 		if !exist || len(portals) != 1 {
 			return errors.New("portals must be provided for fusionstorage-nas nfs backend and just support one portal")
 		}
-		p.portal = portals[0].(string)
+		p.portal, exist = portals[0].(string)
+		if !exist {
+			return errors.New(fmt.Sprintf("portals: %v must be string", portals[0]))
+		}
 	}
 
 	err := p.init(config, keepLogin)
@@ -123,13 +126,13 @@ func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interfa
 		"SupportQoS":   true,
 		"SupportQuota": true,
 		"SupportClone": false,
+		"SupportLabel": false,
 	}
 
 	err := p.updateNFS4Capability(capabilities)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	return capabilities, nil, nil
 }
 
@@ -190,8 +193,7 @@ func (p *FusionStorageNasPlugin) Validate(ctx context.Context, param map[string]
 	}
 
 	// Login verification
-	cli := client.NewClient(clientConfig.Url, clientConfig.User, clientConfig.SecretName,
-		clientConfig.SecretNamespace, clientConfig.ParallelNum, clientConfig.BackendID, clientConfig.AccountName)
+	cli := client.NewClient(clientConfig)
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -59,7 +60,10 @@ func (cli *BaseClient) CreateLunSnapshot(ctx context.Context, name, lunID string
 		return nil, fmt.Errorf("Create snapshot %s for lun %s error: %d", name, lunID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -82,12 +86,18 @@ func (cli *BaseClient) GetLunSnapshotByName(ctx context.Context, name string) (m
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) <= 0 {
 		return nil, nil
 	}
 
-	snapshot := respData[0].(map[string]interface{})
+	snapshot, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert snapshot to map failed, data: %v", respData[0])
+	}
 	return snapshot, nil
 }
 

@@ -17,6 +17,7 @@
 package resources
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -101,5 +102,13 @@ func (b *ValidatorBuilder) ValidateOutputFormat() *ValidatorBuilder {
 			"allowed formats are: %v", b.resource.output, strings.Join(config.SupportedFormats, ", ")))
 	}
 
+	return b
+}
+
+// ValidateBackend used to validate backend
+func (b *ValidatorBuilder) ValidateBackend() *ValidatorBuilder {
+	if b.resource.backend == "" {
+		b.errs = append(b.errs, errors.New("backend name must be provided"))
+	}
 	return b
 }

@@ -18,6 +18,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"huawei-csi-driver/utils/log"
@@ -88,13 +89,19 @@ func (cli *BaseClient) GetClonePairInfo(ctx context.Context, clonePairID string)
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	if len(respData) <= 0 {
 		log.AddContext(ctx).Infof("clonePair %s does not exist", clonePairID)
 		return nil, nil
 	}
 
-	clonePair := respData[0].(map[string]interface{})
+	clonePair, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert respData[0] to map[string]interface{} failed")
+	}
 	return clonePair, nil
 }
 
@@ -119,7 +126,10 @@ func (cli *BaseClient) CreateClonePair(ctx context.Context,
 		return nil, fmt.Errorf("Create ClonePair from %s to %s, error: %d", srcLunID, dstLunID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
 	return respData, nil
 }
 
@@ -213,6 +223,9 @@ func (cli *BaseClient) CloneFileSystem(ctx context.Context, name string, allocTy
 		return nil, fmt.Errorf("Clone FS from %s error: %d", parentID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
 	return respData, nil
 }

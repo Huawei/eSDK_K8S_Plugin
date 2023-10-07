@@ -36,7 +36,6 @@ type Plugin interface {
 	UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error)
 	UpdatePoolCapabilities([]string) (map[string]interface{}, error)
 	UpdateMetroRemotePlugin(Plugin)
-	UpdateReplicaRemotePlugin(Plugin)
 	CreateSnapshot(context.Context, string, string) (map[string]interface{}, error)
 	DeleteSnapshot(context.Context, string, string) error
 	SmartXQoSQuery
@@ -87,7 +86,4 @@ func (p *basePlugin) DetachVolume(context.Context, string, map[string]interface{
 }
 
 func (p *basePlugin) UpdateMetroRemotePlugin(Plugin) {
-}
-
-func (p *basePlugin) UpdateReplicaRemotePlugin(Plugin) {
 }

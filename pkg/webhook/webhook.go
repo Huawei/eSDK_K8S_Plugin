@@ -28,6 +28,7 @@ import (
 	"sync"
 
 	admissionV1 "k8s.io/api/admission/v1"
+	admissionV1beta1 "k8s.io/api/admission/v1beta1"
 	apisErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -87,14 +88,18 @@ var AdmitFunc func(admissionV1.AdmissionReview) *admissionV1.AdmissionResponse
 // admitV1Func handles a v1 admission
 type admitV1Func func(admissionV1.AdmissionReview) *admissionV1.AdmissionResponse
 
+type admitV1beta1Func func(admissionV1beta1.AdmissionReview) *admissionV1beta1.AdmissionResponse
+
 // admitHandler is a handler, for both validators and mutators, that supports multiple admission review versions
 type admitHandler struct {
-	admitV1 admitV1Func
+	admitV1      admitV1Func
+	admitV1Beta1 admitV1beta1Func
 }
 
 func newDelegateToV1AdmitHandler(f admitV1Func) admitHandler {
 	return admitHandler{
-		admitV1: f,
+		admitV1:      f,
+		admitV1Beta1: transformV1beta1AdmitFuncToV1AdmitFunc(f),
 	}
 }
 
@@ -111,6 +116,23 @@ func (c *Controller) getV1AdmissionReview(ctx context.Context, obj runtime.Objec
 	responseAdmissionReview := &admissionV1.AdmissionReview{}
 	responseAdmissionReview.SetGroupVersionKind(*gvk)
 	responseAdmissionReview.Response = admit.admitV1(*requestedAdmissionReview)
+	responseAdmissionReview.Response.UID = requestedAdmissionReview.Request.UID
+	return responseAdmissionReview, nil
+}
+
+func (c *Controller) getV1Beta1AdmissionReview(ctx context.Context, obj runtime.Object,
+	gvk *schema.GroupVersionKind, admit admitHandler) (
+	runtime.Object, error) {
+	requestedAdmissionReview, ok := obj.(*admissionV1beta1.AdmissionReview)
+	if !ok {
+		msg := fmt.Sprintf("Expected v1beta1.AdmissionReview but got: %T", obj)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	responseAdmissionReview := &admissionV1beta1.AdmissionReview{}
+	responseAdmissionReview.SetGroupVersionKind(*gvk)
+	responseAdmissionReview.Response = admit.admitV1Beta1(*requestedAdmissionReview)
 	responseAdmissionReview.Response.UID = requestedAdmissionReview.Request.UID
 	return responseAdmissionReview, nil
 }
@@ -168,6 +190,9 @@ func (c *Controller) serve(w http.ResponseWriter, r *http.Request, admit admitHa
 	case admissionV1.SchemeGroupVersion.WithKind("AdmissionReview"):
 		responseObj, err = c.getV1AdmissionReview(ctx, obj, gvk, admit)
 		admissionVersion = "v1.AdmissionReview"
+	case admissionV1beta1.SchemeGroupVersion.WithKind("AdmissionReview"):
+		responseObj, err = c.getV1Beta1AdmissionReview(ctx, obj, gvk, admit)
+		admissionVersion = "v1beta1.AdmissionReview"
 	default:
 		err = errors.New("unsupported group version")
 		admissionVersion = fmt.Sprintf("%v", gvk)
@@ -419,8 +444,7 @@ func validateCommon(ctx context.Context, claim *xuanwuv1.StorageBackendClaim) er
 	log.AddContext(ctx).Infof("claim name: %s", claim.Name)
 	storageInfo, err := backend.GetStorageBackendInfo(ctx,
 		utils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, claim.Name),
-		claim.Spec.ConfigMapMeta,
-		claim.Spec.SecretMeta)
+		claim.Spec.ConfigMapMeta, claim.Spec.SecretMeta, claim.Spec.CertSecret, claim.Spec.UseCert)
 	if err != nil {
 		return err
 	}

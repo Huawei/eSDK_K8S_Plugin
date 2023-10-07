@@ -130,7 +130,7 @@ func (p *NAS) preProcessQuota(ctx context.Context, params map[string]interface{}
 			return pkgUtils.Errorln(ctx, fmt.Sprintf("extract storageQuota %s failed", v))
 		}
 
-		params["spaceQuota"] = quotaParams["spaceQuota"].(string)
+		params["spaceQuota"] = quotaParams["spaceQuota"]
 		if v, exist := quotaParams["gracePeriod"]; exist {
 			gracePeriod, err := utils.TransToIntStrict(ctx, v)
 			if err != nil {
@@ -614,9 +614,14 @@ func (p *NAS) waitFilesystemCreated(ctx context.Context, fsName string) error {
 func (p *NAS) revertShare(ctx context.Context, taskResult map[string]interface{}) error {
 	shareID, exist := taskResult["shareID"].(string)
 	if !exist {
+		log.AddContext(ctx).Warningf("convert shareID to string failed, data: %v", taskResult["shareID"])
 		return nil
 	}
 	accountId, exist := taskResult["accountId"].(string)
+	if !exist {
+		log.AddContext(ctx).Warningf("convert accountID to string failed, data: %v", taskResult["accountId"])
+		return nil
+	}
 	return p.deleteShare(ctx, shareID, accountId)
 }
 
@@ -726,8 +731,10 @@ func (p *NAS) Delete(ctx context.Context, fsName string) error {
 	}
 
 	fsID := strconv.FormatInt(int64(fs["id"].(float64)), 10)
-	accountId := fs["account_id"].(string)
-
+	accountId, ok := fs["account_id"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "convert accountID to string failed, data: %v", fs["account_id"])
+	}
 	fsIdInShare, err := p.DeleteNfsShare(ctx, fsName, accountId)
 	if err != nil {
 		return pkgUtils.Errorln(ctx, fmt.Sprintf("DeleteNfsShare failed, err: %v", err))

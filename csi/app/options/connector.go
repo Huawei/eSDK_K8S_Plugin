@@ -45,6 +45,7 @@ type connectorOptions struct {
 	scanVolumeTimeout    int
 	connectorThreads     int
 	allPathOnline        bool
+	execCommandTimeout   int
 }
 
 // NewConnectorOptions returns connector configurations
@@ -83,6 +84,9 @@ func (opt *connectorOptions) AddFlags(ff *flag.FlagSet) {
 	ff.BoolVar(&opt.allPathOnline, "all-path-online",
 		false,
 		"Whether to check the number of online paths for DM-multipath aggregation, default false")
+	ff.IntVar(&opt.execCommandTimeout, "exec-command-timeout",
+		30,
+		"The timeout for running command on host")
 }
 
 // ApplyFlags assign the connector flags
@@ -94,6 +98,7 @@ func (opt *connectorOptions) ApplyFlags(cfg *config.Config) {
 	cfg.ScanVolumeTimeout = opt.scanVolumeTimeout
 	cfg.ConnectorThreads = opt.connectorThreads
 	cfg.AllPathOnline = opt.allPathOnline
+	cfg.ExecCommandTimeout = opt.execCommandTimeout
 }
 
 // ValidateFlags validate the connector flags
@@ -147,6 +152,13 @@ func (opt *connectorOptions) validateConnectorThreads() error {
 	if opt.connectorThreads < minThreads || opt.connectorThreads > maxThreads {
 		return fmt.Errorf("the connector-threads %d should be %d~%d",
 			opt.connectorThreads, minThreads, maxThreads)
+	}
+	return nil
+}
+func (opt *connectorOptions) validateExecCommandTimeout() error {
+	if opt.execCommandTimeout < 1 || opt.execCommandTimeout > 600 {
+		return fmt.Errorf("the value of execCommandTimeout ranges from 1 to 600, current is: %d",
+			opt.scanVolumeTimeout)
 	}
 	return nil
 }

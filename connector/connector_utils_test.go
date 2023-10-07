@@ -455,12 +455,12 @@ func TestWatchDMDevice(t *testing.T) {
 			3,
 			[]string{"sdb", "sdc", "sdd"},
 			100 * time.Millisecond,
-			200 * time.Millisecond,
+			10000 * time.Millisecond,
 			errors.New(VolumeNotFound),
 		},
 	}
 
-	stubs := gostub.Stub(&ScanVolumeTimeout, 10*time.Millisecond)
+	stubs := gostub.New()
 	defer stubs.Reset()
 
 	for _, c := range cases {
@@ -690,17 +690,30 @@ func helperFuncForTestGetDeviceFromSymLink(t *testing.T, mockTargetNameWithoutLi
 		t.Errorf("create mock target without link file failed, error: %v", err)
 		return "", true
 	}
-	if err := withoutLinkPath.Close(); err != nil {
-		t.Errorf("close file %s failed, error: %v", withoutLinkPath.Name(), err)
+	defer func() {
+		if err = withoutLinkPath.Close(); err != nil {
+			t.Errorf("close file %s failed, error: %v", withoutLinkPath.Name(), err)
+		}
+	}()
+	err = withoutLinkPath.Chmod(0600)
+	if err != nil {
+		t.Errorf("file withoutLinkPath chmod to 0600 failed, error: %v", err)
+		return "", true
 	}
-
 	deviceFile, err := os.Create(path.Join(tempDir, mockDeviceName))
 	if err != nil {
 		t.Errorf("create mock device file failed, error: %v", err)
 		return "", true
 	}
-	if err := deviceFile.Close(); err != nil {
-		t.Errorf("close file %s failed, error: %v", deviceFile.Name(), err)
+	defer func() {
+		if err := deviceFile.Close(); err != nil {
+			t.Errorf("close file %s failed, error: %v", deviceFile.Name(), err)
+		}
+	}()
+	err = deviceFile.Chmod(0600)
+	if err != nil {
+		t.Errorf("file deviceFile chmod to 0600 failed, error: %v", err)
+		return "", true
 	}
 
 	if err := os.Symlink(path.Join(tempDir, mockDeviceName), path.Join(tempDir, mockTargetName)); err != nil {

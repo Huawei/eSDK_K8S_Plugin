@@ -171,7 +171,7 @@ func mockWriteWwnFile() error {
 func cleanMockFile() {
 	err := os.RemoveAll(defaultWwnFileDir)
 	if err != nil {
-		log.Errorf("clean mock file failed, error: %v", err)
+		log.Errorln("clean mock file failed")
 		return
 	}
 }

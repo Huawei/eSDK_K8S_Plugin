@@ -59,10 +59,10 @@ type BackendConfiguration struct {
 	Configured          bool                     `json:"-" yaml:"configured"`
 	Provisioner         string                   `json:"provisioner,omitempty" yaml:"provisioner"`
 	Parameters          struct {
-		Protocol   string                                `json:"protocol,omitempty" yaml:"protocol"`
-		ParentName string                                `json:"parentname" yaml:"parentname"`
-		Portals    []string                              `json:"portals,omitempty" yaml:"portals"`
-		Alua       []map[string][]map[string]interface{} `json:"ALUA,omitempty" yaml:"ALUA"`
+		Protocol   string                            `json:"protocol,omitempty" yaml:"protocol"`
+		ParentName string                            `json:"parentname,omitempty" yaml:"parentname"`
+		Portals    interface{}                       `json:"portals,omitempty" yaml:"portals"`
+		Alua       map[string]map[string]interface{} `json:"ALUA,omitempty" yaml:"ALUA"`
 	} `json:"parameters,omitempty" yaml:"parameters"`
 }
 
@@ -186,6 +186,8 @@ func (b *BackendConfiguration) ToConfigMapConfig() (ConfigMapConfig, error) {
 	config := struct {
 		Backends BackendConfiguration `json:"backends"`
 	}{*b}
+
+	config.Backends.Parameters.Portals = helper.ConvertInterface(config.Backends.Parameters.Portals)
 
 	output, err := json.MarshalIndent(&config, "", "  ")
 	if err != nil {
@@ -313,7 +315,7 @@ func LoadBackendsFromConfigMap(configmap corev1.ConfigMap) (map[string]*BackendC
 	return result, nil
 }
 
-//AnalyseBackendExist analyse backend,an error is returned if backends not exist
+// AnalyseBackendExist analyse backend,an error is returned if backends not exist
 func AnalyseBackendExist(jsonStr string) (interface{}, error) {
 	var config map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &config); err != nil {

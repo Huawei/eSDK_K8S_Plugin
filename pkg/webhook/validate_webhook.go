@@ -68,7 +68,7 @@ func CreateValidateWebhook(ctx context.Context, admissionWebhook AdmissionWebHoo
 		}},
 		SideEffects:             &sideEffect,
 		FailurePolicy:           &failurePolicy,
-		AdmissionReviewVersions: []string{"v1"},
+		AdmissionReviewVersions: []string{"v1", "v1beta1"},
 		MatchPolicy:             &matchPolicy,
 	}
 

@@ -123,7 +123,10 @@ func (cli *BaseClient) QueryAssociateHostGroup(ctx context.Context, objType int,
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	return respData, nil
 }
 
@@ -149,7 +152,10 @@ func (cli *BaseClient) CreateHost(ctx context.Context, name string) (map[string]
 		return nil, errors.New(msg)
 	}
 
-	host := resp.Data.(map[string]interface{})
+	host, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
 	return host, nil
 }
 
@@ -198,13 +204,19 @@ func (cli *BaseClient) GetHostByName(ctx context.Context, name string) (map[stri
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	if len(respData) <= 0 {
 		log.AddContext(ctx).Infof("Host %s does not exist", name)
 		return nil, nil
 	}
 
-	host := respData[0].(map[string]interface{})
+	host, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert respData[0] to map[string]interface{} failed")
+	}
 	return host, nil
 }
 
@@ -249,7 +261,10 @@ func (cli *BaseClient) CreateHostGroup(ctx context.Context, name string) (map[st
 		return nil, errors.New(msg)
 	}
 
-	hostGroup := resp.Data.(map[string]interface{})
+	hostGroup, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
 	return hostGroup, nil
 }
 
@@ -272,13 +287,19 @@ func (cli *BaseClient) GetHostGroupByName(ctx context.Context, name string) (map
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	if len(respData) <= 0 {
 		log.AddContext(ctx).Infof("Hostgroup %s does not exist", name)
 		return nil, nil
 	}
 
-	hostGroup := respData[0].(map[string]interface{})
+	hostGroup, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert respData[0] to map[string]interface{} failed")
+	}
 	return hostGroup, nil
 }
 
