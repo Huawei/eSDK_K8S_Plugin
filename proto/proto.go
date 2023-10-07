@@ -79,7 +79,11 @@ func VerifyIscsiPortals(portals []interface{}) ([]string, error) {
 	var verifiedPortals []string
 
 	for _, i := range portals {
-		portal := i.(string)
+		portal, ok := i.(string)
+		if !ok {
+			log.Warningf("VerifyIscsiPortals, convert portal to string failed, data: %v", i)
+			continue
+		}
 		ip := net.ParseIP(portal)
 		if ip == nil {
 			return nil, fmt.Errorf("%s of portals is invalid", portal)

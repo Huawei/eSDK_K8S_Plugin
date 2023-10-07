@@ -50,6 +50,7 @@ func mockServiceConfig() serviceConfig {
 	return serviceConfig{
 		Controller:           false,
 		EnableLeaderElection: false,
+		EnableLabel:          false,
 
 		Endpoint:         "",
 		DrEndpoint:       "",

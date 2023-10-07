@@ -28,9 +28,6 @@ const (
 	ParentTypeFS    int = 40
 	ParentTypeDTree int = 16445
 
-	QuotaSwitchOpen  bool = true
-	QuotaSwitchClose bool = false
-
 	SecurityStyleUnix int = 3
 )
 

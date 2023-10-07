@@ -17,6 +17,7 @@
 package helper
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -122,6 +123,12 @@ func PrintBackend[T any](t []T, notFound []string, printFunc func(t []T)) {
 	PrintNotFoundBackend(notFound...)
 }
 
+// PrintSecret print secret
+func PrintSecret[T any](t []T, notFound []string, printFunc func(t []T)) {
+	printFunc(t)
+	PrintNotFoundSecret(notFound...)
+}
+
 // PrintNotFoundBackend print not found backend
 func PrintNotFoundBackend(names ...string) {
 	for _, name := range names {
@@ -129,9 +136,21 @@ func PrintNotFoundBackend(names ...string) {
 	}
 }
 
+// PrintNotFoundSecret print not found secret
+func PrintNotFoundSecret(names ...string) {
+	for _, name := range names {
+		fmt.Printf("Error from server (NotFound): cert \"%s\" not found\n", name)
+	}
+}
+
 // PrintNoResourceBackend print not found backend
 func PrintNoResourceBackend(namespace string) {
 	fmt.Printf("No backends found in %s namespace\n", namespace)
+}
+
+// PrintNoResourceCert print no cert found
+func PrintNoResourceCert(backend, namespace string) {
+	fmt.Printf("Error from server (NotFound): no cert found on backend %s in %s namespace\n", backend, namespace)
 }
 
 // GetPrintFunc get print function by format type
@@ -235,4 +254,47 @@ func GetBackendName(name string) string {
 		return name
 	}
 	return BuildBackendName(name)
+}
+
+// LogInfof write message
+func LogInfof(ctx context.Context, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	tag := ctx.Value("tag")
+	if tag == nil {
+		log.Infof("%s", msg)
+		return
+	}
+	log.Infof("<<%s>> %s", tag, msg)
+}
+
+// LogWarningf write error log and return the error
+func LogWarningf(ctx context.Context, format string, err error) error {
+	errMessage := fmt.Sprintf(format, err)
+	tag := ctx.Value("tag")
+	if tag == nil {
+		log.Warningf("%s", errMessage)
+		return err
+	}
+	log.Warningf("<<%s>> %s", tag, errMessage)
+	return err
+}
+
+// ConvertInterface convert interface
+func ConvertInterface(i interface{}) interface{} {
+	switch x := i.(type) {
+	case map[interface{}]interface{}:
+		m2 := map[string]interface{}{}
+		for k, v := range x {
+			if key, ok := k.(string); ok {
+				m2[key] = ConvertInterface(v)
+			}
+		}
+		return m2
+	case []interface{}:
+		for i, v := range x {
+			x[i] = ConvertInterface(v)
+		}
+	default:
+	}
+	return i
 }

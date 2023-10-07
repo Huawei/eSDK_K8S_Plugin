@@ -23,17 +23,14 @@ import (
 	"time"
 
 	"huawei-csi-driver/csi/app/config"
-)
-
-const (
-	defaultDriverName = "csi.huawei.com"
-	nodeNameEnv       = "CSI_NODENAME"
+	"huawei-csi-driver/pkg/constants"
 )
 
 // serviceOptions include service's configuration
 type serviceOptions struct {
 	controller           bool
 	enableLeaderElection bool
+	enableLabel          bool
 
 	driverName       string
 	endpoint         string
@@ -72,7 +69,7 @@ func (opt *serviceOptions) AddFlags(ff *flag.FlagSet) {
 		false,
 		"Run as a controller service")
 	ff.StringVar(&opt.driverName, "driver-name",
-		defaultDriverName,
+		constants.DefaultDriverName,
 		"CSI driver name")
 	ff.IntVar(&opt.backendUpdateInterval, "backend-update-interval",
 		60,
@@ -81,7 +78,7 @@ func (opt *serviceOptions) AddFlags(ff *flag.FlagSet) {
 		"",
 		"absolute path to the kubeconfig file")
 	ff.StringVar(&opt.nodeName, "nodename",
-		os.Getenv(nodeNameEnv),
+		os.Getenv(constants.NodeNameEnv),
 		"node name in kubernetes cluster")
 	ff.StringVar(&opt.kubeletRootDir, "kubeletRootDir",
 		"/var/lib",
@@ -94,6 +91,9 @@ func (opt *serviceOptions) AddFlags(ff *flag.FlagSet) {
 	ff.IntVar(&opt.webHookPort, "web-hook-port",
 		0,
 		"The number of volumes that controller can publish to the node")
+	ff.BoolVar(&opt.enableLabel, "enable-label",
+		false,
+		"csi enable label")
 	ff.BoolVar(&opt.enableLeaderElection, "enable-leader-election",
 		false,
 		"backend enable leader election")
@@ -121,6 +121,7 @@ func (opt *serviceOptions) AddFlags(ff *flag.FlagSet) {
 func (opt *serviceOptions) ApplyFlags(cfg *config.Config) {
 	cfg.Endpoint = opt.endpoint
 	cfg.DrEndpoint = opt.drEndpoint
+	cfg.EnableLabel = opt.enableLabel
 	cfg.Controller = opt.controller
 	cfg.DriverName = opt.driverName
 	cfg.BackendUpdateInterval = opt.backendUpdateInterval

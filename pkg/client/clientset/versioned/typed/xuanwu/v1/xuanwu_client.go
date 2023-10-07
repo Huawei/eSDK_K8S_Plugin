@@ -18,11 +18,14 @@ package v1
 import (
 	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/pkg/client/clientset/versioned/scheme"
+	"net/http"
+
 	rest "k8s.io/client-go/rest"
 )
 
 type XuanwuV1Interface interface {
 	RESTClient() rest.Interface
+	ResourceTopologiesGetter
 	StorageBackendClaimsGetter
 	StorageBackendContentsGetter
 }
@@ -30,6 +33,10 @@ type XuanwuV1Interface interface {
 // XuanwuV1Client is used to interact with features provided by the xuanwu.huawei.io group.
 type XuanwuV1Client struct {
 	restClient rest.Interface
+}
+
+func (c *XuanwuV1Client) ResourceTopologies() ResourceTopologyInterface {
+	return newResourceTopologies(c)
 }
 
 func (c *XuanwuV1Client) StorageBackendClaims(namespace string) StorageBackendClaimInterface {
@@ -41,12 +48,28 @@ func (c *XuanwuV1Client) StorageBackendContents() StorageBackendContentInterface
 }
 
 // NewForConfig creates a new XuanwuV1Client for the given config.
+// NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
+// where httpClient was generated with rest.HTTPClientFor(c).
 func NewForConfig(c *rest.Config) (*XuanwuV1Client, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
 	}
-	client, err := rest.RESTClientFor(&config)
+	httpClient, err := rest.HTTPClientFor(&config)
+	if err != nil {
+		return nil, err
+	}
+	return NewForConfigAndClient(&config, httpClient)
+}
+
+// NewForConfigAndClient creates a new XuanwuV1Client for the given config and http client.
+// Note the http client provided takes precedence over the configured transport values.
+func NewForConfigAndClient(c *rest.Config, h *http.Client) (*XuanwuV1Client, error) {
+	config := *c
+	if err := setConfigDefaults(&config); err != nil {
+		return nil, err
+	}
+	client, err := rest.RESTClientForConfigAndClient(&config, h)
 	if err != nil {
 		return nil, err
 	}

@@ -19,8 +19,8 @@ package client
 import (
 	"context"
 	"fmt"
-	"strconv"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -33,10 +33,6 @@ type Replication interface {
 	GetReplicationPairByResID(ctx context.Context, resID string, resType int) ([]map[string]interface{}, error)
 	// GetReplicationPairByID used for get replication pair by pair id
 	GetReplicationPairByID(ctx context.Context, pairID string) (map[string]interface{}, error)
-	// GetReplicationvStorePairCount used for get replication vstore pair count
-	GetReplicationvStorePairCount(ctx context.Context) (int64, error)
-	// GetReplicationvStorePairRange used for get replication vstore pair range
-	GetReplicationvStorePairRange(ctx context.Context, startRange, endRange int64) ([]interface{}, error)
 	// GetReplicationvStorePairByvStore used for get replication vstore pair by vstore id
 	GetReplicationvStorePairByvStore(ctx context.Context, vStoreID string) (map[string]interface{}, error)
 	// DeleteReplicationPair used for delete replication pair by pair id
@@ -63,7 +59,10 @@ func (cli *BaseClient) CreateReplicationPair(ctx context.Context, data map[strin
 		return nil, fmt.Errorf("Create replication %v error: %d", data, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -147,7 +146,10 @@ func (cli *BaseClient) GetReplicationPairByResID(ctx context.Context, resID stri
 
 	var pairs []map[string]interface{}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	for _, i := range respData {
 		pairs = append(pairs, i.(map[string]interface{}))
 	}
@@ -168,49 +170,10 @@ func (cli *BaseClient) GetReplicationPairByID(ctx context.Context, pairID string
 		return nil, fmt.Errorf("Get replication pair %s error: %d", pairID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
-	return respData, nil
-}
-
-// GetReplicationvStorePairCount used for get replication vstore pair count
-func (cli *BaseClient) GetReplicationvStorePairCount(ctx context.Context) (int64, error) {
-	resp, err := cli.Get(ctx, "/replication_vstorepair/count", nil)
-	if err != nil {
-		return 0, err
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
 	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		return 0, fmt.Errorf("Get replication vstore pair count error: %d", code)
-	}
-
-	respData := resp.Data.(map[string]interface{})
-	countStr := respData["COUNT"].(string)
-	count, _ := strconv.ParseInt(countStr, 10, 64)
-
-	return count, nil
-}
-
-// GetReplicationvStorePairRange used for get replication vstore pair range
-func (cli *BaseClient) GetReplicationvStorePairRange(ctx context.Context, startRange, endRange int64) (
-	[]interface{}, error) {
-
-	url := fmt.Sprintf("/replication_vstorepair?range=[%d-%d]", startRange, endRange)
-	resp, err := cli.Get(ctx, url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		return nil, fmt.Errorf("Get replication vstore pairs error: %d", code)
-	}
-
-	if resp.Data == nil {
-		return nil, nil
-	}
-
-	respData := resp.Data.([]interface{})
 	return respData, nil
 }
 
@@ -232,12 +195,18 @@ func (cli *BaseClient) GetReplicationvStorePairByvStore(ctx context.Context,
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) == 0 {
 		log.AddContext(ctx).Infof("Replication vstore pair of vstore %s does not exist", vStoreID)
 		return nil, nil
 	}
 
-	pair := respData[0].(map[string]interface{})
+	pair, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert pair to map failed, data: %v", respData[0])
+	}
 	return pair, nil
 }

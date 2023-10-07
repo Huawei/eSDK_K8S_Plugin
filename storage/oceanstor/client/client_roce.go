@@ -22,6 +22,7 @@ import (
 	URL "net/url"
 	"strings"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -57,11 +58,17 @@ func (cli *BaseClient) GetRoCEInitiator(ctx context.Context, initiator string) (
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) == 0 {
 		return nil, nil
 	}
-	ini := respData[0].(map[string]interface{})
+	ini, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert ini to map failed, data: %v", respData[0])
+	}
 	return ini, nil
 }
 
@@ -79,7 +86,10 @@ func (cli *BaseClient) GetRoCEInitiatorByID(ctx context.Context, initiator strin
 		return nil, fmt.Errorf("Get RoCE initiator by ID %s error: %d", initiator, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -103,7 +113,10 @@ func (cli *BaseClient) AddRoCEInitiator(ctx context.Context, initiator string) (
 		return nil, fmt.Errorf("add RoCE initiator %s error: %d", initiator, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -144,12 +157,18 @@ func (cli *BaseClient) GetRoCEPortalByIP(ctx context.Context, tgtPortal string) 
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) == 0 {
 		log.AddContext(ctx).Infof("RoCE portal %s does not exist", tgtPortal)
 		return nil, nil
 	}
 
-	portal := respData[0].(map[string]interface{})
+	portal, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert portal to string failed, data: %v", respData[0])
+	}
 	return portal, nil
 }

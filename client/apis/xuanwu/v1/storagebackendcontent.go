@@ -44,6 +44,15 @@ type StorageBackendContentSpec struct {
 	// User defined parameter for extension
 	// +optional
 	Parameters map[string]string `json:"parameters,omitempty" protobuf:"bytes,8,opt,name=parameters"`
+
+	// UseCert is used to decide whether to use the certificate
+	// +kubebuilder:default=false
+	// +optional
+	UseCert bool `json:"useCert,omitempty" protobuf:"bytes,9,opt,name=useCert"`
+
+	// CertSecret is the name of the secret that holds the certificate
+	// +optional
+	CertSecret string `json:"certSecret,omitempty" protobuf:"bytes,9,opt,name=certSecret"`
 }
 
 // StorageBackendContentStatus defines the observed state of StorageBackendContent
@@ -80,6 +89,12 @@ type StorageBackendContentStatus struct {
 
 	// SN is the unique identifier of a storage device.
 	SN string `json:"sn,omitempty" protobuf:"bytes,1,opt,name=sn"`
+
+	// UseCert is used to decide whether to use the certificate
+	UseCert bool `json:"useCert,omitempty" protobuf:"bytes,9,opt,name=useCert"`
+
+	// CertSecret is the name of the secret that holds the certificate
+	CertSecret string `json:"certSecret,omitempty" protobuf:"bytes,9,opt,name=certSecret"`
 }
 
 // CapacityType means the capacity types

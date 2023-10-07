@@ -40,7 +40,6 @@ import (
 const (
 	noAuthenticated int64 = 10000003
 	offLineCodeInt  int64 = 1077949069
-	offLineCode           = "1077949069"
 
 	defaultParallelCount int = 50
 	maxParallelCount     int = 1000
@@ -50,6 +49,8 @@ const (
 	loginFailedWithArg  = 1077987870
 	userPasswordInvalid = 1073754390
 	IPLock              = 1077949071
+
+	unconnectedError = "unconnected"
 )
 
 var (
@@ -81,6 +82,8 @@ type Client struct {
 	secretNamespace string
 	secretName      string
 	backendID       string
+	useCert         bool
+	certSecretMeta  string
 
 	accountName string
 	accountId   int
@@ -100,14 +103,16 @@ type NewClientConfig struct {
 	ParallelNum     string
 	BackendID       string
 	AccountName     string
+	UseCert         bool
+	CertSecretMeta  string
 }
 
-func NewClient(url, user, secretName, secretNamespace, parallelNum, backendID, accountName string) *Client {
+func NewClient(clientConfig *NewClientConfig) *Client {
 	var err error
 	var parallelCount int
 
-	if len(parallelNum) > 0 {
-		parallelCount, err = strconv.Atoi(parallelNum)
+	if len(clientConfig.ParallelNum) > 0 {
+		parallelCount, err = strconv.Atoi(clientConfig.ParallelNum)
 		if err != nil || parallelCount > maxParallelCount || parallelCount < minParallelCount {
 			log.Warningf("The config parallelNum %d is invalid, set it to the default value %d", parallelCount, defaultParallelCount)
 			parallelCount = defaultParallelCount
@@ -119,12 +124,14 @@ func NewClient(url, user, secretName, secretNamespace, parallelNum, backendID, a
 	log.Infof("Init parallel count is %d", parallelCount)
 	clientSemaphore = utils.NewSemaphore(parallelCount)
 	return &Client{
-		url:             url,
-		user:            user,
-		secretName:      secretName,
-		secretNamespace: secretNamespace,
-		backendID:       backendID,
-		accountName:     accountName,
+		url:             clientConfig.Url,
+		user:            clientConfig.User,
+		secretName:      clientConfig.SecretName,
+		secretNamespace: clientConfig.SecretNamespace,
+		backendID:       clientConfig.BackendID,
+		accountName:     clientConfig.AccountName,
+		useCert:         clientConfig.UseCert,
+		certSecretMeta:  clientConfig.CertSecretMeta,
 	}
 }
 
@@ -136,10 +143,20 @@ func (cli *Client) DuplicateClient() *Client {
 }
 
 func (cli *Client) ValidateLogin(ctx context.Context) error {
-	jar, _ := cookiejar.New(nil)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		log.AddContext(ctx).Errorf("create jar failed, error: %v", err)
+		return err
+	}
+
+	useCert, certPool, err := pkgUtils.GetCertPool(ctx, cli.useCert, cli.certSecretMeta)
+	if err != nil {
+		return err
+	}
+
 	cli.client = &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool},
 		},
 		Jar:     jar,
 		Timeout: 60 * time.Second,
@@ -172,13 +189,11 @@ func (cli *Client) ValidateLogin(ctx context.Context) error {
 }
 
 func (cli *Client) Login(ctx context.Context) error {
-	jar, _ := cookiejar.New(nil)
-	cli.client = &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-		Jar:     jar,
-		Timeout: 60 * time.Second,
+	var err error
+	cli.client, err = newHTTPClientByBackendID(ctx, cli.backendID)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get http client by backend %s failed, err is %v", cli.backendID, err)
+		return err
 	}
 
 	log.AddContext(ctx).Infof("Try to login %s.", cli.url)
@@ -225,16 +240,12 @@ func (cli *Client) Login(ctx context.Context) error {
 
 	cli.authToken = respHeader["X-Auth-Token"][0]
 
-	err = cli.setAccountId(ctx)
-	if err != nil {
-		return pkgUtils.Errorln(ctx, fmt.Sprintf("setAccountId failed, error: %v", err))
-	}
-
 	log.AddContext(ctx).Infof("Login %s success", cli.url)
 	return nil
 }
 
-func (cli *Client) setAccountId(ctx context.Context) error {
+func (cli *Client) SetAccountId(ctx context.Context) error {
+	log.AddContext(ctx).Debugf("setAccountId start. account name: %s", cli.accountName)
 	if cli.accountName == "" {
 		cli.accountName = types.DefaultAccountName
 		cli.accountId = types.DefaultAccountId
@@ -287,9 +298,21 @@ func (cli *Client) KeepAlive(ctx context.Context) {
 	}
 }
 
-func (cli *Client) doCall(ctx context.Context,
-	method string, url string,
-	data map[string]interface{}) (http.Header, []byte, error) {
+func (cli *Client) reLoginLock(ctx context.Context) {
+	log.AddContext(ctx).Debugln("Try to reLoginLock.")
+	cli.reloginMutex.Lock()
+	log.AddContext(ctx).Debugln("ReLoginLock success.")
+}
+
+func (cli *Client) reLoginUnlock(ctx context.Context) {
+	log.AddContext(ctx).Debugln("Try to reLoginUnlock.")
+	cli.reloginMutex.Unlock()
+	log.AddContext(ctx).Debugln("ReLoginUnlock success.")
+}
+
+func (cli *Client) doCall(ctx context.Context, method string, url string, data map[string]any) (
+	http.Header, []byte, error) {
+
 	var err error
 	var reqUrl string
 	var reqBody io.Reader
@@ -315,12 +338,14 @@ func (cli *Client) doCall(ctx context.Context,
 	req.Header.Set("Referer", cli.url)
 	req.Header.Set("Content-Type", "application/json")
 
+	// When the non-login/logout interface is invoked, if a thread is relogin, the new token is used after the relogin
+	// is complete. This prevents the relogin interface from being invoked for multiple times.
 	if url != "/dsware/service/v1.3/sec/login" && url != "/dsware/service/v1.3/sec/logout" {
-		cli.reloginMutex.Lock()
+		cli.reLoginLock(ctx)
 		if cli.authToken != "" {
 			req.Header.Set("X-Auth-Token", cli.authToken)
 		}
-		cli.reloginMutex.Unlock()
+		cli.reLoginUnlock(ctx)
 	} else {
 		if cli.authToken != "" {
 			req.Header.Set("X-Auth-Token", cli.authToken)
@@ -328,15 +353,15 @@ func (cli *Client) doCall(ctx context.Context,
 	}
 
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
-		fmt.Sprintf("Request method: %s, url: %s, body: %v", method, reqUrl, data))
+		fmt.Sprintf("Request method: %s, url: %s, body: %v", method, req.URL, data))
 
 	clientSemaphore.Acquire()
 	defer clientSemaphore.Release()
 
 	resp, err := cli.client.Do(req)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Send request method: %s, url: %s, error: %v", method, reqUrl, err)
-		return nil, nil, errors.New("unconnected")
+		log.AddContext(ctx).Errorf("Send request method: %s, url: %s, error: %v", method, req.URL, err)
+		return nil, nil, errors.New(unconnectedError)
 	}
 
 	defer resp.Body.Close()
@@ -348,14 +373,14 @@ func (cli *Client) doCall(ctx context.Context,
 	}
 
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
-		fmt.Sprintf("Response method: %s, url: %s, body: %s", method, reqUrl, respBody))
+		fmt.Sprintf("Response method: %s, url: %s, body: %s", method, req.URL, respBody))
 
 	return resp.Header, respBody, nil
 }
 
 func (cli *Client) baseCall(ctx context.Context, method string, url string, data map[string]interface{}) (http.Header,
-	map[string]interface{}, error) {
-	var body map[string]interface{}
+	map[string]any, error) {
+	var body map[string]any
 	respHeader, respBody, err := cli.doCall(ctx, method, url, data)
 	if err != nil {
 		return nil, nil, err
@@ -368,54 +393,43 @@ func (cli *Client) baseCall(ctx context.Context, method string, url string, data
 	return respHeader, body, nil
 }
 
-func (cli *Client) call(ctx context.Context,
-	method string, url string,
-	data map[string]interface{}) (http.Header, map[string]interface{}, error) {
-	var body map[string]interface{}
+func (cli *Client) retryCall(ctx context.Context, method string, url string, data map[string]any) (
+	http.Header, map[string]any, error) {
 
-	respHeader, respBody, err := cli.doCall(ctx, method, url, data)
+	log.AddContext(ctx).Debugf("retry call: method: %s, url: %s, data: %v.", method, url, data)
+	var err error
+	var respHeader http.Header
+	var respBody []byte
 
-	if err != nil {
-		if err.Error() == "unconnected" {
-			goto RETRY
-		}
-
-		return nil, nil, err
-	}
-
-	err = json.Unmarshal(respBody, &body)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Unmarshal response body %s error: %v", respBody, err)
-		return nil, nil, err
-	}
-
-	if errorCodeInterface, exist := body["errorCode"]; exist {
-		if errorCode, ok := errorCodeInterface.(string); ok && errorCode == offLineCode {
-			log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
-			goto RETRY
-		}
-
-		// Compatible with int error code 1077949069
-		if errorCode, ok := errorCodeInterface.(float64); ok && int64(errorCode) == offLineCodeInt {
-			log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
-			goto RETRY
-		}
-
-		// Compatible with FusionStorage 6.3
-		if errorCode, ok := errorCodeInterface.(float64); ok && int64(errorCode) == noAuthenticated {
-			log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
-			goto RETRY
-		}
-	}
-	return respHeader, body, nil
-
-RETRY:
 	err = cli.reLogin(ctx)
-	if err == nil {
-		respHeader, respBody, err = cli.doCall(ctx, method, url, data)
+	if err != nil {
+		return nil, nil, err
 	}
 
+	respHeader, respBody, err = cli.doCall(ctx, method, url, data)
 	if err != nil {
+		return nil, nil, err
+	}
+
+	var body map[string]any
+	err = json.Unmarshal(respBody, &body)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Unmarshal response body %s error: %v", respBody, err)
+		return nil, nil, err
+	}
+
+	return respHeader, body, nil
+}
+
+func (cli *Client) call(ctx context.Context, method string, url string, data map[string]any) (
+	http.Header, map[string]any, error) {
+
+	var body map[string]any
+	respHeader, respBody, err := cli.doCall(ctx, method, url, data)
+	if err != nil {
+		if err.Error() == unconnectedError {
+			return cli.retryCall(ctx, method, url, data)
+		}
 		return nil, nil, err
 	}
 
@@ -423,16 +437,27 @@ RETRY:
 	if err != nil {
 		log.AddContext(ctx).Errorf("Unmarshal response body %s error: %v", respBody, err)
 		return nil, nil, err
+	}
+
+	errCode, err := getErrorCode(body)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Get error code failed. error: %v", err)
+		return nil, nil, err
+	}
+
+	if int64(errCode) == offLineCodeInt || int64(errCode) == noAuthenticated {
+		log.AddContext(ctx).Warningf("User offline, try to relogin %s", cli.url)
+		return cli.retryCall(ctx, method, url, data)
 	}
 
 	return respHeader, body, nil
 }
 
 func (cli *Client) reLogin(ctx context.Context) error {
-	oldToken := cli.authToken
+	cli.reLoginLock(ctx)
+	defer cli.reLoginUnlock(ctx)
 
-	cli.reloginMutex.Lock()
-	defer cli.reloginMutex.Unlock()
+	oldToken := cli.authToken
 	if cli.authToken != "" && oldToken != cli.authToken {
 		// Coming here indicates other thread had already done relogin, so no need to relogin again
 		return nil
@@ -501,4 +526,66 @@ func (cli *Client) checkErrorCode(ctx context.Context, resp map[string]interface
 	}
 
 	return true
+}
+
+func getErrorCode(body map[string]any) (int, error) {
+	// demo 1:
+	// | "name"     | "type" |
+	// | result     | int32  |
+	// | errorCode  | int32  |
+	// | suggestion | string |
+	if errorCodeInterface, exist := body["errorCode"]; exist {
+		if errorCodeFloat, ok := errorCodeInterface.(float64); ok {
+			return int(errorCodeFloat), nil
+		}
+
+		if errorCodeString, ok := errorCodeInterface.(string); ok {
+			return strconv.Atoi(errorCodeString)
+		}
+	}
+	// demo 2:
+	// | "name"  |  "type" |
+	// | data    |  array  |
+	// | - xx    |  - xx   |
+	// | result  |  json   |
+	// | - code  |  int32  |
+	if result, exist := body["result"].(map[string]any); exist {
+		if errorCodeFloat, ok := result["code"].(float64); ok {
+			return int(errorCodeFloat), nil
+		}
+
+		if errorCodeString, ok := result["code"].(string); ok {
+			return strconv.Atoi(errorCodeString)
+		}
+	}
+
+	return 0, nil
+}
+
+func newHTTPClientByBackendID(ctx context.Context, backendID string) (*http.Client, error) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		log.AddContext(ctx).Errorf("create jar failed, error: %v", err)
+		return nil, err
+	}
+
+	useCert, certMeta, err := pkgUtils.GetCertSecretFromBackendID(ctx, backendID)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get cert secret from backend [%v] failed, error: %v", backendID, err)
+		return nil, err
+	}
+
+	useCert, certPool, err := pkgUtils.GetCertPool(ctx, useCert, certMeta)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get cert pool failed, error: %v", err)
+		return nil, err
+	}
+
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool},
+		},
+		Jar:     jar,
+		Timeout: 60 * time.Second,
+	}, nil
 }

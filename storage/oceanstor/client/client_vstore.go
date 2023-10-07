@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -54,13 +55,19 @@ func (cli *BaseClient) GetvStoreByName(ctx context.Context, name string) (map[st
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) == 0 {
 		log.AddContext(ctx).Infof("vstore %s does not exist", name)
 		return nil, nil
 	}
 
-	vstore := respData[0].(map[string]interface{})
+	vstore, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData[0] to map failed, data: %v", respData[0])
+	}
 	return vstore, nil
 }
 
@@ -81,12 +88,18 @@ func (cli *BaseClient) GetvStorePairByID(ctx context.Context, pairID string) (ma
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) == 0 {
 		log.AddContext(ctx).Infof("vstore pair %s does not exist", pairID)
 		return nil, nil
 	}
 
-	pair := respData[0].(map[string]interface{})
+	pair, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData[0] to map failed, data: %v", respData[0])
+	}
 	return pair, nil
 }

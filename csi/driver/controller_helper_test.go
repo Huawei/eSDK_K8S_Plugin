@@ -107,9 +107,23 @@ func initDriver() *Driver {
 		app.GetGlobalConfig().NodeName)
 }
 
+func initPool(poolName string) *backend.StoragePool {
+	return &backend.StoragePool{
+		Name:         poolName,
+		Storage:      "oceanstor-nas",
+		Parent:       "fake-bakcend",
+		Capabilities: map[string]interface{}{},
+		Plugin:       plugin.GetPlugin("oceanstor-nas"),
+	}
+}
+
 func TestCreateVolumeWithoutBackend(t *testing.T) {
 	driver := initDriver()
 	req := mockCreateRequest()
+
+	s := gostub.StubFunc(&pkgUtils.CreatePVLabel)
+	defer s.Reset()
+
 	m := gomonkey.ApplyFunc(pkgUtils.ListClaim,
 		func(ctx context.Context, client clientSet.Interface, namespace string) (
 			*xuanwuv1.StorageBackendClaimList, error) {
@@ -123,26 +137,20 @@ func TestCreateVolumeWithoutBackend(t *testing.T) {
 	}
 }
 
-func initPool(poolName string) *backend.StoragePool {
-	return &backend.StoragePool{
-		Name:         poolName,
-		Storage:      "oceanstor-nas",
-		Parent:       "fake-bakcend",
-		Capabilities: map[string]interface{}{},
-		Plugin:       plugin.GetPlugin("oceanstor-nas"),
-	}
-}
-
 func TestCreateVolume(t *testing.T) {
 	localPool := initPool("local-pool")
-	gostub.StubFunc(&backend.SelectStoragePool, localPool, nil, nil)
+
+	s := gostub.StubFunc(&backend.SelectStoragePool, localPool, nil, nil)
+	defer s.Reset()
+
+	s.StubFunc(&pkgUtils.CreatePVLabel)
 
 	plg := plugin.GetPlugin("oceanstor-nas")
-	createPatch := gomonkey.ApplyMethod(reflect.TypeOf(plg), "CreateVolume",
+	m := gomonkey.ApplyMethod(reflect.TypeOf(plg), "CreateVolume",
 		func(*plugin.OceanstorNasPlugin, context.Context, string, map[string]interface{}) (utils.Volume, error) {
 			return utils.NewVolume("fake-nfs"), nil
 		})
-	defer createPatch.Reset()
+	defer m.Reset()
 
 	driver := initDriver()
 	req := mockCreateRequest()
@@ -152,12 +160,14 @@ func TestCreateVolume(t *testing.T) {
 	}
 }
 
-func TestImportVolumeWithOutBackend(t *testing.T) {
+func TestImportVolumeWithoutBackend(t *testing.T) {
 	driver := initDriver()
 	req := mockCreateRequest()
 
 	s := gostub.StubFunc(&backend.GetBackendWithFresh, nil)
 	defer s.Reset()
+
+	s.StubFunc(&pkgUtils.CreatePVLabel)
 
 	_, err := driver.manageVolume(context.TODO(), req, "fake-nfs", "fake-backend")
 	if err == nil {
@@ -168,19 +178,23 @@ func TestImportVolumeWithOutBackend(t *testing.T) {
 func TestImportVolume(t *testing.T) {
 	plg := plugin.GetPlugin("oceanstor-nas")
 	localPool := initPool("local-pool")
-	gostub.StubFunc(&backend.GetBackendWithFresh, &backend.Backend{
+
+	s := gostub.StubFunc(&backend.GetBackendWithFresh, &backend.Backend{
 		Name:   "fake-backend",
 		Plugin: plg,
 		Pools:  []*backend.StoragePool{localPool},
 	})
+	defer s.Reset()
 
-	queryPatch := gomonkey.ApplyMethod(reflect.TypeOf(plg), "QueryVolume",
+	s.StubFunc(&pkgUtils.CreatePVLabel)
+
+	m := gomonkey.ApplyMethod(reflect.TypeOf(plg), "QueryVolume",
 		func(*plugin.OceanstorNasPlugin, context.Context, string, map[string]interface{}) (utils.Volume, error) {
 			vol := utils.NewVolume("fake-nfs")
 			vol.SetSize(1024 * 1024 * 1024)
 			return vol, nil
 		})
-	defer queryPatch.Reset()
+	defer m.Reset()
 
 	driver := initDriver()
 	req := mockCreateRequest()

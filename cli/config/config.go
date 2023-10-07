@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	//CliVersion oceanctl version
-	CliVersion = "v4.1.0"
+	// CliVersion oceanctl version
+	CliVersion = "v4.2.0"
 
 	// DefaultMaxClientThreads default max client threads
 	DefaultMaxClientThreads = "30"
@@ -58,7 +58,7 @@ var (
 	// FileType the value of input format flag, set by options.WithInputFileType().
 	FileType string
 
-	//DeleteAll the value of all flag, set by options.DeleteAll().
+	// DeleteAll the value of all flag, set by options.DeleteAll().
 	DeleteAll bool
 
 	// ChangePassword the value of password flag, set by options.WithPassword().
@@ -70,6 +70,15 @@ var (
 	// NotValidateName the value of validate flag, set by options.WithNotValidateName
 	NotValidateName bool
 
+	// Backend the value of backend flag, set by options.WithBackend().
+	Backend string
+
 	// Client when the discoverOperating() function executes successfully, this field will be set.
 	Client client.KubernetesClient
+
+	// IsAllNodes the value of allNodes flag, set by options.WithAllNodes().
+	IsAllNodes bool
+
+	// NodeName the value of nodeName flag, set by options.WithNodeName()
+	NodeName string
 )

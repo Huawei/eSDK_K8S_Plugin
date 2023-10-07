@@ -15,10 +15,12 @@
 // Package constants is related with provider constants
 package constants
 
+import "errors"
+
 type FileType string
 
 const (
-	ProviderVersion       = "4.1.0"
+	ProviderVersion       = "4.2.0"
 	ProviderVendorName    = "Huawei"
 	EndpointDirPermission = 0755
 
@@ -40,6 +42,32 @@ const (
 	Ext3 FileType = "ext3"
 	Ext4 FileType = "ext4"
 	Xfs  FileType = "xfs"
+
+	// NodeNameEnv is defined in helm file
+	NodeNameEnv = "CSI_NODENAME"
+
+	// DefaultDriverName is default huawei csi driver name
+	DefaultDriverName = "csi.huawei.com"
+	// DefaultTopoDriverName is default topo driver name
+	DefaultTopoDriverName = "cmi.huawei.com"
+
+	// PVKind is defined by k8s
+	PVKind = "PersistentVolume"
+	// PodKind is defined by k8s
+	PodKind = "Pod"
+	// TopologyKind is topology resource kind
+	TopologyKind = "ResourceTopology"
+
+	// KubernetesV1 is kubernetes v1 api version
+	KubernetesV1 = "v1"
+	// XuanwuV1 is xuanwu v1 api version
+	XuanwuV1 = "xuanwu.huawei.io/v1"
+
+	NotMountStr = "not mounted"
+)
+
+var (
+	ErrTimeout = errors.New("timeout")
 )
 
 // DRCSIConfig contains storage normal configuration

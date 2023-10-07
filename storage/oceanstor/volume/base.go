@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strconv"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/smartx"
 	"huawei-csi-driver/utils"
@@ -99,8 +100,7 @@ func (p *Base) getPoolID(ctx context.Context, params map[string]interface{}) err
 		return fmt.Errorf("storage pool %s doesn't exist", poolName)
 	}
 
-	params["poolID"] = pool["ID"].(string)
-
+	params["poolID"] = pool["ID"]
 	return nil
 }
 
@@ -145,7 +145,11 @@ func (p *Base) getRemotePoolID(ctx context.Context,
 func (p *Base) preExpandCheckCapacity(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	// check the local pool
-	localParentName := params["localParentName"].(string)
+	localParentName, ok := params["localParentName"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert localParentName to string failed, data: %v", params["localParentName"])
+	}
+
 	pool, err := p.cli.GetPoolByName(ctx, localParentName)
 	if err != nil || pool == nil {
 		msg := fmt.Sprintf("Get storage pool %s info error: %v", localParentName, err)
@@ -157,7 +161,7 @@ func (p *Base) preExpandCheckCapacity(ctx context.Context,
 }
 
 func (p *Base) getSnapshotReturnInfo(snapshot map[string]interface{}, snapshotSize int64) map[string]interface{} {
-	snapshotCreated, _ := strconv.ParseInt(snapshot["TIMESTAMP"].(string), 10, 64)
+	snapshotCreated := utils.ParseIntWithDefault(snapshot["TIMESTAMP"].(string), 10, 64, 0)
 	snapshotSizeBytes := snapshotSize * 512
 	return map[string]interface{}{
 		"CreationTime": snapshotCreated,
@@ -168,18 +172,35 @@ func (p *Base) getSnapshotReturnInfo(snapshot map[string]interface{}, snapshotSi
 
 func (p *Base) createReplicationPair(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	resType := taskResult["resType"].(int)
-	remoteDeviceID := taskResult["remoteDeviceID"].(string)
+	resType, ok := taskResult["resType"].(int)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert resType to int failed, data: %v", taskResult["resType"])
+	}
+	remoteDeviceID, ok := taskResult["remoteDeviceID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert remoteDeviceID to string failed, data: %v", taskResult["remoteDeviceID"])
+	}
 
 	var localID string
 	var remoteID string
-
 	if resType == 11 {
-		localID = taskResult["localLunID"].(string)
-		remoteID = taskResult["remoteLunID"].(string)
+		localID, ok = taskResult["localLunID"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "convert localID to string failed, data: %v", taskResult["localLunID"])
+		}
+		remoteID, ok = taskResult["remoteLunID"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "convert remoteID to string failed, data: %v", taskResult["remoteLunID"])
+		}
 	} else {
-		localID = taskResult["localFSID"].(string)
-		remoteID = taskResult["remoteFSID"].(string)
+		localID, ok = taskResult["localFSID"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "convert localID to string failed, data: %v", taskResult["localFSID"])
+		}
+		remoteID, ok = taskResult["remoteFSID"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "convert remoteID to string failed, data: %v", taskResult["remoteFSID"])
+		}
 	}
 
 	data := map[string]interface{}{
@@ -208,7 +229,10 @@ func (p *Base) createReplicationPair(ctx context.Context,
 		return nil, err
 	}
 
-	pairID := pair["ID"].(string)
+	pairID, ok := pair["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert pairID to string failed, data: %v", pair["ID"])
+	}
 	err = p.cli.SyncReplicationPair(ctx, pairID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Sync replication pair %s error: %v", pairID, err)

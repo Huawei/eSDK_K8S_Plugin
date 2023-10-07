@@ -108,9 +108,9 @@ func (m *SanManager) UnStageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 }
 
 // ExpandVolume return nil error if specified volume expand success
-// If getting device wwn failed, return an error with call getDeviceWwn().
-// If the device expand failed according to the specified wwn, return an error with call connector.ResizeBlock().
-// If the volume capability is mount, will need to call connector.ResizeMountPath()
+// If getting device wwn failed, return an error with call getDeviceWwn.
+// If the device expand failed according to the specified wwn, return an error with call connector.ResizeBlock.
+// If the volume capability is mount, will need to call connector.ResizeMountPath.
 func (m *SanManager) ExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) error {
 	capacityRange := req.GetCapacityRange()
 	if capacityRange == nil || capacityRange.RequiredBytes <= 0 {
@@ -182,7 +182,7 @@ func getDeviceWwn(ctx context.Context, volumeId, targetPath string,
 			// information to the disk.
 			if err = utils.WriteWWNFileIfNotExist(ctx, wwn, volumeId); err != nil {
 				// If write wwn filed, there is nothing we can do and a retry is unlikely to help, because the mapping
-				// information doesn't exist in /proc/mount file, so the error with call utils.WriteWWNFileIfNotExist()
+				// information doesn't exist in /proc/mount file, so the error with call utils.WriteWWNFileIfNotExist
 				// will not return
 				log.AddContext(ctx).Warningf("write wwn file failed, wwn: %s, volumeId: %s error: %v",
 					wwn, volumeId, err)

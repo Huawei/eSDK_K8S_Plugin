@@ -17,8 +17,8 @@ package externalversions
 
 import (
 	"fmt"
-
 	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
+
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -50,6 +50,8 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=xuanwu.huawei.io, Version=v1
+	case v1.SchemeGroupVersion.WithResource("resourcetopologies"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Xuanwu().V1().ResourceTopologies().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("storagebackendclaims"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Xuanwu().V1().StorageBackendClaims().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("storagebackendcontents"):

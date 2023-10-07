@@ -17,8 +17,8 @@ package fake
 
 import (
 	"context"
-
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -114,7 +114,7 @@ func (c *FakeStorageBackendClaims) UpdateStatus(ctx context.Context, storageBack
 // Delete takes name of the storageBackendClaim and deletes it. Returns an error if one occurs.
 func (c *FakeStorageBackendClaims) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(storagebackendclaimsResource, c.ns, name), &xuanwuv1.StorageBackendClaim{})
+		Invokes(testing.NewDeleteActionWithOptions(storagebackendclaimsResource, c.ns, name, opts), &xuanwuv1.StorageBackendClaim{})
 
 	return err
 }

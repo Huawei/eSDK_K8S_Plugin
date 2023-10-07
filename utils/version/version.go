@@ -56,7 +56,7 @@ func InitVersion(versionFile, version string) error {
 			log.Infof("Open version file %s is exist.", versionFile)
 			return nil
 		}
-		log.Errorf("Open version file %s failed %v", versionFile, err)
+		log.Errorln("Open version file %s failed", versionFile)
 		return err
 	}
 	defer func(file *os.File) {

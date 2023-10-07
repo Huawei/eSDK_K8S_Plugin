@@ -252,19 +252,27 @@ var GetDevicesByGUID = func(ctx context.Context, tgtLunGUID string) ([]string, e
 }
 
 func reScanNVMe(ctx context.Context, device string) error {
-	if match, _ := regexp.MatchString(`nvme[0-9]+n[0-9]+`, device); match {
+	var err error
+	if match, err := regexp.MatchString(`nvme[0-9]+n[0-9]+`, device); err == nil && match {
 		output, err := utils.ExecShellCmd(ctx, "echo 1 > /sys/block/%s/device/rescan_controller", device)
 		if err != nil {
 			log.AddContext(ctx).Warningf("rescan nvme path error: %s", output)
 			return err
 		}
-	} else if match, _ := regexp.MatchString(`nvme[0-9]+$`, device); match {
+	} else if match, err = regexp.MatchString(`nvme[0-9]+$`, device); err == nil && match {
 		output, err := utils.ExecShellCmd(ctx, "nvme ns-rescan /dev/%s", device)
 		if err != nil {
 			log.AddContext(ctx).Warningf("rescan nvme path error: %s", output)
 			return err
 		}
 	}
+
+	if err != nil {
+		log.AddContext(ctx).Warningf("pattern compile failed, err: %v", err)
+		return err
+	}
+
+	log.AddContext(ctx).Warningf("device %s match failed, err: %v", device, err)
 	return nil
 }
 
@@ -434,7 +442,7 @@ func getSessionIdByDevice(devPath string) (string, error) {
 // WatchDMDevice is an aggregate drive letter monitor.
 func WatchDMDevice(ctx context.Context, lunWWN string, expectPathNumber int) (DMDeviceInfo, error) {
 	log.AddContext(ctx).Infof("Watch DM Disk Generation. lunWWN: %s,expectPathNumber: %d", lunWWN, expectPathNumber)
-	var timeout = time.After(ScanVolumeTimeout)
+	var timeout = time.After(time.Second * time.Duration(app.GetGlobalConfig().ScanVolumeTimeout))
 	var dm DMDeviceInfo
 	var err = errors.New(VolumeNotFound)
 	for {
@@ -710,8 +718,13 @@ func removeMultiPathDevice(ctx context.Context, multiPathName string, devices []
 func RemoveDevice(ctx context.Context, device string) (string, error) {
 	var multiPathName string
 	var err error
+
 	if strings.HasPrefix(device, "dm") {
-		devices, _ := getDeviceFromDM(device)
+		devices, err := getDeviceFromDM(device)
+		if err != nil {
+			log.AddContext(ctx).Errorf("RemoveDevice.getDeviceFromDM failed, device: %s, err: %v", device, err)
+			return "", err
+		}
 		multiPathName, err = removeMultiPathDevice(ctx, device, devices)
 	} else if strings.HasPrefix(device, "sd") {
 		err = removeSCSIDevice(ctx, device)
@@ -1089,9 +1102,9 @@ var ResizeMountPath = func(ctx context.Context, volumePath string) error {
 		return extResize(ctx, devicePath)
 	case "xfs":
 		return xfsResize(ctx, volumePath)
+	default:
+		return fmt.Errorf("resize of format %s is not supported for device %s", fsType, devicePath)
 	}
-
-	return fmt.Errorf("resize of format %s is not supported for device %s", fsType, devicePath)
 }
 
 func extResize(ctx context.Context, devicePath string) error {
@@ -1306,7 +1319,8 @@ func VerifyDeviceAvailableOfDM(ctx context.Context, tgtLunWWN string, expectPath
 
 	start := time.Now()
 	dm, err := WatchDMDevice(ctx, tgtLunWWN, expectPathNumber)
-	log.AddContext(ctx).Infof("WatchDMDevice-%s:%-36s%-8d%-20s%v", ScanVolumeTimeout,
+	log.AddContext(ctx).Infof("WatchDMDevice-%s:%-36s%-8d%-20s%v",
+		time.Second*time.Duration(app.GetGlobalConfig().ScanVolumeTimeout),
 		tgtLunWWN, expectPathNumber, time.Now().Sub(start), err)
 	if err == nil {
 		var dev string
@@ -1841,7 +1855,7 @@ func getDevicePathRefs(device string, mountMap map[string]string) []string {
 }
 
 // ReadMountPoints read mount file
-// mountMap[mountPath] = devicePath
+// mountMap: key means mountPath; value means devicePath.
 func ReadMountPoints(ctx context.Context) (map[string]string, error) {
 	data, err := ConsistentRead(procMountsPath, maxListTries)
 	if err != nil {

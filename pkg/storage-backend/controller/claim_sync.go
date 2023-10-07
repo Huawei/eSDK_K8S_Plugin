@@ -542,6 +542,8 @@ func (ctrl *BackendController) updateStorageBackendClaim(ctx context.Context, cl
 	*xuanwuv1.StorageBackendClaim, error) {
 	claim.Status.MaxClientThreads = claim.Spec.MaxClientThreads
 	claim.Status.SecretMeta = claim.Spec.SecretMeta
+	claim.Status.UseCert = claim.Spec.UseCert
+	claim.Status.CertSecret = claim.Spec.CertSecret
 	newClaim, err := ctrl.updateClaimStatusWithEvent(ctx, claim, "UpdateClaim",
 		"Successful update claim for storageBackendClaim")
 	if err != nil {
@@ -559,6 +561,8 @@ func (ctrl *BackendController) updateStorageBackendClaim(ctx context.Context, cl
 
 	content.Spec.MaxClientThreads = claim.Spec.MaxClientThreads
 	content.Spec.SecretMeta = claim.Spec.SecretMeta
+	content.Spec.UseCert = claim.Spec.UseCert
+	content.Spec.CertSecret = claim.Spec.CertSecret
 	_, err = utils.UpdateContent(ctx, ctrl.clientSet, content)
 	if err != nil {
 		log.AddContext(ctx).Errorf("updateStorageBackendClaim: update storageBackendContent %s failed, "+

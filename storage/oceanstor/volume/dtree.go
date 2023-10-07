@@ -203,7 +203,6 @@ func (p *DTree) createDtree(ctx context.Context,
 		data["vstoreId"] = params["vstoreid"]
 	}
 	data["PARENTTYPE"] = client.ParentTypeFS
-	data["QUOTASWITCH"] = client.QuotaSwitchOpen
 	data["securityStyle"] = client.SecurityStyleUnix
 
 	res, err := p.cli.CreateDTree(ctx, data)
@@ -342,7 +341,11 @@ func (p *DTree) allowShareAccess(ctx context.Context, params, taskResult map[str
 
 	// Remove all other extra access
 	for _, i := range accesses {
-		access := i.(map[string]interface{})
+		access, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("allowShareAccess convert access to map failed, data: %v", i)
+			continue
+		}
 		accessID, _ := utils.ToStringWithFlag(access["ID"])
 
 		err = p.cli.DeleteNfsShareAccess(ctx, accessID, vStoreID)
@@ -406,7 +409,11 @@ func (p *DTree) revertShareAccess(ctx context.Context, taskResult map[string]int
 		if _, exist := accesses[i]; !exist {
 			continue
 		}
-		access := accesses[i].(map[string]interface{})
+		access, ok := accesses[i].(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("revertShareAccess convert access to map failed, data: %v", accesses[i])
+			continue
+		}
 		accessID, _ := utils.ToStringWithFlag(access["ID"])
 		err := p.cli.DeleteNfsShareAccess(ctx, accessID, vStoreID)
 		if err != nil {
@@ -454,7 +461,11 @@ func (p *DTree) deleteShareAccess(ctx context.Context, params,
 		if _, exist := accesses[i]; !exist {
 			continue
 		}
-		access := accesses[i].(map[string]interface{})
+		access, ok := accesses[i].(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("deleteShareAccess convert access to map failed, data: %v", accesses[i])
+			continue
+		}
 		accessID, _ := utils.ToStringWithFlag(access["ID"])
 		err := p.cli.DeleteNfsShareAccess(ctx, accessID, vStoreID)
 		if err != nil {

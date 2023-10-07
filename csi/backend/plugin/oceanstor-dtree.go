@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/volume"
 	"huawei-csi-driver/utils"
@@ -175,7 +176,11 @@ func (p *OceanstorDTreePlugin) Validate(ctx context.Context, param map[string]in
 	}
 
 	// Login verification
-	cli := client.NewClient(clientConfig)
+	cli, err := client.NewClient(clientConfig)
+	if err != nil {
+		return err
+	}
+
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err
@@ -251,6 +256,9 @@ func (p *OceanstorDTreePlugin) UpdateBackendCapabilities() (map[string]interface
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// close dTree pvc label switch
+	capabilities[string(constants.SupportLabel)] = false
 
 	err = p.updateNFS4Capability(capabilities)
 	if err != nil {

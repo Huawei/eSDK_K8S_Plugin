@@ -30,7 +30,7 @@ type ClientV6 struct {
 	client.BaseClient
 }
 
-func NewClientV6(param *client.NewClientConfig) *ClientV6 {
+func NewClientV6(param *client.NewClientConfig) (*ClientV6, error) {
 	var err error
 	var parallelCount int
 
@@ -48,9 +48,14 @@ func NewClientV6(param *client.NewClientConfig) *ClientV6 {
 	log.Infof("Init parallel count is %d", parallelCount)
 	client.ClientSemaphore = utils.NewSemaphore(parallelCount)
 
-	return &ClientV6{
-		*client.NewClient(param),
+	cli, err := client.NewClient(param)
+	if err != nil {
+		return nil, err
 	}
+
+	return &ClientV6{
+		*cli,
+	}, nil
 }
 
 // SplitCloneFS used to split clone for dorado or oceantor v6

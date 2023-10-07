@@ -212,6 +212,45 @@ func TestGetPasswordFromSecret(t *testing.T) {
 	})
 }
 
+func TestGetCertFromSecretFailed(t *testing.T) {
+	Convey("TestGetCertFromSecret secret is nil case", t, func() {
+		m := mockGetSecret(nil, nil)
+		defer m.Reset()
+
+		_, err := GetCertFromSecret(context.TODO(), "sec-name", "sec-namespace")
+		So(err, ShouldBeError)
+	})
+
+	Convey("TestGetCertFromSecret get secret error case", t, func() {
+		m := mockGetSecret(nil, errors.New("mock error"))
+		defer m.Reset()
+
+		_, err := GetCertFromSecret(context.TODO(), "sec-name", "sec-namespace")
+		So(err, ShouldBeError)
+	})
+
+	Convey("GetCertFromSecret secret data dose not have cert case", t, func() {
+		m := mockGetSecret(map[string][]byte{}, nil)
+		defer m.Reset()
+
+		_, err := GetCertFromSecret(context.TODO(), "sec-name", "sec-namespace")
+		So(err, ShouldBeError)
+	})
+}
+
+func TestGetCertFromSecretSuccess(t *testing.T) {
+	Convey("GetCertFromSecret normal case", t, func() {
+		m := mockGetSecret(map[string][]byte{
+			"tls.crt": []byte("mock-cert"),
+		}, nil)
+		defer m.Reset()
+
+		pw, err := GetCertFromSecret(context.TODO(), "sec-name", "sec-namespace")
+		So(err, ShouldBeNil)
+		So(pw, ShouldEqual, []byte("mock-cert"))
+	})
+}
+
 func TestIsContainFileType(t *testing.T) {
 	type IsContainParam struct {
 		target   constants.FileType

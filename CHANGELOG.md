@@ -2,6 +2,16 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
+## Changes since v4.1.0
+
+- Support OpenShift 4.13
+- Support Centos 8.4 X86_64
+- Support Rocky Linux 8.6 X86_64
+- Support EulerOS V2R11 X86_64
+- Support k8s 1.16 and 1.27
+- Support configuring the timeout for executing commands
+- Support create volume snapshot for Hyper-Metro
+
 ## Changes since v4.0.0
 
 **Enhancements**

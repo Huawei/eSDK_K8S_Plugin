@@ -50,7 +50,7 @@ func (b *FlagsOptions) WithNameSpace(required bool) *FlagsOptions {
 // WithFilename This function will add a filename flag
 // If required is true, filename flag must be set
 func (b *FlagsOptions) WithFilename(required bool) *FlagsOptions {
-	b.cmd.PersistentFlags().StringVarP(&config.FileName, "filename", "f", "", "path to yaml file")
+	b.cmd.PersistentFlags().StringVarP(&config.FileName, "filename", "f", "", "path to file")
 	if required {
 		b.markPersistentFlagRequired("filename")
 	}
@@ -107,4 +107,27 @@ func (b *FlagsOptions) markPersistentFlagRequired(name string) {
 	if err := b.cmd.MarkPersistentFlagRequired(name); err != nil {
 		log.Errorf("MarkPersistentFlagRequired failed, error: %v", err)
 	}
+}
+
+// WithBackend This function will add a backend flag
+// If required is true, filename flag must be set
+func (b *FlagsOptions) WithBackend(required bool) *FlagsOptions {
+	b.cmd.PersistentFlags().StringVarP(&config.Backend, "backend", "b", "", "bound to backend")
+	if required {
+		b.markPersistentFlagRequired("backend")
+	}
+	return b
+}
+
+// WithAllNodes This function will add isAllNodes
+func (b *FlagsOptions) WithAllNodes() *FlagsOptions {
+	b.cmd.PersistentFlags().BoolVarP(&config.IsAllNodes, "all", "a", false, "Collect all nodes messages")
+	return b
+}
+
+// WithNodeName This function will add nodeName
+func (b *FlagsOptions) WithNodeName() *FlagsOptions {
+	b.cmd.PersistentFlags().StringVarP(&config.NodeName, "nodename", "N", "", "Specify the node "+
+		"for which information is to be collected.")
+	return b
 }

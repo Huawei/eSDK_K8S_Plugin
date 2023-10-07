@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -63,7 +64,10 @@ func (cli *BaseClient) CreateLunCopy(ctx context.Context, name, srcLunID, dstLun
 		return nil, fmt.Errorf("Create luncopy from %s to %s error: %d", srcLunID, dstLunID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -81,7 +85,10 @@ func (cli *BaseClient) GetLunCopyByID(ctx context.Context, lunCopyID string) (ma
 		return nil, fmt.Errorf("Get luncopy %s error: %d", lunCopyID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -104,14 +111,20 @@ func (cli *BaseClient) GetLunCopyByName(ctx context.Context, name string) (map[s
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) <= 0 {
 		log.AddContext(ctx).Infof("Luncopy %s does not exist", name)
 		return nil, nil
 	}
 
-	luncopy := respData[0].(map[string]interface{})
-	return luncopy, nil
+	lunCopy, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert lunCopy to map failed, data: %v", respData[0])
+	}
+	return lunCopy, nil
 }
 
 // StartLunCopy used for start lun copy

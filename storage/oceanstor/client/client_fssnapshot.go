@@ -20,8 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 
+	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -88,12 +88,18 @@ func (cli *BaseClient) GetFSSnapshotByName(ctx context.Context, parentID, snapsh
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	if len(respData) <= 0 {
 		return nil, nil
 	}
 
-	snapshot := respData[0].(map[string]interface{})
+	snapshot, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert respData[0] to map[string]interface{} failed")
+	}
 	return snapshot, nil
 }
 
@@ -111,9 +117,15 @@ func (cli *BaseClient) GetFSSnapshotCountByParentId(ctx context.Context, ParentI
 		return 0, errors.New(msg)
 	}
 
-	respData := resp.Data.(map[string]interface{})
-	countStr := respData["COUNT"].(string)
-	count, _ := strconv.Atoi(countStr)
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return 0, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
+	countStr, ok := respData["COUNT"].(string)
+	if !ok {
+		return 0, errors.New("convert respData[\"COUNT\"] to string failed")
+	}
+	count := utils.AtoiWithDefault(countStr, 0)
 	return count, nil
 }
 
@@ -136,6 +148,9 @@ func (cli *BaseClient) CreateFSSnapshot(ctx context.Context, name, parentID stri
 		return nil, fmt.Errorf("Create snapshot %s for FS %s error: %d", name, parentID, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
 	return respData, nil
 }

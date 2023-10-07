@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -65,7 +66,10 @@ func (cli *BaseClient) CreateMapping(ctx context.Context, name string) (map[stri
 		return nil, errors.New(msg)
 	}
 
-	mapping := resp.Data.(map[string]interface{})
+	mapping, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert mapping to map failed, data: %v", resp.Data)
+	}
 	return mapping, nil
 }
 
@@ -88,13 +92,19 @@ func (cli *BaseClient) GetMappingByName(ctx context.Context, name string) (map[s
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) <= 0 {
 		log.AddContext(ctx).Infof("Mapping %s does not exist", name)
 		return nil, nil
 	}
 
-	mapping := respData[0].(map[string]interface{})
+	mapping, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert mapping to map failed, data: %v", respData[0])
+	}
 	return mapping, nil
 }
 

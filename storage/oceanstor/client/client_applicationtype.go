@@ -61,7 +61,7 @@ func (cli *BaseClient) GetApplicationTypeByName(ctx context.Context, appType str
 		// This will be used for param to create LUN
 		val, ok := applicationTypes["ID"].(string)
 		if !ok {
-			return result, fmt.Errorf("application type is not valid")
+			return result, errors.New("application type is not valid")
 		}
 		result = val
 	}

@@ -19,14 +19,24 @@ package utils
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	clientV1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/record"
 
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/app"
+	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
+	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -63,6 +73,48 @@ func GetPasswordFromBackendID(ctx context.Context, backendID string) (string, er
 	}
 
 	return utils.GetPasswordFromSecret(ctx, secretName, namespace)
+}
+
+// GetCertSecretFromBackendID get cert secret meta from backend
+func GetCertSecretFromBackendID(ctx context.Context, backendID string) (bool, string, error) {
+	useCert, secret, err := GetCertMeta(ctx, backendID)
+	if err != nil {
+		return false, "", err
+	}
+	return useCert, secret, nil
+}
+
+// GetCertPool get cert pool
+func GetCertPool(ctx context.Context, useCert bool, secretMeta string) (bool, *x509.CertPool, error) {
+	if !useCert {
+		log.AddContext(ctx).Infoln("useCert is false, skip get cert pool")
+		return false, nil, nil
+	}
+	log.AddContext(ctx).Infoln("Start get cert pool")
+
+	namespace, secretName, err := SplitMetaNamespaceKey(secretMeta)
+	if err != nil {
+		return false, nil, fmt.Errorf("split secret secretMeta %s namespace failed, error: %v", secretMeta, err)
+	}
+
+	certMeta, err := utils.GetCertFromSecret(ctx, secretName, namespace)
+	if err != nil {
+		return false, nil, fmt.Errorf("get cert from secret %s failed, error: %v", secretName, err)
+	}
+
+	certBlock, _ := pem.Decode(certMeta)
+	if certBlock == nil {
+		return false, nil, fmt.Errorf("certificate data decode failed")
+	}
+
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return false, nil, fmt.Errorf("error parse certificate: %v", err)
+	}
+
+	certPool := x509.NewCertPool()
+	certPool.AddCert(cert)
+	return true, certPool, nil
 }
 
 func GetBackendConfigmapByClaimName(ctx context.Context, claimNameMeta string) (*coreV1.ConfigMap, error) {
@@ -108,7 +160,6 @@ func GetClaimByMeta(ctx context.Context, claimNameMeta string) (*xuanwuv1.Storag
 		msg := fmt.Sprintf("StorageBackendClaim: [%s] is nil, get claim failed.", claimName)
 		return nil, Errorln(ctx, msg)
 	}
-
 	return claim, nil
 }
 
@@ -126,6 +177,23 @@ func GetConfigMeta(ctx context.Context, claimNameMeta string) (string, string, e
 	}
 
 	return claim.Spec.ConfigMapMeta, claim.Spec.SecretMeta, nil
+}
+
+// GetCertMeta get cert meta from backend claim
+func GetCertMeta(ctx context.Context, claimNameMeta string) (bool, string, error) {
+	log.AddContext(ctx).Infof("Get claim: [%s] config meta.", claimNameMeta)
+
+	claim, err := GetClaimByMeta(ctx, claimNameMeta)
+	if err != nil {
+		return false, "", err
+	}
+
+	if claim == nil {
+		msg := fmt.Sprintf("Get claim failed, claim: [%s] is nil", claimNameMeta)
+		return false, "", Errorln(ctx, msg)
+	}
+
+	return claim.Spec.UseCert, claim.Spec.CertSecret, nil
 }
 
 func GetContentByClaimMeta(ctx context.Context, claimNameMeta string) (*xuanwuv1.StorageBackendContent, error) {
@@ -171,7 +239,6 @@ func GetSBCTOnlineStatusByClaim(ctx context.Context, backendID string) (bool, er
 			content.Name)
 		return false, Errorln(ctx, msg)
 	}
-
 	if content.Status == nil {
 		msg := fmt.Sprintf("StorageBackendContent: [%s] content.status is nil, GetSBCTOnlineStatusByClaim failed.",
 			content.Name)
@@ -179,6 +246,39 @@ func GetSBCTOnlineStatusByClaim(ctx context.Context, backendID string) (bool, er
 	}
 
 	return content.Status.Online, nil
+}
+
+// GetSBCTCapabilitiesByClaim get backend capabilities
+func GetSBCTCapabilitiesByClaim(ctx context.Context, backendID string) (map[string]bool, error) {
+	content, err := GetContentByClaimMeta(ctx, backendID)
+	if err != nil {
+		msg := fmt.Sprintf("GetContentByClaimMeta: [%s] failed, err: [%v]", backendID, err)
+		return nil, Errorln(ctx, msg)
+	}
+
+	if content == nil {
+		msg := fmt.Sprintf("StorageBackendContent: [%s] content is nil, GetSBCTOnlineStatusByClaim failed.",
+			content.Name)
+		return nil, Errorln(ctx, msg)
+	}
+	if content.Status == nil {
+		msg := fmt.Sprintf("StorageBackendContent: [%s] content.status is nil, "+
+			"GetSBCTOnlineStatusByClaim failed.", content.Name)
+		return nil, Errorln(ctx, msg)
+	}
+
+	return content.Status.Capabilities, nil
+}
+
+// IsBackendCapabilitySupport valid backend capability
+func IsBackendCapabilitySupport(ctx context.Context, backendID string,
+	capability constants.BackendCapability) (bool, error) {
+	capabilities, err := GetSBCTCapabilitiesByClaim(ctx, backendID)
+	if err != nil {
+		log.AddContext(ctx).Errorf("GetSBCTCapabilitiesByClaim failed, backendID: %v, err: %v", backendID, err)
+		return false, err
+	}
+	return capabilities[string(capability)], nil
 }
 
 func SetSBCTOnlineStatus(ctx context.Context, content *xuanwuv1.StorageBackendContent, status bool) error {
@@ -215,4 +315,52 @@ func SetStorageBackendContentOnlineStatus(ctx context.Context, backendID string,
 	log.AddContext(ctx).Infof("SetStorageBackendContentOnlineStatus [%s] to [%b] succeeded.",
 		backendID, online)
 	return nil
+}
+
+// GetK8SAndSBCClient return k8sClient, storageBackendClient
+func GetK8SAndSBCClient(ctx context.Context) (*kubernetes.Clientset, *clientSet.Clientset, error) {
+	var config *rest.Config
+	var err error
+	if app.GetGlobalConfig().KubeConfig != "" {
+		config, err = clientcmd.BuildConfigFromFlags("", app.GetGlobalConfig().KubeConfig)
+	} else {
+		config, err = rest.InClusterConfig()
+	}
+
+	if err != nil {
+		log.AddContext(ctx).Errorf("Error getting cluster config, kube config: %s, %v",
+			app.GetGlobalConfig().KubeConfig, err)
+		return nil, nil, err
+	}
+
+	k8sClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Error getting kubernetes client, %v", err)
+		return nil, nil, err
+	}
+
+	storageBackendClient, err := clientSet.NewForConfig(config)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Error getting storage backend client, %v", err)
+		return nil, nil, err
+	}
+
+	return k8sClient, storageBackendClient, nil
+}
+
+// InitRecorder used to init event recorder
+func InitRecorder(client kubernetes.Interface, componentName string) record.EventRecorder {
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartRecordingToSink(&clientV1.EventSinkImpl{Interface: client.CoreV1().Events(v1.NamespaceAll)})
+	return eventBroadcaster.NewRecorder(scheme.Scheme, coreV1.EventSource{Component: fmt.Sprintf(componentName)})
+}
+
+// GetEventRecorder used to get event recorder
+func GetEventRecorder(ctx context.Context) record.EventRecorder {
+	c, _, err := GetK8SAndSBCClient(ctx)
+	if err != nil {
+		log.AddContext(ctx).Errorf("GetK8SAndSBCClient failed.")
+	}
+
+	return InitRecorder(c, "huawei-csi")
 }

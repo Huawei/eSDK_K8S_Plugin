@@ -136,8 +136,8 @@ func analyzePools(backend *Backend, config map[string]interface{}) error {
 
 	configPools, _ := config["pools"].([]interface{})
 	for _, i := range configPools {
-		name := i.(string)
-		if name == "" {
+		name, ok := i.(string)
+		if !ok || name == "" {
 			continue
 		}
 
@@ -512,8 +512,7 @@ func filterByStoragePool(ctx context.Context, poolName string, candidatePools []
 	return filterPools, nil
 }
 
-func filterByVolumeType(ctx context.Context, volumeType string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
+func filterByVolumeType(ctx context.Context, volumeType string, candidatePools []*StoragePool) ([]*StoragePool, error) {
 	var filterPools []*StoragePool
 
 	for _, pool := range candidatePools {
@@ -545,9 +544,15 @@ func filterByAllocType(ctx context.Context, allocType string, candidatePools []*
 			valid = true
 		} else if allocType == "thin" || allocType == "" {
 			supportThin, exist := pool.Capabilities["SupportThin"].(bool)
+			if !exist {
+				log.AddContext(ctx).Warningf("convert supportThin to bool failed, data: %v", pool.Capabilities["SupportThin"])
+			}
 			valid = exist && supportThin
 		} else if allocType == "thick" {
 			supportThick, exist := pool.Capabilities["SupportThick"].(bool)
+			if !exist {
+				log.AddContext(ctx).Warningf("convert supportThick to bool failed, data: %v", pool.Capabilities["SupportThick"])
+			}
 			valid = exist && supportThick
 		}
 
@@ -889,7 +894,13 @@ func filterByCapacity(requestSize int64, allocType string, candidatePools []*Sto
 	var filterPools []*StoragePool
 	for _, pool := range candidatePools {
 		supportThin, thinExist := pool.Capabilities["SupportThin"].(bool)
+		if !thinExist {
+			log.Warningf("convert supportThin to bool failed, data: %v", pool.Capabilities["SupportThin"])
+		}
 		supportThick, thickExist := pool.Capabilities["SupportThick"].(bool)
+		if !thickExist {
+			log.Warningf("convert supportThick to bool failed, data: %v", pool.Capabilities["SupportThick"])
+		}
 		if (allocType == "thin" || allocType == "") && thinExist && supportThin {
 			filterPools = append(filterPools, pool)
 		} else if allocType == "thick" && thickExist && supportThick {
@@ -995,15 +1006,19 @@ func validateBackendName(ctx context.Context, backendName string, selectBackend 
 }
 
 func validateVolumeType(ctx context.Context, volumeType string, selectBackend *Backend) error {
-	if filterPools, _ := filterByVolumeType(ctx, volumeType, selectBackend.Pools); len(filterPools) == 0 {
+	if filterPools, err := filterByVolumeType(ctx, volumeType, selectBackend.Pools); len(filterPools) == 0 {
+		if err != nil {
+			return err
+		}
 		return utils.Errorf(ctx, "the volumeType between StorageClass(%s) and PVC annotation(%s) "+
-			"is different", volumeType, selectBackend.Name)
+			"is different, err: filterPools is empty", volumeType, selectBackend.Name)
 	}
 	return nil
 }
 
 // RegisterOneBackend used to register a backend to plugin
-func RegisterOneBackend(ctx context.Context, backendID, configmapMeta, secretMeta string) (string, error) {
+func RegisterOneBackend(ctx context.Context, backendID, configmapMeta, secretMeta, certSecret string,
+	useCert bool) (string, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -1017,7 +1032,7 @@ func RegisterOneBackend(ctx context.Context, backendID, configmapMeta, secretMet
 		return backendName, nil
 	}
 
-	storageInfo, err := GetStorageBackendInfo(ctx, backendID, configmapMeta, secretMeta)
+	storageInfo, err := GetStorageBackendInfo(ctx, backendID, configmapMeta, secretMeta, certSecret, useCert)
 	if err != nil {
 		return "", err
 	}
@@ -1074,6 +1089,10 @@ func RegisterAllBackend(ctx context.Context) error {
 			log.AddContext(ctx).Warningf("Get storageBackendContent failed, error: [%v]", err)
 			continue
 		}
+		if content == nil || content.Status == nil {
+			log.AddContext(ctx).Warningf("Get empty storageBackendContent, content: %+v", content)
+			continue
+		}
 		if !content.Status.Online {
 			log.AddContext(ctx).Warningf("StorageBackendContent: [%s] is offline(online: false), "+
 				"will not register.", content.Name)
@@ -1090,7 +1109,15 @@ func RegisterAllBackend(ctx context.Context) error {
 				"[%s], error: [%v]", content.Spec.BackendClaim, content.Name, err)
 			continue
 		}
-		_, err = RegisterOneBackend(ctx, content.Spec.BackendClaim, configmapMeta, secretMeta)
+
+		useCert, certSecret, err := pkgUtils.GetCertMeta(ctx, content.Spec.BackendClaim)
+		if err != nil {
+			log.AddContext(ctx).Warningf("Get storageBackendClaim: [%s] CertMeta failed, storageBackendContent: "+
+				"[%s], error: [%v]", content.Spec.BackendClaim, content.Name, err)
+			continue
+		}
+
+		_, err = RegisterOneBackend(ctx, content.Spec.BackendClaim, configmapMeta, secretMeta, certSecret, useCert)
 		if err != nil {
 			log.AddContext(ctx).Warningf("RegisterOneBackend failed, meta: [%s %s %s], error: %v",
 				content.Spec.BackendClaim, configmapMeta, secretMeta, err)

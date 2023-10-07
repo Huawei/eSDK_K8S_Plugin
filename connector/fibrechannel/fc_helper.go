@@ -68,20 +68,6 @@ const (
 
 var expectPathCount sync.Map
 
-func getDevicePathNumber(lunWWN string) int {
-	v, ok := expectPathCount.Load(lunWWN)
-	if !ok {
-		return 1
-	}
-
-	number, ok := v.(int)
-	if !ok {
-		return 1
-	}
-
-	return number
-}
-
 func parseFCInfo(ctx context.Context, connectionProperties map[string]interface{}) (*connectorInfo, error) {
 	var info = new(connectorInfo)
 	var exist bool
@@ -407,7 +393,11 @@ func getPciNumber(hba map[string]string) (string, string) {
 }
 
 func formatLunId(lunId string) string {
-	intLunId, _ := strconv.Atoi(lunId)
+	intLunId, err := strconv.Atoi(lunId)
+	if err != nil {
+		log.Warningf("formatLunId failed, lunId: %v, err: %v", lunId, err)
+	}
+
 	if intLunId < 256 {
 		return lunId
 	} else {
@@ -548,13 +538,13 @@ func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorI
 			return
 		}
 
-		hba := pro[0].(map[string]string)
+		hba, ok := pro[0].(map[string]string)
 		if !ok {
 			log.AddContext(ctx).Errorf("the %v is not map[string]string", pro[0])
 			return
 		}
 
-		ctls := pro[1].([][]string)
+		ctls, ok := pro[1].([][]string)
 		if !ok {
 			log.AddContext(ctx).Errorf("the %v is not [][]string", pro[1])
 			return

@@ -34,28 +34,22 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"golang.org/x/sys/unix"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/uuid"
+
 	"huawei-csi-driver/cli/helper"
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/utils/log"
-
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"golang.org/x/sys/unix"
-	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 const (
 	DoradoV6Prefix    = "V600"
 	OceanStorV5Prefix = "V500"
 
-	// OceanStorDoradoV6 Dorado V6 and OceanStor V6 are exactly the same
-	OceanStorDoradoV6 = "DoradoV6"
-	OceanStorDoradoV3 = "DoradoV3"
-	OceanStorV3       = "OceanStorV3"
-	OceanStorV5       = "OceanStorV5"
-
-	defaultTimeout = 30
-	longTimeout    = 60
+	longTimeout = 60
 )
 
 var (
@@ -135,12 +129,13 @@ func execShellCmdTimeout(ctx context.Context,
 	var timeOut bool
 	done := make(chan string)
 	timeCh := make(chan bool)
-	defer func() {
-		close(done)
-		close(timeCh)
-	}()
 
 	go func() {
+		defer func() {
+			close(done)
+			close(timeCh)
+		}()
+
 		output, timeOut, err = fun(ctx, format, logFilter, args...)
 		if !timeOut {
 			done <- "run command done"
@@ -156,7 +151,7 @@ func execShellCmdTimeout(ctx context.Context,
 	case <-done:
 		return output, err
 	case <-timeCh:
-		return "", constants.TimeoutError
+		return "", constants.ErrTimeout
 	}
 }
 
@@ -180,7 +175,7 @@ func execShellCmd(ctx context.Context, format string, logFilter bool, args ...in
 
 	killProcess := true
 	var killProcessAndSubprocess bool
-	timeoutDuration := defaultTimeout * time.Second
+	timeoutDuration := time.Duration(app.GetGlobalConfig().ExecCommandTimeout) * time.Second
 	// Processes are not killed when formatting or capacity expansion commands time out.
 	if strings.Contains(cmd, "mkfs") || strings.Contains(cmd, "resize2fs") ||
 		strings.Contains(cmd, "xfs_growfs") {
@@ -306,9 +301,9 @@ func SplitVolumeId(volumeId string) (string, string) {
 func SplitSnapshotId(snapshotId string) (string, string, string) {
 	splits := strings.SplitN(snapshotId, ".", 3)
 	if len(splits) == 3 {
-		return splits[0], splits[1], splits[2]
+		return helper.GetBackendName(splits[0]), splits[1], splits[2]
 	}
-	return splits[0], "", ""
+	return helper.GetBackendName(splits[0]), "", ""
 }
 
 func MergeMap(args ...map[string]interface{}) map[string]interface{} {
@@ -409,9 +404,9 @@ func GetProductVersion(systemInfo map[string]interface{}) (string, error) {
 	}
 
 	if strings.HasPrefix(productVersion, DoradoV6Prefix) {
-		return OceanStorDoradoV6, nil
+		return constants.OceanStorDoradoV6, nil
 	} else if strings.HasPrefix(productVersion, OceanStorV5Prefix) {
-		return OceanStorV5, nil
+		return constants.OceanStorV5, nil
 	}
 
 	productMode, ok := systemInfo["PRODUCTMODE"].(string)
@@ -419,22 +414,20 @@ func GetProductVersion(systemInfo map[string]interface{}) (string, error) {
 		log.Warningln("There is no PRODUCTMODE field in system info")
 	}
 
-	if match, _ := regexp.MatchString(`8[0-9][0-9]`, productMode); match {
-		return OceanStorDoradoV3, nil
+	if match, err := regexp.MatchString(`8[0-9][0-9]`, productMode); err == nil && match {
+		return constants.OceanStorDoradoV3, nil
 	}
 
-	return OceanStorV3, nil
+	return constants.OceanStorV3, nil
 }
 
 func IsSupportFeature(features map[string]int, feature string) bool {
-	var support bool
-
 	status, exist := features[feature]
 	if exist {
-		support = status == 1 || status == 2
+		return status == 1 || status == 2
 	}
 
-	return support
+	return false
 }
 
 func TransVolumeCapacity(size int64, unit int64) int64 {
@@ -569,6 +562,10 @@ func IgnoreExistCode(err error, checkExitCode []string) error {
 
 // IsCapacityAvailable indicates whether the volume size is an integer multiple of 512.
 func IsCapacityAvailable(volumeSizeBytes int64, allocationUnitBytes int64) bool {
+	if allocationUnitBytes == 0 {
+		log.Warningf("IsCapacityAvailable.allocationUnitBytes is invalid, can't be zero")
+		return false
+	}
 	return volumeSizeBytes%allocationUnitBytes == 0
 }
 
@@ -887,6 +884,35 @@ func GetPasswordFromSecret(ctx context.Context, SecretName, SecretNamespace stri
 	return string(password), nil
 }
 
+// GetCertFromSecret used to get cert from secret
+func GetCertFromSecret(ctx context.Context, SecretName, SecretNamespace string) ([]byte, error) {
+	log.AddContext(ctx).Infof("Get cert from secret: %s, ns: %s.", SecretName, SecretNamespace)
+	secret, err := app.GetGlobalConfig().K8sUtils.GetSecret(ctx, SecretName, SecretNamespace)
+	if err != nil {
+		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s] failed, error: [%v]",
+			SecretName, SecretNamespace, err)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	if secret == nil || secret.Data == nil {
+		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s], but "+
+			"secret is nil or the data not exist in secret", SecretName, SecretNamespace)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	cert, exist := secret.Data["tls.crt"]
+	if !exist {
+		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s], but "+
+			"cert field not exist in secret data", SecretName, SecretNamespace)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, errors.New(msg)
+	}
+
+	return cert, nil
+}
+
 // StringContain return the string prefix whether in the target string list
 func StringContain(strPrefix string, stringList []string) bool {
 	for _, s := range stringList {
@@ -929,4 +955,29 @@ func ToStringWithFlag(i interface{}) (string, bool) {
 func ToStringSafe(i interface{}) string {
 	r, _ := ToStringWithFlag(i)
 	return r
+}
+
+// ParseIntWithDefault parseInt without error
+func ParseIntWithDefault(s string, base int, bitSize int, defaultResult int64) int64 {
+	result, err := strconv.ParseInt(s, base, bitSize)
+	if err != nil {
+		log.Warningf("ParseInt failed, data: %s, err: %v", s, err)
+		return defaultResult
+	}
+	return result
+}
+
+// AtoiWithDefault Atoi without error
+func AtoiWithDefault(s string, defaultResult int) int {
+	result, err := strconv.Atoi(s)
+	if err != nil {
+		log.Warningf("Atoi failed, data: %s, err: %v", s, err)
+		return defaultResult
+	}
+	return result
+}
+
+// NewContext new a context
+func NewContext() context.Context {
+	return context.WithValue(context.Background(), "requestId", string(uuid.NewUUID()))
 }

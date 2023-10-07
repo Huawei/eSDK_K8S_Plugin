@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strings"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -60,7 +61,10 @@ func (cli *BaseClient) GetISCSIHostLink(ctx context.Context, hostID string) ([]i
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -84,8 +88,14 @@ func (cli *BaseClient) GetIscsiInitiator(ctx context.Context, initiator string) 
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
-	ini := respData[0].(map[string]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
+	ini, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert ini to map failed, data: %v", respData[0])
+	}
 	return ini, nil
 }
 
@@ -104,7 +114,10 @@ func (cli *BaseClient) GetIscsiInitiatorByID(ctx context.Context, initiator stri
 		return nil, errors.New(msg)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -129,7 +142,10 @@ func (cli *BaseClient) AddIscsiInitiator(ctx context.Context, initiator string) 
 		return nil, errors.New(msg)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -205,6 +221,9 @@ func (cli *BaseClient) GetIscsiTgtPort(ctx context.Context) ([]interface{}, erro
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to string failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }

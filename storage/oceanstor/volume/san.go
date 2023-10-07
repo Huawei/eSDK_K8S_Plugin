@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"time"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/smartx"
 	"huawei-csi-driver/utils"
@@ -52,7 +53,10 @@ func (p *SAN) preCreate(ctx context.Context, params map[string]interface{}) erro
 		return err
 	}
 
-	name := params["name"].(string)
+	name, ok := params["name"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "format name to string failed, data: %v", params["name"])
+	}
 	params["name"] = p.cli.MakeLunName(name)
 
 	if v, exist := params["sourcevolumename"].(string); exist {
@@ -149,13 +153,16 @@ func (p *SAN) Delete(ctx context.Context, name string) error {
 		return nil
 	}
 
-	rssStr := lun["HASRSSOBJECT"].(string)
-
+	rssStr, ok := lun["HASRSSOBJECT"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "convert rssStr to string failed, data: %v", lun["HASRSSOBJECT"])
+	}
 	var rss map[string]string
-	json.Unmarshal([]byte(rssStr), &rss)
-
+	err = json.Unmarshal([]byte(rssStr), &rss)
+	if err != nil {
+		return pkgUtils.Errorf(ctx, "Unmarshal san HASRSSOBJECT failed, data: %v, err: %v", rssStr, err)
+	}
 	taskflow := taskflow.NewTaskFlow(ctx, "Delete-LUN-Volume")
-
 	if hyperMetro, ok := rss["HyperMetro"]; ok && hyperMetro == "TRUE" {
 		taskflow.AddTask("Delete-HyperMetro", p.deleteHyperMetro, nil)
 		taskflow.AddTask("Delete-HyperMetro-Remote-LUN", p.deleteHyperMetroRemoteLun, nil)
@@ -199,7 +206,7 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 	}
 
 	isAttached := lun["EXPOSEDTOINITIATOR"] == "true"
-	curSize, _ := strconv.ParseInt(lun["CAPACITY"].(string), 10, 64)
+	curSize := utils.ParseIntWithDefault(lun["CAPACITY"].(string), 10, 64, 0)
 	if newSize <= curSize {
 		msg := fmt.Sprintf("Lun %s newSize %d must be greater than curSize %d", lunName, newSize, curSize)
 		log.AddContext(ctx).Errorln(msg)
@@ -207,8 +214,10 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 	}
 
 	var rss map[string]string
-	json.Unmarshal([]byte(lun["HASRSSOBJECT"].(string)), &rss)
-
+	err = json.Unmarshal([]byte(lun["HASRSSOBJECT"].(string)), &rss)
+	if err != nil {
+		return false, pkgUtils.Errorf(ctx, "Unmarshal HASHSSOBJECT failed, error: %v", err)
+	}
 	expandTask := taskflow.NewTaskFlow(ctx, "Expand-LUN-Volume")
 	expandTask.AddTask("Expand-PreCheck-Capacity", p.preExpandCheckCapacity, nil)
 
@@ -249,8 +258,10 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 
 func (p *SAN) createLocalLun(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunName := params["name"].(string)
-
+	lunName, ok := params["name"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse lun name to string failed, data: %v", params["name"])
+	}
 	lun, err := p.cli.GetLunByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get LUN %s error: %v", lunName, err)
@@ -258,7 +269,7 @@ func (p *SAN) createLocalLun(ctx context.Context,
 	}
 
 	if lun == nil {
-		params["parentid"] = params["poolID"].(string)
+		params["parentid"] = params["poolID"]
 
 		if _, exist := params["clonefrom"]; exist {
 			lun, err = p.clone(ctx, params, taskResult)
@@ -287,7 +298,10 @@ func (p *SAN) createLocalLun(ctx context.Context,
 }
 
 func (p *SAN) clonePair(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error) {
-	cloneFrom := params["clonefrom"].(string)
+	cloneFrom, ok := params["clonefrom"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse clonefrom to string failed, data: %v", params["clonefrom"])
+	}
 	srcLun, err := p.cli.GetLunByName(ctx, cloneFrom)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get clone src LUN %s error: %v", cloneFrom, err)
@@ -303,7 +317,10 @@ func (p *SAN) clonePair(ctx context.Context, params map[string]interface{}) (map
 	if err != nil {
 		return nil, err
 	}
-	cloneLunCapacity := params["capacity"].(int64)
+	cloneLunCapacity, ok := params["capacity"].(int64)
+	if !ok {
+		log.AddContext(ctx).Warningf("parse cloneLunCapacity to int64 failed, data: %v", params["capacity"])
+	}
 	if cloneLunCapacity < srcLunCapacity {
 		msg := fmt.Sprintf("Clone LUN capacity must be >= src %s", cloneFrom)
 		log.AddContext(ctx).Errorln(msg)
@@ -323,11 +340,21 @@ func (p *SAN) clonePair(ctx context.Context, params map[string]interface{}) (map
 			return nil, err
 		}
 	}
-	srcLunID := srcLun["ID"].(string)
-	dstLunID := dstLun["ID"].(string)
+	srcLunID, ok := srcLun["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert srcLunID to string failed, data: %v", srcLun["ID"])
+	}
+	dstLunID, ok := dstLun["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert dstLunID to string failed, data: %v", dstLun["ID"])
+	}
+	cloneSpeed, ok := params["clonespeed"].(int)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert clonespeed to int failed, data: %v", params["clonespeed"])
+	}
 
-	cloneSpeed := params["clonespeed"].(int)
-	err = p.createClonePair(ctx, clonePairRequest{srcLunID: srcLunID,
+	err = p.createClonePair(ctx, clonePairRequest{
+		srcLunID:         srcLunID,
 		dstLunID:         dstLunID,
 		cloneLunCapacity: cloneLunCapacity,
 		srcLunCapacity:   srcLunCapacity,
@@ -344,7 +371,10 @@ func (p *SAN) clonePair(ctx context.Context, params map[string]interface{}) (map
 
 func (p *SAN) fromSnapshotByClonePair(ctx context.Context,
 	params map[string]interface{}) (map[string]interface{}, error) {
-	srcSnapshotName := params["fromSnapshot"].(string)
+	srcSnapshotName, ok := params["fromSnapshot"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format srcSnapshotName to string failed, data: %v", params["fromSnapshot"])
+	}
 	srcSnapshot, err := p.cli.GetLunSnapshotByName(ctx, srcSnapshotName)
 	if err != nil {
 		return nil, err
@@ -360,7 +390,10 @@ func (p *SAN) fromSnapshotByClonePair(ctx context.Context,
 		return nil, err
 	}
 
-	cloneLunCapacity := params["capacity"].(int64)
+	cloneLunCapacity, ok := params["capacity"].(int64)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse capacity to int64 failed, data: %v", params["capacity"])
+	}
 	if cloneLunCapacity < srcSnapshotCapacity {
 		msg := fmt.Sprintf("Clone target LUN capacity must be >= src snapshot %s", srcSnapshotName)
 		log.AddContext(ctx).Errorln(msg)
@@ -381,9 +414,19 @@ func (p *SAN) fromSnapshotByClonePair(ctx context.Context,
 		}
 	}
 
-	srcSnapshotID := srcSnapshot["ID"].(string)
-	dstLunID := dstLun["ID"].(string)
-	cloneSpeed := params["clonespeed"].(int)
+	srcSnapshotID, ok := srcSnapshot["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert srcSnapshotID to string failed,data: %v", srcSnapshot["ID"])
+	}
+	dstLunID, ok := dstLun["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse dstLunID to string failed, data: %v", dstLun["ID"])
+	}
+
+	cloneSpeed, ok := params["clonespeed"].(int)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse clonespeed to int failed, data: %v", params["clonespeed"])
+	}
 	err = p.createClonePair(ctx, clonePairRequest{srcLunID: srcSnapshotID,
 		dstLunID:         dstLunID,
 		cloneLunCapacity: cloneLunCapacity,
@@ -392,7 +435,6 @@ func (p *SAN) fromSnapshotByClonePair(ctx context.Context,
 	if err != nil {
 		log.AddContext(ctx).Errorf("Clone snapshot by clone pair, source snapshot ID %s,"+
 			" target lun ID %s error: %s", srcSnapshotID, dstLunID, err)
-
 		p.cli.DeleteLun(ctx, dstLunID)
 		return nil, err
 	}
@@ -418,7 +460,10 @@ func (p *SAN) createClonePair(ctx context.Context,
 		return err
 	}
 
-	clonePairID := clonePair["ID"].(string)
+	clonePairID, ok := clonePair["ID"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "clonePairID convert to string failed, data: %v", clonePair["ID"])
+	}
 	if clonePairReq.srcLunCapacity < clonePairReq.cloneLunCapacity {
 		err = p.cli.ExtendLun(ctx, clonePairReq.dstLunID, clonePairReq.cloneLunCapacity)
 		if err != nil {
@@ -445,7 +490,10 @@ func (p *SAN) createClonePair(ctx context.Context,
 }
 
 func (p *SAN) lunCopy(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error) {
-	clonefrom := params["clonefrom"].(string)
+	clonefrom, ok := params["clonefrom"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "clonefrom convert to string failed, data: %v", params["clonefrom"])
+	}
 	srcLun, err := p.cli.GetLunByName(ctx, clonefrom)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get clone src LUN %s error: %v", clonefrom, err)
@@ -460,8 +508,10 @@ func (p *SAN) lunCopy(ctx context.Context, params map[string]interface{}) (map[s
 	if err != nil {
 		return nil, err
 	}
-
-	cloneLunCapacity := params["capacity"].(int64)
+	cloneLunCapacity, ok := params["capacity"].(int64)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse copyLunCapacity to int64 failed, data: %v", params["capacity"])
+	}
 	if cloneLunCapacity < srcLunCapacity {
 		msg := fmt.Sprintf("Clone LUN capacity must be >= src %s", clonefrom)
 		log.AddContext(ctx).Errorln(msg)
@@ -478,10 +528,16 @@ func (p *SAN) lunCopy(ctx context.Context, params map[string]interface{}) (map[s
 		}
 	}
 
-	srcLunID := srcLun["ID"].(string)
-	dstLunID := dstLun["ID"].(string)
-	snapshotName := fmt.Sprintf("k8s_lun_%s_to_%s_snap", srcLunID, dstLunID)
+	srcLunID, ok := srcLun["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "srcLunID convert to string failed, data: %v", srcLun["ID"])
+	}
 
+	dstLunID, ok := dstLun["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "dstLunID convert to string failed, data: %v", dstLun["ID"])
+	}
+	snapshotName := fmt.Sprintf("k8s_lun_%s_to_%s_snap", srcLunID, dstLunID)
 	smartX := smartx.NewSmartX(p.cli)
 	snapshot, err := p.cli.GetLunSnapshotByName(ctx, snapshotName)
 	if err != nil {
@@ -529,7 +585,11 @@ func (p *SAN) ensureLUNCopy(ctx context.Context, snapshotID, dstLunID string, cl
 
 func (p *SAN) fromSnapshotByLunCopy(ctx context.Context,
 	params map[string]interface{}) (map[string]interface{}, error) {
-	srcSnapshotName := params["fromSnapshot"].(string)
+	srcSnapshotName, ok := params["fromSnapshot"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "srcSnapshotName convert to string failed, data: %v", params["fromSnapshot"])
+	}
+
 	srcSnapshot, err := p.cli.GetLunSnapshotByName(ctx, srcSnapshotName)
 	if err != nil {
 		return nil, err
@@ -562,7 +622,10 @@ func (p *SAN) fromSnapshotByLunCopy(ctx context.Context,
 		}
 	}
 
-	dstLunID := dstLun["ID"].(string)
+	dstLunID, ok := dstLun["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "dstLunID convert to string failed, data: %v", dstLun["ID"])
+	}
 	lunCopyName, err := p.createLunCopy(ctx, srcSnapshot["ID"].(string),
 		dstLunID, params["clonespeed"].(int), false)
 	if err != nil {
@@ -604,7 +667,10 @@ func (p *SAN) createLunCopy(ctx context.Context,
 		}
 	}
 
-	lunCopyID := lunCopy["ID"].(string)
+	lunCopyID, ok := lunCopy["ID"].(string)
+	if !ok {
+		return "", pkgUtils.Errorf(ctx, "lunCopyID convert to string failed, data: %v", lunCopy["ID"])
+	}
 
 	err = p.cli.StartLunCopy(ctx, lunCopyID)
 	if err != nil {
@@ -650,7 +716,10 @@ func (p *SAN) createLocalQoS(ctx context.Context,
 		return nil, nil
 	}
 
-	lunID := taskResult["localLunID"].(string)
+	lunID, ok := taskResult["localLunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "lunID convert to string failed, data: %v", taskResult["localLunID"])
+	}
 	lun, err := p.cli.GetLunByID(ctx, lunID)
 	if err != nil {
 		return nil, err
@@ -695,7 +764,10 @@ func (p *SAN) getLunCopyOfLunID(ctx context.Context, lunID string) (string, erro
 
 	var lunCopyIDs []string
 
-	json.Unmarshal([]byte(lunCopyIDStr), &lunCopyIDs)
+	err = json.Unmarshal([]byte(lunCopyIDStr), &lunCopyIDs)
+	if err != nil {
+		return "", pkgUtils.Errorf(ctx, "Unmarshal lunCopyIDStr failed, error: %v", err)
+	}
 	if len(lunCopyIDs) <= 0 {
 		return "", nil
 	}
@@ -718,8 +790,16 @@ func (p *SAN) deleteLunCopy(ctx context.Context, lunCopyName string, isDeleteSna
 		return nil
 	}
 
-	lunCopyID := lunCopy["ID"].(string)
-	runningStatus := lunCopy["RUNNINGSTATUS"].(string)
+	lunCopyID, ok := lunCopy["ID"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "lunCopyID convert to string failed, data: %v", lunCopy["ID"])
+	}
+
+	runningStatus, ok := lunCopy["RUNNINGSTATUS"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "runningStatus convert to string failed, data: %v", lunCopy["RUNNINGSTATUS"])
+	}
+
 	if runningStatus == lunCopyRunningStatusQueuing ||
 		runningStatus == lunCopyRunningStatusCopying {
 		p.cli.StopLunCopy(ctx, lunCopyID)
@@ -730,10 +810,17 @@ func (p *SAN) deleteLunCopy(ctx context.Context, lunCopyName string, isDeleteSna
 		return err
 	}
 
-	snapshotName := lunCopy["SOURCELUNNAME"].(string)
+	snapshotName, ok := lunCopy["SOURCELUNNAME"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "snapshotName convert to string failed, data: %v", lunCopy["SOURCELUNNAME"])
+	}
+
 	snapshot, err := p.cli.GetLunSnapshotByName(ctx, snapshotName)
 	if err == nil && snapshot != nil && isDeleteSnapshot {
-		snapshotID := snapshot["ID"].(string)
+		snapshotID, ok := snapshot["ID"].(string)
+		if !ok {
+			return pkgUtils.Errorf(ctx, "snapshotID convert to string failed, data: %v", snapshot["ID"])
+		}
 		smartX := smartx.NewSmartX(p.cli)
 		smartX.DeleteLunSnapshot(ctx, snapshotID)
 	}
@@ -751,12 +838,18 @@ func (p *SAN) waitLunCopyFinish(ctx context.Context, lunCopyName string) error {
 			return true, nil
 		}
 
-		healthStatus := lunCopy["HEALTHSTATUS"].(string)
+		healthStatus, ok := lunCopy["HEALTHSTATUS"].(string)
+		if !ok {
+			return false, pkgUtils.Errorf(ctx, "healthStatus convert to string failed, data: %v", lunCopy["HEALTHSTATUS"])
+		}
 		if healthStatus == lunCopyHealthStatusFault {
-			return false, fmt.Errorf("Luncopy %s is at fault status", lunCopyName)
+			return false, fmt.Errorf("luncopy %s is at fault status", lunCopyName)
 		}
 
-		runningStatus := lunCopy["RUNNINGSTATUS"].(string)
+		runningStatus, ok := lunCopy["RUNNINGSTATUS"].(string)
+		if !ok {
+			return false, pkgUtils.Errorf(ctx, "runningStatus convert to string failed, data: %v", lunCopy["RUNNINGSTATUS"])
+		}
 		if runningStatus == lunCopyRunningStatusQueuing ||
 			runningStatus == lunCopyRunningStatusCopying {
 			return false, nil
@@ -785,12 +878,18 @@ func (p *SAN) waitClonePairFinish(ctx context.Context, clonePairID string) error
 			return true, nil
 		}
 
-		healthStatus := clonePair["copyStatus"].(string)
+		healthStatus, ok := clonePair["copyStatus"].(string)
+		if !ok {
+			return false, pkgUtils.Errorf(ctx, "healthStatus convert to string failed, data: %v", clonePair["copyStatus"])
+		}
 		if healthStatus == clonePairHealthStatusFault {
 			return false, fmt.Errorf("ClonePair %s is at fault status", clonePairID)
 		}
 
-		runningStatus := clonePair["syncStatus"].(string)
+		runningStatus, ok := clonePair["syncStatus"].(string)
+		if !ok {
+			return false, pkgUtils.Errorf(ctx, "runningStatus convert to string failed, data: %v", clonePair["syncStatus"])
+		}
 		if runningStatus == clonePairRunningStatusNormal {
 			return true, nil
 		} else if runningStatus == clonePairRunningStatusSyncing ||
@@ -812,7 +911,10 @@ func (p *SAN) waitClonePairFinish(ctx context.Context, clonePairID string) error
 
 func (p *SAN) waitCloneFinish(ctx context.Context,
 	lun map[string]interface{}, taskResult map[string]interface{}) error {
-	lunID := lun["ID"].(string)
+	lunID, ok := lun["ID"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "lunID convert to string failed, data: %v", lun["ID"])
+	}
 	if p.product == "DoradoV6" {
 		// ID of clone pair is the same as destination LUN ID
 		err := p.waitClonePairFinish(ctx, lunID)
@@ -838,9 +940,15 @@ func (p *SAN) waitCloneFinish(ctx context.Context,
 
 func (p *SAN) createRemoteLun(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunName := params["name"].(string)
-	remoteCli := taskResult["remoteCli"].(client.BaseClientInterface)
+	lunName, ok := params["name"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "lunName convert to string failed, data: %v", params["name"])
+	}
+	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
 
+	}
 	lun, err := remoteCli.GetLunByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get remote LUN %s error: %v", lunName, err)
@@ -853,7 +961,7 @@ func (p *SAN) createRemoteLun(ctx context.Context,
 			return nil, err
 		}
 
-		params["parentid"] = taskResult["remotePoolID"].(string)
+		params["parentid"] = taskResult["remotePoolID"]
 		lun, err = remoteCli.CreateLun(ctx, params)
 		if err != nil {
 			log.AddContext(ctx).Errorf("Create remote LUN %s error: %v", lunName, err)
@@ -871,7 +979,10 @@ func (p *SAN) revertRemoteLun(ctx context.Context, taskResult map[string]interfa
 	if !exist {
 		return nil
 	}
-	remoteCli := taskResult["remoteCli"].(client.BaseClientInterface)
+	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
+	}
 	return remoteCli.DeleteLun(ctx, lunID)
 }
 
@@ -882,9 +993,15 @@ func (p *SAN) createRemoteQoS(ctx context.Context,
 		return nil, nil
 	}
 
-	lunID := taskResult["remoteLunID"].(string)
-	remoteCli := taskResult["remoteCli"].(client.BaseClientInterface)
+	lunID, ok := taskResult["remoteLunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "lunID convert to string failed, data: %v", taskResult["remoteLunID"])
+	}
 
+	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
+	}
 	lun, err := remoteCli.GetLunByID(ctx, lunID)
 	if err != nil {
 		return nil, err
@@ -911,16 +1028,29 @@ func (p *SAN) revertRemoteQoS(ctx context.Context, taskResult map[string]interfa
 	if !lunIDExist || !qosIDExist {
 		return nil
 	}
-	remoteCli := taskResult["remoteCli"].(client.BaseClientInterface)
+	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
+	}
 	smartX := smartx.NewSmartX(remoteCli)
 	return smartX.DeleteQos(ctx, qosID, lunID, "lun", "")
 }
 
 func (p *SAN) createHyperMetro(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	domainID := taskResult["metroDomainID"].(string)
-	localLunID := taskResult["localLunID"].(string)
-	remoteLunID := taskResult["remoteLunID"].(string)
+	domainID, ok := taskResult["metroDomainID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "domainID convert to string failed, data: %v", taskResult["metroDomainID"])
+	}
+
+	localLunID, ok := taskResult["localLunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "localLunID convert to string failed, data: %v", taskResult["localLunID"])
+	}
+	remoteLunID, ok := taskResult["remoteLunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "remoteLunID convert to string failed, data: %v", taskResult["remoteLunID"])
+	}
 
 	pair, err := p.cli.GetHyperMetroPairByLocalObjID(ctx, localLunID)
 	if err != nil {
@@ -949,7 +1079,10 @@ func (p *SAN) createHyperMetro(ctx context.Context,
 			return nil, err
 		}
 
-		pairID = pair["ID"].(string)
+		pairID, ok = pair["ID"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "pairID convert to string failed, data: %v", pair["ID"])
+		}
 		if needFirstSync {
 			err := p.cli.SyncHyperMetroPair(ctx, pairID)
 			if err != nil {
@@ -959,7 +1092,10 @@ func (p *SAN) createHyperMetro(ctx context.Context,
 			}
 		}
 	} else {
-		pairID = pair["ID"].(string)
+		pairID, ok = pair["ID"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "pairID convert to string failed, data: %v", pair["ID"])
+		}
 	}
 
 	err = p.waitHyperMetroSyncFinish(ctx, pairID)
@@ -986,12 +1122,18 @@ func (p *SAN) waitHyperMetroSyncFinish(ctx context.Context, pairID string) error
 			return false, errors.New(msg)
 		}
 
-		healthStatus := pair["HEALTHSTATUS"].(string)
+		healthStatus, ok := pair["HEALTHSTATUS"].(string)
+		if !ok {
+			return false, pkgUtils.Errorf(ctx, "healthStatus convert to string failed, data: %v", pair["HEALTHSTATUS"])
+		}
 		if healthStatus == hyperMetroPairHealthStatusFault {
 			return false, fmt.Errorf("Hypermetro pair %s is fault", pairID)
 		}
 
-		runningStatus := pair["RUNNINGSTATUS"].(string)
+		runningStatus, ok := pair["RUNNINGSTATUS"].(string)
+		if !ok {
+			return false, pkgUtils.Errorf(ctx, "runningStatus convert to string failed, data: %v", pair["RUNNINGSTATUS"])
+		}
 		if runningStatus == hyperMetroPairRunningStatusToSync ||
 			runningStatus == hyperMetroPairRunningStatusSyncing {
 			return false, nil
@@ -1051,7 +1193,12 @@ func (p *SAN) getHyperMetroParams(ctx context.Context,
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
-	if status := domain["RUNNINGSTATUS"].(string); status != hyperMetroDomainRunningStatusNormal {
+
+	status, ok := domain["RUNNINGSTATUS"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "status convert to string failed, data: %v", domain["RUNNINGSTATUS"])
+	}
+	if status != hyperMetroDomainRunningStatusNormal {
 		msg := fmt.Sprintf("Hypermetro domain %s status is not normal", metroDomain)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
@@ -1066,7 +1213,10 @@ func (p *SAN) getHyperMetroParams(ctx context.Context,
 
 func (p *SAN) deleteLocalLunCopy(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID := params["lunID"].(string)
+	lunID, ok := params["lunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
+	}
 
 	lunCopyName, err := p.getLunCopyOfLunID(ctx, lunID)
 	if err != nil {
@@ -1087,8 +1237,10 @@ func (p *SAN) deleteLocalLunCopy(ctx context.Context,
 
 func (p *SAN) deleteLocalHyperCopy(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID := params["lunID"].(string)
-
+	lunID, ok := params["lunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
+	}
 	// ID of clone pair is the same as destination LUN ID
 	clonePair, err := p.cli.GetClonePairInfo(ctx, lunID)
 	if err != nil {
@@ -1099,7 +1251,10 @@ func (p *SAN) deleteLocalHyperCopy(ctx context.Context,
 		return nil, nil
 	}
 
-	clonePairID := clonePair["ID"].(string)
+	clonePairID, ok := clonePair["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format clonePairID to string failed, data: %v", clonePair["ID"])
+	}
 	err = p.cli.DeleteClonePair(ctx, clonePairID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete clone pair %s error: %v", clonePairID, err)
@@ -1111,7 +1266,11 @@ func (p *SAN) deleteLocalHyperCopy(ctx context.Context,
 
 func (p *SAN) deleteLocalLun(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunName := params["lunName"].(string)
+
+	lunName, ok := params["lunName"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunName to string failed, data: %v", params["lunName"])
+	}
 	err := p.deleteLun(ctx, lunName, p.cli)
 	return nil, err
 }
@@ -1123,14 +1282,21 @@ func (p *SAN) deleteHyperMetroRemoteLun(ctx context.Context,
 		return nil, nil
 	}
 
-	lunName := params["lunName"].(string)
+	lunName, ok := params["lunName"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunName to string failed, data: %v", params["lunName"])
+	}
 	err := p.deleteLun(ctx, lunName, p.metroRemoteCli)
 	return nil, err
 }
 
 func (p *SAN) deleteHyperMetro(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID := params["lunID"].(string)
+
+	lunID, ok := params["lunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
+	}
 
 	pair, err := p.cli.GetHyperMetroPairByLocalObjID(ctx, lunID)
 	if err != nil {
@@ -1141,9 +1307,14 @@ func (p *SAN) deleteHyperMetro(ctx context.Context,
 		return nil, nil
 	}
 
-	pairID := pair["ID"].(string)
-	status := pair["RUNNINGSTATUS"].(string)
-
+	pairID, ok := pair["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse pairID to string failed, data: %v", pair["ID"])
+	}
+	status, ok := pair["RUNNINGSTATUS"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse running status to string failed, data: %v", pair["RUNNINGSTATUS"])
+	}
 	if status == hyperMetroPairRunningStatusNormal ||
 		status == hyperMetroPairRunningStatusToSync ||
 		status == hyperMetroPairRunningStatusSyncing {
@@ -1162,7 +1333,10 @@ func (p *SAN) deleteHyperMetro(ctx context.Context,
 func (p *SAN) preExpandCheckRemoteCapacity(ctx context.Context,
 	params map[string]interface{}, cli client.BaseClientInterface) (string, error) {
 	// check the remote pool
-	name := params["name"].(string)
+	name, ok := params["name"].(string)
+	if !ok {
+		return "", pkgUtils.Errorf(ctx, "format name to string failed, data: %v", params["name"])
+	}
 	remoteLunName := p.cli.MakeLunName(name)
 	remoteLun, err := cli.GetLunByName(ctx, remoteLunName)
 	if err != nil {
@@ -1175,7 +1349,11 @@ func (p *SAN) preExpandCheckRemoteCapacity(ctx context.Context,
 		return "", errors.New(msg)
 	}
 
-	newSize := params["size"].(int64)
+	newSize, ok := params["size"].(int64)
+	if !ok {
+		return "", pkgUtils.Errorf(ctx, "format newSize to int64 failed, data: %v", params["size"])
+	}
+
 	curSize, err := strconv.ParseInt(remoteLun["CAPACITY"].(string), 10, 64)
 	if err != nil {
 		return "", err
@@ -1217,8 +1395,10 @@ func (p *SAN) preExpandReplicationCheckRemoteCapacity(ctx context.Context,
 
 func (p *SAN) suspendHyperMetro(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID := params["lunID"].(string)
-
+	lunID, ok := params["lunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
+	}
 	pair, err := p.cli.GetHyperMetroPairByLocalObjID(ctx, lunID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get hypermetro pair by local obj ID %s error: %v", lunID, err)
@@ -1228,9 +1408,15 @@ func (p *SAN) suspendHyperMetro(ctx context.Context,
 		return nil, nil
 	}
 
-	pairID := pair["ID"].(string)
-	status := pair["RUNNINGSTATUS"].(string)
+	pairID, ok := pair["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format pairID to string failed, data: %v", pair["ID"])
+	}
 
+	status, ok := pair["RUNNINGSTATUS"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format running status to string failed, data: %v", pair["RUNNINGSTATUS"])
+	}
 	if status == hyperMetroPairRunningStatusNormal ||
 		status == hyperMetroPairRunningStatusToSync ||
 		status == hyperMetroPairRunningStatusSyncing {
@@ -1247,9 +1433,14 @@ func (p *SAN) suspendHyperMetro(ctx context.Context,
 
 func (p *SAN) expandHyperMetroRemoteLun(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	remoteLunID := taskResult["remoteLunID"].(string)
-	newSize := params["size"].(int64)
-
+	remoteLunID, ok := taskResult["remoteLunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert remoteLunID to string failed, data: %v", taskResult["remoteLunID"])
+	}
+	newSize, ok := params["size"].(int64)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format newSize to int64 failed, data: %v", params["size"])
+	}
 	err := p.metroRemoteCli.ExtendLun(ctx, remoteLunID, newSize)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Extend hypermetro remote lun %s error: %v", remoteLunID, err)
@@ -1261,7 +1452,11 @@ func (p *SAN) expandHyperMetroRemoteLun(ctx context.Context,
 
 func (p *SAN) syncHyperMetro(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	pairID := taskResult["hyperMetroPairID"].(string)
+
+	pairID, ok := taskResult["hyperMetroPairID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format pairID to string failed, data: %v", taskResult["hyperMetroPairID"])
+	}
 	if pairID == "" {
 		return nil, nil
 	}
@@ -1277,9 +1472,16 @@ func (p *SAN) syncHyperMetro(ctx context.Context,
 
 func (p *SAN) expandLocalLun(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID := params["lunID"].(string)
-	newSize := params["size"].(int64)
 
+	lunID, ok := params["lunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
+	}
+
+	newSize, ok := params["size"].(int64)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format newSize to int64 failed, data: %v", params["size"])
+	}
 	err := p.cli.ExtendLun(ctx, lunID, newSize)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Expand lun %s error: %v", lunID, err)
@@ -1301,8 +1503,10 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
-
-	lunId := lun["ID"].(string)
+	lunId, ok := lun["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse lunID to string failed, data: %v", lun["ID"])
+	}
 	snapshot, err := p.cli.GetLunSnapshotByName(ctx, snapshotName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun snapshot by name %s error: %v", snapshotName, err)
@@ -1310,13 +1514,16 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 	}
 
 	if snapshot != nil {
-		snapshotParentId := snapshot["PARENTID"].(string)
+		snapshotParentId, ok := snapshot["PARENTID"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "parse snapshotParentId to string failed, data: %v", snapshot["PARENTID"])
+		}
 		if snapshotParentId != lunId {
 			msg := fmt.Sprintf("Snapshot %s is already exist, but the parent LUN %s is incompatible", snapshotName, lunName)
 			log.AddContext(ctx).Errorln(msg)
 			return nil, errors.New(msg)
 		} else {
-			snapshotSize, _ := strconv.ParseInt(snapshot["USERCAPACITY"].(string), 10, 64)
+			snapshotSize := utils.ParseIntWithDefault(snapshot["USERCAPACITY"].(string), 10, 64, 0)
 			return p.getSnapshotReturnInfo(snapshot, snapshotSize), nil
 		}
 	}
@@ -1342,7 +1549,7 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 		return nil, err
 	}
 
-	snapshotSize, _ := strconv.ParseInt(result["snapshotSize"].(string), 10, 64)
+	snapshotSize := utils.ParseIntWithDefault(result["snapshotSize"].(string), 10, 64, 0)
 	return p.getSnapshotReturnInfo(snapshot, snapshotSize), nil
 }
 
@@ -1372,8 +1579,16 @@ func (p *SAN) DeleteSnapshot(ctx context.Context, snapshotName string) error {
 
 func (p *SAN) createSnapshot(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID := params["lunID"].(string)
-	snapshotName := params["snapshotName"].(string)
+
+	lunID, ok := params["lunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
+	}
+
+	snapshotName, ok := params["snapshotName"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format snapshotName to string failed, data: %v", params["snapshotName"])
+	}
 
 	snapshot, err := p.cli.CreateLunSnapshot(ctx, snapshotName, lunID)
 	if err != nil {
@@ -1405,7 +1620,10 @@ func (p *SAN) waitSnapshotReady(ctx context.Context, snapshotName string) error 
 			return false, errors.New(msg)
 		}
 
-		runningStatus := snapshot["RUNNINGSTATUS"].(string)
+		runningStatus, ok := snapshot["RUNNINGSTATUS"].(string)
+		if !ok {
+			return false, pkgUtils.Errorf(ctx, "format runningStatus to string failed, data: %v", snapshot["RUNNINGSTATUS"])
+		}
 		if err != nil {
 			return false, err
 		}
@@ -1425,7 +1643,10 @@ func (p *SAN) waitSnapshotReady(ctx context.Context, snapshotName string) error 
 }
 
 func (p *SAN) revertSnapshot(ctx context.Context, taskResult map[string]interface{}) error {
-	snapshotID := taskResult["snapshotId"].(string)
+	snapshotID, ok := taskResult["snapshotId"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "format snapshotID to string failed, data: %v", taskResult["snapshotId"])
+	}
 	err := p.cli.DeleteLunSnapshot(ctx, snapshotID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete snapshot %s error: %v", snapshotID, err)
@@ -1436,8 +1657,10 @@ func (p *SAN) revertSnapshot(ctx context.Context, taskResult map[string]interfac
 
 func (p *SAN) activateSnapshot(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	snapshotID := taskResult["snapshotId"].(string)
-
+	snapshotID, ok := taskResult["snapshotId"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format snapshotID to string failed, data: %v", taskResult["snapshotId"])
+	}
 	err := p.cli.ActivateLunSnapshot(ctx, snapshotID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Activate snapshot %s error: %v", snapshotID, err)
@@ -1448,8 +1671,11 @@ func (p *SAN) activateSnapshot(ctx context.Context,
 
 func (p *SAN) deleteSnapshot(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	snapshotID := params["snapshotId"].(string)
 
+	snapshotID, ok := params["snapshotId"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format snapshotID to string failed, data: %v", params["snapshotId"])
+	}
 	err := p.cli.DeleteLunSnapshot(ctx, snapshotID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete snapshot %s error: %v", snapshotID, err)
@@ -1461,8 +1687,10 @@ func (p *SAN) deleteSnapshot(ctx context.Context,
 
 func (p *SAN) deactivateSnapshot(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	snapshotID := params["snapshotId"].(string)
-
+	snapshotID, ok := params["snapshotId"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format snapshotID to string failed, data: %v", params["snapshotId"])
+	}
 	err := p.cli.DeactivateLunSnapshot(ctx, snapshotID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Deactivate snapshot %s error: %v", snapshotID, err)
@@ -1490,7 +1718,10 @@ func (p *SAN) getReplicationParams(ctx context.Context,
 		return nil, err
 	}
 
-	sn := remoteSystem["ID"].(string)
+	sn, ok := remoteSystem["ID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "parse remoteDeviceID to string failed, data: %v", remoteSystem["ID"])
+	}
 	remoteDeviceID, err := p.getRemoteDeviceID(ctx, sn)
 	if err != nil {
 		return nil, err
@@ -1508,7 +1739,10 @@ func (p *SAN) getReplicationParams(ctx context.Context,
 
 func (p *SAN) deleteReplicationPair(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID := params["lunID"].(string)
+	lunID, ok := params["lunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
+	}
 
 	pairs, err := p.cli.GetReplicationPairByResID(ctx, lunID, 11)
 	if err != nil {
@@ -1520,9 +1754,14 @@ func (p *SAN) deleteReplicationPair(ctx context.Context,
 	}
 
 	for _, pair := range pairs {
-		pairID := pair["ID"].(string)
-
-		runningStatus := pair["RUNNINGSTATUS"].(string)
+		pairID, ok := pair["ID"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "format pairID to string failed, data: %v", pair["ID"])
+		}
+		runningStatus, ok := pair["RUNNINGSTATUS"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "format runningStatus to string failed, data: %v", pair["RUNNINGSTATUS"])
+		}
 		if runningStatus == replicationPairRunningStatusNormal ||
 			runningStatus == replicationPairRunningStatusSync {
 			p.cli.SplitReplicationPair(ctx, pairID)
@@ -1545,7 +1784,10 @@ func (p *SAN) deleteReplicationRemoteLun(ctx context.Context,
 		return nil, nil
 	}
 
-	lunName := params["lunName"].(string)
+	lunName, ok := params["lunName"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunName to string failed, data: %v", params["lunName"])
+	}
 	err := p.deleteLun(ctx, lunName, p.replicaRemoteCli)
 	return nil, err
 }
@@ -1561,8 +1803,10 @@ func (p *SAN) deleteLun(ctx context.Context, name string, cli client.BaseClientI
 		return nil
 	}
 
-	lunID := lun["ID"].(string)
-
+	lunID, ok := lun["ID"].(string)
+	if !ok {
+		return pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", lun["ID"])
+	}
 	qosID, exist := lun["IOCLASSID"].(string)
 	if exist && qosID != "" {
 		smartX := smartx.NewSmartX(cli)
@@ -1584,8 +1828,10 @@ func (p *SAN) deleteLun(ctx context.Context, name string, cli client.BaseClientI
 
 func (p *SAN) splitReplication(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID := params["lunID"].(string)
-
+	lunID, ok := params["lunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
+	}
 	pairs, err := p.cli.GetReplicationPairByResID(ctx, lunID, 11)
 	if err != nil {
 		return nil, err
@@ -1598,9 +1844,15 @@ func (p *SAN) splitReplication(ctx context.Context,
 	replicationPairIDs := []string{}
 
 	for _, pair := range pairs {
-		pairID := pair["ID"].(string)
+		pairID, ok := pair["ID"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "format pairID to string failed, data: %v", pair["ID"])
+		}
+		runningStatus, ok := pair["RUNNINGSTATUS"].(string)
+		if !ok {
+			return nil, pkgUtils.Errorf(ctx, "format runningStatus to string failed, data: %v", pair["RUNNINGSTATUS"])
+		}
 
-		runningStatus := pair["RUNNINGSTATUS"].(string)
 		if runningStatus != replicationPairRunningStatusNormal &&
 			runningStatus != replicationPairRunningStatusSync {
 			continue
@@ -1621,9 +1873,15 @@ func (p *SAN) splitReplication(ctx context.Context,
 
 func (p *SAN) expandReplicationRemoteLun(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	remoteLunID := taskResult["remoteLunID"].(string)
-	newSize := params["size"].(int64)
+	remoteLunID, ok := taskResult["remoteLunID"].(string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format remoteLunID to string failed, data: %v", taskResult["remoteLunID"])
+	}
 
+	newSize, ok := params["size"].(int64)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format newSize to int64 failed, data: %v", params["size"])
+	}
 	err := p.replicaRemoteCli.ExtendLun(ctx, remoteLunID, newSize)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Extend replication remote lun %s error: %v", remoteLunID, err)
@@ -1635,7 +1893,10 @@ func (p *SAN) expandReplicationRemoteLun(ctx context.Context,
 
 func (p *SAN) syncReplication(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	replicationPairIDs := taskResult["replicationPairIDs"].([]string)
+	replicationPairIDs, ok := taskResult["replicationPairIDs"].([]string)
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "format replicationPairIDs to []string failed, data: %v", taskResult["replicationPairIDs"])
+	}
 
 	for _, pairID := range replicationPairIDs {
 		err := p.cli.SyncReplicationPair(ctx, pairID)
