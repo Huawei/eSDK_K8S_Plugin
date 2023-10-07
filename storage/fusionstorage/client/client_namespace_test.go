@@ -23,25 +23,11 @@ import (
 
 	"bou.ke/monkey"
 	. "github.com/smartystreets/goconvey/convey"
-
-	"huawei-csi-driver/utils/log"
 )
 
 const (
 	logName = "clientNamespaceTest.log"
 )
-
-var testClient *Client
-
-func TestMain(m *testing.M) {
-	log.MockInitLogging(logName)
-	defer log.MockStopLogging(logName)
-
-	testClient = NewClient("https://192.168.125.*:8088", "dev-account", "mock-sec-name",
-		"mock-sec-namespace", "50", "mock-id", "mock-accountName")
-
-	m.Run()
-}
 
 func TestAllowNfsShareAccess(t *testing.T) {
 	Convey("Normal", t, func() {

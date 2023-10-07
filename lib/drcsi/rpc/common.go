@@ -2,7 +2,7 @@ package rpc
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"google.golang.org/grpc"
 
@@ -20,7 +20,7 @@ func GetProviderName(ctx context.Context, conn *grpc.ClientConn) (string, error)
 	}
 	name := rsp.GetProvider()
 	if name == "" {
-		return "", fmt.Errorf("drcsi name is empty")
+		return "", errors.New("drcsi name is empty")
 	}
 	return name, nil
 }

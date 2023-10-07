@@ -30,6 +30,7 @@ import (
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/csi/backend/plugin"
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -72,28 +73,35 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	log.AddContext(ctx).Infof("Start to delete volume %s", volumeId)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackendWithFresh(ctx, backendName, true)
-	if backend == nil {
+
+	b := backend.GetBackendWithFresh(ctx, backendName, true)
+	if b == nil {
 		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
 			"CAUTION: volume need to manually delete from array.", backendName)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
 	var err error
-	if backend.Storage == plugin.DTreeStorage {
-		err = backend.Plugin.DeleteDTreeVolume(ctx, map[string]interface{}{
-			"parentname": backend.Parameters["parentname"],
+	if b.Storage == plugin.DTreeStorage {
+		err = b.Plugin.DeleteDTreeVolume(ctx, map[string]interface{}{
+			"parentname": b.Parameters["parentname"],
 			"name":       volName,
 		})
 	} else {
-		err = backend.Plugin.DeleteVolume(ctx, volName)
+		err = b.Plugin.DeleteVolume(ctx, volName)
 	}
+
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete volume %s error: %v", volumeId, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	log.AddContext(ctx).Infof("Volume %s is deleted", volumeId)
+
+	// Delete the topology after the volume is successfully deleted.
+	// This prevents the DeleteLabel function from being repeatedly invoked when the volume fails to be deleted.
+	go pkgUtils.DeletePVLabel(volumeId)
+
 	return &csi.DeleteVolumeResponse{}, nil
 }
 

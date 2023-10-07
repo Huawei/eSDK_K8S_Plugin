@@ -184,7 +184,10 @@ func (p *OceanstorSanPlugin) isHyperMetro(ctx context.Context, lun map[string]in
 }
 
 func (p *OceanstorSanPlugin) metroHandler(ctx context.Context, req handlerRequest) ([]reflect.Value, error) {
-	localLunID := req.lun["ID"].(string)
+	localLunID, ok := req.lun["ID"].(string)
+	if !ok {
+		log.AddContext(ctx).Warningf("req.lun[\"ID\"] is not string")
+	}
 	pair, err := req.localCli.GetHyperMetroPairByLocalObjID(ctx, localLunID)
 	if err != nil {
 		return nil, err
@@ -210,7 +213,10 @@ func (p *OceanstorSanPlugin) metroHandler(ctx context.Context, req handlerReques
 		"csi", p.metroRemotePlugin.portals, p.metroRemotePlugin.alua)
 
 	metroAttacher := attacher.NewMetroAttacher(localAttacher, remoteAttacher, p.protocol)
-	lunName := req.lun["NAME"].(string)
+	lunName, ok := req.lun["NAME"].(string)
+	if !ok {
+		log.AddContext(ctx).Warningf("req.lun[\"NAME\"] is not string")
+	}
 	out := utils.ReflectCall(metroAttacher, req.method, ctx, lunName, req.parameters)
 
 	return out, nil
@@ -363,12 +369,12 @@ func (p *OceanstorSanPlugin) UpdatePoolCapabilities(poolNames []string) (map[str
 	return p.updatePoolCapabilities(poolNames, "1")
 }
 
-func (p *OceanstorSanPlugin) UpdateReplicaRemotePlugin(remote Plugin) {
-	p.replicaRemotePlugin = remote.(*OceanstorSanPlugin)
-}
-
 func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(remote Plugin) {
-	p.metroRemotePlugin = remote.(*OceanstorSanPlugin)
+	var ok bool
+	p.metroRemotePlugin, ok = remote.(*OceanstorSanPlugin)
+	if !ok {
+		log.Warningf("convert metroRemotePlugin to OceanstorSanPlugin failed, data: %v", remote)
+	}
 }
 
 func (p *OceanstorSanPlugin) CreateSnapshot(ctx context.Context,
@@ -491,7 +497,11 @@ func (p *OceanstorSanPlugin) Validate(ctx context.Context, param map[string]inte
 	}
 
 	// Login verification
-	cli := client.NewClient(clientConfig)
+	cli, err := client.NewClient(clientConfig)
+	if err != nil {
+		return err
+	}
+
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err

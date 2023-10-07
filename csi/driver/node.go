@@ -23,6 +23,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"huawei-csi-driver/connector"
 	_ "huawei-csi-driver/connector/nfs" // init the nfs connector
 	"huawei-csi-driver/csi/app"
@@ -30,10 +34,6 @@ import (
 	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
-
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
@@ -102,12 +102,16 @@ func (d *Driver) NodePublishVolume(ctx context.Context,
 			log.AddContext(ctx).Errorf("publish block volume fail, volume: %s, error: %v", volumeId, err)
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-		return &csi.NodePublishVolumeResponse{}, nil
+	} else {
+		if err := manage.PublishFilesystem(ctx, req); err != nil {
+			log.AddContext(ctx).Errorf("publish filesystem volume fail, volume: %s, error: %v", volumeId, err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
-	if err := manage.PublishFilesystem(ctx, req); err != nil {
-		log.AddContext(ctx).Errorf("publish filesystem volume fail, volume: %s, error: %v", volumeId, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
+
+	go nodeAddLabel(utils.NewContext(), volumeId, targetPath)
+
+	log.AddContext(ctx).Infof("Volume %s is node published from %s", volumeId, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
@@ -146,6 +150,9 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context,
 			}
 		}
 	}
+
+	go nodeDeleteLabel(utils.NewContext(), volumeId, targetPath)
+
 	log.AddContext(ctx).Infof("Volume %s is node unpublished from %s", volumeId, targetPath)
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }

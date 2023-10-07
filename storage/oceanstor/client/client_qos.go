@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -95,7 +96,10 @@ func (cli *BaseClient) CreateQos(ctx context.Context, name, objID, objType, vSto
 		return nil, fmt.Errorf("Create qos %v error: %d", data, code)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
 	return respData, nil
 }
 
@@ -190,12 +194,18 @@ func (cli *BaseClient) GetQosByName(ctx context.Context, name, vStoreID string) 
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
 	if len(respData) <= 0 {
 		return nil, nil
 	}
 
-	qos := respData[0].(map[string]interface{})
+	qos, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert qos to map failed, data: %v", respData[0])
+	}
 	return qos, nil
 }
 
@@ -216,7 +226,10 @@ func (cli *BaseClient) GetQosByID(ctx context.Context, qosID, vStoreID string) (
 		return nil, fmt.Errorf("Get qos by ID %s error: %d", qosID, code)
 	}
 
-	qos := resp.Data.(map[string]interface{})
+	qos, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert qos to map failed, data: %v", resp.Data)
+	}
 	return qos, nil
 }
 

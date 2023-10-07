@@ -423,10 +423,8 @@ func (ctrl *backendController) updateContentTask(ctx context.Context,
 		return nil, errors.New(msg)
 	}
 
-	// start to update the secret info, only secret or maxClientThreads changed, we will update
-	if content.Status == nil || (content.Spec.SecretMeta == content.Status.SecretMeta &&
-		content.Spec.MaxClientThreads == content.Status.MaxClientThreads &&
-		content.Status.SN != "") {
+	// start to update the secret info, only secret, useCert, certSecret or maxClientThreads changed, we will update
+	if !needUpdate(content) {
 		return nil, nil
 	}
 
@@ -469,4 +467,32 @@ func (ctrl *backendController) getContentTask(ctx context.Context,
 	return map[string]interface{}{
 		"storageBackendContent": newContent,
 	}, nil
+}
+
+func needUpdate(content *xuanwuv1.StorageBackendContent) bool {
+	if content.Status == nil {
+		return false
+	}
+
+	if content.Spec.SecretMeta != content.Status.SecretMeta {
+		return true
+	}
+
+	if content.Spec.MaxClientThreads != content.Status.MaxClientThreads {
+		return true
+	}
+
+	if content.Spec.UseCert != content.Status.UseCert {
+		return true
+	}
+
+	if content.Spec.CertSecret != content.Status.CertSecret {
+		return true
+	}
+
+	if content.Status.SN == "" {
+		return true
+	}
+
+	return false
 }

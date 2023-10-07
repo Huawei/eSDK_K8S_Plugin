@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"huawei-csi-driver/connector/nvme"
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -153,9 +154,17 @@ func (p *Attacher) createHostGroup(ctx context.Context, hostID, mappingID string
 	hostGroupName := p.getHostGroupName(hostID)
 
 	for _, i := range hostGroupsByHostID {
-		group := i.(map[string]interface{})
+		group, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert group to map failed, data: %v", i)
+			continue
+		}
 		if group["NAME"].(string) == hostGroupName {
-			hostGroupID = group["ID"].(string)
+			hostGroupID, ok = group["ID"].(string)
+			if !ok {
+				log.AddContext(ctx).Warningf("convert hostGroupID to string failed, data: %v", group["ID"])
+				continue
+			}
 			return p.addToHostGroupMapping(ctx, hostGroupName, hostGroupID, mappingID)
 		}
 	}
@@ -218,7 +227,6 @@ func (p *Attacher) addToHostGroupMapping(ctx context.Context, groupName, groupID
 func (p *Attacher) createLunGroup(ctx context.Context, lunID, hostID, mappingID string) error {
 	var err error
 	var lunGroup map[string]interface{}
-	var lunGroupID string
 
 	lunGroupsByLunID, err := p.cli.QueryAssociateLunGroup(ctx, 11, lunID)
 	if err != nil {
@@ -228,9 +236,16 @@ func (p *Attacher) createLunGroup(ctx context.Context, lunID, hostID, mappingID 
 
 	lunGroupName := p.getLunGroupName(hostID)
 	for _, i := range lunGroupsByLunID {
-		group := i.(map[string]interface{})
+		group, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert group to map failed, data: %v", i)
+			continue
+		}
 		if group["NAME"].(string) == lunGroupName {
-			lunGroupID = group["ID"].(string)
+			lunGroupID, ok := group["ID"].(string)
+			if !ok {
+				return errors.New("convert group[\"ID\"] to string failed")
+			}
 			return p.addToLUNGroupMapping(ctx, lunGroupName, lunGroupID, mappingID)
 		}
 	}
@@ -419,8 +434,16 @@ func (p *Attacher) getTargetISCSIProperties(ctx context.Context) ([]string, []st
 	validIPs := map[string]bool{}
 	validIQNs := map[string]string{}
 	for _, i := range ports {
-		port := i.(map[string]interface{})
-		portID := port["ID"].(string)
+		port, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert port to map failed, data: %v", i)
+			continue
+		}
+		portID, ok := port["ID"].(string)
+		if !ok {
+			log.AddContext(ctx).Warningf("convert portID to string failed, data: %v", port["ID"])
+			continue
+		}
 		portIqn := strings.Split(strings.Split(portID, ",")[0], "+")[1]
 		splitIqn := strings.Split(portIqn, ":")
 
@@ -577,8 +600,13 @@ func (p *Attacher) attachISCSI(ctx context.Context, hostID string, parameters ma
 	}
 
 	isFree, freeExist := initiator["ISFREE"].(string)
+	if !freeExist {
+		log.AddContext(ctx).Warningf("convert isFree to string failed, data: %v", initiator["ISFREE"])
+	}
 	parent, parentExist := initiator["PARENTID"].(string)
-
+	if !parentExist {
+		log.AddContext(ctx).Warningf("convert parentID to string failed, data: %v", initiator["PARENTID"])
+	}
 	if freeExist && isFree == "true" {
 		err := p.cli.AddIscsiInitiatorToHost(ctx, name, hostID)
 		if err != nil {
@@ -622,7 +650,13 @@ func (p *Attacher) attachFC(ctx context.Context, hostID string, parameters map[s
 		}
 
 		isFree, freeExist := initiator["ISFREE"].(string)
+		if !freeExist {
+			log.AddContext(ctx).Warningf("convert isFree to string failed, data: %v", initiator["ISFREE"])
+		}
 		parent, parentExist := initiator["PARENTID"].(string)
+		if !parentExist {
+			log.AddContext(ctx).Warningf("convert parentID to string failed, data: %v", initiator["PARENTID"])
+		}
 
 		if freeExist && isFree == "true" {
 			addWWNs = append(addWWNs, wwn)
@@ -668,8 +702,13 @@ func (p *Attacher) attachRoCE(ctx context.Context, hostID string, parameters map
 	}
 
 	isFree, freeExist := initiator["ISFREE"].(string)
+	if !freeExist {
+		log.AddContext(ctx).Warningf("convert isFree to string failed, data: %v", initiator["ISFREE"])
+	}
 	parent, parentExist := initiator["PARENTID"].(string)
-
+	if !parentExist {
+		log.AddContext(ctx).Warningf("convert parentID to string failed, data: %v", initiator["PARENTID"])
+	}
 	if freeExist && isFree == "true" {
 		err := p.cli.AddRoCEInitiatorToHost(ctx, name, hostID)
 		if err != nil {
@@ -697,8 +736,10 @@ func (p *Attacher) doMapping(ctx context.Context, hostID, lunName string) (strin
 		return "", "", errors.New(msg)
 	}
 
-	lunID := lun["ID"].(string)
-
+	lunID, ok := lun["ID"].(string)
+	if !ok {
+		return "", "", pkgUtils.Errorf(ctx, "convert lunID to string failed, data: %v", lun["ID"])
+	}
 	mappingID, err := p.createMapping(ctx, hostID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create mapping for host %s error: %v", hostID, err)
@@ -740,9 +781,10 @@ func (p *Attacher) doUnmapping(ctx context.Context, hostID, lunName string) (str
 		log.AddContext(ctx).Infof("LUN %s doesn't exist while detaching", lunName)
 		return "", nil
 	}
-
-	lunID := lun["ID"].(string)
-
+	lunID, ok := lun["ID"].(string)
+	if !ok {
+		return "", pkgUtils.Errorf(ctx, "convert lunID to string failed, data: %v", lun["ID"])
+	}
 	lunGroupsByLunID, err := p.cli.QueryAssociateLunGroup(ctx, 11, lunID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Query associated lungroups of lun %s error: %v", lunID, err)
@@ -750,11 +792,17 @@ func (p *Attacher) doUnmapping(ctx context.Context, hostID, lunName string) (str
 	}
 
 	lunGroupName := p.getLunGroupName(hostID)
-
 	for _, i := range lunGroupsByLunID {
-		group := i.(map[string]interface{})
+		group, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert group to map failed, data: %v", i)
+			continue
+		}
 		if group["NAME"].(string) == lunGroupName {
-			lunGroupID := group["ID"].(string)
+			lunGroupID, ok := group["ID"].(string)
+			if !ok {
+				return "", pkgUtils.Errorf(ctx, "convert lunGroupID to string failed, data: %v", group["ID"])
+			}
 			err = p.cli.RemoveLunFromGroup(ctx, lunID, lunGroupID)
 			if err != nil {
 				log.AddContext(ctx).Errorf("Remove lun %s from group %s error: %v",
@@ -784,7 +832,10 @@ func (p *Attacher) ControllerDetach(ctx context.Context,
 		return "", nil
 	}
 
-	hostID := host["ID"].(string)
+	hostID, ok := host["ID"].(string)
+	if !ok {
+		return "", pkgUtils.Errorf(ctx, "convert hostID to string failed, data: %v", host["ID"])
+	}
 	wwn, err := p.doUnmapping(ctx, hostID, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Unmapping LUN %s from host %s error: %v", lunName, hostID, err)

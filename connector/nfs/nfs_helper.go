@@ -304,7 +304,7 @@ func getFSType(ctx context.Context, sourcePath string) (string, error) {
 
 func formatDisk(ctx context.Context, sourcePath, fsType, diskSizeType string) error {
 	var cmd string
-	if "xfs" == fsType {
+	if fsType == "xfs" {
 		cmd = fmt.Sprintf("mkfs -t %s -f %s", fsType, sourcePath)
 	} else {
 		// Handle ext types
@@ -319,8 +319,11 @@ func formatDisk(ctx context.Context, sourcePath, fsType, diskSizeType string) er
 			cmd = fmt.Sprintf("mkfs -t %s -T largefile -F %s", fsType, sourcePath)
 		case "veryLarge":
 			cmd = fmt.Sprintf("mkfs -t %s -T largefile4 -F %s", fsType, sourcePath)
+		default:
+			return fmt.Errorf("%v:%v not found", "diskSizeType", diskSizeType)
 		}
 	}
+
 	output, err := utils.ExecShellCmd(ctx, cmd)
 	if err != nil {
 		if strings.Contains(output, "in use by the system") {

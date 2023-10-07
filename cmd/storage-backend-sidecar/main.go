@@ -30,8 +30,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	coreV1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 
 	"huawei-csi-driver/csi/app"
@@ -77,7 +75,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	k8sClient, storageBackendClient, err := getKubernetesClient(ctx)
+	k8sClient, storageBackendClient, err := utils.GetK8SAndSBCClient(ctx)
 	if err != nil {
 		log.AddContext(ctx).Errorf("GetKubernetesClient failed, error: %v", err)
 		return
@@ -202,34 +200,4 @@ func ensureCRDExist(ctx context.Context, client *clientSet.Clientset) error {
 	}
 
 	return nil
-}
-
-func getKubernetesClient(ctx context.Context) (*kubernetes.Clientset, *clientSet.Clientset, error) {
-	var config *rest.Config
-	var err error
-	if app.GetGlobalConfig().KubeConfig != "" {
-		config, err = clientcmd.BuildConfigFromFlags("", app.GetGlobalConfig().KubeConfig)
-	} else {
-		config, err = rest.InClusterConfig()
-	}
-
-	if err != nil {
-		log.AddContext(ctx).Errorf("Error getting cluster config, kube config: %s, %v",
-			app.GetGlobalConfig().KubeConfig, err)
-		return nil, nil, err
-	}
-
-	k8sClient, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Error getting kubernetes client, %v", err)
-		return nil, nil, err
-	}
-
-	storageBackendClient, err := clientSet.NewForConfig(config)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Error getting storage backend client, %v", err)
-		return nil, nil, err
-	}
-
-	return k8sClient, storageBackendClient, nil
 }

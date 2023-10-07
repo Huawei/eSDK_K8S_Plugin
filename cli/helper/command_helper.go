@@ -17,6 +17,7 @@
 package helper
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -39,7 +40,11 @@ func ExecWithStdin(cli string, data []byte, args []string) error {
 
 	go func() {
 		defer stdin.Close()
-		_, _ = stdin.Write(data)
+
+		_, err = stdin.Write(data)
+		if err != nil {
+			log.Warningf("ExecWithStdin Stdin.write failed, err: %v", err)
+		}
 	}()
 
 	out, err := cmd.CombinedOutput()
@@ -80,14 +85,13 @@ func StartStdInput() (string, string, error) {
 func getInputString(tips string, isVisible bool) (string, error) {
 	fmt.Print(tips)
 
-	var sh string
+	var cmd *exec.Cmd
 	if isVisible {
-		sh = "stty erase '^H' -isig -ixon && read -r str && echo $str"
+		cmd = exec.Command("/bin/bash", "-c", "stty erase '^H' -isig -ixon && read -r str && echo $str")
 	} else {
-		sh = "stty erase '^H' -isig -ixon && read -sr pwd && echo $pwd"
+		cmd = exec.Command("/bin/bash", "-c", "stty erase '^H' -isig -ixon && read -sr pwd && echo $pwd")
 	}
 
-	cmd := exec.Command("/bin/bash", "-c", sh)
 	cmd.Stdin = os.Stdin
 	bs, err := cmd.CombinedOutput()
 	if err != nil {
@@ -120,4 +124,16 @@ func GetSelectedNumber(tips string, maxValue int) (int, error) {
 
 	fmt.Printf("Input invalid. The valid backend number is [1-%d].\n", maxValue)
 	return GetSelectedNumber(tips, maxValue)
+}
+
+// BashExecReturnStdOut used to exec command, and return stdout.
+func BashExecReturnStdOut(ctx context.Context, cli string, args []string) ([]byte, error) {
+	command := fmt.Sprintf("%s %s", cli, strings.Join(args, " "))
+	LogInfof(ctx, "bash exec command: %v", command)
+	cmd := exec.Command("/bin/bash", "-c", command)
+	stdout, err := cmd.CombinedOutput()
+	if err != nil {
+		return []byte{}, errors.New(string(stdout))
+	}
+	return stdout, nil
 }

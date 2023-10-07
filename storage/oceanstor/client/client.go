@@ -51,6 +51,8 @@ const (
 
 	IPLockErrorCode        = 1077949071
 	WrongPasswordErrorCode = 1077987870
+	UserOffline            = 1077949069
+	UserUnauthorized       = -401
 )
 
 type BaseClientInterface interface {
@@ -154,15 +156,53 @@ type HTTP interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-var newHTTPClient = func() HTTP {
-	jar, _ := cookiejar.New(nil)
+func newHTTPClientByBackendID(backendID string) (HTTP, error) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		log.Errorf("create jar failed, error: %v", err)
+		return nil, err
+	}
+
+	useCert, certMeta, err := pkgUtils.GetCertSecretFromBackendID(context.Background(), backendID)
+	if err != nil {
+		log.Errorf("get cert secret from backend [%v] failed, error: %v", backendID, err)
+		return nil, err
+	}
+
+	useCert, certPool, err := pkgUtils.GetCertPool(context.Background(), useCert, certMeta)
+	if err != nil {
+		log.Errorf("get cert pool failed, error: %v", err)
+		return nil, err
+	}
+
 	return &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool},
 		},
 		Jar:     jar,
 		Timeout: 60 * time.Second,
+	}, nil
+}
+
+func newHTTPClientByCertMeta(useCert bool, certMeta string) (HTTP, error) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		log.Errorf("create jar failed, error: %v", err)
+		return nil, err
 	}
+
+	useCert, certPool, err := pkgUtils.GetCertPool(context.Background(), useCert, certMeta)
+	if err != nil {
+		return nil, err
+	}
+
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool},
+		},
+		Jar:     jar,
+		Timeout: 60 * time.Second,
+	}, nil
 }
 
 type Response struct {
@@ -179,9 +219,11 @@ type NewClientConfig struct {
 	VstoreName      string
 	ParallelNum     string
 	BackendID       string
+	UseCert         bool
+	CertSecretMeta  string
 }
 
-func NewClient(param *NewClientConfig) *BaseClient {
+func NewClient(param *NewClientConfig) (*BaseClient, error) {
 	var err error
 	var parallelCount int
 
@@ -198,15 +240,22 @@ func NewClient(param *NewClientConfig) *BaseClient {
 
 	log.Infof("Init parallel count is %d", parallelCount)
 	ClientSemaphore = utils.NewSemaphore(parallelCount)
+
+	httpClient, err := newHTTPClientByCertMeta(param.UseCert, param.CertSecretMeta)
+	if err != nil {
+		log.Errorf("new http client by cert meta failed, err is %v", err)
+		return nil, err
+	}
+
 	return &BaseClient{
 		Urls:            param.Urls,
 		User:            param.User,
 		SecretName:      param.SecretName,
 		SecretNamespace: param.SecretNamespace,
 		VStoreName:      param.VstoreName,
-		Client:          newHTTPClient(),
+		Client:          httpClient,
 		BackendID:       param.BackendID,
-	}
+	}, nil
 }
 
 func (cli *BaseClient) Call(ctx context.Context,
@@ -216,8 +265,7 @@ func (cli *BaseClient) Call(ctx context.Context,
 	var err error
 
 	r, err = cli.BaseCall(ctx, method, url, data)
-	if (err != nil && err.Error() == "unconnected") ||
-		(r.Error != nil && int64(r.Error["code"].(float64)) == -401) {
+	if needReLogin(r, err) {
 		// Current connection fails, try to relogin to other Urls if exist,
 		// if relogin success, resend the request again.
 		log.AddContext(ctx).Infof("Try to relogin and resend request method: %s, Url: %s", method, url)
@@ -229,6 +277,22 @@ func (cli *BaseClient) Call(ctx context.Context,
 	}
 
 	return r, err
+}
+
+// needReLogin determine if it is necessary to log in to the storage again
+func needReLogin(r Response, err error) bool {
+	var unconnected, unauthorized, offline bool
+	if err != nil && err.Error() == "unconnected" {
+		unconnected = true
+	}
+
+	if r.Error != nil {
+		if code, ok := r.Error["code"].(float64); ok {
+			unauthorized = int64(code) == UserUnauthorized
+			offline = int64(code) == UserOffline
+		}
+	}
+	return unconnected || unauthorized || offline
 }
 
 func (cli *BaseClient) GetRequest(ctx context.Context,
@@ -294,14 +358,14 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 	}
 
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
-		fmt.Sprintf("Request method: %s, Url: %s, body: %v", method, reqUrl, data))
+		fmt.Sprintf("Request method: %s, Url: %s, body: %v", method, req.URL, data))
 
 	ClientSemaphore.Acquire()
 	defer ClientSemaphore.Release()
 
 	resp, err := cli.Client.Do(req)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Send request method: %s, Url: %s, error: %v", method, reqUrl, err)
+		log.AddContext(ctx).Errorf("Send request method: %s, Url: %s, error: %v", method, req.URL, err)
 		return r, errors.New("unconnected")
 	}
 
@@ -314,7 +378,7 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 	}
 
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
-		fmt.Sprintf("Response method: %s, Url: %s, body: %s", method, reqUrl, body))
+		fmt.Sprintf("Response method: %s, Url: %s, body: %s", method, req.URL, body))
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
@@ -401,27 +465,42 @@ func (cli *BaseClient) ValidateLogin(ctx context.Context) error {
 		return fmt.Errorf("validate login %s error: %+v", cli.Url, resp)
 	}
 
+	cli.setDeviceIdFromRespData(ctx, resp)
+
 	log.AddContext(ctx).Infof("Validate login %s success", cli.Url)
 	return nil
+}
+
+func (cli *BaseClient) setDeviceIdFromRespData(ctx context.Context, resp Response) {
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		log.AddContext(ctx).Warningf("convert response data: %v to map[string]interface{} failed", resp.Data)
+	}
+
+	cli.DeviceId, ok = respData["deviceid"].(string)
+	if !ok {
+		log.AddContext(ctx).Warningf("not found deviceId, response data is: %v", resp.Data)
+	}
+
+	cli.Token, ok = respData["iBaseToken"].(string)
+	if !ok {
+		log.AddContext(ctx).Warningf("not found iBaseToken, response data is: %v", resp.Data)
+	}
 }
 
 func (cli *BaseClient) Login(ctx context.Context) error {
 	var resp Response
 	var err error
 
-	password, err := pkgUtils.GetPasswordFromBackendID(ctx, cli.BackendID)
+	cli.Client, err = newHTTPClientByBackendID(cli.BackendID)
 	if err != nil {
+		log.AddContext(ctx).Errorf("new http client by backend %s failed, err is %v", cli.BackendID, err)
 		return err
 	}
 
-	data := map[string]interface{}{
-		"username": cli.User,
-		"password": password,
-		"scope":    "0",
-	}
-
-	if len(cli.VStoreName) > 0 && cli.VStoreName != defaultVStore {
-		data["vstorename"] = cli.VStoreName
+	data, err := cli.getRequestParams(ctx, cli.BackendID)
+	if err != nil {
+		return err
 	}
 
 	cli.DeviceId = ""
@@ -449,8 +528,8 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 		return err
 	}
 
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
+	errCode, _ := resp.Error["code"].(float64)
+	if code := int64(errCode); code != 0 {
 		msg := fmt.Sprintf("Login %s error: %+v", cli.Url, resp)
 		if code == WrongPasswordErrorCode || code == IPLockErrorCode {
 			err := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.BackendID, false)
@@ -462,8 +541,7 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 		return errors.New(msg)
 	}
 
-	err = cli.setDataFromRespData(ctx, resp)
-	if err != nil {
+	if err = cli.setDataFromRespData(ctx, resp); err != nil {
 		setErr := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.BackendID, false)
 		if setErr != nil {
 			log.AddContext(ctx).Errorf("SetStorageBackendContentOffline [%s] failed. error: %v", cli.BackendID, setErr)
@@ -492,15 +570,15 @@ func (cli *BaseClient) setDataFromRespData(ctx context.Context, resp Response) e
 	}
 
 	vStoreName, exist := respData["vstoreName"].(string)
-	if !exist {
+	vStoreID, idExist := respData["vstoreId"].(string)
+	if !exist && !idExist {
 		log.AddContext(ctx).Infof("storage client login response vstoreName is empty, set it to default %s",
 			defaultVStore)
 		cli.VStoreName = defaultVStore
-	} else {
+	} else if exist {
 		cli.VStoreName = vStoreName
 	}
 
-	vStoreID, idExist := respData["vstoreId"].(string)
 	if !idExist {
 		log.AddContext(ctx).Infof("storage client login response vstoreID is empty, set it to default %s",
 			defaultVStoreID)
@@ -658,9 +736,16 @@ func (cli *BaseClient) getObj(ctx context.Context, url string, start, end int, f
 	}
 
 	var objList []map[string]interface{}
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	for _, i := range respData {
-		device := i.(map[string]interface{})
+		device, ok := i.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Warningf("convert resp.Data to map[string]interface{} failed")
+			continue
+		}
 		objList = append(objList, device)
 	}
 	return objList, nil
@@ -687,4 +772,23 @@ func (cli *BaseClient) getBatchObjs(ctx context.Context, url string, filterLog b
 		rangeStart = rangeEnd + QueryCountPerBatch
 	}
 	return objList, nil
+}
+
+func (cli *BaseClient) getRequestParams(ctx context.Context, backendID string) (map[string]interface{}, error) {
+	password, err := pkgUtils.GetPasswordFromBackendID(ctx, backendID)
+	if err != nil {
+		return nil, err
+	}
+
+	data := map[string]interface{}{
+		"username": cli.User,
+		"password": password,
+		"scope":    "0",
+	}
+
+	if len(cli.VStoreName) > 0 && cli.VStoreName != defaultVStore {
+		data["vstorename"] = cli.VStoreName
+	}
+
+	return data, err
 }

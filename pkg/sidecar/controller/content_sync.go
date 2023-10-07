@@ -111,6 +111,16 @@ func (ctrl *backendController) shouldUpdateContent(ctx context.Context, content 
 		needUpdate = true
 	}
 
+	if content.Status.UseCert != content.Spec.UseCert {
+		content.Status.UseCert = content.Spec.UseCert
+		needUpdate = true
+	}
+
+	if content.Status.CertSecret != content.Spec.CertSecret {
+		content.Status.CertSecret = content.Spec.CertSecret
+		needUpdate = true
+	}
+
 	if content.Status.MaxClientThreads != content.Spec.MaxClientThreads {
 		content.Status.MaxClientThreads = content.Spec.MaxClientThreads
 		needUpdate = true

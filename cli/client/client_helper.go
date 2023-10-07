@@ -17,6 +17,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -154,4 +155,35 @@ func safeToArray[T any](t T) []T {
 		return []T{}
 	}
 	return []T{t}
+}
+
+func getObjectType(object interface{}) ObjectType {
+	switch object.(type) {
+	case *corev1.Namespace, *corev1.NamespaceList:
+		return Namespace
+	case *corev1.Node, *corev1.NodeList:
+		return Node
+	case *corev1.Pod, *corev1.PodList:
+		return Pod
+	default:
+		return Unknown
+	}
+}
+
+func (r *CommonCallHandler[T]) CheckObjectExist(ctx context.Context, namespace, nodeName,
+	objectName string) (bool, error) {
+	var object, empty T
+	err := r.client.GetObject(ctx, getObjectType(&object), namespace, nodeName, JSON, &object, objectName)
+	if err != nil {
+		return false, err
+	}
+
+	return !reflect.DeepEqual(object, empty), nil
+}
+
+func (r *CommonCallHandler[T]) GetObject(ctx context.Context, namespace, nodeName string,
+	objectName ...string) (T, error) {
+	var object T
+	err := r.client.GetObject(ctx, getObjectType(&object), namespace, nodeName, JSON, &object, objectName...)
+	return object, err
 }

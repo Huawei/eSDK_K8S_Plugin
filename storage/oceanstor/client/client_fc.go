@@ -59,7 +59,10 @@ func (cli *BaseClient) QueryFCInitiatorByHost(ctx context.Context, hostID string
 		return nil, nil
 	}
 
-	initiators := resp.Data.([]interface{})
+	initiators, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	return initiators, nil
 }
 
@@ -81,8 +84,14 @@ func (cli *BaseClient) GetFCInitiator(ctx context.Context, wwn string) (map[stri
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
-	initiator := respData[0].(map[string]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
+	initiator, ok := respData[0].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert respData[0] to map[string]interface{} failed")
+	}
 	return initiator, nil
 }
 
@@ -100,7 +109,10 @@ func (cli *BaseClient) GetFCInitiatorByID(ctx context.Context, wwn string) (map[
 		return nil, errors.New(msg)
 	}
 
-	respData := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
+	}
 	return respData, nil
 }
 
@@ -178,9 +190,15 @@ func (cli *BaseClient) GetFCTargetWWNs(ctx context.Context, initiatorWWN string)
 	}
 
 	var tgtWWNs []string
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	for _, tgt := range respData {
-		tgtPort := tgt.(map[string]interface{})
+		tgtPort, ok := tgt.(map[string]interface{})
+		if !ok {
+			return nil, errors.New("convert tgtPort to map[string]interface{} failed")
+		}
 		tgtWWNs = append(tgtWWNs, tgtPort["TARGET_PORT_WWN"].(string))
 	}
 
@@ -205,6 +223,9 @@ func (cli *BaseClient) GetFCHostLink(ctx context.Context, hostID string) ([]inte
 		return nil, nil
 	}
 
-	respData := resp.Data.([]interface{})
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, errors.New("convert resp.Data to []interface{} failed")
+	}
 	return respData, nil
 }

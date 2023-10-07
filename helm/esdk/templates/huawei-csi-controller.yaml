@@ -629,6 +629,9 @@ rules:
       - secrets
     verbs:
       - get
+  - apiGroups: [ "xuanwu.huawei.io" ]
+    resources: [ "resourcetopologies" ]
+    verbs: [ "create", "get", "update", "delete" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -703,7 +706,8 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
-        {{ if .Values.attachRequired }}
+        # When 'isCreate' is true and 'attachRequired' is false, csi-attacher sidecar will not be deployed
+        {{ if or (not .Values.CSIDriverObject.isCreate) (.Values.CSIDriverObject.attachRequired)}}
         - name: csi-attacher
           args:
             - "--csi-address=$(ADDRESS)"
@@ -846,6 +850,7 @@ spec:
             - "--logging-module={{ .Values.csiDriver.controllerLogging.module }}"
             - "--log-level={{ .Values.csiDriver.controllerLogging.level }}"
             - "--volume-name-prefix={{ default "pvc" (.Values.controller).volumeNamePrefix }}"
+            - "--enable-label={{ .Values.csiDriver.enableLabel }}"
             {{ if eq .Values.csiDriver.controllerLogging.module "file" }}
             - "--log-file-dir={{ .Values.csiDriver.controllerLogging.fileDir }}"
             - "--log-file-size={{ .Values.csiDriver.controllerLogging.fileSize }}"
@@ -878,6 +883,13 @@ spec:
               name: socket-dir
             - mountPath: /var/log
               name: log
+          resources:
+            limits:
+              cpu: 300m
+              memory: 1Gi
+            requests:
+              cpu: 50m
+              memory: 100Mi
       volumes:
         - emptyDir: null
           name: socket-dir

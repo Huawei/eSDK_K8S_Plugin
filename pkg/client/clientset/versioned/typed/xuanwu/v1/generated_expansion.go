@@ -15,6 +15,8 @@
 
 package v1
 
+type ResourceTopologyExpansion interface{}
+
 type StorageBackendClaimExpansion interface{}
 
 type StorageBackendContentExpansion interface{}

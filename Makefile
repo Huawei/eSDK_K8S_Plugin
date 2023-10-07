@@ -54,6 +54,10 @@ COPY_FILE:
 	mkdir -p ./${PACKAGE}/helm/
 	cp -r ./helm/* ./${PACKAGE}/helm/
 
+	mkdir -p ./${PACKAGE}/manual/
+	cp -r ./manual/* ./${PACKAGE}/manual/
+	cp -r ./helm/esdk/crds ./${PACKAGE}/manual/esdk/crds
+
 	mkdir -p ./${PACKAGE}/tools
 	cp -r ./tools/imageUpload/* ./${PACKAGE}/tools
 

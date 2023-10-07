@@ -27,6 +27,8 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+const FilePermission0777 = os.FileMode(0777)
+
 func TestChmodFsPermission(t *testing.T) {
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -34,9 +36,18 @@ func TestChmodFsPermission(t *testing.T) {
 	}
 
 	targetPath := path.Join(currentDir, "fsPermissionTest.txt")
-	_, err = os.Create(targetPath)
+	targetFile, err := os.Create(targetPath)
 	if err != nil {
 		log.Errorf("Create file/directory [%s] failed.", targetPath)
+	}
+	defer func() {
+		if err := targetFile.Close(); err != nil {
+			t.Errorf("close file %s failed, error: %v", targetFile.Name(), err)
+		}
+	}()
+	err = targetFile.Chmod(FilePermission0777)
+	if err != nil {
+		log.Errorf("file targetFile chmod to 0600 failed, error: %v", err)
 	}
 
 	defer func() {

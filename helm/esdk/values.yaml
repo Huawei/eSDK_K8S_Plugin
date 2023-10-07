@@ -1,8 +1,8 @@
 images:
   # Images provided by Huawei
-  huaweiCSIService: huawei-csi:4.1.0
-  storageBackendSidecar: storage-backend-sidecar:4.1.0
-  storageBackendController: storage-backend-controller:4.1.0
+  huaweiCSIService: huawei-csi:4.2.0
+  storageBackendSidecar: storage-backend-sidecar:4.2.0
+  storageBackendController: storage-backend-controller:4.2.0
 
   # CSI-related sidecar images provided by the Kubernetes community.
   # These must match the appropriate Kubernetes version.
@@ -32,22 +32,33 @@ kubernetes:
 # CCE is usually /mnt/paas/kubernetes/kubelet
 kubeletConfigDir: /var/lib/kubelet
 
-# fsGroupPolicy: Defines if the underlying volume supports changing ownership and permission of the volume before being mounted.
-# Allowed values:
-#   ReadWriteOnceWithFSType: supports volume ownership and permissions change only if the fsType is defined
-#   and the volume's accessModes contains ReadWriteOnce.
-#   File: kubernetes may use fsGroup to change permissions and ownership of the volume
-#   to match user requested fsGroup in the pod's security policy regardless of fstype or access mode.
-#   None: volumes will be mounted with no modifications.
-# Default value: ReadWriteOnceWithFSType
-fsGroupPolicy: ReadWriteOnceWithFSType
-
-# attachRequired: Whether to skip any attach operation altogether.
-# Allowed values:
-#   true: attach will be called.
-#   false: attach will be skipped.
-# Default value: true
-attachRequired: true
+CSIDriverObject:
+  # isCreate: create CSIDriver Object
+  # If the Kubernetes version is lower than 1.18, set this parameter to false.
+  # Allowed values:
+  #   true: will create CSIDriver object during installation.
+  #   false: will not create CSIDriver object during installation.
+  # Default value: false
+  isCreate: false
+  # If the Kubernetes version is lower than 1.20, set this parameter to null.
+  # fsGroupPolicy: Defines if the underlying volume supports changing ownership and permission of the volume before being mounted.
+  # 'fsGroupPolicy' is only valid when 'isCreate' is true
+  # Allowed values:
+  #   ReadWriteOnceWithFSType: supports volume ownership and permissions change only if the fsType is defined
+  #   and the volume's accessModes contains ReadWriteOnce.
+  #   File: kubernetes may use fsGroup to change permissions and ownership of the volume
+  #   to match user requested fsGroup in the pod's security policy regardless of fstype or access mode.
+  #   None: volumes will be mounted with no modifications.
+  # Default value: null
+  fsGroupPolicy: null
+  # If the Kubernetes version is lower than 1.18, set this parameter to true.
+  # attachRequired: Whether to skip any attach operation altogether.
+  # When 'isCreate' is true and 'attachRequired' is false, csi-attacher sidecar will not be deployed
+  # Allowed values:
+  #   true: attach will be called.
+  #   false: attach will be skipped.
+  # Default value: true
+  attachRequired: true
 
 controller:
   # controllerCount: Define the number of huawei-csi controller
@@ -167,6 +178,8 @@ csiDriver:
   nvmeMultipathType: HW-UltraPath-NVMe
   # Timeout interval for waiting for multipath aggregation when DM-multipath is used on the host. support 1~600
   scanVolumeTimeout: 3
+  # Timeout interval for running command on the host. support 1~600
+  execCommandTimeout: 30
   # check the number of paths for multipath aggregation
   # Allowed values:
   #   true: the number of paths aggregated by DM-multipath is equal to the number of online paths
@@ -175,6 +188,8 @@ csiDriver:
   allPathOnline: false
   # Interval for updating backend capabilities. support 60~600
   backendUpdateInterval: 60
+  # label enable
+  enableLabel: false
   # Huawei-csi-controller log configuration
   controllerLogging:
     # Log record type, support [file, console]

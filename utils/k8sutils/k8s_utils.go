@@ -53,6 +53,15 @@ type Interface interface {
 	// GetVolume returns volumes on the node at K8S side
 	GetVolume(ctx context.Context, nodeName string, driverName string) (map[string]struct{}, error)
 
+	// GetPVByName get all pv info
+	GetPVByName(ctx context.Context, name string) (*corev1.PersistentVolume, error)
+
+	// ListPods get pods by namespace
+	ListPods(ctx context.Context, namespace string) (*corev1.PodList, error)
+
+	// GetPod get pod by name and namespace
+	GetPod(ctx context.Context, namespace, podName string) (*corev1.Pod, error)
+
 	// GetVolumeAttributes returns volume attributes of PV
 	GetVolumeAttributes(ctx context.Context, pvName string) (map[string]string, error)
 
@@ -60,6 +69,7 @@ type Interface interface {
 	Activate()
 	// Deactivate the k8s helpers when stop the service
 	Deactivate()
+
 	secretOps
 	ConfigmapOps
 	persistentVolumeClaimOps
@@ -234,15 +244,25 @@ func (k *KubeClient) getPVByPVCName(ctx context.Context, namespace string,
 	return pv, nil
 }
 
-func (k *KubeClient) getPVByName(ctx context.Context, name string) (*corev1.PersistentVolume, error) {
+func (k *KubeClient) GetPVByName(ctx context.Context, name string) (*corev1.PersistentVolume, error) {
 	return k.clientSet.CoreV1().
 		PersistentVolumes().
 		Get(ctx, name, metav1.GetOptions{})
 }
 
+func (k *KubeClient) ListPods(ctx context.Context, namespace string) (*corev1.PodList, error) {
+	return k.clientSet.CoreV1().
+		Pods(namespace).List(ctx, metav1.ListOptions{})
+}
+
+func (k *KubeClient) GetPod(ctx context.Context, namespace, podName string) (*corev1.Pod, error) {
+	return k.clientSet.CoreV1().
+		Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+}
+
 // GetVolumeAttributes returns volume attributes of PV
 func (k *KubeClient) GetVolumeAttributes(ctx context.Context, pvName string) (map[string]string, error) {
-	pv, err := k.getPVByName(ctx, pvName)
+	pv, err := k.GetPVByName(ctx, pvName)
 	if err != nil {
 		return nil, err
 	}

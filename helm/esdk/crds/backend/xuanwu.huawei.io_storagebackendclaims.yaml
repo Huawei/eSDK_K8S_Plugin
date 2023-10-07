@@ -66,6 +66,9 @@ spec:
           spec:
             description: StorageBackendClaimSpec defines the desired state of StorageBackend
             properties:
+              certSecret:
+                description: CertSecret is the name of the secret that holds the certificate
+                type: string
               configmapMeta:
                 description: ConfigMapMeta used to config the storage management info,
                   the format is <namespace>/<name>.
@@ -87,6 +90,10 @@ spec:
                 description: SecretMeta used to config the storage sensitive info,
                   the format is <namespace>/<name>.
                 type: string
+              useCert:
+                default: false
+                description: UseCert is used to decide whether to use the certificate
+                type: boolean
             required:
             - provider
             type: object
@@ -95,6 +102,9 @@ spec:
             properties:
               boundContentName:
                 description: BoundContentName is the binding reference
+                type: string
+              certSecret:
+                description: CertSecret is the name of the secret that holds the certificate
                 type: string
               configmapMeta:
                 description: ConfigmapMeta is current storage configmap namespace
@@ -124,6 +134,9 @@ spec:
               storageType:
                 description: StorageType is storage type
                 type: string
+              useCert:
+                description: UseCert is used to decide whether to use the certificate
+                type: boolean
             required:
             - configmapMeta
             - secretMeta

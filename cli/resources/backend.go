@@ -249,11 +249,16 @@ func buildBackendShow(claims []xuanwuV1.StorageBackendClaim, contentList []xuanw
 func deleteSbcReferenceResources(claim xuanwuV1.StorageBackendClaim) error {
 	_, secretName := k8string.SplitQualifiedName(claim.Spec.SecretMeta)
 	_, configmapName := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
-
+	_, certSecretName := k8string.SplitQualifiedName(claim.Spec.CertSecret)
 	referenceResources := []string{
 		k8string.JoinQualifiedName(string(client.Secret), secretName),
 		k8string.JoinQualifiedName(string(client.ConfigMap), configmapName),
 		k8string.JoinQualifiedName(string(client.Storagebackendclaim), claim.Name),
+	}
+
+	if certSecretName != "" {
+		referenceResources = append(referenceResources,
+			k8string.JoinQualifiedName(string(client.Secret), certSecretName))
 	}
 
 	_, err := config.Client.DeleteResourceByQualifiedNames(referenceResources, claim.Namespace)

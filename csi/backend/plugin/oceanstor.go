@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 
+	"huawei-csi-driver/csi/app"
+	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/clientv6"
@@ -51,9 +53,12 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		return err
 	}
 
-	cli := client.NewClient(backendClientConfig)
-	err = cli.Login(context.Background())
+	cli, err := client.NewClient(backendClientConfig)
 	if err != nil {
+		return err
+	}
+
+	if err = cli.Login(context.Background()); err != nil {
 		log.Errorf("plugin init login failed, err: %v", err)
 		return err
 	}
@@ -73,10 +78,14 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 		cli.Logout(context.Background())
 	}
 
-	if p.product == utils.OceanStorDoradoV6 {
-		clientV6 := clientv6.NewClientV6(backendClientConfig)
+	if p.product == constants.OceanStorDoradoV6 {
+		clientV6, err := clientv6.NewClientV6(backendClientConfig)
+		if err != nil {
+			return err
+		}
+
 		cli.Logout(context.Background())
-		err := p.switchClient(clientV6)
+		err = p.switchClient(clientV6)
 		if err != nil {
 			return err
 		}
@@ -120,6 +129,10 @@ func (p *OceanstorPlugin) formatInitParam(config map[string]interface{}) (res *c
 	}
 	res.VstoreName, _ = config["vstoreName"].(string)
 	res.ParallelNum, _ = config["maxClientThreads"].(string)
+
+	res.UseCert, _ = config["useCert"].(bool)
+	res.CertSecretMeta, _ = config["certSecret"].(string)
+
 	return
 }
 
@@ -140,6 +153,9 @@ func (p *OceanstorPlugin) updateBackendCapabilities() (map[string]interface{}, e
 	supportReplication := utils.IsSupportFeature(features, "HyperReplication")
 	supportClone := utils.IsSupportFeature(features, "HyperClone") || utils.IsSupportFeature(features, "HyperCopy")
 	supportApplicationType := p.product == "DoradoV6"
+	supportLabel := app.GetGlobalConfig().EnableLabel && p.cli.GetStorageVersion() >= constants.MinVersionSupportLabel
+
+	log.Debugf("enableLabel: %v, storageVersion: %v", app.GetGlobalConfig().EnableLabel, p.cli.GetStorageVersion())
 
 	capabilities := map[string]interface{}{
 		"SupportThin":            supportThin,
@@ -150,6 +166,7 @@ func (p *OceanstorPlugin) updateBackendCapabilities() (map[string]interface{}, e
 		"SupportApplicationType": supportApplicationType,
 		"SupportClone":           supportClone,
 		"SupportMetroNAS":        supportMetroNAS,
+		"SupportLabel":           supportLabel,
 	}
 
 	return capabilities, nil
@@ -164,7 +181,10 @@ func (p *OceanstorPlugin) getRemoteDevices() (string, error) {
 
 	var devicesSN []string
 	for _, dev := range devices {
-		deviceSN := dev["SN"].(string)
+		deviceSN, ok := dev["SN"].(string)
+		if !ok {
+			continue
+		}
 		devicesSN = append(devicesSN, deviceSN)
 	}
 	return strings.Join(devicesSN, ";"), nil
@@ -187,14 +207,15 @@ func (p *OceanstorPlugin) updateBackendSpecifications() (map[string]interface{},
 func (p *OceanstorPlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
 	capabilities, err := p.updateBackendCapabilities()
 	if err != nil {
+		log.Errorf("updateBackendCapabilities failed, err: %v", err)
 		return nil, nil, err
 	}
 
 	specifications, err := p.updateBackendSpecifications()
 	if err != nil {
+		log.Errorf("updateBackendSpecifications failed, err: %v", err)
 		return nil, nil, err
 	}
-
 	p.capabilities = capabilities
 	return capabilities, specifications, nil
 }
@@ -290,8 +311,14 @@ func (p *OceanstorPlugin) analyzePoolsCapacity(pools []map[string]interface{}) m
 	capabilities := make(map[string]interface{})
 
 	for _, pool := range pools {
-		name := pool["NAME"].(string)
-		freeCapacity, _ := strconv.ParseInt(pool["USERFREECAPACITY"].(string), 10, 64)
+		name, ok := pool["NAME"].(string)
+		if !ok {
+			continue
+		}
+		freeCapacity, err := strconv.ParseInt(pool["USERFREECAPACITY"].(string), 10, 64)
+		if err != nil {
+			log.Warningf("analysisPoolsCapacity parseInt failed, data: %v, err: %v", pool["USERFREECAPACITY"], err)
+		}
 
 		capabilities[name] = map[string]interface{}{
 			"FreeCapacity": freeCapacity * 512,
@@ -341,15 +368,13 @@ func (p *OceanstorPlugin) getNewClientConfig(ctx context.Context, param map[stri
 	configUrls, exist := param["urls"].([]interface{})
 	if !exist || len(configUrls) <= 0 {
 		msg := fmt.Sprintf("Verify urls: [%v] failed. urls must be provided.", param["urls"])
-		log.AddContext(ctx).Errorln(msg)
-		return data, errors.New(msg)
+		return data, pkgUtils.Errorln(ctx, msg)
 	}
 	for _, configUrl := range configUrls {
 		url, ok := configUrl.(string)
 		if !ok {
 			msg := fmt.Sprintf("Verify url: [%v] failed. url convert to string failed.", configUrl)
-			log.AddContext(ctx).Errorln(msg)
-			return data, errors.New(msg)
+			return data, pkgUtils.Errorln(ctx, msg)
 		}
 		data.Urls = append(data.Urls, url)
 	}
@@ -362,23 +387,20 @@ func (p *OceanstorPlugin) getNewClientConfig(ctx context.Context, param map[stri
 	data.User, exist = param["user"].(string)
 	if !exist {
 		msg := fmt.Sprintf("Verify user: [%v] failed. user must be provided.", data.User)
-		log.AddContext(ctx).Errorln(msg)
-		return data, errors.New(msg)
+		return data, pkgUtils.Errorln(ctx, msg)
 	}
 
 	data.SecretName, exist = param["secretName"].(string)
 	if !exist {
 		msg := fmt.Sprintf("Verify SecretName: [%v] failed. SecretName must be provided.", data.SecretName)
-		log.AddContext(ctx).Errorln(msg)
-		return data, errors.New(msg)
+		return data, pkgUtils.Errorln(ctx, msg)
 	}
 
 	data.SecretNamespace, exist = param["secretNamespace"].(string)
 	if !exist {
 		msg := fmt.Sprintf("Verify SecretNamespace: [%v] failed. SecretNamespace must be provided.",
 			data.SecretNamespace)
-		log.AddContext(ctx).Errorln(msg)
-		return data, errors.New(msg)
+		return data, pkgUtils.Errorln(ctx, msg)
 	}
 
 	data.BackendID, exist = param["backendID"].(string)
@@ -390,6 +412,9 @@ func (p *OceanstorPlugin) getNewClientConfig(ctx context.Context, param map[stri
 
 	data.VstoreName, _ = param["vstoreName"].(string)
 	data.ParallelNum, _ = param["maxClientThreads"].(string)
+
+	data.UseCert, _ = param["useCert"].(bool)
+	data.CertSecretMeta, _ = param["certSecret"].(string)
 
 	return data, nil
 }

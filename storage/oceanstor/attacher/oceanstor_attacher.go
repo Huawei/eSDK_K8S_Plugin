@@ -18,6 +18,7 @@ package attacher
 
 import (
 	"context"
+	"errors"
 
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
@@ -134,8 +135,14 @@ func (p *OceanStorAttacher) ControllerAttach(ctx context.Context,
 		return nil, err
 	}
 
-	hostID := host["ID"].(string)
-	hostName := host["NAME"].(string)
+	hostID, ok := host["ID"].(string)
+	if !ok {
+		return nil, errors.New("convert host[\"ID\"] to string failed")
+	}
+	hostName, ok := host["NAME"].(string)
+	if !ok {
+		return nil, errors.New("convert host[\"NAME\"] to string failed")
+	}
 
 	if p.protocol == "iscsi" {
 		err = p.attachISCSI(ctx, hostID, hostName, parameters)

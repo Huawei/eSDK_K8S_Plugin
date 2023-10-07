@@ -62,30 +62,21 @@ func TestLogin(t *testing.T) {
 				"\"iBaseToken\":\"508C457614FEA5413316AC0945ED0EE047765A96DD6524462C93EA5BE834B440\"," +
 				"\"lastloginip\":\"192.168.125.25\",\"lastlogintime\":1645117156,\"pwdchangetime\":1643562159," +
 				"\"roleId\":\"1\",\"usergroup\":\"\",\"userid\":\"admin\",\"username\":\"dev-account\",\"userscope\":\"0\"}," +
-				"\"error\":{\"code\":0,\"description\":\"0\"}}",
-			false,
+				"\"error\":{\"code\":0,\"description\":\"0\"}}", false,
 		},
 		{
 			"The user name or password is incorrect",
 			"{\"data\":{},\"error\":{\"code\":1077949061,\"description\":\"The User name or PassWord is incorrect.\"," +
-				"\"errorParam\":\"\",\"suggestion\":\"Check the User name and PassWord, and try again.\"}}",
-			true,
+				"\"errorParam\":\"\",\"suggestion\":\"Check the User name and PassWord, and try again.\"}}", true,
 		},
 		{
 			"The IP address has been locked",
 			"{\"data\":{},\"error\":{\"code\":1077949071,\"description\":\"The IP address has been locked.\"," +
-				"\"errorParam\":\"\",\"suggestion\":\"Contact the administrator.\"}}",
-			true,
+				"\"errorParam\":\"\",\"suggestion\":\"Contact the administrator.\"}}", true,
 		},
 	}
 
-	m := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
-		func(ctx context.Context, backendID string) (string, error) {
-			return "mock", nil
-		})
-	m.ApplyFunc(pkgUtils.SetStorageBackendContentOnlineStatus, func(ctx context.Context, backendID string, online bool) error {
-		return nil
-	})
+	m := getTestLoginPatches()
 	defer m.Reset()
 
 	for _, s := range cases {
@@ -101,6 +92,21 @@ func TestLogin(t *testing.T) {
 		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
 		g.Reset()
 	}
+}
+
+func getTestLoginPatches() *gomonkey.Patches {
+	m := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	m.ApplyFunc(pkgUtils.GetCertSecretFromBackendID,
+		func(ctx context.Context, backendID string) (bool, string, error) {
+			return false, "", nil
+		})
+	m.ApplyFunc(pkgUtils.SetStorageBackendContentOnlineStatus, func(ctx context.Context, backendID string, online bool) error {
+		return nil
+	})
+	return m
 }
 
 func TestLogout(t *testing.T) {
@@ -158,8 +164,7 @@ func TestReLogin(t *testing.T) {
 				"\"iBaseToken\":\"508C457614FEA5413316AC0945ED0EE047765A96DD6524462C93EA5BE834B440\"," +
 				"\"lastloginip\":\"192.168.125.25\",\"lastlogintime\":1645117156,\"pwdchangetime\":1643562159," +
 				"\"roleId\":\"1\",\"usergroup\":\"\",\"userid\":\"admin\",\"username\":\"dev-account\", " +
-				"\"userscope\":\"0\"},\"error\":{\"code\":0,\"description\":\"0\"}}",
-			false,
+				"\"userscope\":\"0\"},\"error\":{\"code\":0,\"description\":\"0\"}}", false,
 		},
 		{
 			"The User name or PassWord is incorrect",
@@ -170,19 +175,11 @@ func TestReLogin(t *testing.T) {
 		{
 			"The IP address has been locked",
 			"{\"data\":{},\"error\":{\"code\":1077949071,\"description\":\"The IP address has been " +
-				"locked.\",\"errorParam\":\"\",\"suggestion\":\"Contact the administrator.\"}}",
-			true,
+				"locked.\",\"errorParam\":\"\",\"suggestion\":\"Contact the administrator.\"}}", true,
 		},
 	}
 
-	m := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
-		func(ctx context.Context, backendID string) (string, error) {
-			return "mock", nil
-		})
-	m.ApplyFunc(pkgUtils.SetStorageBackendContentOnlineStatus, func(ctx context.Context, backendID string, online bool) error {
-		return nil
-	})
-
+	m := getTestLoginPatches()
 	defer m.Reset()
 
 	for _, s := range cases {
@@ -1767,7 +1764,7 @@ func TestMain(m *testing.M) {
 	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
 	defer getGlobalConfig.Reset()
 
-	testClient = NewClient(&NewClientConfig{
+	testClient, _ = NewClient(&NewClientConfig{
 		Urls:            []string{"https://127.0.0.1:8088"},
 		User:            "dev-account",
 		SecretName:      "mock-sec-name",
