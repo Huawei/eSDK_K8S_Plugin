@@ -62,7 +62,6 @@ func (ctrl *BackendController) setSecretFinalizer(ctx context.Context, secret *c
 	}
 
 	k8sUtils := app.GetGlobalConfig().K8sUtils
-
 	finalizers.SetFinalizer(secret, utils.SecretFinalizer)
 	_, err := k8sUtils.UpdateSecret(ctx, secret)
 	if err != nil {

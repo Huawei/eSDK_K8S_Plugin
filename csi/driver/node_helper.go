@@ -19,16 +19,17 @@ package driver
 import (
 	"context"
 	"errors"
-	k8sError "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strings"
 
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
+	labelLock "huawei-csi-driver/pkg/utils/label_lock"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
+	k8sError "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func nodeAddLabel(ctx context.Context, volumeID, targetPath string) {
@@ -41,7 +42,7 @@ func nodeAddLabel(ctx context.Context, volumeID, targetPath string) {
 			backendName, supportLabel, err)
 	}
 	if supportLabel {
-		if err := addLabel(ctx, volumeID, targetPath); err != nil {
+		if err := addPodLabel(ctx, volumeID, targetPath); err != nil {
 			log.AddContext(ctx).Errorf("nodeAddLabel failed, err: %v", err)
 		}
 	}
@@ -57,13 +58,13 @@ func nodeDeleteLabel(ctx context.Context, volumeID, targetPath string) {
 			backendName, supportLabel, err)
 	}
 	if supportLabel {
-		if err := deleteLabel(ctx, volumeID, targetPath); err != nil {
+		if err := deletePodLabel(ctx, volumeID, targetPath); err != nil {
 			log.AddContext(ctx).Errorf("nodeDeleteLabel failed, err: %v", err)
 		}
 	}
 }
 
-func addLabel(ctx context.Context, volumeID, targetPath string) error {
+func addPodLabel(ctx context.Context, volumeID, targetPath string) error {
 	_, volumeName := utils.SplitVolumeId(volumeID)
 	topoName := pkgUtils.GetTopoName(volumeName)
 	podName, namespace, sc, pvName, err := getTargetPathPodRelateInfo(ctx, targetPath)
@@ -82,14 +83,30 @@ func addLabel(ctx context.Context, volumeID, targetPath string) error {
 		return nil
 	}
 
+	// lock for rt name
+	if err = labelLock.AcquireCmLock(ctx, labelLock.RTLockConfigMap, topoName); err != nil {
+		log.AddContext(ctx).Errorf("acquire rt lock failed, key: %s err: %v", topoName, err)
+		return err
+	}
+	defer func(ctx context.Context, lockKey string) {
+		if err = labelLock.ReleaseCmlock(ctx, labelLock.RTLockConfigMap, lockKey); err != nil {
+			log.AddContext(ctx).Errorf("release rt lock failed, key: %s err: %v", lockKey, err)
+		}
+	}(ctx, topoName)
+
+	return addTopologiesLabel(ctx, volumeID, targetPath, namespace, podName, pvName)
+}
+
+func addTopologiesLabel(ctx context.Context, volumeID, targetPath, namespace, podName, pvName string) error {
+	_, volumeName := utils.SplitVolumeId(volumeID)
+	topoName := pkgUtils.GetTopoName(volumeName)
 	topo, err := app.GetGlobalConfig().BackendUtils.XuanwuV1().ResourceTopologies().Get(ctx,
 		topoName, metav1.GetOptions{})
 	log.AddContext(ctx).Debugf("get topo info, topo: %+v, err: %v, notFound: %v", topo,
 		err, k8sError.IsNotFound(err))
 	if k8sError.IsNotFound(err) {
 		_, err = app.GetGlobalConfig().BackendUtils.XuanwuV1().ResourceTopologies().Create(ctx,
-			formatTopologies(volumeID, namespace, podName, pvName, topoName),
-			metav1.CreateOptions{})
+			formatTopologies(volumeID, namespace, podName, pvName, topoName), metav1.CreateOptions{})
 		if err != nil {
 			log.AddContext(ctx).Errorf("create label failed, data: %+v volumeName: %v targetPath: %v",
 				topo, volumeName, targetPath)
@@ -104,8 +121,7 @@ func addLabel(ctx context.Context, volumeID, targetPath string) error {
 		return err
 	}
 
-	// if pvc label not exist then add
-	// add new topo item
+	// if pvc label not exist then add & add new pod label
 	addPodTopoItem(&topo.Spec.Tags, podName, namespace, volumeName)
 
 	// update topo
@@ -177,7 +193,7 @@ func addPodTopoItem(tags *[]xuanwuv1.Tag, podName, namespace, volumeName string)
 	})
 }
 
-func deleteLabel(ctx context.Context, volumeID, targetPath string) error {
+func deletePodLabel(ctx context.Context, volumeID, targetPath string) error {
 	_, volumeName := utils.SplitVolumeId(volumeID)
 	topoName := pkgUtils.GetTopoName(volumeName)
 	podName, namespace, sc, pvName, err := getTargetPathPodRelateInfo(ctx, targetPath)
@@ -185,11 +201,27 @@ func deleteLabel(ctx context.Context, volumeID, targetPath string) error {
 		log.AddContext(ctx).Errorf("get targetPath pvRelateInfo failed, targetPath: %v, err: %v", targetPath, err)
 		return err
 	}
-
 	if sc == "" {
 		log.AddContext(ctx).Infof("deleteLabel static pv, volumeID: %v, targetPath: %v", volumeID, targetPath)
 		return nil
 	}
+
+	// lock for rt name
+	if err = labelLock.AcquireCmLock(ctx, labelLock.RTLockConfigMap, topoName); err != nil {
+		log.AddContext(ctx).Errorf("acquire rt lock failed, key: %s err: %v", topoName, err)
+		return err
+	}
+	defer func(ctx context.Context, lockKey string) {
+		if err = labelLock.ReleaseCmlock(ctx, labelLock.RTLockConfigMap, lockKey); err != nil {
+			log.AddContext(ctx).Errorf("release rt lock failed, key: %s err: %v", lockKey, err)
+		}
+	}(ctx, topoName)
+
+	return deleteTopologiesLabel(ctx, pvName, targetPath, podName, namespace, volumeName)
+}
+
+func deleteTopologiesLabel(ctx context.Context, pvName, targetPath, podName, namespace, volumeName string) error {
+	topoName := pkgUtils.GetTopoName(volumeName)
 
 	// get topo label
 	topo, err := app.GetGlobalConfig().BackendUtils.XuanwuV1().ResourceTopologies().Get(ctx, topoName,

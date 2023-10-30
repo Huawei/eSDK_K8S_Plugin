@@ -74,7 +74,8 @@ func (m *SanManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	}
 
 	tasks := taskflow.NewTaskFlow(ctx, "StageVolume").
-		AddTaskWithOutRevert(clearResidualPath).
+		AddTaskWithOutRevert(clearResidualPathWithWwn).
+		AddTaskWithOutRevert(clearResidualPathWithLunId).
 		AddTaskWithOutRevert(connectVolume)
 
 	if volMode, exist := parameters["volumeMode"].(string); exist && volMode == "Block" {
@@ -213,7 +214,7 @@ func saveWwnToDisk(ctx context.Context, parameters map[string]interface{}) error
 	return nil
 }
 
-func clearResidualPath(ctx context.Context, parameters map[string]interface{}) error {
+func clearResidualPathWithWwn(ctx context.Context, parameters map[string]interface{}) error {
 	wwn, err := ExtractWwn(parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("extract wwn failed while clear residual path, error: %v", err)
@@ -301,5 +302,33 @@ func chmodFsPermission(ctx context.Context, parameters map[string]interface{}) e
 	}
 
 	utils.ChmodFsPermission(ctx, targetPath, fsPermission)
+	return nil
+}
+
+func clearResidualPathWithLunId(ctx context.Context, parameters map[string]interface{}) error {
+	publishInfo, exist := parameters["publishInfo"].(*ControllerPublishInfo)
+	if !exist {
+		log.AddContext(ctx).Errorf("publishInfo not fount, publishInfo: %v", parameters["publishInfo"])
+		return errors.New("publishInfo not fount while connect volume")
+	}
+
+	if !publishInfo.VolumeUseMultiPath || publishInfo.MultiPathType != connector.HWUltraPath {
+		return nil
+	}
+
+	protocol, ok := parameters["protocol"]
+	if !ok || (protocol != "iscsi" && protocol != "fc") {
+		return nil
+	}
+
+	targets := publishInfo.TgtIQNs
+	if protocol != "iscsi" {
+		targets = publishInfo.TgtWWNs
+	}
+
+	err := connector.CleanDeviceByLunId(ctx, publishInfo.TgtHostLUNs[0], targets)
+	if err != nil {
+		log.AddContext(ctx).Infof("clean device by id failed,error:%v", err)
+	}
 	return nil
 }

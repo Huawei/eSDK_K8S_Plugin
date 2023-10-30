@@ -20,7 +20,7 @@ import "errors"
 type FileType string
 
 const (
-	ProviderVersion       = "4.2.0"
+	ProviderVersion       = "4.2.1"
 	ProviderVendorName    = "Huawei"
 	EndpointDirPermission = 0755
 

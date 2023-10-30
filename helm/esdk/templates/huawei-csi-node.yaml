@@ -80,6 +80,8 @@ rules:
       - configmaps
     verbs:
       - get
+      - update
+      - create
   - apiGroups:
       - "xuanwu.huawei.io"
     resources:

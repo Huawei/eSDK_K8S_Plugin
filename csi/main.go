@@ -37,6 +37,7 @@ import (
 	"huawei-csi-driver/csi/driver"
 	"huawei-csi-driver/csi/provider"
 	"huawei-csi-driver/lib/drcsi"
+	labelLock "huawei-csi-driver/pkg/utils/label_lock"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 	"huawei-csi-driver/utils/notify"
@@ -48,7 +49,7 @@ const (
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 
-	csiVersion      = "4.2.0"
+	csiVersion      = "4.2.1"
 	endpointDirPerm = 0755
 )
 
@@ -114,6 +115,9 @@ func runCSIController(ctx context.Context) {
 
 	// register the kahu community DRCSI service
 	go registerDRCSIServer()
+
+	// init lock
+	go labelLock.InitCmLock()
 
 	// register the K8S community CSI service
 	registerCSIServer()
@@ -309,11 +313,13 @@ func exitClean(isController bool) {
 }
 
 func clean(isController bool) {
+	ctx := context.TODO()
 	// flush log
-	ensureRuntimePanicLogging(context.TODO())
+	ensureRuntimePanicLogging(ctx)
 	if isController {
 		// release client
 		releaseStorageClient()
+		labelLock.ClearCmLock(ctx, labelLock.RTLockConfigMap)
 		app.GetGlobalConfig().K8sUtils.Deactivate()
 	} else {
 		// clean version file
