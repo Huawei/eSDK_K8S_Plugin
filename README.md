@@ -1,6 +1,7 @@
 
 # Huawei Storage CSI Driver For Kubernetes
 ## Overview
+This branch is customized for huawei storage. The code branch is based on Huawei CSI V2.2.13 and is still being evolved and maintained.
 Huawei Container Storage Interface (CSI) Driver is used to provision LUN, recycle LUN, 
 and provide a series of disaster recovery functions of storages for Kubernetes Containers.
 
