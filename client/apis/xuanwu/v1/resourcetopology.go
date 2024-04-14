@@ -16,14 +16,19 @@ package v1
 
 import metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+// ResourceTopologyStatusPhase defines the ResourceTopologyStatusPhase type
 type ResourceTopologyStatusPhase string
 
 const (
-	ResourceTopologyStatusNormal   ResourceTopologyStatusPhase = "Normal"
-	ResourceTopologyStatusPending  ResourceTopologyStatusPhase = "Pending"
+	// ResourceTopologyStatusNormal indicates that the resource is normal
+	ResourceTopologyStatusNormal ResourceTopologyStatusPhase = "Normal"
+	// ResourceTopologyStatusPending indicates that the resource is pending
+	ResourceTopologyStatusPending ResourceTopologyStatusPhase = "Pending"
+	// ResourceTopologyStatusDeleting indicates that the resource is deleting
 	ResourceTopologyStatusDeleting ResourceTopologyStatusPhase = "Deleting"
 )
 
+// ResourceTopologySpec defines the fields in Spec
 type ResourceTopologySpec struct {
 	// Provisioner is the volume provisioner name
 	// +kubebuilder:validation:Required
@@ -38,6 +43,7 @@ type ResourceTopologySpec struct {
 	Tags []Tag `json:"tags" protobuf:"bytes,2,name=tags"`
 }
 
+// ResourceTopologyStatus status of resource topology
 type ResourceTopologyStatus struct {
 	// Status is the status of the ResourceTopology
 	Status ResourceTopologyStatusPhase `json:"status,omitempty" protobuf:"bytes,2,opt,name=status"`

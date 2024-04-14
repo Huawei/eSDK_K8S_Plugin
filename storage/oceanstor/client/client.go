@@ -38,23 +38,47 @@ import (
 )
 
 const (
+	// DefaultParallelCount defines default parallel count
 	DefaultParallelCount int = 50
-	MaxParallelCount     int = 1000
-	MinParallelCount     int = 20
-	GetInfoWaitInternal      = 10
-	QueryCountPerBatch   int = 100
+
+	// MaxParallelCount defines max parallel count
+	MaxParallelCount int = 1000
+
+	// MinParallelCount defines min parallel count
+	MinParallelCount int = 20
+
+	// GetInfoWaitInternal defines wait internal of getting info
+	GetInfoWaitInternal = 10
+
+	// QueryCountPerBatch defines query count for each circle of batch operation
+	QueryCountPerBatch int = 100
 
 	description string = "Created from huawei-csi for Kubernetes"
 
 	defaultVStore   string = "System_vStore"
 	defaultVStoreID string = "0"
 
-	IPLockErrorCode        = 1077949071
-	WrongPasswordErrorCode = 1077987870
-	UserOffline            = 1077949069
-	UserUnauthorized       = -401
+	// IPLockErrorCode defines error code of ip lock
+	IPLockErrorCode = 1077949071
+
+	// UserOffline defines error code of user off line
+	UserOffline = 1077949069
+
+	// UserUnauthorized defines error code of user unauthorized
+	UserUnauthorized = -401
+
+	// UrlNotFound defines error msg of url not found
+	UrlNotFound = "404_NotFound"
 )
 
+var (
+	// WrongPasswordErrorCodes user or password is incorrect
+	WrongPasswordErrorCodes = []int64{1077987870, 1077949081, 1077949061}
+	// AccountBeenLocked account been locked
+	AccountBeenLocked = []int64{1077949070, 1077987871}
+)
+
+// BaseClientInterface defines interfaces for base client operations
 type BaseClientInterface interface {
 	ApplicationType
 	Clone
@@ -75,6 +99,7 @@ type BaseClientInterface interface {
 	VStore
 	DTree
 	OceanStorQuota
+	Container
 
 	Call(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
 	BaseCall(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
@@ -106,12 +131,23 @@ var (
 
 	debugLog = map[string]map[string]bool{
 		"GET": {
-			"/license/feature": true,
-			"/nfsservice":      true,
-			"/storagepool":     true,
+			"/license/feature":       true,
+			"/nfsservice":            true,
+			"/storagepool":           true,
+			`/vstore_pair\?RETYPE=1`: true,
+			`/vstore?filter=NAME`:    true,
+			`/container_pv`:          true,
 		},
 	}
 
+	debugLogRegex = map[string][]string{
+		"GET": {
+			`/vstore_pair\?RETYPE=1`,
+			`/vstore\?filter=NAME`,
+		},
+	}
+
+	// ClientSemaphore provides semaphore of client
 	ClientSemaphore *utils.Semaphore
 )
 
@@ -132,6 +168,7 @@ func isFilterLog(method, url string) bool {
 	return false
 }
 
+// BaseClient implements BaseClientInterface
 type BaseClient struct {
 	Client HTTP
 
@@ -152,26 +189,27 @@ type BaseClient struct {
 	ReLoginMutex sync.Mutex
 }
 
+// HTTP defines for http request process
 type HTTP interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-func newHTTPClientByBackendID(backendID string) (HTTP, error) {
+func newHTTPClientByBackendID(ctx context.Context, backendID string) (HTTP, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
-		log.Errorf("create jar failed, error: %v", err)
+		log.AddContext(ctx).Errorf("create jar failed, error: %v", err)
 		return nil, err
 	}
 
-	useCert, certMeta, err := pkgUtils.GetCertSecretFromBackendID(context.Background(), backendID)
+	useCert, certMeta, err := pkgUtils.GetCertSecretFromBackendID(ctx, backendID)
 	if err != nil {
-		log.Errorf("get cert secret from backend [%v] failed, error: %v", backendID, err)
+		log.AddContext(ctx).Errorf("get cert secret from backend [%v] failed, error: %v", backendID, err)
 		return nil, err
 	}
 
-	useCert, certPool, err := pkgUtils.GetCertPool(context.Background(), useCert, certMeta)
+	useCert, certPool, err := pkgUtils.GetCertPool(ctx, useCert, certMeta)
 	if err != nil {
-		log.Errorf("get cert pool failed, error: %v", err)
+		log.AddContext(ctx).Errorf("get cert pool failed, error: %v", err)
 		return nil, err
 	}
 
@@ -184,14 +222,14 @@ func newHTTPClientByBackendID(backendID string) (HTTP, error) {
 	}, nil
 }
 
-func newHTTPClientByCertMeta(useCert bool, certMeta string) (HTTP, error) {
+func newHTTPClientByCertMeta(ctx context.Context, useCert bool, certMeta string) (HTTP, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
-		log.Errorf("create jar failed, error: %v", err)
+		log.AddContext(ctx).Errorf("create jar failed, error: %v", err)
 		return nil, err
 	}
 
-	useCert, certPool, err := pkgUtils.GetCertPool(context.Background(), useCert, certMeta)
+	useCert, certPool, err := pkgUtils.GetCertPool(ctx, useCert, certMeta)
 	if err != nil {
 		return nil, err
 	}
@@ -205,6 +243,7 @@ func newHTTPClientByCertMeta(useCert bool, certMeta string) (HTTP, error) {
 	}, nil
 }
 
+// Response defines response of request
 type Response struct {
 	Error map[string]interface{} `json:"error"`
 	Data  interface{}            `json:"data,omitempty"`
@@ -223,14 +262,15 @@ type NewClientConfig struct {
 	CertSecretMeta  string
 }
 
-func NewClient(param *NewClientConfig) (*BaseClient, error) {
+// NewClient inits a new base client
+func NewClient(ctx context.Context, param *NewClientConfig) (*BaseClient, error) {
 	var err error
 	var parallelCount int
 
 	if len(param.ParallelNum) > 0 {
 		parallelCount, err = strconv.Atoi(param.ParallelNum)
 		if err != nil || parallelCount > MaxParallelCount || parallelCount < MinParallelCount {
-			log.Warningf("The config parallelNum %d is invalid, set it to the default value %d",
+			log.AddContext(ctx).Warningf("The config parallelNum %d is invalid, set it to the default value %d",
 				parallelCount, DefaultParallelCount)
 			parallelCount = DefaultParallelCount
 		}
@@ -238,12 +278,12 @@ func NewClient(param *NewClientConfig) (*BaseClient, error) {
 		parallelCount = DefaultParallelCount
 	}
 
-	log.Infof("Init parallel count is %d", parallelCount)
+	log.AddContext(ctx).Infof("Init parallel count is %d", parallelCount)
 	ClientSemaphore = utils.NewSemaphore(parallelCount)
 
-	httpClient, err := newHTTPClientByCertMeta(param.UseCert, param.CertSecretMeta)
+	httpClient, err := newHTTPClientByCertMeta(ctx, param.UseCert, param.CertSecretMeta)
 	if err != nil {
-		log.Errorf("new http client by cert meta failed, err is %v", err)
+		log.AddContext(ctx).Errorf("new http client by cert meta failed, err is %v", err)
 		return nil, err
 	}
 
@@ -258,6 +298,7 @@ func NewClient(param *NewClientConfig) (*BaseClient, error) {
 	}, nil
 }
 
+// Call provides call for restful request
 func (cli *BaseClient) Call(ctx context.Context,
 	method string, url string,
 	data map[string]interface{}) (Response, error) {
@@ -295,6 +336,7 @@ func needReLogin(r Response, err error) bool {
 	return unconnected || unauthorized || offline
 }
 
+// GetRequest return the request info
 func (cli *BaseClient) GetRequest(ctx context.Context,
 	method string, url string,
 	data map[string]interface{}) (*http.Request, error) {
@@ -334,6 +376,7 @@ func (cli *BaseClient) GetRequest(ctx context.Context,
 	return req, nil
 }
 
+// BaseCall provides base call for request
 func (cli *BaseClient) BaseCall(ctx context.Context,
 	method string,
 	url string,
@@ -341,6 +384,12 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 	var r Response
 	var req *http.Request
 	var err error
+
+	if cli.Client == nil {
+		errMsg := "http client is nil"
+		log.AddContext(ctx).Errorf("Failed to send request method: %s, url: %s, error: %s", method, url, errMsg)
+		return r, errors.New(errMsg)
+	}
 
 	reqUrl := cli.Url
 	reqUrl += url
@@ -357,7 +406,7 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 		return r, err
 	}
 
-	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
+	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
 		fmt.Sprintf("Request method: %s, Url: %s, body: %v", method, req.URL, data))
 
 	ClientSemaphore.Acquire()
@@ -377,7 +426,7 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 		return r, err
 	}
 
-	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
+	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
 		fmt.Sprintf("Response method: %s, Url: %s, body: %s", method, req.URL, body))
 
 	err = json.Unmarshal(body, &r)
@@ -389,22 +438,27 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 	return r, nil
 }
 
+// Get provides http request of GET method
 func (cli *BaseClient) Get(ctx context.Context, url string, data map[string]interface{}) (Response, error) {
 	return cli.Call(ctx, "GET", url, data)
 }
 
+// Post provides http request of POST method
 func (cli *BaseClient) Post(ctx context.Context, url string, data map[string]interface{}) (Response, error) {
 	return cli.Call(ctx, "POST", url, data)
 }
 
+// Put provides http request of PUT method
 func (cli *BaseClient) Put(ctx context.Context, url string, data map[string]interface{}) (Response, error) {
 	return cli.Call(ctx, "PUT", url, data)
 }
 
+// Delete provides http request of DELETE method
 func (cli *BaseClient) Delete(ctx context.Context, url string, data map[string]interface{}) (Response, error) {
 	return cli.Call(ctx, "DELETE", url, data)
 }
 
+// DuplicateClient clone a base client from origin client
 func (cli *BaseClient) DuplicateClient() *BaseClient {
 	dup := *cli
 
@@ -416,6 +470,7 @@ func (cli *BaseClient) DuplicateClient() *BaseClient {
 	return &dup
 }
 
+// ValidateLogin validates the login info
 func (cli *BaseClient) ValidateLogin(ctx context.Context) error {
 	var resp Response
 	var err error
@@ -441,7 +496,7 @@ func (cli *BaseClient) ValidateLogin(ctx context.Context) error {
 		cli.Url = url + "/deviceManager/rest"
 
 		log.AddContext(ctx).Infof("Try to login %s", cli.Url)
-		resp, err = cli.BaseCall(context.Background(), "POST", "/xx/sessions", data)
+		resp, err = cli.BaseCall(ctx, "POST", "/xx/sessions", data)
 		if err == nil {
 			/* Sort the login Url to the last slot of san addresses, so that
 			   if this connection error, next time will try other Url first. */
@@ -488,11 +543,12 @@ func (cli *BaseClient) setDeviceIdFromRespData(ctx context.Context, resp Respons
 	}
 }
 
+// Login login and set data from response
 func (cli *BaseClient) Login(ctx context.Context) error {
 	var resp Response
 	var err error
 
-	cli.Client, err = newHTTPClientByBackendID(cli.BackendID)
+	cli.Client, err = newHTTPClientByBackendID(ctx, cli.BackendID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("new http client by backend %s failed, err is %v", cli.BackendID, err)
 		return err
@@ -509,7 +565,7 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 		cli.Url = url + "/deviceManager/rest"
 
 		log.AddContext(ctx).Infof("Try to login %s", cli.Url)
-		resp, err = cli.BaseCall(context.Background(), "POST", "/xx/sessions", data)
+		resp, err = cli.BaseCall(ctx, "POST", "/xx/sessions", data)
 		if err == nil {
 			/* Sort the login Url to the last slot of san addresses, so that
 			   if this connection error, next time will try other Url first. */
@@ -531,13 +587,12 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 	errCode, _ := resp.Error["code"].(float64)
 	if code := int64(errCode); code != 0 {
 		msg := fmt.Sprintf("Login %s error: %+v", cli.Url, resp)
-		if code == WrongPasswordErrorCode || code == IPLockErrorCode {
-			err := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.BackendID, false)
-			if err != nil {
+		if utils.Contains(WrongPasswordErrorCodes, code) || utils.Contains(AccountBeenLocked, code) ||
+			code == IPLockErrorCode {
+			if err := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.BackendID, false); err != nil {
 				msg = msg + fmt.Sprintf("\nSetStorageBackendContentOffline [%s] failed. error: %v", cli.BackendID, err)
 			}
 		}
-
 		return errors.New(msg)
 	}
 
@@ -548,7 +603,6 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 		}
 		return err
 	}
-
 	return nil
 }
 
@@ -591,6 +645,7 @@ func (cli *BaseClient) setDataFromRespData(ctx context.Context, resp Response) e
 	return nil
 }
 
+// Logout logout
 func (cli *BaseClient) Logout(ctx context.Context) {
 	resp, err := cli.BaseCall(ctx, "DELETE", "/sessions", nil)
 	if err != nil {
@@ -607,6 +662,7 @@ func (cli *BaseClient) Logout(ctx context.Context) {
 	log.AddContext(ctx).Infof("Logout %s success", cli.Url)
 }
 
+// ReLogin logout and login again
 func (cli *BaseClient) ReLogin(ctx context.Context) error {
 	oldToken := cli.Token
 

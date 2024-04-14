@@ -22,8 +22,11 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"sync"
 
+	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
+	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/proto"
 	"huawei-csi-driver/storage/oceanstor/attacher"
 	"huawei-csi-driver/storage/oceanstor/client"
@@ -38,6 +41,7 @@ const (
 	reflectResultLength               = 2
 )
 
+// OceanstorSanPlugin implements storage Plugin interface
 type OceanstorSanPlugin struct {
 	OceanstorPlugin
 	protocol string
@@ -63,11 +67,14 @@ func init() {
 	RegPlugin("oceanstor-san", &OceanstorSanPlugin{})
 }
 
+// NewPlugin used to create new plugin
 func (p *OceanstorSanPlugin) NewPlugin() Plugin {
 	return &OceanstorSanPlugin{}
 }
 
-func (p *OceanstorSanPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
+// Init used to init the plugin
+func (p *OceanstorSanPlugin) Init(ctx context.Context, config map[string]interface{},
+	parameters map[string]interface{}, keepLogin bool) error {
 	protocol, exist := parameters["protocol"].(string)
 	if !exist || (protocol != "iscsi" && protocol != "fc" && protocol != "roce" && protocol != "fc-nvme") {
 		return errors.New("protocol must be provided as 'iscsi', 'fc', " +
@@ -82,7 +89,7 @@ func (p *OceanstorSanPlugin) Init(config, parameters map[string]interface{}, kee
 			return errors.New("portals are required to configure for iSCSI or RoCE backend")
 		}
 
-		IPs, err := proto.VerifyIscsiPortals(portals)
+		IPs, err := proto.VerifyIscsiPortals(ctx, portals)
 		if err != nil {
 			return err
 		}
@@ -90,14 +97,14 @@ func (p *OceanstorSanPlugin) Init(config, parameters map[string]interface{}, kee
 		p.portals = IPs
 	}
 
-	err := p.init(config, keepLogin)
+	err := p.init(ctx, config, keepLogin)
 	if err != nil {
 		return err
 	}
 
 	if (protocol == "roce" || protocol == "fc-nvme") && p.product != "DoradoV6" {
 		msg := fmt.Sprintf("The storage backend %s does not support NVME protocol", p.product)
-		log.Errorln(msg)
+		log.AddContext(ctx).Errorln(msg)
 		return errors.New(msg)
 	}
 
@@ -121,6 +128,7 @@ func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
 	return volume.NewSAN(p.cli, metroRemoteCli, replicaRemoteCli, p.product)
 }
 
+// CreateVolume used to create volume
 func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
 	name string,
 	parameters map[string]interface{}) (utils.Volume, error) {
@@ -141,17 +149,20 @@ func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
 	return volObl, nil
 }
 
+// QueryVolume used to query volume
 func (p *OceanstorSanPlugin) QueryVolume(ctx context.Context, name string, params map[string]interface{}) (
 	utils.Volume, error) {
 	san := p.getSanObj()
 	return san.Query(ctx, name)
 }
 
+// DeleteVolume used to delete volume
 func (p *OceanstorSanPlugin) DeleteVolume(ctx context.Context, name string) error {
 	san := p.getSanObj()
 	return san.Delete(ctx, name)
 }
 
+// ExpandVolume used to expand volume
 func (p *OceanstorSanPlugin) ExpandVolume(ctx context.Context, name string, size int64) (bool, error) {
 	if !utils.IsCapacityAvailable(size, SectorSize) {
 		msg := fmt.Sprintf("Expand Volume: the capacity %d is not an integer multiple of 512.", size)
@@ -304,6 +315,7 @@ func (p *OceanstorSanPlugin) AttachVolume(ctx context.Context, name string,
 	return connectInfo, nil
 }
 
+// DetachVolume used to detach volume from node
 func (p *OceanstorSanPlugin) DetachVolume(ctx context.Context, name string, parameters map[string]interface{}) error {
 	var localCli, metroCli client.BaseClientInterface
 	if p.storageOnline {
@@ -365,18 +377,66 @@ func (p *OceanstorSanPlugin) releaseClient(ctx context.Context, cli, metroCli cl
 	}
 }
 
-func (p *OceanstorSanPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
-	return p.updatePoolCapabilities(poolNames, "1")
+// UpdatePoolCapabilities used to update pool capabilities
+func (p *OceanstorSanPlugin) UpdatePoolCapabilities(ctx context.Context, poolNames []string) (map[string]interface{},
+	error) {
+	vStoreQuotaMap, err := p.getVstoreCapacity(ctx)
+	if err != nil {
+		log.AddContext(ctx).Debugf("get vstore capacity failed, err: %v", err)
+		vStoreQuotaMap = map[string]interface{}{}
+	}
+
+	return p.updatePoolCapabilities(ctx, poolNames, vStoreQuotaMap, "1")
 }
 
-func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(remote Plugin) {
+func (p *OceanstorSanPlugin) getVstoreCapacity(ctx context.Context) (map[string]interface{}, error) {
+	if p.product != constants.OceanStorDoradoV6 || p.cli.GetvStoreName() == "" ||
+		p.cli.GetStorageVersion() < constants.DoradoV615 {
+		return map[string]interface{}{}, nil
+	}
+	vStore, err := p.cli.GetvStoreByName(ctx, p.cli.GetvStoreName())
+	if err != nil {
+		return nil, err
+	}
+	if vStore == nil {
+		return nil, fmt.Errorf("not find vstore by name, name: %s", p.cli.GetvStoreName())
+	}
+
+	var sanCapacityQuota, sanFreeCapacityQuota int64
+
+	if totalStr, ok := vStore["sanCapacityQuota"].(string); ok {
+		sanCapacityQuota, err = strconv.ParseInt(totalStr, 10, 64)
+	}
+	if freeStr, ok := vStore["sanFreeCapacityQuota"].(string); ok {
+		sanFreeCapacityQuota, err = strconv.ParseInt(freeStr, 10, 64)
+	}
+	if err != nil {
+		log.AddContext(ctx).Warningf("parse vstore quota failed, error: %v", err)
+		return nil, err
+	}
+
+	// if not set quota, sanCapacityQuota is 0, sanFreeCapacityQuota is -1
+	if sanCapacityQuota == 0 || sanFreeCapacityQuota == -1 {
+		return map[string]interface{}{}, nil
+	}
+
+	return map[string]interface{}{
+		string(xuanwuV1.FreeCapacity):  sanFreeCapacityQuota * 512,
+		string(xuanwuV1.TotalCapacity): sanCapacityQuota * 512,
+		string(xuanwuV1.UsedCapacity):  (sanCapacityQuota - sanFreeCapacityQuota) * 512,
+	}, nil
+}
+
+// UpdateMetroRemotePlugin used to convert metroRemotePlugin to OceanstorSanPlugin
+func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(ctx context.Context, remote Plugin) {
 	var ok bool
 	p.metroRemotePlugin, ok = remote.(*OceanstorSanPlugin)
 	if !ok {
-		log.Warningf("convert metroRemotePlugin to OceanstorSanPlugin failed, data: %v", remote)
+		log.AddContext(ctx).Warningf("convert metroRemotePlugin to OceanstorSanPlugin failed, data: %v", remote)
 	}
 }
 
+// CreateSnapshot used to create snapshot
 func (p *OceanstorSanPlugin) CreateSnapshot(ctx context.Context,
 	lunName, snapshotName string) (map[string]interface{}, error) {
 	san := p.getSanObj()
@@ -390,6 +450,7 @@ func (p *OceanstorSanPlugin) CreateSnapshot(ctx context.Context,
 	return snapshot, nil
 }
 
+// DeleteSnapshot used to delete snapshot
 func (p *OceanstorSanPlugin) DeleteSnapshot(ctx context.Context,
 	snapshotParentID, snapshotName string) error {
 	san := p.getSanObj()
@@ -453,8 +514,9 @@ func (p *OceanstorSanPlugin) getLunInfo(ctx context.Context, localCli, remoteCli
 }
 
 // UpdateBackendCapabilities to update the block storage capabilities
-func (p *OceanstorSanPlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
-	capabilities, specifications, err := p.OceanstorPlugin.UpdateBackendCapabilities()
+func (p *OceanstorSanPlugin) UpdateBackendCapabilities(ctx context.Context) (map[string]interface{},
+	map[string]interface{}, error) {
+	capabilities, specifications, err := p.OceanstorPlugin.UpdateBackendCapabilities(ctx)
 	if err != nil {
 		p.storageOnline = false
 		return nil, nil, err
@@ -483,6 +545,7 @@ func (p *OceanstorSanPlugin) updateReplicaCapability(capabilities map[string]int
 	capabilities["SupportReplication"] = p.replicaRemotePlugin != nil
 }
 
+// Validate used to validate OceanstorSanPlugin parameters
 func (p *OceanstorSanPlugin) Validate(ctx context.Context, param map[string]interface{}) error {
 	log.AddContext(ctx).Infoln("Start to validate OceanstorSanPlugin parameters.")
 
@@ -497,7 +560,7 @@ func (p *OceanstorSanPlugin) Validate(ctx context.Context, param map[string]inte
 	}
 
 	// Login verification
-	cli, err := client.NewClient(clientConfig)
+	cli, err := client.NewClient(ctx, clientConfig)
 	if err != nil {
 		return err
 	}
@@ -536,7 +599,7 @@ func (p *OceanstorSanPlugin) verifyOceanstorSanParam(ctx context.Context, config
 			return errors.New(msg)
 		}
 
-		_, err := proto.VerifyIscsiPortals(portals)
+		_, err := proto.VerifyIscsiPortals(ctx, portals)
 		if err != nil {
 			return err
 		}
@@ -545,10 +608,12 @@ func (p *OceanstorSanPlugin) verifyOceanstorSanParam(ctx context.Context, config
 	return nil
 }
 
+// DeleteDTreeVolume used to delete DTree volume
 func (p *OceanstorSanPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
 	return errors.New("not implement")
 }
 
+// ExpandDTreeVolume used to expand DTree volume
 func (p *OceanstorSanPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
 	return false, errors.New("not implement")
 }

@@ -29,7 +29,11 @@ import (
 	"google.golang.org/grpc/status"
 
 	"huawei-csi-driver/cli/helper"
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend"
+	"huawei-csi-driver/csi/backend/handler"
+	"huawei-csi-driver/csi/backend/model"
+	"huawei-csi-driver/csi/backend/plugin"
 	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
@@ -37,8 +41,11 @@ import (
 )
 
 const (
-	RWX        = "ReadWriteMany"
-	Block      = "Block"
+	// RWX defines access mode RWX
+	RWX = "ReadWriteMany"
+	// Block defines volume mode block
+	Block = "Block"
+	// FileSystem defines volume mode filesystem
 	FileSystem = "FileSystem"
 
 	maxDescriptionLength = 255
@@ -59,6 +66,8 @@ var (
 
 	annManageVolumeName  = "/manageVolumeName"
 	annManageBackendName = "/manageBackendName"
+	annFileSystemMode    = "/fileSystemMode"
+	annVolumeName        = "/volumeName"
 )
 
 func addNFSProtocol(ctx context.Context, mountFlag string, parameters map[string]interface{}) error {
@@ -100,7 +109,7 @@ func processNFSProtocol(ctx context.Context, req *csi.CreateVolumeRequest,
 	return nil
 }
 
-func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest, b *backend.Backend) (
+func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest, b *model.Backend) (
 	bool, error) {
 	if b.Storage == "fusionstorage-nas" || b.Storage == "oceanstor-nas" || b.Storage == "oceanstor-dtree" {
 		log.AddContext(ctx).Debugf("Storage is [%s], support expand volume.", b.Storage)
@@ -119,8 +128,8 @@ func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeR
 	}
 
 	if volumeCapability.GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
-		return false, utils.Errorf(ctx, "The PVC %s accessModes is \"ReadOnlyMany\", no need to expand volume.",
-			req.GetVolumeId())
+		return false, utils.Errorf(ctx, "The PVC %s is a \"lun\" type,  accessModes is \"ReadOnlyMany\", "+
+			"can not support expand volume.", req.GetVolumeId())
 	}
 
 	return true, nil
@@ -233,11 +242,11 @@ func processVolumeContentSource(ctx context.Context, req *csi.CreateVolumeReques
 }
 
 func getAccessibleTopologies(ctx context.Context, req *csi.CreateVolumeRequest,
-	pool *backend.StoragePool) []*csi.Topology {
+	pool *model.StoragePool) []*csi.Topology {
 	accessibleTopologies := make([]*csi.Topology, 0)
 	if req.GetAccessibilityRequirements() != nil &&
 		len(req.GetAccessibilityRequirements().GetRequisite()) != 0 {
-		supportedTopology := pool.GetSupportedTopologies(ctx)
+		supportedTopology := handler.NewCacheWrapper().LoadCacheBackendTopologies(ctx, pool.Parent)
 		if len(supportedTopology) > 0 {
 			for _, segment := range supportedTopology {
 				accessibleTopologies = append(accessibleTopologies, &csi.Topology{Segments: segment})
@@ -273,7 +282,7 @@ func getVolumeResponse(accessibleTopologies []*csi.Topology,
 }
 
 func makeCreateVolumeResponse(ctx context.Context, req *csi.CreateVolumeRequest, vol utils.Volume,
-	pool *backend.StoragePool) *csi.Volume {
+	pool *model.StoragePool) *csi.Volume {
 	contentSource := req.GetVolumeContentSource()
 	size := req.GetCapacityRange().GetRequiredBytes()
 
@@ -423,8 +432,8 @@ func processCreateVolumeParameters(ctx context.Context, req *csi.CreateVolumeReq
 	return parameters, nil
 }
 
-func processCreateVolumeParametersAfterSelect(parameters map[string]interface{}, localPool *backend.StoragePool,
-	remotePool *backend.StoragePool) {
+func processCreateVolumeParametersAfterSelect(parameters map[string]interface{}, localPool *model.StoragePool,
+	remotePool *model.StoragePool) {
 
 	parameters["storagepool"] = localPool.Name
 	if remotePool != nil {
@@ -442,16 +451,15 @@ func (d *Driver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	if err != nil {
 		return nil, err
 	}
-
-	localPool, remotePool, err := backend.SelectStoragePool(ctx, req.GetCapacityRange().RequiredBytes, parameters)
+	storagePoolPair, err := d.backendSelector.SelectPoolPair(ctx, req.GetCapacityRange().RequiredBytes, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Cannot select pool for volume creation: %v", err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	processCreateVolumeParametersAfterSelect(parameters, localPool, remotePool)
+	processCreateVolumeParametersAfterSelect(parameters, storagePoolPair.Local, storagePoolPair.Remote)
 
-	vol, err := localPool.Plugin.CreateVolume(ctx, req.GetName(), parameters)
+	vol, err := storagePoolPair.Local.Plugin.CreateVolume(ctx, req.GetName(), parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create volume %s error: %v", req.GetName(), err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -459,7 +467,7 @@ func (d *Driver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	log.AddContext(ctx).Infof("Volume %s is created", req.GetName())
 	res := &csi.CreateVolumeResponse{
-		Volume: makeCreateVolumeResponse(ctx, req, vol, localPool),
+		Volume: makeCreateVolumeResponse(ctx, req, vol, storagePoolPair.Local),
 	}
 
 	// The topology creation result does not affect current task.
@@ -473,7 +481,7 @@ func (d *Driver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 func (d *Driver) manageVolume(ctx context.Context, req *csi.CreateVolumeRequest, volumeName, backendName string) (
 	*csi.CreateVolumeResponse, error) {
 	log.AddContext(ctx).Infof("Start to manage Volume %s for backend %s.", volumeName, backendName)
-	selectBackend := backend.GetBackendWithFresh(ctx, helper.GetBackendName(backendName), true)
+	selectBackend, err := d.backendSelector.SelectBackend(ctx, helper.GetBackendName(backendName))
 	if selectBackend == nil {
 		log.AddContext(ctx).Errorf("Backend %s doesn't exist. Manage Volume %s failed.",
 			helper.GetBackendName(backendName), volumeName)
@@ -536,4 +544,40 @@ func validateCapacity(ctx context.Context, req *csi.CreateVolumeRequest, vol uti
 			actualCapacity, req.GetCapacityRange().RequiredBytes)
 	}
 	return nil
+}
+
+func processAnnotations(annotations map[string]string, req *csi.CreateVolumeRequest) error {
+	fileSystemMode, systemModeOk := annotations[app.GetGlobalConfig().DriverName+annFileSystemMode]
+	if systemModeOk && (fileSystemMode != "HyperMetro" && fileSystemMode != "local") {
+		return errors.New("The value of filesystemMode can only be \"HyperMetro\" or \"local\".")
+	}
+	if systemModeOk {
+		req.Parameters["fileSystemMode"] = fileSystemMode
+	}
+
+	volumeName, volumeNameOk := annotations[app.GetGlobalConfig().DriverName+annVolumeName]
+	if volumeNameOk && volumeName == "" {
+		return errors.New("The volume cannot be empty")
+	}
+	if volumeNameOk {
+		req.Parameters["annVolumeName"] = volumeName
+	}
+	return nil
+}
+
+func getBackendFilesystemMode(ctx context.Context, bk *model.Backend, volName string) string {
+	if protocol, ok := bk.Parameters["protocol"].(string); ok && protocol == plugin.ProtocolNfsPlus &&
+		bk.Storage != plugin.DTreeStorage {
+		volume, err := bk.Plugin.QueryVolume(ctx, volName, map[string]interface{}{
+			"description": "Query from Huawei Storage",
+			"size":        int64(0),
+		})
+		if err != nil {
+			log.AddContext(ctx).Errorf("query volume failed, volName: %s, err: %v", volName, err)
+			return ""
+		}
+		log.AddContext(ctx).Debugf("controllerPublishVolume volume, volumeName: %s, volume: %+v", volName, volume)
+		return volume.GetFilesystemMode()
+	}
+	return ""
 }

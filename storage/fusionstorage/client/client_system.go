@@ -27,6 +27,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// GetAccountIdByName gets account id by account name
 func (cli *Client) GetAccountIdByName(ctx context.Context, accountName string) (string, error) {
 	url := fmt.Sprintf("/dfv/service/obsPOE/query_accounts?name=%s", accountName)
 	resp, err := cli.get(ctx, url, nil)
@@ -51,6 +52,7 @@ func (cli *Client) GetAccountIdByName(ctx context.Context, accountName string) (
 	return accountId, nil
 }
 
+// GetPoolByName gets pool by pool name
 func (cli *Client) GetPoolByName(ctx context.Context, poolName string) (map[string]interface{}, error) {
 	resp, err := cli.get(ctx, "/dsware/service/v1.3/storagePool", nil)
 	if err != nil {
@@ -83,6 +85,7 @@ func (cli *Client) GetPoolByName(ctx context.Context, poolName string) (map[stri
 	return nil, nil
 }
 
+// GetPoolById gets pool by pool id
 func (cli *Client) GetPoolById(ctx context.Context, poolId int64) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/dsware/service/v1.3/storagePool?poolId=%d", poolId)
 	resp, err := cli.get(ctx, url, nil)
@@ -116,6 +119,7 @@ func (cli *Client) GetPoolById(ctx context.Context, poolId int64) (map[string]in
 	return nil, nil
 }
 
+// GetAllAccounts gets all accounts
 func (cli *Client) GetAllAccounts(ctx context.Context) ([]string, error) {
 	resp, err := cli.get(ctx, "/dfv/service/obsPOE/accounts", nil)
 	if err != nil {
@@ -149,6 +153,7 @@ func (cli *Client) GetAllAccounts(ctx context.Context) ([]string, error) {
 	return accounts, nil
 }
 
+// GetAllPools gets all pools
 func (cli *Client) GetAllPools(ctx context.Context) (map[string]interface{}, error) {
 	resp, err := cli.get(ctx, "/dsware/service/v1.3/storagePool", nil)
 	if err != nil {
@@ -202,6 +207,7 @@ func (cli *Client) getAllPools(ctx context.Context) ([]interface{}, error) {
 	return storagePools, nil
 }
 
+// GetNFSServiceSetting gets nfs service settings
 func (cli *Client) GetNFSServiceSetting(ctx context.Context) (map[string]bool, error) {
 	setting := map[string]bool{"SupportNFS41": false}
 

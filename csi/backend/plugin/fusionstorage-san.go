@@ -33,6 +33,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// FusionStorageSanPlugin implements storage Plugin interface
 type FusionStorageSanPlugin struct {
 	FusionStoragePlugin
 	hosts    map[string]string
@@ -49,22 +50,25 @@ func init() {
 	RegPlugin("fusionstorage-san", &FusionStorageSanPlugin{})
 }
 
+// NewPlugin used to create new plugin
 func (p *FusionStorageSanPlugin) NewPlugin() Plugin {
 	return &FusionStorageSanPlugin{
 		hosts: make(map[string]string),
 	}
 }
 
-func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
+// Init used to init the plugin
+func (p *FusionStorageSanPlugin) Init(ctx context.Context, config map[string]interface{},
+	parameters map[string]interface{}, keepLogin bool) error {
 	protocol, exist := parameters["protocol"].(string)
 	if !exist {
-		log.Errorf("protocol must be configured in backend %v", parameters)
+		log.AddContext(ctx).Errorf("protocol must be configured in backend %v", parameters)
 		return errors.New("protocol must be configured")
 	}
 
 	portals, exist := parameters["portals"].([]interface{})
 	if !exist || len(portals) == 0 {
-		log.Errorf("portals must be configured in backend %v", parameters)
+		log.AddContext(ctx).Errorf("portals must be configured in backend %v", parameters)
 		return errors.New("portals must be configured")
 	}
 
@@ -88,7 +92,7 @@ func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{},
 
 		p.protocol = "scsi"
 	} else if strings.ToLower(protocol) == "iscsi" {
-		portals, err := proto.VerifyIscsiPortals(portals)
+		portals, err := proto.VerifyIscsiPortals(ctx, portals)
 		if err != nil {
 			return err
 		}
@@ -98,11 +102,11 @@ func (p *FusionStorageSanPlugin) Init(config, parameters map[string]interface{},
 		p.alua, _ = parameters["ALUA"].(map[string]interface{})
 	} else {
 		msg := fmt.Sprintf("protocol %s configured is error. Just support iscsi and scsi", protocol)
-		log.Errorln(msg)
+		log.AddContext(ctx).Errorln(msg)
 		return errors.New(msg)
 	}
 
-	err := p.init(config, keepLogin)
+	err := p.init(ctx, config, keepLogin)
 	if err != nil {
 		return err
 	}
@@ -136,6 +140,7 @@ func (p *FusionStorageSanPlugin) getParams(name string,
 	return params, nil
 }
 
+// CreateVolume used to create volume
 func (p *FusionStorageSanPlugin) CreateVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
 
@@ -162,17 +167,20 @@ func (p *FusionStorageSanPlugin) CreateVolume(ctx context.Context, name string, 
 	return volObj, nil
 }
 
+// QueryVolume used to query volume
 func (p *FusionStorageSanPlugin) QueryVolume(ctx context.Context, name string, params map[string]interface{}) (
 	utils.Volume, error) {
 	san := volume.NewSAN(p.cli)
 	return san.Query(ctx, name)
 }
 
+// DeleteVolume used to delete volume
 func (p *FusionStorageSanPlugin) DeleteVolume(ctx context.Context, name string) error {
 	san := volume.NewSAN(p.cli)
 	return san.Delete(ctx, name)
 }
 
+// ExpandVolume used to expand volume
 func (p *FusionStorageSanPlugin) ExpandVolume(ctx context.Context, name string, size int64) (bool, error) {
 	// for fusionStorage block, the unit is MiB
 	if !utils.IsCapacityAvailable(size, CAPACITY_UNIT) {
@@ -198,6 +206,7 @@ func (p *FusionStorageSanPlugin) AttachVolume(ctx context.Context, name string,
 	return mappingInfo, nil
 }
 
+// DetachVolume used to detach volume from node
 func (p *FusionStorageSanPlugin) DetachVolume(ctx context.Context,
 	name string,
 	parameters map[string]interface{}) error {
@@ -229,7 +238,9 @@ func (p *FusionStorageSanPlugin) releaseClient(ctx context.Context, cli *client.
 	}
 }
 
-func (p *FusionStorageSanPlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
+// UpdateBackendCapabilities used to update backend capabilities
+func (p *FusionStorageSanPlugin) UpdateBackendCapabilities(ctx context.Context) (map[string]interface{},
+	map[string]interface{}, error) {
 	capabilities := map[string]interface{}{
 		"SupportThin":  true,
 		"SupportThick": false,
@@ -240,6 +251,7 @@ func (p *FusionStorageSanPlugin) UpdateBackendCapabilities() (map[string]interfa
 	return capabilities, nil, nil
 }
 
+// CreateSnapshot used to create snapshot
 func (p *FusionStorageSanPlugin) CreateSnapshot(ctx context.Context,
 	lunName, snapshotName string) (map[string]interface{}, error) {
 	san := volume.NewSAN(p.cli)
@@ -253,6 +265,7 @@ func (p *FusionStorageSanPlugin) CreateSnapshot(ctx context.Context,
 	return snapshot, nil
 }
 
+// DeleteSnapshot used to delete snapshot
 func (p *FusionStorageSanPlugin) DeleteSnapshot(ctx context.Context,
 	snapshotParentID, snapshotName string) error {
 	san := volume.NewSAN(p.cli)
@@ -266,10 +279,13 @@ func (p *FusionStorageSanPlugin) DeleteSnapshot(ctx context.Context,
 	return nil
 }
 
-func (p *FusionStorageSanPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
-	return p.updatePoolCapabilities(poolNames, FusionStorageSan)
+// UpdatePoolCapabilities used to update pool capabilities
+func (p *FusionStorageSanPlugin) UpdatePoolCapabilities(ctx context.Context,
+	poolNames []string) (map[string]interface{}, error) {
+	return p.updatePoolCapabilities(ctx, poolNames, FusionStorageSan)
 }
 
+// Validate used to validate FusionStorageSanPlugin parameters
 func (p *FusionStorageSanPlugin) Validate(ctx context.Context, param map[string]interface{}) error {
 	log.AddContext(ctx).Infoln("Start to validate FusionStorageSanPlugin parameters.")
 
@@ -284,7 +300,7 @@ func (p *FusionStorageSanPlugin) Validate(ctx context.Context, param map[string]
 	}
 
 	// Login verification
-	cli := client.NewClient(clientConfig)
+	cli := client.NewClient(ctx, clientConfig)
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err
@@ -321,10 +337,12 @@ func (p *FusionStorageSanPlugin) verifyFusionStorageSanParam(ctx context.Context
 	return nil
 }
 
+// DeleteDTreeVolume used to delete DTree volume
 func (p *FusionStorageSanPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
 	return errors.New("not implement")
 }
 
+// ExpandDTreeVolume used to expand DTree volume
 func (p *FusionStorageSanPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
 	return false, errors.New("not implement")
 }

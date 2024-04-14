@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package taskflow offers task flow operations
 package taskflow
 
 import (
@@ -23,10 +24,16 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// TaskRunFunc run task
 type TaskRunFunc func(ctx context.Context, params map[string]interface{}, result map[string]interface{}) (map[string]interface{}, error)
+
+// TaskWithoutRevert run task without revert
 type TaskWithoutRevert func(ctx context.Context, params map[string]interface{}) error
+
+// TaskRevertFunc revert task
 type TaskRevertFunc func(ctx context.Context, result map[string]interface{}) error
 
+// Task defines the task
 type Task struct {
 	name   string
 	finish bool
@@ -34,6 +41,7 @@ type Task struct {
 	revert TaskRevertFunc
 }
 
+// TaskFlow defines the task flow
 type TaskFlow struct {
 	name   string
 	tasks  []*Task
@@ -41,6 +49,7 @@ type TaskFlow struct {
 	ctx    context.Context
 }
 
+// NewTaskFlow create a task flow
 func NewTaskFlow(ctx context.Context, name string) *TaskFlow {
 	return &TaskFlow{
 		name:   name,
@@ -49,6 +58,7 @@ func NewTaskFlow(ctx context.Context, name string) *TaskFlow {
 	}
 }
 
+// AddTask add a task to task flow
 func (p *TaskFlow) AddTask(name string, run TaskRunFunc, revert TaskRevertFunc) {
 	p.tasks = append(p.tasks, &Task{
 		name:   name,
@@ -58,8 +68,9 @@ func (p *TaskFlow) AddTask(name string, run TaskRunFunc, revert TaskRevertFunc) 
 	})
 }
 
+// Run execute tasks in the task flow
 func (p *TaskFlow) Run(params map[string]interface{}) (map[string]interface{}, error) {
-	log.AddContext(p.ctx).Infof("Start to run taskflow %s", p.name)
+	log.AddContext(p.ctx).Debugf("Start to run taskflow %s", p.name)
 
 	for _, task := range p.tasks {
 		result, err := task.run(p.ctx, params, p.result)
@@ -75,14 +86,16 @@ func (p *TaskFlow) Run(params map[string]interface{}) (map[string]interface{}, e
 		}
 	}
 
-	log.AddContext(p.ctx).Infof("Taskflow %s is finished", p.name)
+	log.AddContext(p.ctx).Debugf("Taskflow %s is finished", p.name)
 	return p.result, nil
 }
 
+// GetResult get tasks execution results in the task flow
 func (p *TaskFlow) GetResult() map[string]interface{} {
 	return p.result
 }
 
+// Revert revert tasks in the task flow with revert function
 func (p *TaskFlow) Revert() {
 	log.AddContext(p.ctx).Infof("Start to revert taskflow %s", p.name)
 

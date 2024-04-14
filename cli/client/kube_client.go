@@ -40,6 +40,11 @@ const (
 	Apply  = "apply"  // used to update resource
 )
 
+const (
+	namespaceFlag      = "--namespace"
+	ignoreNotFoundFlag = "--ignore-not-found"
+)
+
 type KubernetesCLI struct {
 	cli string
 }
@@ -59,7 +64,7 @@ func (k *KubernetesCLI) CLI() string {
 func (k *KubernetesCLI) OperateResourceByYaml(yaml, operate string, ignoreNotfound bool) error {
 	args := []string{operate, "-f", "-"}
 	if ignoreNotfound {
-		args = append(args, "--ignore-not-found")
+		args = append(args, ignoreNotFoundFlag)
 	}
 	return helper.ExecWithStdin(k.cli, []byte(yaml), args)
 }
@@ -70,8 +75,44 @@ func (k *KubernetesCLI) DeleteResourceByQualifiedNames(qualifiedNames []string, 
 	if len(qualifiedNames) != 0 {
 		args = append(args, qualifiedNames...)
 	}
-	args = append(args, "--namespace", namespace, "--ignore-not-found")
+	args = append(args, namespaceFlag, namespace, ignoreNotFoundFlag)
 	return k.deleteResource(args)
+}
+
+// DeleteFinalizersInResourceByQualifiedNames delete finalizers in resource based on the specified qualified names
+func (k *KubernetesCLI) DeleteFinalizersInResourceByQualifiedNames(qualifiedNames []string,
+	namespace string) error {
+	if len(qualifiedNames) == 0 {
+		return nil
+	}
+
+	for _, name := range qualifiedNames {
+		err := k.deleteFinalizersInResourceByQualifiedName(name, namespace)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (k *KubernetesCLI) deleteFinalizersInResourceByQualifiedName(qualifiedName, namespace string) error {
+	args := []string{"get"}
+	args = append(args, qualifiedName)
+	args = append(args, namespaceFlag, namespace, "-o=yaml", ignoreNotFoundFlag)
+	out, err := helper.ExecReturnStdOut(k.cli, args)
+	if err != nil {
+		return err
+	}
+	if len(out) == 0 {
+		return nil
+	}
+
+	args = []string{"patch"}
+	args = append(args, qualifiedName)
+	args = append(args, namespaceFlag, namespace, "--type", "merge", "--patch", "{\"metadata\":{\"finalizers\":[]}}")
+	out, err = helper.ExecReturnStdOut(k.cli, args)
+	return err
 }
 
 // GetResource get resources based on the specified resourceType, name and outputType
@@ -81,18 +122,18 @@ func (k *KubernetesCLI) GetResource(name []string, namespace, outputType string,
 		args = append(args, name...)
 	}
 
-	args = append(args, "--namespace", namespace)
+	args = append(args, namespaceFlag, namespace)
 	if outputType != "" {
 		output := fmt.Sprintf("-o=%s", outputType)
 		args = append(args, output)
 	}
-	args = append(args, "--ignore-not-found")
+	args = append(args, ignoreNotFoundFlag)
 	return helper.ExecReturnStdOut(k.cli, args)
 }
 
 // CheckResourceExist check whether resource exists based on the specified args.
 func (k *KubernetesCLI) CheckResourceExist(name, namespace string, resourceType ResourceType) (bool, error) {
-	args := []string{"get", string(resourceType), name, "--namespace", namespace, "--ignore-not-found"}
+	args := []string{"get", string(resourceType), name, namespaceFlag, namespace, ignoreNotFoundFlag}
 	return k.checkResourceExist(args)
 }
 

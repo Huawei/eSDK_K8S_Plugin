@@ -29,6 +29,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// Base defines the base storage client
 type Base struct {
 	cli              client.BaseClientInterface
 	metroRemoteCli   client.BaseClientInterface
@@ -42,6 +43,7 @@ func (p *Base) commonPreCreate(ctx context.Context, params map[string]interface{
 		p.getCloneSpeed,
 		p.getPoolID,
 		p.getQoS,
+		p.getFileMode,
 	}
 
 	for _, analyzer := range analyzers {
@@ -82,6 +84,22 @@ func (p *Base) getCloneSpeed(_ context.Context, params map[string]interface{}) e
 		params["clonespeed"] = 3
 	}
 
+	return nil
+}
+func (p *Base) getFileMode(_ context.Context, params map[string]interface{}) error {
+	if params == nil || len(params) == 0 {
+		return nil
+	}
+	if mode, exist := params["filesystemmode"].(string); exist {
+		if mode == "HyperMetro" {
+			params["filesystemmode"] = "1"
+			params["skipNfsShareAndQos"] = true
+		} else if mode == "local" {
+			params["filesystemmode"] = "0"
+		} else {
+			return errors.New("don't support fileSystemMode, only HyperMetro and local can be set.")
+		}
+	}
 	return nil
 }
 
@@ -213,7 +231,7 @@ func (p *Base) createReplicationPair(ctx context.Context,
 		"SPEED":            4, // highest speed
 	}
 
-	replicationSyncPeriod, exist := params["replicationSyncPeriod"]
+	replicationSyncPeriod, exist := params["replicationsyncperiod"].(string)
 	if exist {
 		data["TIMINGVAL"] = replicationSyncPeriod
 	}

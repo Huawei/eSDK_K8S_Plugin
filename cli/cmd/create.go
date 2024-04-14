@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package command is used to creating a resource to Ocean Storage in Kubernetes.
 package command
 
 import (
@@ -26,6 +27,7 @@ func init() {
 	options.NewFlagsOptions(CreateCmd).WithParent(RootCmd)
 }
 
+// CreateCmd is a cobra command object which used for creating a resource to Ocean Storage in Kubernetes.
 var CreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a resource to Ocean Storage in Kubernetes",

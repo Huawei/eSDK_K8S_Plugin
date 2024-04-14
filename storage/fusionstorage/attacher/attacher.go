@@ -13,6 +13,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
+
 // Package attacher provide storage mapping or unmapping
 package attacher
 
@@ -32,6 +33,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// Attacher defines attacher client
 type Attacher struct {
 	cli      *client.Client
 	protocol string
@@ -42,9 +44,11 @@ type Attacher struct {
 }
 
 const (
-	DISABLE_ALUA = "Disable_alua"
+	// DisableAlua defines switchover mode disable alua
+	DisableAlua = "Disable_alua"
 )
 
+// NewAttacher used to init a new attacher
 func NewAttacher(cli *client.Client, protocol, invoker string, portals []string,
 	hosts map[string]string, alua map[string]interface{}) *Attacher {
 	return &Attacher{
@@ -102,7 +106,7 @@ func (p *Attacher) needUpdateIscsiHost(host map[string]interface{}, hostAlua map
 
 	if switchoverMode != host["switchoverMode"] {
 		return true
-	} else if host["switchoverMode"] == DISABLE_ALUA {
+	} else if host["switchoverMode"] == DisableAlua {
 		return false
 	}
 
@@ -399,6 +403,7 @@ func (p *Attacher) iSCSIControllerAttach(ctx context.Context, lunInfo utils.Volu
 	return p.getMappingProperties(ctx, lunWWN, hostLunId, parameters)
 }
 
+// SCSIControllerAttach used to attach volume to host
 func (p *Attacher) SCSIControllerAttach(ctx context.Context,
 	lunInfo utils.Volume,
 	parameters map[string]interface{}) (string, error) {
@@ -426,6 +431,7 @@ func (p *Attacher) SCSIControllerAttach(ctx context.Context,
 	return lunWWN, nil
 }
 
+// ControllerDetach used to detach volume from host
 func (p *Attacher) ControllerDetach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (string, error) {
@@ -448,7 +454,7 @@ func (p *Attacher) ControllerDetach(ctx context.Context,
 	return wwn, nil
 }
 
-//ControllerAttach controller attach return host and storage mapping information
+// ControllerAttach used to attach volume and return mapping info
 func (p *Attacher) ControllerAttach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (map[string]interface{}, error) {
@@ -477,6 +483,7 @@ func (p *Attacher) ControllerAttach(ctx context.Context,
 	return mappingInfo, nil
 }
 
+// NodeStage used to stage node
 func (p *Attacher) NodeStage(ctx context.Context,
 	lunInfo utils.Volume,
 	parameters map[string]interface{}) (*connector.ConnectInfo, error) {
@@ -506,6 +513,7 @@ func (p *Attacher) NodeStage(ctx context.Context,
 	}, nil
 }
 
+// NodeUnstage used to unstage node
 func (p *Attacher) NodeUnstage(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (*connector.DisConnectInfo, error) {

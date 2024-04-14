@@ -23,12 +23,14 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// MetroAttacher implements interface AttacherPlugin
 type MetroAttacher struct {
 	localAttacher  AttacherPlugin
 	remoteAttacher AttacherPlugin
 	protocol       string
 }
 
+// NewMetroAttacher inits a new metro attacher
 func NewMetroAttacher(localAttacher, remoteAttacher AttacherPlugin, protocol string) *MetroAttacher {
 	return &MetroAttacher{
 		localAttacher:  localAttacher,
@@ -67,6 +69,7 @@ func (p *MetroAttacher) mergeMappingInfo(ctx context.Context,
 	return localMapping, nil
 }
 
+// ControllerAttach attaches local and remote volume
 func (p *MetroAttacher) ControllerAttach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (map[string]interface{}, error) {
@@ -85,6 +88,7 @@ func (p *MetroAttacher) ControllerAttach(ctx context.Context,
 	return p.mergeMappingInfo(ctx, localMapping, remoteMapping)
 }
 
+// ControllerDetach detaches local and remote volume
 func (p *MetroAttacher) ControllerDetach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (string, error) {

@@ -29,8 +29,10 @@ const (
 	fsSnapshotNotExist       int64 = 1073754118
 	snapshotParentNotExistV3 int64 = 1073754117
 	snapshotParentNotExistV6 int64 = 1073754136
+	fsNotHyperMetroPair      int64 = 1073844295
 )
 
+// FSSnapshot defines interfaces for file system operations
 type FSSnapshot interface {
 	// DeleteFSSnapshot used for delete file system snapshot by id
 	DeleteFSSnapshot(ctx context.Context, snapshotID string) error
@@ -112,6 +114,12 @@ func (cli *BaseClient) GetFSSnapshotCountByParentId(ctx context.Context, ParentI
 	}
 
 	code := int64(resp.Error["code"].(float64))
+	if code == fsNotHyperMetroPair {
+		log.AddContext(ctx).Infof("No HyperMetro pair is configured for the specified HyperMetro file system, " +
+			"return count equal zero")
+		return 0, nil
+	}
+
 	if code != 0 {
 		msg := fmt.Sprintf("failed to Get snapshot count of filesystem %s, error is %d", ParentId, code)
 		return 0, errors.New(msg)

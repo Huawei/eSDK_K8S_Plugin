@@ -14,29 +14,48 @@
  *  limitations under the License.
  */
 
+// Package command defines commands of oceanctl.
 package command
 
 import (
+	"path"
+	"path/filepath"
+
 	"github.com/spf13/cobra"
 
 	"huawei-csi-driver/cli/client"
+	"huawei-csi-driver/cli/cmd/options"
 	"huawei-csi-driver/cli/config"
 	"huawei-csi-driver/utils/log"
 )
 
+// RootCmd is a root command of oceanctl.
 var RootCmd = &cobra.Command{
 	SilenceUsage:      true,
 	Use:               "oceanctl",
 	Short:             "A CLI tool for Ocean Storage in Kubernetes",
 	CompletionOptions: cobra.CompletionOptions{HiddenDefaultCmd: true},
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		startLogging()
+		err := startLogging()
+		if err != nil {
+			return err
+		}
 		return discoverOperating()
 	},
 }
 
+func init() {
+	options.NewFlagsOptions(RootCmd).
+		WithLogDir()
+}
+
 func discoverOperating() error {
-	clientName, err := client.DiscoverKubernetesCLI()
+	absPath, err := filepath.Abs(config.LogDir)
+	if err != nil {
+		return err
+	}
+
+	clientName, err := client.DiscoverKubernetesCLI(path.Join(absPath, config.DefaultLogName))
 	if err != nil {
 		return err
 	}
@@ -51,15 +70,18 @@ func discoverOperating() error {
 }
 
 // startLogging used to start logging.
-// Since the cli tool does not need to specify a log configuration, the default values are used here
-func startLogging() {
-	logRequest := &log.LoggingRequest{
-		LogName:       "oceanctl-log",
-		LogFileSize:   "20M",
-		LoggingModule: "file",
-		LogLevel:      "info",
-		LogFileDir:    "/var/log/huawei",
-		MaxBackups:    9,
+// Since the cli tool does not need to specify a log configuration, the default values are used here.
+func startLogging() error {
+	if config.LogDir == "" {
+		config.LogDir = config.DefaultLogDir
 	}
-	_ = log.InitLogging(logRequest)
+	logRequest := &log.LoggingRequest{
+		LogName:       config.DefaultLogName,
+		LogFileSize:   config.DefaultLogSize,
+		LoggingModule: config.DefaultLogModule,
+		LogLevel:      config.DefaultLogLevel,
+		LogFileDir:    config.LogDir,
+		MaxBackups:    config.DefaultLogMaxBackups,
+	}
+	return log.InitLogging(logRequest)
 }

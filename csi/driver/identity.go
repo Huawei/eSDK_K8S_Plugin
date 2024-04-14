@@ -24,6 +24,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
+// GetPluginInfo used to get plugin info
 func (d *Driver) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
 	log.AddContext(ctx).Infof("Get plugin info %v", *d)
 	return &csi.GetPluginInfoResponse{
@@ -32,6 +33,7 @@ func (d *Driver) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoReques
 	}, nil
 }
 
+// GetPluginCapabilities used to get plugin capabilities
 func (d *Driver) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
 	log.AddContext(ctx).Infof("Get plugin capabilities of %v", *d)
 
@@ -55,6 +57,7 @@ func (d *Driver) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCa
 	}, nil
 }
 
+// Probe used to health check
 func (d *Driver) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
 	log.AddContext(ctx).Debugf("Probe plugin %v", *d)
 	return &csi.ProbeResponse{}, nil

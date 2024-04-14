@@ -31,6 +31,7 @@ type k8sOptions struct {
 	namespace string
 }
 
+// NewK8sOptions Construct a NewK8sOptions instance
 func NewK8sOptions() *k8sOptions {
 	return &k8sOptions{
 		namespace: constants.DefaultNamespace,

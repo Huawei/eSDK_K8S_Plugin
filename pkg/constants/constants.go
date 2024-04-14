@@ -17,11 +17,15 @@ package constants
 
 import "errors"
 
+// FileType defines file type
 type FileType string
 
 const (
-	ProviderVersion       = "4.2.1"
-	ProviderVendorName    = "Huawei"
+	// ProviderVersion defines provider version
+	ProviderVersion = "4.3.0"
+	// ProviderVendorName defines provider vendor name
+	ProviderVendorName = "Huawei"
+	// EndpointDirPermission defines permission of endpoint dir
 	EndpointDirPermission = 0755
 
 	// CentralizedStorageNas is the centralized storage nas type
@@ -37,11 +41,14 @@ const (
 	// DefaultNamespace is driver default namespace
 	DefaultNamespace = "huawei-csi"
 
-	// Ext2 list the fileType
+	// Ext2 defines the fileType ext2
 	Ext2 FileType = "ext2"
+	// Ext3 defines the fileType ext3
 	Ext3 FileType = "ext3"
+	// Ext4 defines the fileType ext4
 	Ext4 FileType = "ext4"
-	Xfs  FileType = "xfs"
+	// Xfs defines the fileType xfs
+	Xfs FileType = "xfs"
 
 	// NodeNameEnv is defined in helm file
 	NodeNameEnv = "CSI_NODENAME"
@@ -63,10 +70,15 @@ const (
 	// XuanwuV1 is xuanwu v1 api version
 	XuanwuV1 = "xuanwu.huawei.io/v1"
 
+	// NotMountStr defines not mount str
 	NotMountStr = "not mounted"
+
+	// DefaultKubeletVolumeDevicesDirName default kubelet volumeDevice name
+	DefaultKubeletVolumeDevicesDirName = "/volumeDevices/"
 )
 
 var (
+	// ErrTimeout defines the timeout error
 	ErrTimeout = errors.New("timeout")
 )
 

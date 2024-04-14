@@ -29,6 +29,7 @@ const (
 	initiatorNotExist     int64 = 50155103
 )
 
+// GetInitiatorByName used to get initiator by name
 func (cli *Client) GetInitiatorByName(ctx context.Context, name string) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"portName": name,
@@ -58,6 +59,7 @@ func (cli *Client) GetInitiatorByName(ctx context.Context, name string) (map[str
 	return portList[0].(map[string]interface{}), nil
 }
 
+// CreateInitiator used to create initiator by name
 func (cli *Client) CreateInitiator(ctx context.Context, name string) error {
 	data := map[string]interface{}{
 		"portName": name,
@@ -78,6 +80,7 @@ func (cli *Client) CreateInitiator(ctx context.Context, name string) error {
 	return nil
 }
 
+// QueryIscsiPortal used to query iscsi portal
 func (cli *Client) QueryIscsiPortal(ctx context.Context) ([]map[string]interface{}, error) {
 	data := make(map[string]interface{})
 	resp, err := cli.post(ctx, "/dsware/service/cluster/dswareclient/queryIscsiPortal", data)

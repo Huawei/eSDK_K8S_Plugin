@@ -212,7 +212,7 @@ func (ctrl *BackendController) enqueueContent(obj interface{}) {
 			log.Errorf("failed to get key from object: %v, %v", err, content)
 			return
 		}
-		log.Infof("enqueued StorageBackendContent %q for sync", objName)
+		log.Debugf("enqueued StorageBackendContent %q for sync", objName)
 		ctrl.contentQueue.Add(objName)
 	}
 }
@@ -346,7 +346,7 @@ func (ctrl *BackendController) updateContentStore(ctx context.Context, content i
 // syncContentByKey processes a StorageBackendContent request.
 func (ctrl *BackendController) syncContentByKey(ctx context.Context, objKey string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(objKey)
-	log.AddContext(ctx).Infof("syncContentByKey: namespace [%s] storageBackendContent name [%s]",
+	log.AddContext(ctx).Debugf("syncContentByKey: namespace [%s] storageBackendContent name [%s]",
 		namespace, name)
 	if err != nil {
 		log.AddContext(ctx).Errorf("getting namespace & name of storageBackendContent %s from "+

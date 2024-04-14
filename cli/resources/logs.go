@@ -171,11 +171,11 @@ func (lg *Logs) Collect() error {
 		localGoroutineLimit := helper.NewLocalGoroutineLimit(globalGoroutineLimit)
 		nodeLogsCollector := NewNodeLogsCollector(pods, localGoroutineLimit, transmitter, display)
 		display.Add(fmt.Sprintf("node[%s] ", nodeName), nodeLogsCollector.completionStatus.Display)
-		go func() {
+		go func(nodeLogsCollector *NodeLogCollector) {
 			nodeLogsCollector.Collect()
 			globalGoroutineLimit.Update()
 			wg.Done()
-		}()
+		}(nodeLogsCollector)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	go display.Show(ctx)
@@ -239,7 +239,7 @@ func zipMultiFiles(zipPath string, filePaths ...string) error {
 	if err := os.MkdirAll(filepath.Dir(zipPath), os.ModePerm); err != nil {
 		return helper.LogErrorf("create compressed logs directory failed, error: %v", err)
 	}
-	archive, err := os.Create(zipPath)
+	archive, err := os.OpenFile(zipPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return helper.LogErrorf("create compressed logs file failed, error: %v", err)
 	}

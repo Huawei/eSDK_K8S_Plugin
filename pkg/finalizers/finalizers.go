@@ -16,15 +16,8 @@
 package finalizers
 
 import (
-	"context"
-	"sync"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"huawei-csi-driver/utils/log"
 )
-
-var storageBackendMutexMap = make(map[string]*sync.Mutex)
 
 // ContainsFinalizer checks if a finalizer already exists.
 func ContainsFinalizer(meta metav1.Object, finalizer string) bool {
@@ -63,11 +56,4 @@ func RemoveFinalizer(meta metav1.Object, finalizer string) {
 		}
 	}
 	meta.SetFinalizers(newObj)
-}
-
-// RemoveStorageBackendMutex is used to remove storageBackendMutexMap key and value
-func RemoveStorageBackendMutex(ctx context.Context, storageBackendId string) {
-	log.AddContext(ctx).Infof("remove storageBackendMutex start, mutexMap: %v", storageBackendMutexMap)
-	delete(storageBackendMutexMap, storageBackendId)
-	log.AddContext(ctx).Infof("remove storageBackendMutex success, mutexMap: %v", storageBackendMutexMap)
 }

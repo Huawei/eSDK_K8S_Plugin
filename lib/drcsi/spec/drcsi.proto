@@ -186,7 +186,7 @@ message GetBackendStatsResponse{
   // the provider name of the storage provider
   string provider_name = 3;
   // the storage backend pool list
-  repeated StorageBackendPool storage_backend_pools = 4;
+  repeated Pool pools = 4;
   // the storage backend capabilities
   map<string, bool> capabilities = 5;
   // the storage backend specifications
@@ -195,7 +195,9 @@ message GetBackendStatsResponse{
   bool online = 7;
 }
 
-message StorageBackendPool {
-  // the pools of the storage backend
-  map<string, string> pool = 1;
+message Pool {
+  // the name is pool name
+  string name = 1;
+  // the capacities is pool capacities
+  map<string, string> capacities = 2;
 }

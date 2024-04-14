@@ -17,16 +17,26 @@
 // Package provider is related with storage provider
 package provider
 
+import "huawei-csi-driver/csi/backend/handler"
+
 // Provider is for storage provider
 type Provider struct {
-	name    string
-	version string
+	name           string
+	version        string
+	storageService handler.StorageServiceInterface
+	register       handler.BackendRegisterInterface
+	fetcher        handler.BackendFetchInterface
+	cache          handler.BackendCacheWrapperInterface
 }
 
 // NewProvider is used to create storage provider
 func NewProvider(name, version string) *Provider {
 	return &Provider{
-		name:    name,
-		version: version,
+		name:           name,
+		version:        version,
+		storageService: handler.NewStorageHandler(),
+		register:       handler.NewBackendRegister(),
+		fetcher:        handler.NewBackendFetcher(),
+		cache:          handler.NewCacheWrapper(),
 	}
 }

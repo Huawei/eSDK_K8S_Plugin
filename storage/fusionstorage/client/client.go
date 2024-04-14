@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package client provides fusion storage client
 package client
 
 import (
@@ -48,7 +49,9 @@ const (
 	loginFailed         = 1077949061
 	loginFailedWithArg  = 1077987870
 	userPasswordInvalid = 1073754390
-	IPLock              = 1077949071
+
+	// IPLock defines error code of ip lock
+	IPLock = 1077949071
 
 	unconnectedError = "unconnected"
 )
@@ -68,6 +71,8 @@ var (
 			"/api/v2/nas_protocol/nfs_service_config": true,
 		},
 	}
+
+	debugLogRegex   = map[string][]string{}
 	clientSemaphore *utils.Semaphore
 )
 
@@ -76,6 +81,7 @@ func isFilterLog(method, url string) bool {
 	return exist && filter[url]
 }
 
+// Client defines fusion storage client
 type Client struct {
 	url             string
 	user            string
@@ -107,21 +113,23 @@ type NewClientConfig struct {
 	CertSecretMeta  string
 }
 
-func NewClient(clientConfig *NewClientConfig) *Client {
+// NewClient used to init a new fusion storage client
+func NewClient(ctx context.Context, clientConfig *NewClientConfig) *Client {
 	var err error
 	var parallelCount int
 
 	if len(clientConfig.ParallelNum) > 0 {
 		parallelCount, err = strconv.Atoi(clientConfig.ParallelNum)
 		if err != nil || parallelCount > maxParallelCount || parallelCount < minParallelCount {
-			log.Warningf("The config parallelNum %d is invalid, set it to the default value %d", parallelCount, defaultParallelCount)
+			log.AddContext(ctx).Warningf("The config parallelNum %d is invalid, set it to the default value %d",
+				parallelCount, defaultParallelCount)
 			parallelCount = defaultParallelCount
 		}
 	} else {
 		parallelCount = defaultParallelCount
 	}
 
-	log.Infof("Init parallel count is %d", parallelCount)
+	log.AddContext(ctx).Infof("Init parallel count is %d", parallelCount)
 	clientSemaphore = utils.NewSemaphore(parallelCount)
 	return &Client{
 		url:             clientConfig.Url,
@@ -135,6 +143,7 @@ func NewClient(clientConfig *NewClientConfig) *Client {
 	}
 }
 
+// DuplicateClient used to duplicate client
 func (cli *Client) DuplicateClient() *Client {
 	dup := *cli
 	dup.client = nil
@@ -142,6 +151,7 @@ func (cli *Client) DuplicateClient() *Client {
 	return &dup
 }
 
+// ValidateLogin try to login fusion storage by secret
 func (cli *Client) ValidateLogin(ctx context.Context) error {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -188,6 +198,7 @@ func (cli *Client) ValidateLogin(ctx context.Context) error {
 	return nil
 }
 
+// Login try to login fusion storage by backend id
 func (cli *Client) Login(ctx context.Context) error {
 	var err error
 	cli.client, err = newHTTPClientByBackendID(ctx, cli.backendID)
@@ -244,6 +255,7 @@ func (cli *Client) Login(ctx context.Context) error {
 	return nil
 }
 
+// SetAccountId used to set account id of the client
 func (cli *Client) SetAccountId(ctx context.Context) error {
 	log.AddContext(ctx).Debugf("setAccountId start. account name: %s", cli.accountName)
 	if cli.accountName == "" {
@@ -266,6 +278,7 @@ func (cli *Client) SetAccountId(ctx context.Context) error {
 	return nil
 }
 
+// Logout used to log out
 func (cli *Client) Logout(ctx context.Context) {
 	defer func() {
 		cli.authToken = ""
@@ -291,6 +304,7 @@ func (cli *Client) Logout(ctx context.Context) {
 	log.AddContext(ctx).Infof("Logout %s success.", cli.url)
 }
 
+// KeepAlive used to keep connection token alive
 func (cli *Client) KeepAlive(ctx context.Context) {
 	_, err := cli.post(ctx, "/dsware/service/v1.3/sec/keepAlive", nil)
 	if err != nil {
@@ -312,11 +326,16 @@ func (cli *Client) reLoginUnlock(ctx context.Context) {
 
 func (cli *Client) doCall(ctx context.Context, method string, url string, data map[string]any) (
 	http.Header, []byte, error) {
-
 	var err error
 	var reqUrl string
 	var reqBody io.Reader
 	var respBody []byte
+
+	if cli.client == nil {
+		errMsg := "http client is nil"
+		log.AddContext(ctx).Errorf("Failed to send request method: %s, url: %s, error: %s", method, url, errMsg)
+		return nil, nil, errors.New(errMsg)
+	}
 
 	if data != nil {
 		reqBytes, err := json.Marshal(data)
@@ -334,25 +353,9 @@ func (cli *Client) doCall(ctx context.Context, method string, url string, data m
 		log.AddContext(ctx).Errorf("Construct http request error: %v", err)
 		return nil, nil, err
 	}
+	cli.setRequestHeader(ctx, req, url)
 
-	req.Header.Set("Referer", cli.url)
-	req.Header.Set("Content-Type", "application/json")
-
-	// When the non-login/logout interface is invoked, if a thread is relogin, the new token is used after the relogin
-	// is complete. This prevents the relogin interface from being invoked for multiple times.
-	if url != "/dsware/service/v1.3/sec/login" && url != "/dsware/service/v1.3/sec/logout" {
-		cli.reLoginLock(ctx)
-		if cli.authToken != "" {
-			req.Header.Set("X-Auth-Token", cli.authToken)
-		}
-		cli.reLoginUnlock(ctx)
-	} else {
-		if cli.authToken != "" {
-			req.Header.Set("X-Auth-Token", cli.authToken)
-		}
-	}
-
-	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
+	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
 		fmt.Sprintf("Request method: %s, url: %s, body: %v", method, req.URL, data))
 
 	clientSemaphore.Acquire()
@@ -372,10 +375,29 @@ func (cli *Client) doCall(ctx context.Context, method string, url string, data m
 		return nil, nil, err
 	}
 
-	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
+	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
 		fmt.Sprintf("Response method: %s, url: %s, body: %s", method, req.URL, respBody))
 
 	return resp.Header, respBody, nil
+}
+
+func (cli *Client) setRequestHeader(ctx context.Context, req *http.Request, url string) {
+	req.Header.Set("Referer", cli.url)
+	req.Header.Set("Content-Type", "application/json")
+
+	// When the non-login/logout interface is invoked, if a thread is relogin, the new token is used after the relogin
+	// is complete. This prevents the relogin interface from being invoked for multiple times.
+	if url != "/dsware/service/v1.3/sec/login" && url != "/dsware/service/v1.3/sec/logout" {
+		cli.reLoginLock(ctx)
+		if cli.authToken != "" {
+			req.Header.Set("X-Auth-Token", cli.authToken)
+		}
+		cli.reLoginUnlock(ctx)
+	} else {
+		if cli.authToken != "" {
+			req.Header.Set("X-Auth-Token", cli.authToken)
+		}
+	}
 }
 
 func (cli *Client) baseCall(ctx context.Context, method string, url string, data map[string]interface{}) (http.Header,
@@ -481,6 +503,7 @@ func (cli *Client) get(ctx context.Context,
 	return body, err
 }
 
+// Post used to send post request to storage client
 func (cli *Client) Post(ctx context.Context, url string, data map[string]interface{}) (map[string]interface{}, error) {
 	return cli.post(ctx, url, data)
 }

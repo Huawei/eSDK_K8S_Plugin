@@ -139,7 +139,7 @@ func (ctrl *BackendController) isSecretUsed(ctx context.Context, secret *coreV1.
 			return false
 		}
 
-		if secretMeta == claim.Status.SecretMeta {
+		if claim.Status != nil && secretMeta == claim.Status.SecretMeta {
 			return true
 		}
 	}

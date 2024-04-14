@@ -40,7 +40,8 @@ type key string
 const (
 	timestampFormat = "2006-01-02 15:04:05.000000"
 
-	csiRequestID key = "csi.requestid"
+	// CsiRequestID use to mark requestId for log printer
+	CsiRequestID key = "csi.requestid"
 	requestID        = "requestID"
 )
 
@@ -303,11 +304,11 @@ func (logger *loggerImpl) close() {
 
 // AddContext ensures appending context info in log
 func (logger *loggerImpl) AddContext(ctx context.Context) Logger {
-	if ctx.Value(csiRequestID) == nil {
+	if ctx.Value(CsiRequestID) == nil {
 		return logger
 	}
 	return logger.WithFields(logrus.Fields{
-		requestID: ctx.Value(csiRequestID),
+		requestID: ctx.Value(CsiRequestID),
 	})
 }
 
@@ -323,7 +324,7 @@ func EnsureGRPCContext(ctx context.Context, req interface{},
 		ctx = metadata.NewIncomingContext(ctx, md)
 	}
 
-	if reqIDs, ok := md[string(csiRequestID)]; ok && len(reqIDs) > 0 {
+	if reqIDs, ok := md[string(CsiRequestID)]; ok && len(reqIDs) > 0 {
 		requestID = reqIDs[0]
 	}
 
@@ -336,7 +337,7 @@ func EnsureGRPCContext(ctx context.Context, req interface{},
 		requestID = randomID.String()
 	}
 
-	return handler(context.WithValue(ctx, csiRequestID, requestID), req)
+	return handler(context.WithValue(ctx, CsiRequestID, requestID), req)
 }
 
 // Flush ensures to commit current content of logging stream

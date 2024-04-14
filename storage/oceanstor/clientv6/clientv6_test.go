@@ -81,7 +81,7 @@ func TestMain(m *testing.M) {
 	log.MockInitLogging(logName)
 	defer log.MockStopLogging(logName)
 
-	testClient, _ = NewClientV6(&client.NewClientConfig{
+	testClient, _ = NewClientV6(context.Background(), &client.NewClientConfig{
 		Urls:            []string{"https://192.168.125.*:8088"},
 		User:            "dev-account",
 		SecretName:      "mock-sec-name",

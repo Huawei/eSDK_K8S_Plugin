@@ -24,7 +24,7 @@ import (
 
 	"bou.ke/monkey"
 	"github.com/agiledragon/gomonkey/v2"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/smartystreets/goconvey/convey"
 
 	"huawei-csi-driver/storage/fusionstorage/client"
 	"huawei-csi-driver/storage/fusionstorage/types"
@@ -48,7 +48,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestPreCreate(t *testing.T) {
-	Convey("Normal", t, func() {
+	convey.Convey("Normal", t, func() {
 		m := gomonkey.ApplyMethod(reflect.TypeOf(testClient),
 			"GetPoolByName",
 			func(_ *client.Client, ctx context.Context, poolName string) (map[string]interface{}, error) {
@@ -61,18 +61,18 @@ func TestPreCreate(t *testing.T) {
 			"authclient": "*",
 			"name":       "mock-name",
 		})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 
-	Convey("Auth client empty", t, func() {
+	convey.Convey("Auth client empty", t, func() {
 		nas := NewNAS(testClient)
 		err := nas.preCreate(context.TODO(), map[string]interface{}{
 			"name": "mock-name",
 		})
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 
-	Convey("Name is empty", t, func() {
+	convey.Convey("Name is empty", t, func() {
 		m := gomonkey.ApplyMethod(reflect.TypeOf(testClient),
 			"GetPoolByName",
 			func(_ *client.Client, ctx context.Context, poolName string) (map[string]interface{}, error) {
@@ -84,12 +84,12 @@ func TestPreCreate(t *testing.T) {
 		err := nas.preCreate(context.TODO(), map[string]interface{}{
 			"authclient": "*",
 		})
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }
 
 func TestExpandWithNormal(t *testing.T) {
-	Convey("Normal", t, func() {
+	convey.Convey("Normal", t, func() {
 		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
 			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
@@ -116,12 +116,12 @@ func TestExpandWithNormal(t *testing.T) {
 			})
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 }
 
 func TestExpandWithFileSystemNotExit(t *testing.T) {
-	Convey("File System Not Exist", t, func() {
+	convey.Convey("File System Not Exist", t, func() {
 		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
 			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
 				return nil, nil
@@ -146,12 +146,12 @@ func TestExpandWithFileSystemNotExit(t *testing.T) {
 			})
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }
 
 func TestExpandWithQuotaIdNotExist(t *testing.T) {
-	Convey("Quota Id Not Exist", t, func() {
+	convey.Convey("Quota Id Not Exist", t, func() {
 		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
 			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
@@ -177,12 +177,12 @@ func TestExpandWithQuotaIdNotExist(t *testing.T) {
 			})
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }
 
 func TestExpandWhenHardQuotaOrSoftQuotaNotExist(t *testing.T) {
-	Convey("space_hard_quota or space_soft_quota Not Exist", t, func() {
+	convey.Convey("space_hard_quota or space_soft_quota Not Exist", t, func() {
 		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
 			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
@@ -207,12 +207,12 @@ func TestExpandWhenHardQuotaOrSoftQuotaNotExist(t *testing.T) {
 			})
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }
 
 func TestExpandWhenHardQuotaNotExist(t *testing.T) {
-	Convey("Hard Quota Not Exist", t, func() {
+	convey.Convey("Hard Quota Not Exist", t, func() {
 
 		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
 			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
@@ -239,12 +239,12 @@ func TestExpandWhenHardQuotaNotExist(t *testing.T) {
 			})
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }
 
 func TestExpandWithSoftQuotaNotExist(t *testing.T) {
-	Convey("Soft Quota Not Exist", t, func() {
+	convey.Convey("Soft Quota Not Exist", t, func() {
 
 		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
 			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
@@ -271,13 +271,13 @@ func TestExpandWithSoftQuotaNotExist(t *testing.T) {
 			})
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }
 
 func TestExpandWithUpdateQuotaFail(t *testing.T) {
 
-	Convey("Update Quota Fail", t, func() {
+	convey.Convey("Update Quota Fail", t, func() {
 		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
 			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
@@ -298,59 +298,59 @@ func TestExpandWithUpdateQuotaFail(t *testing.T) {
 			})
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }
 
 func TestCreateConvergedQoS(t *testing.T) {
-	Convey("Empty", t, func() {
+	convey.Convey("Empty", t, func() {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{}
 		taskResult := map[string]interface{}{}
 		_, err := nas.createConvergedQoS(ctx, param, taskResult)
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 
-	Convey("No fsName", t, func() {
+	convey.Convey("No fsName", t, func() {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{
 			"qos": map[string]int{"maxIOPS": 999, "maxMBPS": 999},
 		}
 		taskResult := map[string]interface{}{}
 		_, err := nas.createConvergedQoS(ctx, param, taskResult)
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }
 
 func TestPreProcessConvergedQoS(t *testing.T) {
-	Convey("Empty", t, func() {
+	convey.Convey("Empty", t, func() {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{}
 		err := nas.preProcessConvergedQoS(ctx, param)
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 
-	Convey("not json", t, func() {
+	convey.Convey("not json", t, func() {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{
 			"qos": "not json",
 		}
 		err := nas.preProcessConvergedQoS(ctx, param)
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 
-	Convey("normal", t, func() {
+	convey.Convey("normal", t, func() {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{
 			"qos": "{\"maxMBPS\":999,\"maxIOPS\":999}",
 		}
 		err := nas.preProcessConvergedQoS(ctx, param)
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 }
 
 func TestDeleteConvergedQoSByFsName(t *testing.T) {
-	Convey("GetQoSPolicyIdByFsName failed", t, func() {
+	convey.Convey("GetQoSPolicyIdByFsName failed", t, func() {
 		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.Client{}),
 			"GetQoSPolicyIdByFsName",
 			func(_ *client.Client, _ context.Context, _ string) (int, error) { return 0, errors.New("mock-error") },
@@ -359,10 +359,10 @@ func TestDeleteConvergedQoSByFsName(t *testing.T) {
 
 		nas := NewNAS(testClient)
 		err := nas.deleteConvergedQoSByFsName(ctx, "mock-fs-name")
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 
-	Convey("GetQoSPolicyIdByFsName empty", t, func() {
+	convey.Convey("GetQoSPolicyIdByFsName empty", t, func() {
 		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.Client{}),
 			"GetQoSPolicyIdByFsName",
 			func(_ *client.Client, _ context.Context, _ string) (int, error) { return types.NoQoSPolicyId, nil },
@@ -371,6 +371,6 @@ func TestDeleteConvergedQoSByFsName(t *testing.T) {
 
 		nas := NewNAS(testClient)
 		err := nas.deleteConvergedQoSByFsName(ctx, "mock-fs-name")
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 }

@@ -27,12 +27,15 @@ type Volume interface {
 	GetSize() (int64, error)
 	SetDTreeParentName(string)
 	GetDTreeParentName() string
+	GetFilesystemMode() string
+	SetFilesystemMode(string)
 }
 type volume struct {
 	name            string
 	lunWWN          string
 	size            int64
 	dTreeParentName string
+	filesystemMode  string
 }
 
 // NewVolume creates volume object for the name
@@ -80,6 +83,13 @@ func (vol *volume) SetDTreeParentName(dTreeParentName string) {
 }
 
 func (vol *volume) GetDTreeParentName() string {
-
 	return vol.dTreeParentName
+}
+
+func (vol *volume) GetFilesystemMode() string {
+	return vol.filesystemMode
+}
+
+func (vol *volume) SetFilesystemMode(filesystemMode string) {
+	vol.filesystemMode = filesystemMode
 }

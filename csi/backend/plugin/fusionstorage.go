@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strings"
 
+	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/fusionstorage/client"
 	"huawei-csi-driver/utils"
@@ -29,40 +30,47 @@ import (
 )
 
 const (
+	// CAPACITY_UNIT unit of capacity
 	CAPACITY_UNIT    int64 = 1024 * 1024
 	fileCapacityUnit int64 = 1024
+
+	// PROTOCOL_DPC protocol DPC string
+	PROTOCOL_DPC = "dpc"
 )
 
 const (
+	// FusionStorageSan Fusion storage SAN type
 	FusionStorageSan = iota
+	// FusionStorageNas Fusion storage NAS type
 	FusionStorageNas
 )
 
+// FusionStoragePlugin defines the plugin for Fusion storage
 type FusionStoragePlugin struct {
 	basePlugin
 	cli *client.Client
 }
 
-func (p *FusionStoragePlugin) init(config map[string]interface{}, keepLogin bool) error {
+func (p *FusionStoragePlugin) init(ctx context.Context, config map[string]interface{}, keepLogin bool) error {
 
-	clientConfig, err := p.getNewClientConfig(context.Background(), config)
+	clientConfig, err := p.getNewClientConfig(ctx, config)
 	if err != nil {
 		return err
 	}
 
-	cli := client.NewClient(clientConfig)
-	err = cli.Login(context.Background())
+	cli := client.NewClient(ctx, clientConfig)
+	err = cli.Login(ctx)
 	if err != nil {
 		return err
 	}
 
-	err = cli.SetAccountId(context.TODO())
+	err = cli.SetAccountId(ctx)
 	if err != nil {
-		return pkgUtils.Errorln(context.TODO(), fmt.Sprintf("setAccountId failed, error: %v", err))
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("setAccountId failed, error: %v", err))
 	}
 
 	if !keepLogin {
-		cli.Logout(context.Background())
+		cli.Logout(ctx)
 	}
 
 	p.cli = cli
@@ -99,6 +107,7 @@ func (p *FusionStoragePlugin) getParams(name string,
 	return params, nil
 }
 
+// UpdateBackendCapabilities is used to update backend capabilities
 func (p *FusionStoragePlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
 	capabilities := map[string]interface{}{
 		"SupportThin":  true,
@@ -109,28 +118,19 @@ func (p *FusionStoragePlugin) UpdateBackendCapabilities() (map[string]interface{
 	return capabilities, nil, nil
 }
 
-func (p *FusionStoragePlugin) updatePoolCapabilities(poolNames []string, storageType int) (map[string]interface{}, error) {
+func (p *FusionStoragePlugin) updatePoolCapabilities(ctx context.Context, poolNames []string,
+	storageType int) (map[string]interface{}, error) {
 	// To keep connection token alive
-	p.cli.KeepAlive(context.Background())
+	p.cli.KeepAlive(ctx)
 
-	pools, err := p.cli.GetAllPools(context.Background())
+	pools, err := p.cli.GetAllPools(ctx)
 	if err != nil {
-		log.Errorf("Get fusionstorage pools error: %v", err)
+		log.AddContext(ctx).Errorf("Get fusionstorage pools error: %v", err)
 		return nil, err
 	}
-	log.Debugf("Get pools: %v", pools)
-
-	var accounts []string
-	if storageType == FusionStorageNas {
-		accounts, err = p.cli.GetAllAccounts(context.Background())
-		if err != nil {
-			log.Errorf("Get accounts error: %v", err)
-			return nil, err
-		}
-	}
+	log.AddContext(ctx).Debugf("Get pools: %v", pools)
 
 	capabilities := make(map[string]interface{})
-
 	for _, name := range poolNames {
 		if i, exist := pools[name]; exist {
 			pool, ok := i.(map[string]interface{})
@@ -140,11 +140,10 @@ func (p *FusionStoragePlugin) updatePoolCapabilities(poolNames []string, storage
 
 			totalCapacity := int64(pool["totalCapacity"].(float64))
 			usedCapacity := int64(pool["usedCapacity"].(float64))
-			freeCapacity := (totalCapacity - usedCapacity) * CAPACITY_UNIT
-
-			capability := map[string]interface{}{"FreeCapacity": freeCapacity}
-			if storageType == FusionStorageNas {
-				capability["Accounts"] = accounts
+			capability := map[string]interface{}{
+				string(xuanwuv1.FreeCapacity):  (totalCapacity - usedCapacity) * CAPACITY_UNIT,
+				string(xuanwuv1.TotalCapacity): totalCapacity * CAPACITY_UNIT,
+				string(xuanwuv1.UsedCapacity):  usedCapacity * CAPACITY_UNIT,
 			}
 			capabilities[name] = capability
 		}

@@ -1,21 +1,52 @@
+/*
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+// Package types defines converged qoS request params
 package types
 
 const (
+	// MaxIopsOfConvergedQoS defines max iops of converged qos
 	MaxIopsOfConvergedQoS = 1073741824000
+
+	// MaxMbpsOfConvergedQoS defines max mbps of converged qos
 	MaxMbpsOfConvergedQoS = 1073741824
 
+	// QosScaleNamespace defines namespace scale of qos
 	QosScaleNamespace = 0
-	QosScaleClient    = 1
-	QosScaleAccount   = 2
 
+	// QosScaleClient defines client scale of qos
+	QosScaleClient = 1
+
+	// QosScaleAccount defines account scale of qos
+	QosScaleAccount = 2
+
+	// QosModeManual defines manual mode of qos
 	QosModeManual = 3
 
+	// NoQoSPolicyId defines qos policy id which is not found
 	NoQoSPolicyId = -1
 
+	// DefaultAccountName defines default account name
 	DefaultAccountName = "system"
-	DefaultAccountId   = 0
+
+	// DefaultAccountId defines default account id
+	DefaultAccountId = 0
 )
 
+// CreateConvergedQoSReq used to CreateConvergedQoS request
 type CreateConvergedQoSReq struct {
 	// (Mandatory) Upper limit control dimension.
 	// The value can be:

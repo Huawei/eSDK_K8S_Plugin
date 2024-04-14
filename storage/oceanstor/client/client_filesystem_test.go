@@ -23,11 +23,11 @@ import (
 	"testing"
 
 	"bou.ke/monkey"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/smartystreets/goconvey/convey"
 )
 
 func TestAllowNfsShareAccess(t *testing.T) {
-	Convey("Normal", t, func() {
+	convey.Convey("Normal", t, func() {
 		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
 			func(_ *BaseClient, _ context.Context, _ string, _ map[string]interface{}) (Response, error) {
 				return Response{
@@ -51,10 +51,10 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash: 1,
 			VStoreID:   "0",
 		})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 
-	Convey("Error code is not zero", t, func() {
+	convey.Convey("Error code is not zero", t, func() {
 		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
 			func(_ *BaseClient, _ context.Context, _ string, _ map[string]interface{}) (Response, error) {
 				return Response{
@@ -78,10 +78,10 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash: 1,
 			VStoreID:   "0",
 		})
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 
-	Convey("Post quest return error", t, func() {
+	convey.Convey("Post quest return error", t, func() {
 		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
 			func(_ *BaseClient, _ context.Context, _ string, _ map[string]interface{}) (Response, error) {
 				return Response{}, errors.New("mock err")
@@ -97,6 +97,6 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash: 1,
 			VStoreID:   "0",
 		})
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }

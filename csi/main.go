@@ -30,10 +30,11 @@ import (
 	"google.golang.org/grpc"
 
 	"huawei-csi-driver/connector/host"
-	connutils "huawei-csi-driver/connector/utils"
+	connUtils "huawei-csi-driver/connector/utils"
 	"huawei-csi-driver/connector/utils/lock"
 	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/backend"
+	"huawei-csi-driver/csi/backend/handler"
+	"huawei-csi-driver/csi/backend/job"
 	"huawei-csi-driver/csi/driver"
 	"huawei-csi-driver/csi/provider"
 	"huawei-csi-driver/lib/drcsi"
@@ -49,7 +50,7 @@ const (
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 
-	csiVersion      = "4.2.1"
+	csiVersion      = "4.3.0"
 	endpointDirPerm = 0755
 )
 
@@ -58,29 +59,14 @@ var (
 	secret CSISecret
 )
 
+// CSIConfig defines csi config
 type CSIConfig struct {
 	Backends []map[string]interface{} `json:"backends"`
 }
 
+// CSISecret defines csi secret
 type CSISecret struct {
 	Secrets map[string]interface{} `json:"secrets"`
-}
-
-func updateBackendCapabilities(ctx context.Context) {
-	err := backend.RegisterAllBackend(ctx)
-	if err != nil {
-		log.AddContext(ctx).Warningf("RegisterAllBackend failed, error: %v", err)
-	}
-
-	err = backend.SyncUpdateCapabilities()
-	if err != nil {
-		log.AddContext(ctx).Warningf("Update backend capabilities error: %v", err)
-	}
-
-	ticker := time.NewTicker(time.Second * time.Duration(app.GetGlobalConfig().BackendUpdateInterval))
-	for range ticker.C {
-		backend.AsyncUpdateCapabilities()
-	}
 }
 
 func getLogFileName() string {
@@ -98,8 +84,8 @@ func ensureRuntimePanicLogging(ctx context.Context) {
 	log.Close()
 }
 
-func releaseStorageClient() {
-	backend.LogoutBackend()
+func releaseStorageClient(ctx context.Context) {
+	handler.NewCacheWrapper().Clear(ctx)
 }
 
 func runCSIController(ctx context.Context) {
@@ -110,14 +96,14 @@ func runCSIController(ctx context.Context) {
 	// Clean up before exiting
 	go exitClean(true)
 
-	// Refresh backend and pool
-	go updateBackendCapabilities(ctx)
+	// Refresh backend cache
+	go job.RunSyncBackendTaskInBackground()
 
 	// register the kahu community DRCSI service
 	go registerDRCSIServer()
 
-	// init lock
-	go labelLock.InitCmLock()
+	// create and refresh lock for rt
+	go labelLock.InitCmLock(ctx, labelLock.RTLockConfigMap)
 
 	// register the K8S community CSI service
 	registerCSIServer()
@@ -259,7 +245,7 @@ func checkMultiPathService() {
 		notify.Stop("Get required multipath services failed. Error: %v", err)
 	}
 
-	err = connutils.VerifyMultipathService(requiredServices,
+	err = connUtils.VerifyMultipathService(requiredServices,
 		utils.GetForbiddenMultipath(context.Background(), multipathConfig, config.Backends))
 	if err != nil {
 		notify.Stop("Check multipath service failed. error:%v", err)
@@ -308,7 +294,7 @@ func exitClean(isController bool) {
 	case <-stopChan:
 		log.Infoln("Receive stop event")
 		clean(isController)
-		os.Exit(-1)
+		return
 	}
 }
 
@@ -318,8 +304,7 @@ func clean(isController bool) {
 	ensureRuntimePanicLogging(ctx)
 	if isController {
 		// release client
-		releaseStorageClient()
-		labelLock.ClearCmLock(ctx, labelLock.RTLockConfigMap)
+		releaseStorageClient(ctx)
 		app.GetGlobalConfig().K8sUtils.Deactivate()
 	} else {
 		// clean version file

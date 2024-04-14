@@ -21,16 +21,29 @@ import (
 	"errors"
 	"strings"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
+	coreV1 "k8s.io/api/core/v1"
+	k8sError "k8s.io/apimachinery/pkg/api/errors"
+	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	labelLock "huawei-csi-driver/pkg/utils/label_lock"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
-	k8sError "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+type deleteTopologiesLabelParam struct {
+	topo       *xuanwuV1.ResourceTopology
+	pods       []coreV1.Pod
+	pvName     string
+	targetPath string
+	podName    string
+	namespace  string
+	volumeName string
+	topoName   string
+}
 
 func nodeAddLabel(ctx context.Context, volumeID, targetPath string) {
 	backendName, _ := utils.SplitVolumeId(volumeID)
@@ -40,6 +53,7 @@ func nodeAddLabel(ctx context.Context, volumeID, targetPath string) {
 	if err != nil {
 		log.AddContext(ctx).Errorf("IsBackendCapabilitySupport failed, backendName: %v, label: %v, err: %v",
 			backendName, supportLabel, err)
+		return
 	}
 	if supportLabel {
 		if err := addPodLabel(ctx, volumeID, targetPath); err != nil {
@@ -56,6 +70,7 @@ func nodeDeleteLabel(ctx context.Context, volumeID, targetPath string) {
 	if err != nil {
 		log.AddContext(ctx).Errorf("IsBackendCapabilitySupport failed, backendName: %v, label: %v, err: %v",
 			backendName, supportLabel, err)
+		return
 	}
 	if supportLabel {
 		if err := deletePodLabel(ctx, volumeID, targetPath); err != nil {
@@ -67,7 +82,7 @@ func nodeDeleteLabel(ctx context.Context, volumeID, targetPath string) {
 func addPodLabel(ctx context.Context, volumeID, targetPath string) error {
 	_, volumeName := utils.SplitVolumeId(volumeID)
 	topoName := pkgUtils.GetTopoName(volumeName)
-	podName, namespace, sc, pvName, err := getTargetPathPodRelateInfo(ctx, targetPath)
+	_, podName, namespace, sc, pvName, err := getTargetPathPodRelateInfo(ctx, targetPath)
 	if err != nil {
 		log.AddContext(ctx).Errorf("get podName failed, pvName: %v targetPath: %v err: %v",
 			pvName, targetPath, err)
@@ -101,12 +116,12 @@ func addTopologiesLabel(ctx context.Context, volumeID, targetPath, namespace, po
 	_, volumeName := utils.SplitVolumeId(volumeID)
 	topoName := pkgUtils.GetTopoName(volumeName)
 	topo, err := app.GetGlobalConfig().BackendUtils.XuanwuV1().ResourceTopologies().Get(ctx,
-		topoName, metav1.GetOptions{})
+		topoName, metaV1.GetOptions{})
 	log.AddContext(ctx).Debugf("get topo info, topo: %+v, err: %v, notFound: %v", topo,
 		err, k8sError.IsNotFound(err))
 	if k8sError.IsNotFound(err) {
 		_, err = app.GetGlobalConfig().BackendUtils.XuanwuV1().ResourceTopologies().Create(ctx,
-			formatTopologies(volumeID, namespace, podName, pvName, topoName), metav1.CreateOptions{})
+			formatTopologies(volumeID, namespace, podName, pvName, topoName), metaV1.CreateOptions{})
 		if err != nil {
 			log.AddContext(ctx).Errorf("create label failed, data: %+v volumeName: %v targetPath: %v",
 				topo, volumeName, targetPath)
@@ -121,12 +136,14 @@ func addTopologiesLabel(ctx context.Context, volumeID, targetPath, namespace, po
 		return err
 	}
 
+	log.AddContext(ctx).Debugf("before add rt: %s podName: %s len: %v", topoName, podName, len(topo.Spec.Tags))
 	// if pvc label not exist then add & add new pod label
 	addPodTopoItem(&topo.Spec.Tags, podName, namespace, volumeName)
+	log.AddContext(ctx).Debugf("after add rt: %s podName: %s len: %v", topoName, podName, len(topo.Spec.Tags))
 
 	// update topo
 	_, err = app.GetGlobalConfig().BackendUtils.XuanwuV1().ResourceTopologies().Update(ctx,
-		topo, metav1.UpdateOptions{})
+		topo, metaV1.UpdateOptions{})
 	if err != nil {
 		log.AddContext(ctx).Errorf("node add label failed, data:%+v, volumeName: %v targetPath: %v err: %v",
 			topo, volumeName, targetPath, err)
@@ -138,73 +155,68 @@ func addTopologiesLabel(ctx context.Context, volumeID, targetPath, namespace, po
 	return nil
 }
 
-func formatTopologies(volumeID, namespace, podName, pvName, topoName string) *xuanwuv1.ResourceTopology {
-	topologySpec := xuanwuv1.ResourceTopologySpec{
+func formatTopologies(volumeID, namespace, podName, pvName, topoName string) *xuanwuV1.ResourceTopology {
+	topologySpec := xuanwuV1.ResourceTopologySpec{
 		Provisioner:  constants.DefaultTopoDriverName,
 		VolumeHandle: volumeID,
-		Tags: []xuanwuv1.Tag{
+		Tags: []xuanwuV1.Tag{
 			{
-				ResourceInfo: xuanwuv1.ResourceInfo{
-					TypeMeta: metav1.TypeMeta{Kind: constants.PVKind, APIVersion: constants.KubernetesV1},
+				ResourceInfo: xuanwuV1.ResourceInfo{
+					TypeMeta: metaV1.TypeMeta{Kind: constants.PVKind, APIVersion: constants.KubernetesV1},
 					Name:     pvName,
 				},
 			},
 			{
-				ResourceInfo: xuanwuv1.ResourceInfo{
-					TypeMeta:  metav1.TypeMeta{Kind: constants.PodKind, APIVersion: constants.KubernetesV1},
+				ResourceInfo: xuanwuV1.ResourceInfo{
+					TypeMeta:  metaV1.TypeMeta{Kind: constants.PodKind, APIVersion: constants.KubernetesV1},
 					Name:      podName,
 					Namespace: namespace,
 				},
 			},
 		},
 	}
-	return &xuanwuv1.ResourceTopology{
-		TypeMeta:   metav1.TypeMeta{Kind: constants.TopologyKind, APIVersion: constants.XuanwuV1},
-		ObjectMeta: metav1.ObjectMeta{Name: topoName},
+	return &xuanwuV1.ResourceTopology{
+		TypeMeta:   metaV1.TypeMeta{Kind: constants.TopologyKind, APIVersion: constants.XuanwuV1},
+		ObjectMeta: metaV1.ObjectMeta{Name: topoName},
 		Spec:       topologySpec,
 	}
 }
 
-func addPodTopoItem(tags *[]xuanwuv1.Tag, podName, namespace, volumeName string) {
+func addPodTopoItem(tags *[]xuanwuV1.Tag, podName, namespace, volumeName string) {
 	// if pvc label not exist then add
 	var existPvLabel bool
+	currentPodMap := make(map[string]bool)
 	for _, tag := range *tags {
+		currentPodMap[tag.Name] = true
 		if tag.Kind == constants.PVKind {
 			existPvLabel = true
-			break
 		}
 	}
 	if !existPvLabel {
-		*tags = append(*tags, xuanwuv1.Tag{
-			ResourceInfo: xuanwuv1.ResourceInfo{
-				TypeMeta: metav1.TypeMeta{Kind: constants.PVKind, APIVersion: constants.KubernetesV1},
+		*tags = append(*tags, xuanwuV1.Tag{
+			ResourceInfo: xuanwuV1.ResourceInfo{
+				TypeMeta: metaV1.TypeMeta{Kind: constants.PVKind, APIVersion: constants.KubernetesV1},
 				Name:     volumeName,
 			},
 		})
 	}
 
 	// add pod label
-	*tags = append(*tags, xuanwuv1.Tag{
-		ResourceInfo: xuanwuv1.ResourceInfo{
-			TypeMeta:  metav1.TypeMeta{Kind: constants.PodKind, APIVersion: constants.KubernetesV1},
-			Name:      podName,
-			Namespace: namespace,
-		},
-	})
+	if _, ok := currentPodMap[podName]; !ok {
+		*tags = append(*tags, xuanwuV1.Tag{
+			ResourceInfo: xuanwuV1.ResourceInfo{
+				TypeMeta:  metaV1.TypeMeta{Kind: constants.PodKind, APIVersion: constants.KubernetesV1},
+				Name:      podName,
+				Namespace: namespace,
+			},
+		})
+	}
 }
 
 func deletePodLabel(ctx context.Context, volumeID, targetPath string) error {
+	var err error
 	_, volumeName := utils.SplitVolumeId(volumeID)
 	topoName := pkgUtils.GetTopoName(volumeName)
-	podName, namespace, sc, pvName, err := getTargetPathPodRelateInfo(ctx, targetPath)
-	if err != nil {
-		log.AddContext(ctx).Errorf("get targetPath pvRelateInfo failed, targetPath: %v, err: %v", targetPath, err)
-		return err
-	}
-	if sc == "" {
-		log.AddContext(ctx).Infof("deleteLabel static pv, volumeID: %v, targetPath: %v", volumeID, targetPath)
-		return nil
-	}
 
 	// lock for rt name
 	if err = labelLock.AcquireCmLock(ctx, labelLock.RTLockConfigMap, topoName); err != nil {
@@ -217,78 +229,122 @@ func deletePodLabel(ctx context.Context, volumeID, targetPath string) error {
 		}
 	}(ctx, topoName)
 
-	return deleteTopologiesLabel(ctx, pvName, targetPath, podName, namespace, volumeName)
+	var topo *xuanwuV1.ResourceTopology
+	var flag bool
+	if topo, flag, err = checkRTPodDeletedAndGet(ctx, topoName); err != nil {
+		log.AddContext(ctx).Infof("check pod tag has been deleted failed, topoName: %s, err: %v, topoName, err")
+		return err
+	}
+	if flag {
+		log.AddContext(ctx).Infof("topo pod tag has been deleted, topoName: %s", topoName)
+		return nil
+	}
+
+	pods, podName, namespace, sc, pvName, err := getTargetPathPodRelateInfo(ctx, targetPath)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get targetPath pvRelateInfo failed, targetPath: %v, err: %v", targetPath, err)
+		return err
+	}
+	if sc == "" {
+		log.AddContext(ctx).Infof("deleteLabel static pv, volumeID: %v, targetPath: %v", volumeID, targetPath)
+		return nil
+	}
+
+	return deleteTopologiesLabel(ctx, deleteTopologiesLabelParam{
+		topo:       topo,
+		pods:       pods,
+		pvName:     pvName,
+		targetPath: targetPath,
+		podName:    podName,
+		namespace:  namespace,
+		volumeName: volumeName,
+		topoName:   topoName,
+	})
 }
 
-func deleteTopologiesLabel(ctx context.Context, pvName, targetPath, podName, namespace, volumeName string) error {
-	topoName := pkgUtils.GetTopoName(volumeName)
-
-	// get topo label
+func checkRTPodDeletedAndGet(ctx context.Context, topoName string) (*xuanwuV1.ResourceTopology, bool, error) {
 	topo, err := app.GetGlobalConfig().BackendUtils.XuanwuV1().ResourceTopologies().Get(ctx, topoName,
-		metav1.GetOptions{})
+		metaV1.GetOptions{})
 	if k8sError.IsNotFound(err) {
 		log.AddContext(ctx).Infof("node delete label success, topo not found, "+
-			"data: %+v pvName: %v targetPath: %v", topo, pvName, targetPath)
-		return nil
+			"data: %+v topoName: %s", topo, topoName)
+		return topo, false, err
 	}
 	if err != nil {
 		log.AddContext(ctx).Errorf("get topo failed, topoName: %v, err: %v", topoName, err)
-		return err
+		return topo, false, err
 	}
 	if topo == nil {
 		log.AddContext(ctx).Errorf("get nil topo, topoName: %v", topoName)
-		return errors.New("topo is nil")
+		return topo, false, err
 	}
 
+	for _, item := range topo.Spec.Tags {
+		if item.Kind == constants.PodKind {
+			return topo, false, nil
+		}
+	}
+	return topo, true, nil
+}
+
+func deleteTopologiesLabel(ctx context.Context, param deleteTopologiesLabelParam) error {
 	// filter pod
-	topo.Spec.Tags = filterDeleteTopoTag(ctx, topo.Spec.Tags, podName, namespace)
+	log.AddContext(ctx).Debugf("before delete rt: %s podName: %s len: %v", param.topoName, param.podName,
+		len(param.topo.Spec.Tags))
+	param.topo.Spec.Tags = filterDeleteTopoTag(param)
+	log.AddContext(ctx).Debugf("after delete rt: %s podName: %s len: %v", param.topoName, param.podName,
+		len(param.topo.Spec.Tags))
 
 	// update topo
-	_, err = app.GetGlobalConfig().BackendUtils.XuanwuV1().ResourceTopologies().Update(ctx,
-		topo, metav1.UpdateOptions{})
+	_, err := app.GetGlobalConfig().BackendUtils.XuanwuV1().ResourceTopologies().Update(ctx,
+		param.topo, metaV1.UpdateOptions{})
 	if err != nil {
-		log.AddContext(ctx).Errorf("node add label failed, data:%+v, volumeName: %v targetPath: %v err: %v",
-			topo, volumeName, targetPath, err)
+		log.AddContext(ctx).Errorf("node delete label failed, data:%+v, volumeName: %v targetPath: %v err: %v",
+			param.topo, param.volumeName, param.targetPath, err)
 		return err
 	}
 
 	log.AddContext(ctx).Infof("node delete label success, data: %+v volumeName: %v targetPath: %v",
-		topo, volumeName, targetPath)
+		param.topo, param.volumeName, param.targetPath)
 	return nil
 }
 
-func filterDeleteTopoTag(ctx context.Context, tags []xuanwuv1.Tag, currentPodName, namespace string) []xuanwuv1.Tag {
-	var newTags []xuanwuv1.Tag
-	for _, tag := range tags {
+func filterDeleteTopoTag(param deleteTopologiesLabelParam) []xuanwuV1.Tag {
+	var newTags []xuanwuV1.Tag
+	var containsPod = func(tag xuanwuV1.Tag, podItems []coreV1.Pod) bool {
+		for _, item := range podItems {
+			if tag.Name == item.Name && tag.Namespace == item.Namespace {
+				return true
+			}
+		}
+		return false
+	}
+	for _, tag := range param.topo.Spec.Tags {
 		if tag.Kind != constants.PodKind {
 			newTags = append(newTags, tag)
 			continue
 		}
 
-		if tag.Kind == constants.PodKind && tag.Name == currentPodName && tag.Namespace == namespace {
+		if tag.Kind == constants.PodKind && tag.Name == param.podName && tag.Namespace == param.namespace {
 			continue
 		}
 
-		_, err := app.GetGlobalConfig().K8sUtils.GetPod(ctx, tag.Namespace, tag.Name)
-		if k8sError.IsNotFound(err) {
-			continue
+		if containsPod(tag, param.pods) {
+			newTags = append(newTags, tag)
 		}
-		if err != nil {
-			log.AddContext(ctx).Errorf("get pod failed, podInfo: %v, err: %v", tag, err)
-		}
-
-		newTags = append(newTags, tag)
 	}
+
 	return newTags
 }
 
 // getTargetPathPodRelateInfo get podName nameSpace sc volumeName
-func getTargetPathPodRelateInfo(ctx context.Context, targetPath string) (string, string, string, string, error) {
+func getTargetPathPodRelateInfo(ctx context.Context, targetPath string) ([]coreV1.Pod,
+	string, string, string, string, error) {
 	k8sAPI := app.GetGlobalConfig().K8sUtils
 
 	targetPathArr := strings.Split(targetPath, "/")
 	if len(targetPathArr) < 2 {
-		return "", "", "", "", pkgUtils.Errorf(ctx, "targetPath: %s is invalid", targetPath)
+		return nil, "", "", "", "", pkgUtils.Errorf(ctx, "targetPath: %s is invalid", targetPath)
 	}
 	volumeName := targetPathArr[len(targetPathArr)-2]
 
@@ -298,31 +354,31 @@ func getTargetPathPodRelateInfo(ctx context.Context, targetPath string) (string,
 	pv, err := k8sAPI.GetPVByName(ctx, volumeName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("get pv failed, pvName: %v, err: %v", volumeName, err)
-		return "", "", "", volumeName, err
+		return nil, "", "", "", volumeName, err
 	}
 	if pv == nil {
 		log.AddContext(ctx).Errorf("get nil pv, pvName: %v", volumeName)
-		return "", "", "", "", errors.New("pv is nil")
+		return nil, "", "", "", "", errors.New("pv is nil")
 	}
 	if pv.Spec.ClaimRef == nil {
 		log.AddContext(ctx).Errorf("get nil pv.Spec.ClaimRef, pvName: %v", volumeName)
-		return "", "", "", "", errors.New("pv.Spec.ClaimRef is nil")
+		return nil, "", "", "", "", errors.New("pv.Spec.ClaimRef is nil")
 	}
 
 	// get all pod in namespace
 	pods, err := k8sAPI.ListPods(ctx, pv.Spec.ClaimRef.Namespace)
 	if err != nil {
 		log.AddContext(ctx).Errorf("list pods failed, namespace: %v, err: %v", pv.Spec.ClaimRef.Namespace, err)
-		return "", "", "", "", err
+		return nil, "", "", "", "", err
 	}
 
 	// get target pod name
 	log.AddContext(ctx).Debugf("getPodInfo podList: %+v, targetPath: %v", pods.Items, targetPath)
 	for _, pod := range pods.Items {
 		if strings.Contains(targetPath, string(pod.UID)) {
-			return pod.Name, pv.Spec.ClaimRef.Namespace, pv.Spec.StorageClassName, volumeName, nil
+			return pods.Items, pod.Name, pv.Spec.ClaimRef.Namespace, pv.Spec.StorageClassName, volumeName, nil
 		}
 	}
 
-	return "", pv.Spec.ClaimRef.Namespace, pv.Spec.StorageClassName, volumeName, nil
+	return pods.Items, "", pv.Spec.ClaimRef.Namespace, pv.Spec.StorageClassName, volumeName, nil
 }

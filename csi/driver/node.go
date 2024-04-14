@@ -36,6 +36,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// NodeStageVolume used to stage volume
 func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
@@ -48,10 +49,6 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		log.AddContext(ctx).Errorf("Stage init manager fail, backend: %s, error: %v", backendName, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	if _, isDTree := manager.GetDTreeVolume(ctx); isDTree {
-		log.AddContext(ctx).Infof("Stage Dtree Volume, volumeID: %s", volumeId)
-		return &csi.NodeStageVolumeResponse{}, nil
-	}
 
 	err = manager.StageVolume(ctx, req)
 	if err != nil {
@@ -63,6 +60,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
+// NodeUnstageVolume used to unstage volume
 func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	volumeId := req.GetVolumeId()
 	targetPath := req.GetStagingTargetPath()
@@ -76,11 +74,6 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if _, isDTree := manager.GetDTreeVolume(ctx); isDTree {
-		log.AddContext(ctx).Infof("Unstage Dtree Volume, volumeID: %s", volumeId)
-		return &csi.NodeUnstageVolumeResponse{}, nil
-	}
-
 	err = manager.UnStageVolume(ctx, req)
 	if err != nil {
 		log.AddContext(ctx).Errorf("UnStage volume %s error: %v", volName, err)
@@ -91,6 +84,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
+// NodePublishVolume used to node publish volume
 func (d *Driver) NodePublishVolume(ctx context.Context,
 	req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	volumeId := req.GetVolumeId()
@@ -109,12 +103,13 @@ func (d *Driver) NodePublishVolume(ctx context.Context,
 		}
 	}
 
-	go nodeAddLabel(utils.NewContext(), volumeId, targetPath)
+	go nodeAddLabel(utils.NewContextWithRequestID(), volumeId, targetPath)
 
 	log.AddContext(ctx).Infof("Volume %s is node published from %s", volumeId, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
+// NodeUnpublishVolume used to node unpublish volume
 func (d *Driver) NodeUnpublishVolume(ctx context.Context,
 	req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 
@@ -122,19 +117,8 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context,
 	targetPath := req.GetTargetPath()
 
 	log.AddContext(ctx).Infof("Start to node unpublish volume %s from %s", volumeId, targetPath)
-	symLink, err := utils.IsPathSymlinkWithTimeout(targetPath, 10*time.Second)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Failed to Access path %s, error: %v", targetPath, err)
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	if symLink {
-		log.AddContext(ctx).Infof("Removing the symlink [%s]", targetPath)
-		err := utils.RemoveSymlink(ctx, targetPath)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Failed to remove symlink for target path [%v]", targetPath)
-			return nil, err
-		}
-	} else {
+
+	if !strings.Contains(targetPath, app.GetGlobalConfig().KubeletVolumeDevicesDirName) {
 		log.AddContext(ctx).Infof("Unmounting the targetPath [%s]", targetPath)
 		mounted, err := connector.MountPathIsExist(ctx, targetPath)
 		if err != nil {
@@ -149,14 +133,29 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context,
 				return nil, err
 			}
 		}
+	} else {
+		symLink, err := utils.IsPathSymlinkWithTimeout(targetPath, 10*time.Second)
+		if err != nil {
+			log.AddContext(ctx).Errorf("Failed to Access path %s, error: %v", targetPath, err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if symLink {
+			log.AddContext(ctx).Infof("Removing the symlink [%s]", targetPath)
+			err := utils.RemoveSymlink(ctx, targetPath)
+			if err != nil {
+				log.AddContext(ctx).Errorf("Failed to remove symlink for target path [%v]", targetPath)
+				return nil, err
+			}
+		}
 	}
 
-	go nodeDeleteLabel(utils.NewContext(), volumeId, targetPath)
+	go nodeDeleteLabel(utils.NewContextWithRequestID(), volumeId, targetPath)
 
 	log.AddContext(ctx).Infof("Volume %s is node unpublished from %s", volumeId, targetPath)
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
+// NodeGetInfo used to get node info
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	hostname, err := utils.GetHostName(ctx)
 	if err != nil {
@@ -198,6 +197,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 	}, nil
 }
 
+// NodeGetCapabilities used to get node capabilities
 func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: []*csi.NodeServiceCapability{
@@ -226,6 +226,7 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 	}, nil
 }
 
+// NodeGetVolumeStats used to get node volume status
 func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -309,6 +310,7 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 	return response, nil
 }
 
+// NodeExpandVolume used to node expand volume
 func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (
 	*csi.NodeExpandVolumeResponse, error) {
 

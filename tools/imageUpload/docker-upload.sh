@@ -47,13 +47,15 @@ function verifySupported() {
 function tryLogin() {
   ip=$1
 
+  password=$(echo ${PASSWORD} | sed 's/[^0-9a-zA-Z]/\\&/g')
+
   /usr/bin/expect <<EOD
 set result failed
 set timeout -1
 spawn ssh -oStrictHostKeyChecking=no -oCheckHostIP=no $USERNAME@$ip "echo successful"
 expect {
   "yes/no" {send "yes\n"; exp_continue}
-  "*assword" {send "${PASSWORD}\n";exp_continue}
+  "*assword" {send "${password}\n";exp_continue}
   "successful" {
     set ::result successful
   }

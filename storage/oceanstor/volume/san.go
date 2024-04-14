@@ -32,10 +32,12 @@ import (
 	"huawei-csi-driver/utils/taskflow"
 )
 
+// SAN provides base san client
 type SAN struct {
 	Base
 }
 
+// NewSAN inits a new san client
 func NewSAN(cli, metroRemoteCli, replicaRemoteCli client.BaseClientInterface, product string) *SAN {
 	return &SAN{
 		Base: Base{
@@ -75,6 +77,7 @@ func (p *SAN) preCreate(ctx context.Context, params map[string]interface{}) erro
 	return nil
 }
 
+// Create creates lun volume
 func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.Volume, error) {
 	err := p.preCreate(ctx, params)
 	if err != nil {
@@ -118,6 +121,7 @@ func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.
 	return volObj, nil
 }
 
+// Query queries volume by name
 func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
 	lun, err := p.cli.GetLunByName(ctx, name)
 	if err != nil {
@@ -141,6 +145,7 @@ func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
 	return volObj, nil
 }
 
+// Delete deletes volume by name
 func (p *SAN) Delete(ctx context.Context, name string) error {
 	lunName := p.cli.MakeLunName(name)
 	lun, err := p.cli.GetLunByName(ctx, lunName)
@@ -193,6 +198,7 @@ func (p *SAN) Delete(ctx context.Context, name string) error {
 	return err
 }
 
+// Expand expands volume size
 func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, error) {
 	lunName := p.cli.MakeLunName(name)
 	lun, err := p.cli.GetLunByName(ctx, lunName)
@@ -1491,6 +1497,7 @@ func (p *SAN) expandLocalLun(ctx context.Context,
 	return nil, nil
 }
 
+// CreateSnapshot creates lun snapshot
 func (p *SAN) CreateSnapshot(ctx context.Context,
 	lunName, snapshotName string) (map[string]interface{}, error) {
 	lun, err := p.cli.GetLunByName(ctx, lunName)
@@ -1553,6 +1560,7 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 	return p.getSnapshotReturnInfo(snapshot, snapshotSize), nil
 }
 
+// DeleteSnapshot deletes lun snapshot
 func (p *SAN) DeleteSnapshot(ctx context.Context, snapshotName string) error {
 	snapshot, err := p.cli.GetLunSnapshotByName(ctx, snapshotName)
 	if err != nil {

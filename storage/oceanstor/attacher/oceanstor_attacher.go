@@ -25,12 +25,14 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// OceanStorAttacher implements interface AttacherPlugin
 type OceanStorAttacher struct {
 	Attacher
 }
 
 const (
-	MULTIPATHTYPE_DEFAULT = "0"
+	// MultiPathTypeDefault defines default multi path type
+	MultiPathTypeDefault = "0"
 )
 
 func newOceanStorAttacher(
@@ -59,7 +61,7 @@ func (p *OceanStorAttacher) needUpdateInitiatorAlua(initiator map[string]interfa
 
 	if multiPathType != initiator["MULTIPATHTYPE"] {
 		return true
-	} else if initiator["MULTIPATHTYPE"] == MULTIPATHTYPE_DEFAULT {
+	} else if initiator["MULTIPATHTYPE"] == MultiPathTypeDefault {
 		return false
 	}
 
@@ -125,6 +127,7 @@ func (p *OceanStorAttacher) attachRoCE(ctx context.Context, hostID string, param
 	return err
 }
 
+// ControllerAttach attaches volume and maps lun to host
 func (p *OceanStorAttacher) ControllerAttach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (

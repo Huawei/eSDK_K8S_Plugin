@@ -37,7 +37,7 @@ func GetTopoName(pvName string) string {
 
 // CreatePVLabel create label when create pvc
 var CreatePVLabel = func(pvName, volumeId string) {
-	ctx := utils.NewContext()
+	ctx := utils.NewContextWithRequestID()
 	backendName, _ := utils.SplitVolumeId(volumeId)
 	backendName = MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backendName)
 
@@ -53,7 +53,7 @@ var CreatePVLabel = func(pvName, volumeId string) {
 
 // CreateLabel used to create ResourceTopology resource
 var CreateLabel = func(pvName, volumeId string) {
-	ctx := utils.NewContext()
+	ctx := utils.NewContextWithRequestID()
 	var err error
 	_, volumeName := utils.SplitVolumeId(volumeId)
 	topologyName := GetTopoName(volumeName)
@@ -88,7 +88,7 @@ var CreateLabel = func(pvName, volumeId string) {
 
 // DeletePVLabel delete label when delete pvc
 var DeletePVLabel = func(volumeId string) {
-	ctx := utils.NewContext()
+	ctx := utils.NewContextWithRequestID()
 	backendName, volName := utils.SplitVolumeId(volumeId)
 
 	backendName = MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backendName)

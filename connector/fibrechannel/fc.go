@@ -24,6 +24,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// FibreChannel implements the Connector interface for FC protocol
 type FibreChannel struct {
 }
 
@@ -31,6 +32,10 @@ func init() {
 	connector.RegisterConnector(connector.FCDriver, &FibreChannel{})
 }
 
+// ConnectVolume to mount the source to target path, the source path can be block or nfs
+// Example:
+//    mount /dev/sdb /<target-path>
+//    mount <source-path> /<target-path>
 func (fc *FibreChannel) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
 	log.AddContext(ctx).Infof("FC Start to connect volume ==> connect info: %v", conn)
 	tgtLunWWN, exist := conn["tgtLunWWN"].(string)
@@ -40,6 +45,7 @@ func (fc *FibreChannel) ConnectVolume(ctx context.Context, conn map[string]inter
 	return connector.ConnectVolumeCommon(ctx, conn, tgtLunWWN, connector.FCDriver, tryConnectVolume)
 }
 
+// DisConnectVolume to unmount the target path
 func (fc *FibreChannel) DisConnectVolume(ctx context.Context, tgtLunWWN string) error {
 	log.AddContext(ctx).Infof("FC Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
 	return connector.DisConnectVolumeCommon(ctx, tgtLunWWN, connector.FCDriver, tryDisConnectVolume)

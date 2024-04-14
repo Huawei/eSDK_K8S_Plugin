@@ -22,11 +22,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
+	"text/tabwriter"
 
-	"github.com/olekukonko/tablewriter"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"huawei-csi-driver/utils/log"
@@ -107,14 +108,18 @@ func PrintWithTable[T any](data []T) {
 		return
 	}
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetAlignment(tablewriter.ALIGN_CENTER)
-	table.SetRowLine(true)
-	table.SetHeader(ReadHeader(data[0]))
-	for _, row := range data {
-		table.Append(ReadRow(row))
+	w := tabwriter.NewWriter(os.Stdout, 0, 8, 1, '\t', 0)
+	if _, err := fmt.Fprintln(w, strings.Join(ReadHeader(data[0]), "\t")); err != nil {
+		fmt.Printf("format to table failed: %v\n", err)
 	}
-	table.Render()
+	for _, row := range data {
+		if _, err := fmt.Fprintln(w, strings.Join(ReadRow(row), "\t")); err != nil {
+			fmt.Printf("format to table failed: %v\n", err)
+		}
+	}
+	if err := w.Flush(); err != nil {
+		fmt.Printf("format to table failed: %v\n", err)
+	}
 }
 
 // PrintBackend print backend
@@ -151,6 +156,22 @@ func PrintNoResourceBackend(namespace string) {
 // PrintNoResourceCert print no cert found
 func PrintNoResourceCert(backend, namespace string) {
 	fmt.Printf("Error from server (NotFound): no cert found on backend %s in %s namespace\n", backend, namespace)
+}
+
+// PrintBackendAlreadyExists print backend already exists error
+func PrintBackendAlreadyExists(backend string) {
+	fmt.Printf("Error from server (AlreadyExists): backend \"%s\" already exists\n", backend)
+}
+
+// BackendAlreadyExistsError return a backend already exists error
+func BackendAlreadyExistsError(backend string, filePath string) error {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return err
+	}
+
+	msgFormat := "Error from server (DuplicateName): the backend \"%s\" already exists. Please check %s file"
+	return fmt.Errorf(msgFormat, backend, absPath)
 }
 
 // GetPrintFunc get print function by format type

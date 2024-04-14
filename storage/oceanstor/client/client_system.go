@@ -25,6 +25,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// System defines interfaces for system operations
 type System interface {
 	// GetPoolByName used for get pool by name
 	GetPoolByName(ctx context.Context, name string) (map[string]interface{}, error)

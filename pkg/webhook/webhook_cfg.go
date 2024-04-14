@@ -49,6 +49,7 @@ func GetStorageWebHookCfg() (WebHook, []AdmissionWebHookCFG) {
 		ServiceName:      serviceName,
 		SecretName:       containerName,
 		WebHookPort:      app.GetGlobalConfig().WebHookPort,
+		WebHookAddress:   app.GetGlobalConfig().WebHookAddress,
 		WebHookType:      AdmissionWebHookValidating,
 		PrivateKey:       privateKey,
 		PrivateCert:      privateCert,

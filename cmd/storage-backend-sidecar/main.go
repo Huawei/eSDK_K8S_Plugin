@@ -12,6 +12,7 @@
  limitations under the License.
 */
 
+// Package main entry point for application
 package main
 
 import (
@@ -135,14 +136,15 @@ func runController(
 	}
 
 	backend := storageBackend.NewBackend(connect)
-	factory := backendInformers.NewSharedInformerFactory(storageBackendClient, app.GetGlobalConfig().ReSyncPeriod)
+	factory := backendInformers.NewSharedInformerFactory(storageBackendClient,
+		time.Second*time.Duration(app.GetGlobalConfig().BackendUpdateInterval))
 	ctrl := controller.NewSideCarBackendController(controller.BackendControllerRequest{
 		ProviderName:    providerName,
 		ClientSet:       storageBackendClient,
 		Backend:         backend,
 		TimeOut:         app.GetGlobalConfig().Timeout,
 		ContentInformer: factory.Xuanwu().V1().StorageBackendContents(),
-		ReSyncPeriod:    app.GetGlobalConfig().ReSyncPeriod,
+		ReSyncPeriod:    time.Second * time.Duration(app.GetGlobalConfig().BackendUpdateInterval),
 		EventRecorder:   eventRecorder})
 
 	run := func(ctx context.Context) {

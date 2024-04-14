@@ -24,18 +24,19 @@ import (
 	"huawei-csi-driver/utils"
 )
 
+// Plugin defines storage plugin interfaces
 type Plugin interface {
 	NewPlugin() Plugin
-	Init(map[string]interface{}, map[string]interface{}, bool) error
+	Init(context.Context, map[string]interface{}, map[string]interface{}, bool) error
 	CreateVolume(context.Context, string, map[string]interface{}) (utils.Volume, error)
 	QueryVolume(context.Context, string, map[string]interface{}) (utils.Volume, error)
 	DeleteVolume(context.Context, string) error
 	ExpandVolume(context.Context, string, int64) (bool, error)
 	AttachVolume(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
 	DetachVolume(context.Context, string, map[string]interface{}) error
-	UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error)
-	UpdatePoolCapabilities([]string) (map[string]interface{}, error)
-	UpdateMetroRemotePlugin(Plugin)
+	UpdateBackendCapabilities(context.Context) (map[string]interface{}, map[string]interface{}, error)
+	UpdatePoolCapabilities(context.Context, []string) (map[string]interface{}, error)
+	UpdateMetroRemotePlugin(context.Context, Plugin)
 	CreateSnapshot(context.Context, string, string) (map[string]interface{}, error)
 	DeleteSnapshot(context.Context, string, string) error
 	SmartXQoSQuery
@@ -62,10 +63,12 @@ const (
 	SectorSize int64 = 512
 )
 
+// RegPlugin used to register plugin
 func RegPlugin(storageType string, plugin Plugin) {
 	plugins[storageType] = plugin
 }
 
+// GetPlugin used to get plugin by storage type
 func GetPlugin(storageType string) Plugin {
 	if plugin, exist := plugins[storageType]; exist {
 		return plugin.NewPlugin()
@@ -85,5 +88,5 @@ func (p *basePlugin) DetachVolume(context.Context, string, map[string]interface{
 	return nil
 }
 
-func (p *basePlugin) UpdateMetroRemotePlugin(Plugin) {
+func (p *basePlugin) UpdateMetroRemotePlugin(context.Context, Plugin) {
 }

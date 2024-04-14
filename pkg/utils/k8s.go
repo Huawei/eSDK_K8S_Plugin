@@ -248,6 +248,22 @@ func GetSBCTOnlineStatusByClaim(ctx context.Context, backendID string) (bool, er
 	return content.Status.Online, nil
 }
 
+// GetSBCTOnlineStatusByContent get backend capabilities by SBCT
+func GetSBCTOnlineStatusByContent(ctx context.Context, content *xuanwuv1.StorageBackendContent) (bool, error) {
+	if content == nil {
+		msg := fmt.Sprintf("StorageBackendContent: [%s] content is nil, GetSBCTOnlineStatusByContent failed.",
+			content.Name)
+		return false, Errorln(ctx, msg)
+	}
+	if content.Status == nil {
+		msg := fmt.Sprintf("StorageBackendContent: [%s] content.status is nil, GetSBCTOnlineStatusByContent failed.",
+			content.Name)
+		return false, Errorln(ctx, msg)
+	}
+
+	return content.Status.Online, nil
+}
+
 // GetSBCTCapabilitiesByClaim get backend capabilities
 func GetSBCTCapabilitiesByClaim(ctx context.Context, backendID string) (map[string]bool, error) {
 	content, err := GetContentByClaimMeta(ctx, backendID)
@@ -312,7 +328,15 @@ func SetStorageBackendContentOnlineStatus(ctx context.Context, backendID string,
 		return err
 	}
 
-	log.AddContext(ctx).Infof("SetStorageBackendContentOnlineStatus [%s] to [%b] succeeded.",
+	_, backendName, err := SplitMetaNamespaceKey(content.Spec.BackendClaim)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get backend name failed, error: %v", err)
+		return err
+	}
+
+	// notify backend status is change
+	Publish(ctx, BackendStatus, ctx, backendName, online)
+	log.AddContext(ctx).Infof("SetStorageBackendContentOnlineStatus [%s] to [%v] succeeded.",
 		backendID, online)
 	return nil
 }
@@ -352,7 +376,7 @@ func GetK8SAndSBCClient(ctx context.Context) (*kubernetes.Clientset, *clientSet.
 func InitRecorder(client kubernetes.Interface, componentName string) record.EventRecorder {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&clientV1.EventSinkImpl{Interface: client.CoreV1().Events(v1.NamespaceAll)})
-	return eventBroadcaster.NewRecorder(scheme.Scheme, coreV1.EventSource{Component: fmt.Sprintf(componentName)})
+	return eventBroadcaster.NewRecorder(scheme.Scheme, coreV1.EventSource{Component: componentName})
 }
 
 // GetEventRecorder used to get event recorder

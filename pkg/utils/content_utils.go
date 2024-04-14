@@ -67,9 +67,9 @@ func UpdateContent(ctx context.Context, client clientSet.Interface, content *xua
 func UpdateContentStatus(ctx context.Context, client clientSet.Interface, content *xuanwuv1.StorageBackendContent) (
 	*xuanwuv1.StorageBackendContent, error) {
 
-	log.AddContext(ctx).Infof("Start to update content status with content %s, status %v.",
+	log.AddContext(ctx).Debugf("Start to update content status with content %s, status %v.",
 		content.Name, content.Status)
-	defer log.AddContext(ctx).Infof("Finished update content status with content %s, status %v.",
+	defer log.AddContext(ctx).Debugf("Finished update content status with content %s, status %v.",
 		content.Name, content.Status)
 
 	return client.XuanwuV1().StorageBackendContents().UpdateStatus(ctx, content, metav1.UpdateOptions{})
@@ -77,8 +77,8 @@ func UpdateContentStatus(ctx context.Context, client clientSet.Interface, conten
 
 // ListContent used to list contents by xuanwu client
 func ListContent(ctx context.Context, client clientSet.Interface) (*xuanwuv1.StorageBackendContentList, error) {
-	log.AddContext(ctx).Infoln("Start to list contents.")
-	defer log.AddContext(ctx).Infoln("Finished list contents.")
+	log.AddContext(ctx).Debugln("Start to list contents.")
+	defer log.AddContext(ctx).Debugf("Finished list contents.")
 
 	return client.XuanwuV1().StorageBackendContents().List(ctx, metav1.ListOptions{})
 }

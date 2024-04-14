@@ -26,6 +26,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// Iscsi defines interfaces for iscsi operations
 type Iscsi interface {
 	// GetIscsiInitiator used for get iscsi initiator
 	GetIscsiInitiator(ctx context.Context, initiator string) (map[string]interface{}, error)

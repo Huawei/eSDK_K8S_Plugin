@@ -55,7 +55,6 @@ func RunWithLeaderElection(ctx context.Context, leaderElection LeaderElectionCon
 		log.AddContext(ctx).Errorf("Error getting hostname: %v", err)
 		ch <- syscall.SIGINT
 		return
-
 	}
 
 	lockConfig := resourcelock.ResourceLockConfig{

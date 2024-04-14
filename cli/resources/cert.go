@@ -30,6 +30,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// Cert is the cert resource
 type Cert struct {
 	// resource of request
 	resource *Resource
@@ -71,6 +72,7 @@ func (c *Cert) Get() error {
 	return nil
 }
 
+// Delete cert resource
 func (c *Cert) Delete() error {
 	storageBackendClaimClient := client.NewCommonCallHandler[xuanwuV1.StorageBackendClaim](config.Client)
 	oldClaim, err := storageBackendClaimClient.QueryByName(c.resource.namespace, c.resource.backend)
@@ -199,6 +201,7 @@ func (c *Cert) Create() error {
 	return nil
 }
 
+// LoadCertFile to load cert file from disk
 func (c *Cert) LoadCertFile() (*CertConfig, error) {
 	certData, err := os.ReadFile(c.resource.fileName)
 	if err != nil {

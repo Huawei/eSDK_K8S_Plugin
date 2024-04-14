@@ -20,6 +20,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"reflect"
 	"time"
 
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -119,11 +120,10 @@ func NewSideCarBackendController(request BackendControllerRequest) *backendContr
 					return
 				}
 
-				if oldContent.ResourceVersion == newContent.ResourceVersion {
-					// Periodic resync will send update events for all known StorageBackendContent.
-					// Two different versions of the same StorageBackendContent will always have different RVs.
+				if !needEnQueue(newContent, oldContent) {
 					return
 				}
+
 				ctrl.enqueueContent(newObj)
 			},
 			DeleteFunc: func(obj interface{}) { ctrl.enqueueContent(obj) },
@@ -145,7 +145,7 @@ func (ctrl *backendController) enqueueContent(obj interface{}) {
 			log.Errorf("failed to get key from object: %v, %v", content, err)
 			return
 		}
-		log.Infof("enqueued StorageBackendContent %q for sync", objName)
+		log.Debugf("enqueued StorageBackendContent %q for sync", objName)
 		ctrl.contentQueue.Add(objName)
 	}
 }
@@ -234,8 +234,10 @@ func (ctrl *backendController) handleContentWork(ctx context.Context, obj interf
 	}
 
 	if err := ctrl.syncContentByKey(ctx, objKey); err != nil {
-		log.AddContext(ctx).Errorf("handleContentWork: sync storageBackendContent %s failed,"+
-			" error: %v", objKey, err)
+		if !apiErrors.IsConflict(err) {
+			log.AddContext(ctx).Errorf("handleContentWork: sync storageBackendContent %s failed,"+
+				" error: %v", objKey, err)
+		}
 		ctrl.contentQueue.AddRateLimited(objKey)
 		return err
 	}
@@ -246,7 +248,7 @@ func (ctrl *backendController) handleContentWork(ctx context.Context, obj interf
 // syncContentByKey processes a StorageBackendContent request.
 func (ctrl *backendController) syncContentByKey(ctx context.Context, objKey string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(objKey)
-	log.AddContext(ctx).Infof("syncContentByKey: namespace [%s] storageBackendContent name [%s]",
+	log.AddContext(ctx).Debugf("syncContentByKey: namespace [%s] storageBackendContent name [%s]",
 		namespace, name)
 	if err != nil {
 		log.AddContext(ctx).Errorf("getting namespace & name of storageBackendContent %s from "+
@@ -289,7 +291,7 @@ func (ctrl *backendController) syncContentByKey(ctx context.Context, objKey stri
 }
 
 func (ctrl *backendController) updateContent(ctx context.Context, content *xuanwuv1.StorageBackendContent) error {
-	log.AddContext(ctx).Infof("updateContent %s", content.Name)
+	log.AddContext(ctx).Debugf("updateContent %s", content.Name)
 	updated, err := ctrl.updateContentStore(ctx, content)
 	if err != nil {
 		log.AddContext(ctx).Errorf("updateContentStore error %v", err)
@@ -300,8 +302,7 @@ func (ctrl *backendController) updateContent(ctx context.Context, content *xuanw
 	}
 
 	if err := ctrl.syncContent(ctx, content); err != nil {
-		log.AddContext(ctx).Warningf("syncContent %s failed, error: %v", content.Name, err)
-		return err
+		return fmt.Errorf("syncContent %s failed, error: %w", content.Name, err)
 	}
 
 	return nil
@@ -321,8 +322,8 @@ func (ctrl *backendController) deleteContentCache(ctx context.Context,
 }
 
 func (ctrl *backendController) syncContent(ctx context.Context, content *xuanwuv1.StorageBackendContent) error {
-	log.AddContext(ctx).Infof("Start to sync content %s.", content.Name)
-	defer log.AddContext(ctx).Infof("Finished sync content %s.", content.Name)
+	log.AddContext(ctx).Debugf("Start to sync content %s.", content.Name)
+	defer log.AddContext(ctx).Debugf("Finished sync content %s.", content.Name)
 
 	syncTask := taskflow.NewTaskFlow(ctx, "Sync-StorageBackendContent")
 	syncTask.AddTask("Init-Content-Status", ctrl.initContentStatusTask, nil)
@@ -334,9 +335,8 @@ func (ctrl *backendController) syncContent(ctx context.Context, content *xuanwuv
 		"storageBackendContent": content,
 	})
 	if err != nil {
-		log.AddContext(ctx).Errorf("Run sync content failed, error: %v.", err)
 		syncTask.Revert()
-		return err
+		return fmt.Errorf("Run sync content failed, error: %w.", err)
 	}
 	return nil
 }
@@ -429,11 +429,9 @@ func (ctrl *backendController) updateContentTask(ctx context.Context,
 	}
 
 	log.AddContext(ctx).Infof("Start to update content %v.", content.Name)
-	content.Status.SN = content.Status.Specification["LocalDeviceSN"]
 	newContent, err := ctrl.updateContentObj(ctx, content)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Update StorageBackendContent %s failed, error %v", content.Name, err)
-		return nil, err
+		return nil, fmt.Errorf("Update StorageBackendContent %s failed, error %w", content.Name, err)
 	}
 
 	return map[string]interface{}{
@@ -457,7 +455,7 @@ func (ctrl *backendController) getContentTask(ctx context.Context,
 		}, nil
 	}
 
-	log.AddContext(ctx).Infof("Start to get content stats %v.", content.Name)
+	log.AddContext(ctx).Debugf("Start to get content stats %v.", content.Name)
 	newContent, err := ctrl.getContentStats(ctx, content)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get StorageBackendContent %s status failed, error %v", content.Name, err)
@@ -490,9 +488,27 @@ func needUpdate(content *xuanwuv1.StorageBackendContent) bool {
 		return true
 	}
 
-	if content.Status.SN == "" {
+	return false
+}
+
+// if storage backend content pools, capabilities and specification change,
+// the controller is not required for processing. Therefore, the queue is not added.
+func needEnQueue(new, old *xuanwuv1.StorageBackendContent) bool {
+	if new == nil || new.Status == nil || old == nil || old.Status == nil {
 		return true
 	}
 
-	return false
+	if !reflect.DeepEqual(new.Status.Pools, old.Status.Pools) {
+		return false
+	}
+
+	if !reflect.DeepEqual(new.Status.Capabilities, old.Status.Capabilities) {
+		return false
+	}
+
+	if !reflect.DeepEqual(new.Status.Specification, old.Status.Specification) {
+		return false
+	}
+
+	return true
 }

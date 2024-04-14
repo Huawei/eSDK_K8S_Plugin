@@ -22,17 +22,17 @@ import (
 	"reflect"
 	"testing"
 
+	"huawei-csi-driver/csi/backend/model"
+
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/prashantv/gostub"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/smartystreets/goconvey/convey"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/app"
 	cfg "huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/csi/backend"
+	"huawei-csi-driver/csi/backend/handler"
 	"huawei-csi-driver/csi/backend/plugin"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -53,32 +53,32 @@ func TestMain(m *testing.M) {
 }
 
 func TestCheckReservedSnapshotSpaceRatio(t *testing.T) {
-	Convey("Normal", t, func() {
+	convey.Convey("Normal", t, func() {
 		param := map[string]interface{}{
 			"reservedSnapshotSpaceRatio": "50",
 		}
-		So(checkReservedSnapshotSpaceRatio(context.TODO(), param), ShouldBeNil)
+		convey.So(checkReservedSnapshotSpaceRatio(context.TODO(), param), convey.ShouldBeNil)
 	})
 
-	Convey("Not int", t, func() {
+	convey.Convey("Not int", t, func() {
 		param := map[string]interface{}{
 			"reservedSnapshotSpaceRatio": "20%",
 		}
-		So(checkReservedSnapshotSpaceRatio(context.TODO(), param), ShouldBeError)
+		convey.So(checkReservedSnapshotSpaceRatio(context.TODO(), param), convey.ShouldBeError)
 	})
 
-	Convey("Exceed the upper limit", t, func() {
+	convey.Convey("Exceed the upper limit", t, func() {
 		param := map[string]interface{}{
 			"reservedSnapshotSpaceRatio": "60",
 		}
-		So(checkReservedSnapshotSpaceRatio(context.TODO(), param), ShouldBeError)
+		convey.So(checkReservedSnapshotSpaceRatio(context.TODO(), param), convey.ShouldBeError)
 	})
 
-	Convey("Below the lower limit", t, func() {
+	convey.Convey("Below the lower limit", t, func() {
 		param := map[string]interface{}{
 			"reservedSnapshotSpaceRatio": "-10",
 		}
-		So(checkReservedSnapshotSpaceRatio(context.TODO(), param), ShouldBeError)
+		convey.So(checkReservedSnapshotSpaceRatio(context.TODO(), param), convey.ShouldBeError)
 	})
 
 }
@@ -107,12 +107,12 @@ func initDriver() *Driver {
 		app.GetGlobalConfig().NodeName)
 }
 
-func initPool(poolName string) *backend.StoragePool {
-	return &backend.StoragePool{
+func initPool(poolName string) *model.StoragePool {
+	return &model.StoragePool{
 		Name:         poolName,
 		Storage:      "oceanstor-nas",
 		Parent:       "fake-bakcend",
-		Capabilities: map[string]interface{}{},
+		Capabilities: make(map[string]bool),
 		Plugin:       plugin.GetPlugin("oceanstor-nas"),
 	}
 }
@@ -124,10 +124,10 @@ func TestCreateVolumeWithoutBackend(t *testing.T) {
 	s := gostub.StubFunc(&pkgUtils.CreatePVLabel)
 	defer s.Reset()
 
-	m := gomonkey.ApplyFunc(pkgUtils.ListClaim,
-		func(ctx context.Context, client clientSet.Interface, namespace string) (
-			*xuanwuv1.StorageBackendClaimList, error) {
-			return &xuanwuv1.StorageBackendClaimList{}, errors.New("mock list claim failed")
+	m := gomonkey.ApplyMethod(reflect.TypeOf(driver.backendSelector), "SelectPoolPair",
+		func(hander *handler.BackendSelector, ctx context.Context, requestSize int64,
+			parameters map[string]interface{}) (*model.SelectPoolPair, error) {
+			return nil, errors.New("backend not exist")
 		})
 	defer m.Reset()
 
@@ -138,21 +138,31 @@ func TestCreateVolumeWithoutBackend(t *testing.T) {
 }
 
 func TestCreateVolume(t *testing.T) {
-	localPool := initPool("local-pool")
-
-	s := gostub.StubFunc(&backend.SelectStoragePool, localPool, nil, nil)
+	driver := initDriver()
+	s := gostub.StubFunc(&pkgUtils.CreatePVLabel)
 	defer s.Reset()
-
-	s.StubFunc(&pkgUtils.CreatePVLabel)
-
+	m := gomonkey.ApplyMethod(reflect.TypeOf(driver.backendSelector), "SelectPoolPair",
+		func(hander *handler.BackendSelector, ctx context.Context, requestSize int64,
+			parameters map[string]interface{}) (*model.SelectPoolPair, error) {
+			return &model.SelectPoolPair{
+				Local: &model.StoragePool{
+					Name:         "poolName",
+					Storage:      "oceanstor-nas",
+					Parent:       "fake-bakcend",
+					Capabilities: make(map[string]bool),
+					Plugin:       plugin.GetPlugin("oceanstor-nas"),
+				},
+				Remote: nil,
+			}, nil
+		})
+	defer m.Reset()
 	plg := plugin.GetPlugin("oceanstor-nas")
-	m := gomonkey.ApplyMethod(reflect.TypeOf(plg), "CreateVolume",
+	m = gomonkey.ApplyMethod(reflect.TypeOf(plg), "CreateVolume",
 		func(*plugin.OceanstorNasPlugin, context.Context, string, map[string]interface{}) (utils.Volume, error) {
 			return utils.NewVolume("fake-nfs"), nil
 		})
 	defer m.Reset()
 
-	driver := initDriver()
 	req := mockCreateRequest()
 	_, err := driver.createVolume(context.TODO(), req)
 	if err != nil {
@@ -164,10 +174,14 @@ func TestImportVolumeWithoutBackend(t *testing.T) {
 	driver := initDriver()
 	req := mockCreateRequest()
 
-	s := gostub.StubFunc(&backend.GetBackendWithFresh, nil)
-	defer s.Reset()
+	m := gomonkey.ApplyMethod(reflect.TypeOf(driver.backendSelector), "SelectBackend",
+		func(hander *handler.BackendSelector, ctx context.Context, backendName string) (*model.Backend, error) {
+			return nil, nil
+		})
+	defer m.Reset()
 
-	s.StubFunc(&pkgUtils.CreatePVLabel)
+	s := gostub.StubFunc(&pkgUtils.CreatePVLabel)
+	defer s.Reset()
 
 	_, err := driver.manageVolume(context.TODO(), req, "fake-nfs", "fake-backend")
 	if err == nil {
@@ -179,16 +193,19 @@ func TestImportVolume(t *testing.T) {
 	plg := plugin.GetPlugin("oceanstor-nas")
 	localPool := initPool("local-pool")
 
-	s := gostub.StubFunc(&backend.GetBackendWithFresh, &backend.Backend{
-		Name:   "fake-backend",
-		Plugin: plg,
-		Pools:  []*backend.StoragePool{localPool},
-	})
+	s := gostub.StubFunc(&pkgUtils.CreatePVLabel)
 	defer s.Reset()
-
-	s.StubFunc(&pkgUtils.CreatePVLabel)
-
-	m := gomonkey.ApplyMethod(reflect.TypeOf(plg), "QueryVolume",
+	driver := initDriver()
+	m := gomonkey.ApplyMethod(reflect.TypeOf(driver.backendSelector), "SelectBackend",
+		func(hander *handler.BackendSelector, ctx context.Context, backendName string) (*model.Backend, error) {
+			return &model.Backend{
+				Name:   "fake-backend",
+				Plugin: plg,
+				Pools:  []*model.StoragePool{localPool},
+			}, nil
+		})
+	defer m.Reset()
+	m = gomonkey.ApplyMethod(reflect.TypeOf(plg), "QueryVolume",
 		func(*plugin.OceanstorNasPlugin, context.Context, string, map[string]interface{}) (utils.Volume, error) {
 			vol := utils.NewVolume("fake-nfs")
 			vol.SetSize(1024 * 1024 * 1024)
@@ -196,10 +213,37 @@ func TestImportVolume(t *testing.T) {
 		})
 	defer m.Reset()
 
-	driver := initDriver()
 	req := mockCreateRequest()
 	_, err := driver.manageVolume(context.TODO(), req, "fake-nfs", "fake-backend")
 	if err != nil {
 		t.Errorf("test import with storage failed, error %v", err)
+	}
+}
+
+// Test_processAnnotations test fun
+func Test_processAnnotations(t *testing.T) {
+	// arrange mock
+	fileSystemKey := app.GetGlobalConfig().DriverName + annFileSystemMode
+	volumeNameKey := app.GetGlobalConfig().DriverName + annVolumeName
+	annotations := map[string]string{
+		fileSystemKey: "HyperMetro",
+		volumeNameKey: "test",
+	}
+	req := &csi.CreateVolumeRequest{Parameters: map[string]string{}}
+
+	// action
+	err := processAnnotations(annotations, req)
+	// assert
+	if err != nil {
+		t.Errorf("Test_processAnnotations() failed, error = %v", err)
+	}
+
+	if mode, exist := req.Parameters["fileSystemMode"]; !exist || mode != "HyperMetro" {
+		t.Errorf("Test_processAnnotations() failed, anno: %+v, want fileSystemMode exist and equal HyperMetro, "+
+			"but got = %v", annotations, mode)
+	}
+	if volume, exist := req.Parameters["annVolumeName"]; !exist || volume != "test" {
+		t.Errorf("Test_processAnnotations() failed, anno: %+v, want annVolumeName exist and equal HyperMetro, "+
+			"but got = %v", annotations, volume)
 	}
 }

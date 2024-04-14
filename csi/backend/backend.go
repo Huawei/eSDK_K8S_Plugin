@@ -23,13 +23,14 @@ import (
 	"math/rand"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
-	"sync"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
+	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/app"
+	"huawei-csi-driver/csi/backend/cache"
+	"huawei-csi-driver/csi/backend/model"
 	"huawei-csi-driver/csi/backend/plugin"
-	"huawei-csi-driver/pkg/finalizers"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	fsUtils "huawei-csi-driver/storage/fusionstorage/utils"
 	"huawei-csi-driver/utils"
@@ -42,20 +43,19 @@ const (
 	Topology = "topology"
 	// supported topology key in CSI plugin configuration
 	supportedTopologiesKey = "supportedTopologies"
-
+	// NoAvailablePool message of no available poll error
 	NoAvailablePool = "no storage pool meets the requirements"
 )
 
 var (
-	mutex       sync.Mutex
-	csiBackends = make(map[string]*Backend)
-
-	validateFilterFuncs = [][]interface{}{
+	// ValidateFilterFuncs validate filters' function map
+	ValidateFilterFuncs = [][]interface{}{
 		{"backend", validateBackendName},
 		{"volumeType", validateVolumeType},
 	}
 
-	primaryFilterFuncs = [][]interface{}{
+	// PrimaryFilterFuncs primary filters' function map
+	PrimaryFilterFuncs = [][]interface{}{
 		{"backend", filterByBackendName},
 		{"pool", filterByStoragePool},
 		{"volumeType", filterByVolumeType},
@@ -70,7 +70,8 @@ var (
 		{"nfsProtocol", filterByNFSProtocol},
 	}
 
-	secondaryFilterFuncs = [][]interface{}{
+	// SecondaryFilterFuncs secondary filters' function map
+	SecondaryFilterFuncs = [][]interface{}{
 		{"volumeType", filterByVolumeType},
 		{"allocType", filterByAllocType},
 		{"qos", filterByQos},
@@ -85,52 +86,22 @@ type AccessibleTopology struct {
 	PreferredTopologies []map[string]string
 }
 
-type StoragePool struct {
-	Name         string
-	Storage      string
-	Parent       string
-	Capabilities map[string]interface{}
-	Plugin       plugin.Plugin
-}
-
-type Backend struct {
-	Name                string
-	Storage             string
-	Available           bool
-	Plugin              plugin.Plugin
-	Pools               []*StoragePool
-	Parameters          map[string]interface{}
-	SupportedTopologies []map[string]string
-	AccountName         string
-
-	MetroDomain       string
-	MetrovStorePairID string
-	MetroBackendName  string
-	MetroBackend      *Backend
-
-	ReplicaBackendName string
-	ReplicaBackend     *Backend
-}
-
-type SelectPoolPair struct {
-	local  *StoragePool
-	remote *StoragePool
-}
-
+// CSIConfig holds the CSI config of backend resources
 type CSIConfig struct {
 	Backends map[string]interface{} `json:"backends"`
 }
 
-func analyzePools(backend *Backend, config map[string]interface{}) error {
-	var pools []*StoragePool
+func analyzePools(backend *model.Backend, config map[string]interface{}) error {
+	var pools []*model.StoragePool
 
 	if backend.Storage == plugin.DTreeStorage {
-		pools = append(pools, &StoragePool{
+		pools = append(pools, &model.StoragePool{
 			Storage:      backend.Storage,
 			Name:         backend.Name,
 			Parent:       backend.Name,
 			Plugin:       backend.Plugin,
-			Capabilities: make(map[string]interface{}),
+			Capabilities: make(map[string]bool),
+			Capacities:   map[string]string{},
 		})
 	}
 
@@ -141,12 +112,13 @@ func analyzePools(backend *Backend, config map[string]interface{}) error {
 			continue
 		}
 
-		pool := &StoragePool{
+		pool := &model.StoragePool{
 			Storage:      backend.Storage,
 			Name:         name,
 			Parent:       backend.Name,
 			Plugin:       backend.Plugin,
-			Capabilities: make(map[string]interface{}),
+			Capabilities: make(map[string]bool),
+			Capacities:   map[string]string{},
 		}
 
 		pools = append(pools, pool)
@@ -160,7 +132,51 @@ func analyzePools(backend *Backend, config map[string]interface{}) error {
 	return nil
 }
 
-func NewBackend(backendName string, config map[string]interface{}) (*Backend, error) {
+// BuildBackend build a valid backend
+func BuildBackend(ctx context.Context, content v1.StorageBackendContent) (*model.Backend, error) {
+	if content.Spec.BackendClaim == "" || content.Spec.ConfigmapMeta == "" ||
+		content.Spec.SecretMeta == "" {
+		return nil, pkgUtils.Errorf(ctx, "valid tuple failed, tuple: %+v", content)
+	}
+
+	ns, name, err := pkgUtils.SplitMetaNamespaceKey(content.Spec.BackendClaim)
+	if err != nil {
+		return nil, err
+	}
+
+	config, err := GetStorageBackendInfo(ctx,
+		pkgUtils.MakeMetaWithNamespace(ns, name),
+		content.Spec.ConfigmapMeta, content.Spec.SecretMeta,
+		content.Spec.CertSecret, content.Spec.UseCert)
+	if err != nil {
+		return nil, err
+	}
+
+	bk, err := NewBackend(name, config)
+	if err != nil {
+		return nil, err
+	}
+
+	err = analyzePools(bk, config)
+	if err != nil {
+		return nil, err
+	}
+
+	err = addProtocolTopology(bk, app.GetGlobalConfig().DriverName)
+	if err != nil {
+		return nil, err
+	}
+
+	err = bk.Plugin.Init(ctx, config, bk.Parameters, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return bk, nil
+}
+
+// NewBackend constructs an object of Kubernetes backend resource
+func NewBackend(backendName string, config map[string]interface{}) (*model.Backend, error) {
 	// Verifying Common Parameters:
 	// - storage: oceanstor-san; oceanstor-nas; oceanstor-dtree; fusionstorage-san; fusionstorage-nas;
 	// - parameters: must exist
@@ -199,7 +215,7 @@ func NewBackend(backendName string, config map[string]interface{}) (*Backend, er
 		return nil, fmt.Errorf("hyperMetro configuration in backend %s is incorrect", backendName)
 	}
 
-	return &Backend{
+	return &model.Backend{
 		Name:                backendName,
 		Storage:             storage,
 		Available:           false,
@@ -247,15 +263,15 @@ func getSupportedTopologies(config map[string]interface{}) ([]map[string]string,
 // addProtocolTopology add up protocol specific topological support
 // Note: Protocol is considered as special topological parameter.
 // The protocol topology is populated internally by plugin using protocol name.
-// If configured protocol for backend is "iscsi", CSI plugin internally add
-// topology.kubernetes.io/protocol.iscsi = csi.huawei.com in supportedTopologies.
+// If configured protocol for backend is "iscsi", topology.kubernetes.io/protocol.iscsi "=" csi.huawei.com
+// will be added to supportedTopologies by CSI plugin internally.
 //
 // Now users can opt to provision volumes based on protocol by
 // 1. Labeling kubernetes nodes with protocol specific label (ie topology.kubernetes.io/protocol.iscsi = csi.huawei.com)
 // 2. Configure topology support in plugin
 // 3. Configure protocol topology in allowedTopologies fo Storage class
 // addProtocolTopology is called after backend plugin init as init takes care of protocol validation
-func addProtocolTopology(backend *Backend, driverName string) error {
+func addProtocolTopology(backend *model.Backend, driverName string) error {
 	proto, protocolAvailable := backend.Parameters["protocol"]
 	protocol, isString := proto.(string)
 	if !protocolAvailable || !isString {
@@ -288,81 +304,52 @@ func addProtocolTopology(backend *Backend, driverName string) error {
 	return nil
 }
 
-func updateMetroBackends() {
-	for _, i := range csiBackends {
-		if (i.MetroDomain == "" && i.MetrovStorePairID == "") || i.MetroBackend != nil {
-			continue
-		}
-
-		for _, j := range csiBackends {
-			if i.Name == j.Name || i.Storage != j.Storage {
-				continue
-			}
-
-			if ((i.MetroDomain != "" && i.MetroDomain == j.MetroDomain) ||
-				(i.MetrovStorePairID != "" && i.MetrovStorePairID == j.MetrovStorePairID)) &&
-				(i.MetroBackendName == j.Name && j.MetroBackendName == i.Name) {
-				i.MetroBackend, j.MetroBackend = j, i
-				i.Plugin.UpdateMetroRemotePlugin(j.Plugin)
-				j.Plugin.UpdateMetroRemotePlugin(i.Plugin)
-			}
-		}
-	}
-}
-
+// GetMetroDomain get metro domain of backend
 func GetMetroDomain(backendName string) string {
-	return csiBackends[backendName].MetroDomain
-}
-
-func GetMetrovStorePairID(backendName string) string {
-	return csiBackends[backendName].MetrovStorePairID
-}
-
-func GetAccountName(backendName string) string {
-	if _, ok := csiBackends[backendName]; !ok {
+	bk, exists := cache.BackendCacheProvider.Load(backendName)
+	if !exists {
 		return ""
 	}
-	return csiBackends[backendName].AccountName
+	return bk.MetroDomain
 }
 
-func selectOnePool(ctx context.Context, requestSize int64, parameters map[string]interface{},
-	candidatePools []*StoragePool, filterFuncs [][]interface{}) ([]*StoragePool, error) {
-
-	var filterPools []*StoragePool
-	if len(candidatePools) == 0 {
-		for _, backend := range csiBackends {
-			if backend.Available {
-				filterPools = append(filterPools, backend.Pools...)
-			}
-		}
-	} else {
-		filterPools = append(filterPools, candidatePools...)
+// GetMetrovStorePairID get MetrovStorePairID of backend
+func GetMetrovStorePairID(backendName string) string {
+	bk, exists := cache.BackendCacheProvider.Load(backendName)
+	if !exists {
+		return ""
 	}
+	return bk.MetrovStorePairID
+}
 
-	if len(filterPools) == 0 {
-		regErr := RegisterAllBackend(ctx)
-		if regErr != nil {
-			return nil, fmt.Errorf("RegisterAllBackend failed, error: [%v]", regErr)
-		}
-		return nil, fmt.Errorf("no available storage pool for volume %v", parameters)
+// GetAccountName get account name of backend
+func GetAccountName(backendName string) string {
+	bk, exists := cache.BackendCacheProvider.Load(backendName)
+	if !exists {
+		return ""
 	}
+	return bk.AccountName
+}
 
+// FilterStoragePool filter storage pool by capability, topology and capacity.
+func FilterStoragePool(ctx context.Context, requestSize int64, parameters map[string]interface{},
+	candidatePools []*model.StoragePool, filterFuncs [][]interface{}) ([]*model.StoragePool, error) {
 	// filter the storage pools by capability
-	filterPools, err := filterByCapabilityWithRetry(ctx, parameters, filterPools, filterFuncs)
+	filterPools, err := FilterByCapability(ctx, parameters, candidatePools, filterFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select pool, the capability filter failed, error: %v."+
 			" please check your storage class", err)
 	}
 
 	// filter the storage by topology
-	filterPools, err = filterByTopology(parameters, filterPools)
+	filterPools, err = FilterByTopology(parameters, filterPools)
 	if err != nil {
 		return nil, err
 	}
 
 	allocType, _ := parameters["allocType"].(string)
 	// filter the storage pool by capacity
-	filterPools = filterByCapacity(requestSize, allocType, filterPools)
+	filterPools = FilterByCapacity(requestSize, allocType, filterPools)
 	if len(filterPools) == 0 {
 		return nil, fmt.Errorf("failed to select pool, the capacity filter failed, capacity: %d", requestSize)
 	}
@@ -370,10 +357,9 @@ func selectOnePool(ctx context.Context, requestSize int64, parameters map[string
 	return filterPools, nil
 }
 
-func selectRemotePool(ctx context.Context,
-	requestSize int64,
-	parameters map[string]interface{},
-	localBackendName string) (*StoragePool, error) {
+// SelectRemotePool select the optimal remote storage pool based on the free capacity.
+func SelectRemotePool(ctx context.Context, requestSize int64, parameters map[string]interface{},
+	localBackendName string) (*model.StoragePool, error) {
 	hyperMetro, hyperMetroOK := parameters["hyperMetro"].(string)
 	replication, replicationOK := parameters["replication"].(string)
 
@@ -382,28 +368,28 @@ func selectRemotePool(ctx context.Context,
 		return nil, fmt.Errorf("cannot create volume with hyperMetro and replication properties: %v", parameters)
 	}
 
-	var remotePool *StoragePool
-	var remotePools []*StoragePool
+	var remotePool *model.StoragePool
+	var remotePools []*model.StoragePool
 	var err error
 
 	if hyperMetroOK && utils.StrToBool(ctx, hyperMetro) {
-		localBackend := csiBackends[localBackendName]
-		if localBackend.MetroBackend == nil {
-			return nil, fmt.Errorf("no metro backend exists for volume: %v", parameters)
+		localBackend, exists := cache.BackendCacheProvider.Load(localBackendName)
+		if !exists || localBackend.MetroBackend == nil {
+			return nil, fmt.Errorf("no metro backend exists for volume: %v, local backend: %s", parameters, localBackendName)
 		}
 
-		remotePools, err = selectOnePool(ctx, requestSize, parameters, localBackend.MetroBackend.Pools,
-			secondaryFilterFuncs)
+		remotePools, err = FilterStoragePool(ctx, requestSize, parameters, localBackend.MetroBackend.Pools,
+			SecondaryFilterFuncs)
 	}
 
 	if replicationOK && utils.StrToBool(ctx, replication) {
-		localBackend := csiBackends[localBackendName]
-		if localBackend.ReplicaBackend == nil {
-			return nil, fmt.Errorf("no replica backend exists for volume: %v", parameters)
+		localBackend, exists := cache.BackendCacheProvider.Load(localBackendName)
+		if !exists || localBackend.ReplicaBackend == nil {
+			return nil, fmt.Errorf("no replica backend exists for volume: %v, local backend: %s", parameters, localBackendName)
 		}
 
-		remotePools, err = selectOnePool(ctx, requestSize, parameters, localBackend.ReplicaBackend.Pools,
-			secondaryFilterFuncs)
+		remotePools, err = FilterStoragePool(ctx, requestSize, parameters, localBackend.ReplicaBackend.Pools,
+			SecondaryFilterFuncs)
 	}
 
 	if err != nil {
@@ -414,17 +400,18 @@ func selectRemotePool(ctx context.Context,
 		return nil, nil
 	}
 	// weight the remote pool
-	remotePool, err = weightSinglePools(ctx, requestSize, parameters, remotePools)
+	remotePool, err = WeightSinglePools(ctx, requestSize, parameters, remotePools)
 	return remotePool, err
 }
 
-func weightSinglePools(
+// WeightSinglePools select the optimal storage pool based on the free capacity.
+func WeightSinglePools(
 	ctx context.Context,
 	requestSize int64,
 	parameters map[string]interface{},
-	filterPools []*StoragePool) (*StoragePool, error) {
+	filterPools []*model.StoragePool) (*model.StoragePool, error) {
 	// weight the storage pool by free capacity
-	var selectPool *StoragePool
+	var selectPool *model.StoragePool
 	selectPool = weightByFreeCapacity(filterPools)
 	if selectPool == nil {
 		return nil, fmt.Errorf("cannot select a storage pool for volume (%d, %v)", requestSize, parameters)
@@ -435,46 +422,25 @@ func weightSinglePools(
 	return selectPool, nil
 }
 
-var SelectStoragePool = func(ctx context.Context, requestSize int64, parameters map[string]interface{}) (*StoragePool, *StoragePool, error) {
-	localPools, err := selectOnePool(ctx, requestSize, parameters, nil, primaryFilterFuncs)
-	if err != nil {
-		return nil, nil, err
-	}
-	log.AddContext(ctx).Debugf("Select local pools are %v.", localPools)
-
-	var poolPairs []SelectPoolPair
-	for _, localPool := range localPools {
-		remotePool, err := selectRemotePool(ctx, requestSize, parameters, localPool.Parent)
-		if err != nil {
-			return nil, nil, err
-		}
-		log.AddContext(ctx).Debugf("Select remote pool is %v.", remotePool)
-		poolPairs = append(poolPairs, SelectPoolPair{local: localPool, remote: remotePool})
-	}
-
-	return weightPools(ctx, requestSize, parameters, localPools, poolPairs)
-}
-
-func weightPools(ctx context.Context,
-	requestSize int64,
-	parameters map[string]interface{}, localPools []*StoragePool,
-	poolPairs []SelectPoolPair) (*StoragePool, *StoragePool, error) {
-	localPool, err := weightSinglePools(ctx, requestSize, parameters, localPools)
+// WeightPools select the optimal local and remote storage pool based on the free capacity.
+func WeightPools(ctx context.Context, requestSize int64, parameters map[string]interface{},
+	localPools []*model.StoragePool, poolPairs []model.SelectPoolPair) (*model.StoragePool, *model.StoragePool, error) {
+	localPool, err := WeightSinglePools(ctx, requestSize, parameters, localPools)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	for _, pair := range poolPairs {
-		if pair.local == localPool {
-			updateSelectPool(requestSize, parameters, pair.local)
-			updateSelectPool(requestSize, parameters, pair.remote)
-			return pair.local, pair.remote, nil
+		if pair.Local == localPool {
+			updateSelectPool(requestSize, parameters, pair.Local)
+			updateSelectPool(requestSize, parameters, pair.Remote)
+			return pair.Local, pair.Remote, nil
 		}
 	}
 	return nil, nil, errors.New("weight pool failed")
 }
 
-func updateSelectPool(requestSize int64, parameters map[string]interface{}, selectPool *StoragePool) {
+func updateSelectPool(requestSize int64, parameters map[string]interface{}, selectPool *model.StoragePool) {
 	if selectPool == nil {
 		return
 	}
@@ -482,14 +448,14 @@ func updateSelectPool(requestSize int64, parameters map[string]interface{}, sele
 	allocType, _ := parameters["allocType"].(string)
 	// when the allocType is thin, do not change the FreeCapacity.
 	if allocType == "thick" {
-		freeCapacity, _ := selectPool.Capabilities["FreeCapacity"].(int64)
-		selectPool.Capabilities["FreeCapacity"] = freeCapacity - requestSize
+		freeCapacity := utils.ParseIntWithDefault(selectPool.Capacities["FreeCapacity"], 10, 64, 0)
+		selectPool.Capacities["FreeCapacity"] = strconv.FormatInt(int64(rune(freeCapacity-requestSize)), 10)
 	}
 }
 
-func filterByBackendName(ctx context.Context, backendName string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
-	var filterPools []*StoragePool
+func filterByBackendName(ctx context.Context, backendName string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
+	var filterPools []*model.StoragePool
 
 	for _, pool := range candidatePools {
 		if backendName == "" || backendName == pool.Parent {
@@ -500,8 +466,9 @@ func filterByBackendName(ctx context.Context, backendName string, candidatePools
 	return filterPools, nil
 }
 
-func filterByStoragePool(ctx context.Context, poolName string, candidatePools []*StoragePool) ([]*StoragePool, error) {
-	var filterPools []*StoragePool
+func filterByStoragePool(ctx context.Context, poolName string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
+	var filterPools []*model.StoragePool
 
 	for _, pool := range candidatePools {
 		if poolName == "" || poolName == pool.Name {
@@ -512,8 +479,9 @@ func filterByStoragePool(ctx context.Context, poolName string, candidatePools []
 	return filterPools, nil
 }
 
-func filterByVolumeType(ctx context.Context, volumeType string, candidatePools []*StoragePool) ([]*StoragePool, error) {
-	var filterPools []*StoragePool
+func filterByVolumeType(ctx context.Context, volumeType string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
+	var filterPools []*model.StoragePool
 
 	for _, pool := range candidatePools {
 		if volumeType == "lun" || volumeType == "" {
@@ -534,8 +502,9 @@ func filterByVolumeType(ctx context.Context, volumeType string, candidatePools [
 	return filterPools, nil
 }
 
-func filterByAllocType(ctx context.Context, allocType string, candidatePools []*StoragePool) ([]*StoragePool, error) {
-	var filterPools []*StoragePool
+func filterByAllocType(ctx context.Context, allocType string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
+	var filterPools []*model.StoragePool
 
 	for _, pool := range candidatePools {
 		valid := false
@@ -543,15 +512,17 @@ func filterByAllocType(ctx context.Context, allocType string, candidatePools []*
 		if pool.Storage == "oceanstor-9000" {
 			valid = true
 		} else if allocType == "thin" || allocType == "" {
-			supportThin, exist := pool.Capabilities["SupportThin"].(bool)
+			supportThin, exist := pool.Capabilities["SupportThin"]
 			if !exist {
-				log.AddContext(ctx).Warningf("convert supportThin to bool failed, data: %v", pool.Capabilities["SupportThin"])
+				log.AddContext(ctx).Warningf("convert supportThin to bool failed, data: %v",
+					pool.Capabilities["SupportThin"])
 			}
 			valid = exist && supportThin
 		} else if allocType == "thick" {
-			supportThick, exist := pool.Capabilities["SupportThick"].(bool)
+			supportThick, exist := pool.Capabilities["SupportThick"]
 			if !exist {
-				log.AddContext(ctx).Warningf("convert supportThick to bool failed, data: %v", pool.Capabilities["SupportThick"])
+				log.AddContext(ctx).Warningf("convert supportThick to bool failed, data: %v",
+					pool.Capabilities["SupportThick"])
 			}
 			valid = exist && supportThick
 		}
@@ -564,8 +535,8 @@ func filterByAllocType(ctx context.Context, allocType string, candidatePools []*
 	return filterPools, nil
 }
 
-func filterByQos(ctx context.Context, qos string, candidatePools []*StoragePool) ([]*StoragePool, error) {
-	var filterPools []*StoragePool
+func filterByQos(ctx context.Context, qos string, candidatePools []*model.StoragePool) ([]*model.StoragePool, error) {
+	var filterPools []*model.StoragePool
 
 	if qos == "" {
 		return candidatePools, nil
@@ -573,7 +544,7 @@ func filterByQos(ctx context.Context, qos string, candidatePools []*StoragePool)
 
 	var poolSelectionErrors []error
 	for _, pool := range candidatePools {
-		supportQoS, exist := pool.Capabilities["SupportQoS"].(bool)
+		supportQoS, exist := pool.Capabilities["SupportQoS"]
 		if exist && supportQoS {
 			err := pool.Plugin.SupportQoSParameters(ctx, qos)
 			if err != nil {
@@ -597,20 +568,24 @@ func filterByQos(ctx context.Context, qos string, candidatePools []*StoragePool)
 	return filterPools, nil
 }
 
-func filterByMetro(ctx context.Context, hyperMetro string, candidatePools []*StoragePool) ([]*StoragePool, error) {
+func filterByMetro(ctx context.Context, hyperMetro string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
 	if len(hyperMetro) == 0 || !utils.StrToBool(ctx, hyperMetro) {
 		return candidatePools, nil
 	}
 
-	var filterPools []*StoragePool
+	var filterPools []*model.StoragePool
 
 	for _, pool := range candidatePools {
-		backend, exist := csiBackends[pool.Parent]
-		if !exist || backend.MetroBackend == nil {
+		backend, exists := cache.BackendCacheProvider.Load(pool.Parent)
+		if !exists {
+			continue
+		}
+		if backend.MetroBackend == nil {
 			continue
 		}
 
-		if supportMetro, exist := pool.Capabilities["SupportMetro"].(bool); exist && supportMetro {
+		if supportMetro, exist := pool.Capabilities["SupportMetro"]; exist && supportMetro {
 			filterPools = append(filterPools, pool)
 		}
 	}
@@ -618,21 +593,21 @@ func filterByMetro(ctx context.Context, hyperMetro string, candidatePools []*Sto
 	return filterPools, nil
 }
 
-func filterByReplication(ctx context.Context, replication string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
+func filterByReplication(ctx context.Context, replication string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
 	if len(replication) == 0 || !utils.StrToBool(ctx, replication) {
 		return candidatePools, nil
 	}
 
-	var filterPools []*StoragePool
+	var filterPools []*model.StoragePool
 
 	for _, pool := range candidatePools {
-		backend, exist := csiBackends[pool.Parent]
-		if !exist || backend.ReplicaBackend == nil {
+		backend, exists := cache.BackendCacheProvider.Load(pool.Parent)
+		if !exists || backend.ReplicaBackend == nil {
 			continue
 		}
 
-		if SupportReplication, exist := pool.Capabilities["SupportReplication"].(bool); exist && SupportReplication {
+		if SupportReplication, exist := pool.Capabilities["SupportReplication"]; exist && SupportReplication {
 			filterPools = append(filterPools, pool)
 		}
 	}
@@ -640,8 +615,9 @@ func filterByReplication(ctx context.Context, replication string, candidatePools
 	return filterPools, nil
 }
 
-// filterByTopology returns a subset of the provided pools that can support any of the topology requirement.
-func filterByTopology(parameters map[string]interface{}, candidatePools []*StoragePool) ([]*StoragePool, error) {
+// FilterByTopology returns a subset of the provided pools that can support any of the topology requirement.
+func FilterByTopology(parameters map[string]interface{}, candidatePools []*model.StoragePool) ([]*model.StoragePool,
+	error) {
 	iTopology, topologyAvailable := parameters[Topology]
 	if !topologyAvailable {
 		// ignore topology filter
@@ -671,7 +647,7 @@ func filterByTopology(parameters map[string]interface{}, candidatePools []*Stora
 }
 
 // isTopologySupportedByBackend returns whether the specific backend can create volumes accessible by the given topology
-func isTopologySupportedByBackend(backend *Backend, topology map[string]string) bool {
+func isTopologySupportedByBackend(backend *model.Backend, topology map[string]string) bool {
 	requisiteFound := false
 
 	// extract protocol
@@ -732,8 +708,9 @@ func checkProtocolSupport(supportedTopology, protocols map[string]string) bool {
 }
 
 // filterPoolsOnTopology returns a subset of the provided pools that can support any of the requisiteTopologies.
-func filterPoolsOnTopology(candidatePools []*StoragePool, requisiteTopologies []map[string]string) []*StoragePool {
-	filteredPools := make([]*StoragePool, 0)
+func filterPoolsOnTopology(candidatePools []*model.StoragePool,
+	requisiteTopologies []map[string]string) []*model.StoragePool {
+	filteredPools := make([]*model.StoragePool, 0)
 
 	if len(requisiteTopologies) == 0 {
 		return candidatePools
@@ -741,8 +718,8 @@ func filterPoolsOnTopology(candidatePools []*StoragePool, requisiteTopologies []
 
 	for _, pool := range candidatePools {
 		// mutex lock acquired in pool selection
-		backend, exist := csiBackends[pool.Parent]
-		if !exist {
+		backend, exists := cache.BackendCacheProvider.Load(pool.Parent)
+		if !exists {
 			continue
 		}
 
@@ -753,7 +730,7 @@ func filterPoolsOnTopology(candidatePools []*StoragePool, requisiteTopologies []
 		}
 
 		for _, topology := range requisiteTopologies {
-			if isTopologySupportedByBackend(backend, topology) {
+			if isTopologySupportedByBackend(&backend, topology) {
 				filteredPools = append(filteredPools, pool)
 				break
 			}
@@ -766,23 +743,24 @@ func filterPoolsOnTopology(candidatePools []*StoragePool, requisiteTopologies []
 // sortPoolsByPreferredTopologies returns a list of pools ordered by the pools supportedTopologies field against
 // the provided list of preferredTopologies. If 2 or more pools can support a given preferredTopology, they are shuffled
 // randomly within that segment of the list, in order to prevent hotspots.
-func sortPoolsByPreferredTopologies(candidatePools []*StoragePool, preferredTopologies []map[string]string) []*StoragePool {
-	remainingPools := make([]*StoragePool, len(candidatePools))
+func sortPoolsByPreferredTopologies(candidatePools []*model.StoragePool,
+	preferredTopologies []map[string]string) []*model.StoragePool {
+	remainingPools := make([]*model.StoragePool, len(candidatePools))
 	copy(remainingPools, candidatePools)
-	orderedPools := make([]*StoragePool, 0)
+	orderedPools := make([]*model.StoragePool, 0)
 
 	for _, preferred := range preferredTopologies {
-		newRemainingPools := make([]*StoragePool, 0)
-		poolBucket := make([]*StoragePool, 0)
+		newRemainingPools := make([]*model.StoragePool, 0)
+		poolBucket := make([]*model.StoragePool, 0)
 
 		for _, pool := range remainingPools {
-			backend, exist := csiBackends[pool.Parent]
-			if !exist {
+			backend, exists := cache.BackendCacheProvider.Load(pool.Parent)
+			if !exists {
 				continue
 			}
 			// If it supports topology, pop it and add to bucket. Otherwise, add it to newRemaining pools to be
 			// addressed in future loop iterations.
-			if isTopologySupportedByBackend(backend, preferred) {
+			if isTopologySupportedByBackend(&backend, preferred) {
 				poolBucket = append(poolBucket, pool)
 			} else {
 				newRemainingPools = append(newRemainingPools, pool)
@@ -790,7 +768,7 @@ func sortPoolsByPreferredTopologies(candidatePools []*StoragePool, preferredTopo
 		}
 
 		// make new list of remaining pools
-		remainingPools = make([]*StoragePool, len(newRemainingPools))
+		remainingPools = make([]*model.StoragePool, len(newRemainingPools))
 		copy(remainingPools, newRemainingPools)
 
 		// shuffle bucket
@@ -809,43 +787,26 @@ func sortPoolsByPreferredTopologies(candidatePools []*StoragePool, preferredTopo
 	return append(orderedPools, remainingPools...)
 }
 
-func filterByCapabilityWithRetry(ctx context.Context, parameters map[string]interface{}, candidatePools []*StoragePool,
-	filterFuncs [][]interface{}) ([]*StoragePool, error) {
-
-	filterPools, err := filterByCapability(ctx, parameters, candidatePools, filterFuncs)
-	if err == nil {
-		return filterPools, nil
-	} else if !strings.Contains(err.Error(), NoAvailablePool) {
-		return nil, fmt.Errorf("failed to select pool, the capability filter failed, error: %v."+
-			" please check your storage class", err)
-	}
-
-	regErr := RegisterAllBackend(ctx)
-	if regErr != nil {
-		return nil, fmt.Errorf("filterByCapabilityWithRetry failed, RegisterAllBackend failed, error: [%v]", regErr)
-	}
-
-	return filterByCapability(ctx, parameters, filterPools, filterFuncs)
-}
-
-func filterByCapability(ctx context.Context, parameters map[string]interface{}, candidatePools []*StoragePool,
-	filterFuncs [][]interface{}) ([]*StoragePool, error) {
+// FilterByCapability filter backend by capability
+func FilterByCapability(ctx context.Context, parameters map[string]interface{}, candidatePools []*model.StoragePool,
+	filterFuncs [][]interface{}) ([]*model.StoragePool, error) {
 
 	var err error
 	for _, i := range filterFuncs {
-		key, filter := i[0].(string), i[1].(func(context.Context, string, []*StoragePool) ([]*StoragePool, error))
+		key, filter := i[0].(string), i[1].(func(context.Context, string, []*model.StoragePool) ([]*model.StoragePool,
+			error))
 		value, _ := parameters[key].(string)
 		candidatePools, err = filter(ctx, value, candidatePools)
 		if err != nil {
-			msg := fmt.Sprintf("Filter pool by capability failed, filter field: [%s], fileter function: [%s], paramters: [%v], error: [%v].",
+			msg := fmt.Sprintf("Filter pool by capability failed, filter field: [%s], fileter function: [%s], "+
+				"paramters: [%v], error: [%v].",
 				value, runtime.FuncForPC(reflect.ValueOf(filter).Pointer()).Name(), parameters, err)
-			log.AddContext(ctx).Errorln(msg)
 			return nil, errors.New(msg)
 		}
 		if len(candidatePools) == 0 {
-			msg := fmt.Sprintf("%s. the final filter field: %s, filter function: %s, parameters %v.",
-				NoAvailablePool, value, runtime.FuncForPC(reflect.ValueOf(filter).Pointer()).Name(), parameters)
-			log.AddContext(ctx).Errorln(msg)
+			msg := fmt.Sprintf("%s. Please check the storage class. The final filter field: %s, "+
+				"filter function: %s, parameters %v.", NoAvailablePool, value,
+				runtime.FuncForPC(reflect.ValueOf(filter).Pointer()).Name(), parameters)
 			return nil, errors.New(msg)
 		}
 	}
@@ -853,22 +814,19 @@ func filterByCapability(ctx context.Context, parameters map[string]interface{}, 
 	return candidatePools, nil
 }
 
-func filterByNFSProtocol(ctx context.Context, nfsProtocol string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
+func filterByNFSProtocol(ctx context.Context, nfsProtocol string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
 	if nfsProtocol == "" {
 		return candidatePools, nil
 	}
 
-	var filterPools []*StoragePool
+	var filterPools []*model.StoragePool
 	for _, pool := range candidatePools {
-		if nfsProtocol == "nfs3" &&
-			pool.Capabilities["SupportNFS3"] != nil && pool.Capabilities["SupportNFS3"].(bool) {
+		if nfsProtocol == "nfs3" && pool.Capabilities["SupportNFS3"] {
 			filterPools = append(filterPools, pool)
-		} else if nfsProtocol == "nfs4" &&
-			pool.Capabilities["SupportNFS4"] != nil && pool.Capabilities["SupportNFS4"].(bool) {
+		} else if nfsProtocol == "nfs4" && pool.Capabilities["SupportNFS4"] {
 			filterPools = append(filterPools, pool)
-		} else if nfsProtocol == "nfs41" &&
-			pool.Capabilities["SupportNFS41"] != nil && pool.Capabilities["SupportNFS41"].(bool) {
+		} else if nfsProtocol == "nfs41" && pool.Capabilities["SupportNFS41"] {
 			filterPools = append(filterPools, pool)
 		}
 	}
@@ -876,35 +834,36 @@ func filterByNFSProtocol(ctx context.Context, nfsProtocol string, candidatePools
 	return filterPools, nil
 }
 
-func filterBySupportClone(ctx context.Context, cloneSource string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
+func filterBySupportClone(ctx context.Context, cloneSource string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
 	if cloneSource == "" {
 		return candidatePools, nil
 	}
-	var filterPools []*StoragePool
+	var filterPools []*model.StoragePool
 	for _, pool := range candidatePools {
-		if pool.Capabilities["SupportClone"].(bool) {
+		if pool.Capabilities["SupportClone"] {
 			filterPools = append(filterPools, pool)
 		}
 	}
 	return filterPools, nil
 }
 
-func filterByCapacity(requestSize int64, allocType string, candidatePools []*StoragePool) []*StoragePool {
-	var filterPools []*StoragePool
+// FilterByCapacity filter backend by capacity
+func FilterByCapacity(requestSize int64, allocType string, candidatePools []*model.StoragePool) []*model.StoragePool {
+	var filterPools []*model.StoragePool
 	for _, pool := range candidatePools {
-		supportThin, thinExist := pool.Capabilities["SupportThin"].(bool)
+		supportThin, thinExist := pool.Capabilities["SupportThin"]
 		if !thinExist {
 			log.Warningf("convert supportThin to bool failed, data: %v", pool.Capabilities["SupportThin"])
 		}
-		supportThick, thickExist := pool.Capabilities["SupportThick"].(bool)
+		supportThick, thickExist := pool.Capabilities["SupportThick"]
 		if !thickExist {
 			log.Warningf("convert supportThick to bool failed, data: %v", pool.Capabilities["SupportThick"])
 		}
 		if (allocType == "thin" || allocType == "") && thinExist && supportThin {
 			filterPools = append(filterPools, pool)
 		} else if allocType == "thick" && thickExist && supportThick {
-			freeCapacity, _ := pool.Capabilities["FreeCapacity"].(int64)
+			freeCapacity := utils.ParseIntWithDefault(pool.GetCapacities()["FreeCapacity"], 10, 64, 0)
 			if requestSize <= freeCapacity {
 				filterPools = append(filterPools, pool)
 			}
@@ -914,15 +873,15 @@ func filterByCapacity(requestSize int64, allocType string, candidatePools []*Sto
 	return filterPools
 }
 
-func weightByFreeCapacity(candidatePools []*StoragePool) *StoragePool {
-	var selectPool *StoragePool
+func weightByFreeCapacity(candidatePools []*model.StoragePool) *model.StoragePool {
+	var selectPool *model.StoragePool
 
 	for _, pool := range candidatePools {
 		if selectPool == nil {
 			selectPool = pool
 		} else {
-			selectCapacity, _ := selectPool.Capabilities["FreeCapacity"].(int64)
-			curFreeCapacity, _ := pool.Capabilities["FreeCapacity"].(int64)
+			selectCapacity := utils.ParseIntWithDefault(selectPool.GetCapacities()["FreeCapacity"], 10, 64, 0)
+			curFreeCapacity := utils.ParseIntWithDefault(pool.GetCapacities()["FreeCapacity"], 10, 64, 0)
 			if selectCapacity < curFreeCapacity {
 				selectPool = pool
 			}
@@ -931,25 +890,12 @@ func weightByFreeCapacity(candidatePools []*StoragePool) *StoragePool {
 	return selectPool
 }
 
-// GetSupportedTopologies return configured supported topology by pool
-func (pool *StoragePool) GetSupportedTopologies(ctx context.Context) []map[string]string {
-	mutex.Lock()
-	defer mutex.Unlock()
-	backend, exist := csiBackends[pool.Parent]
-	if !exist {
-		log.AddContext(ctx).Warningf("Backend [%v] does not exist in CSI backend pool", pool.Parent)
-		return make([]map[string]string, 0)
-	}
-
-	return backend.SupportedTopologies
-}
-
-func filterByApplicationType(ctx context.Context, appType string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
-	var filterPools []*StoragePool
+func filterByApplicationType(ctx context.Context, appType string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
+	var filterPools []*model.StoragePool
 	for _, pool := range candidatePools {
 		if appType != "" {
-			supportAppType, ok := pool.Capabilities["SupportApplicationType"].(bool)
+			supportAppType, ok := pool.Capabilities["SupportApplicationType"]
 			if ok && supportAppType {
 				filterPools = append(filterPools, pool)
 			}
@@ -960,15 +906,15 @@ func filterByApplicationType(ctx context.Context, appType string, candidatePools
 	return filterPools, nil
 }
 
-func filterByStorageQuota(ctx context.Context, storageQuota string, candidatePools []*StoragePool) ([]*StoragePool,
-	error) {
-	var filterPools []*StoragePool
+func filterByStorageQuota(ctx context.Context, storageQuota string, candidatePools []*model.StoragePool) (
+	[]*model.StoragePool, error) {
+	var filterPools []*model.StoragePool
 	if storageQuota == "" {
 		return candidatePools, nil
 	}
 
 	for _, pool := range candidatePools {
-		supportStorageQuota, ok := pool.Capabilities["SupportQuota"].(bool)
+		supportStorageQuota, ok := pool.Capabilities["SupportQuota"]
 		if ok && supportStorageQuota {
 			err := fsUtils.IsStorageQuotaAvailable(ctx, storageQuota)
 			if err != nil {
@@ -982,21 +928,21 @@ func filterByStorageQuota(ctx context.Context, storageQuota string, candidatePoo
 }
 
 // ValidateBackend valid the backend basic info, such as: volumeType(authClient if nfs)
-var ValidateBackend = func(ctx context.Context, selectBackend *Backend, parameters map[string]interface{}) error {
-	for _, i := range validateFilterFuncs {
-		key, validator := i[0].(string), i[1].(func(context.Context, string, *Backend) error)
+var ValidateBackend = func(ctx context.Context, selectBackend *model.Backend, parameters map[string]interface{}) error {
+	for _, i := range ValidateFilterFuncs {
+		key, validator := i[0].(string), i[1].(func(context.Context, string, *model.Backend) error)
 		value, _ := parameters[key].(string)
 		if err := validator(ctx, value, selectBackend); err != nil {
-			return fmt.Errorf("validate backend error for manage Volume. "+
+			return fmt.Errorf("validate backend %s error for manage Volume. "+
 				"the final validator field: %s, validator function: %s, parameters %v. Reason: %v",
-				key, runtime.FuncForPC(reflect.ValueOf(validator).Pointer()).Name(), parameters, err)
+				selectBackend.Name, key, runtime.FuncForPC(reflect.ValueOf(validator).Pointer()).Name(), parameters, err)
 		}
 	}
 
 	return nil
 }
 
-func validateBackendName(ctx context.Context, backendName string, selectBackend *Backend) error {
+func validateBackendName(ctx context.Context, backendName string, selectBackend *model.Backend) error {
 	if backendName != "" && selectBackend.Name != backendName {
 		return utils.Errorf(ctx, "the backend name between StorageClass(%s) and PVC annotation(%s) "+
 			"is different", backendName, selectBackend.Name)
@@ -1005,7 +951,7 @@ func validateBackendName(ctx context.Context, backendName string, selectBackend 
 	return nil
 }
 
-func validateVolumeType(ctx context.Context, volumeType string, selectBackend *Backend) error {
+func validateVolumeType(ctx context.Context, volumeType string, selectBackend *model.Backend) error {
 	if filterPools, err := filterByVolumeType(ctx, volumeType, selectBackend.Pools); len(filterPools) == 0 {
 		if err != nil {
 			return err
@@ -1016,132 +962,9 @@ func validateVolumeType(ctx context.Context, volumeType string, selectBackend *B
 	return nil
 }
 
-// RegisterOneBackend used to register a backend to plugin
-func RegisterOneBackend(ctx context.Context, backendID, configmapMeta, secretMeta, certSecret string,
-	useCert bool) (string, error) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	log.AddContext(ctx).Infof("Register backend: [%s], configmap: [%s], meta: [%s]",
-		backendID, configmapMeta, secretMeta)
-
-	// If the backend exists, the registration is not repeated.
-	_, backendName, err := pkgUtils.SplitMetaNamespaceKey(backendID)
-	if _, exist := csiBackends[backendName]; exist {
-		log.AddContext(ctx).Infof("Backend %s already exist, ignore current request.", backendName)
-		return backendName, nil
-	}
-
-	storageInfo, err := GetStorageBackendInfo(ctx, backendID, configmapMeta, secretMeta, certSecret, useCert)
-	if err != nil {
-		return "", err
-	}
-
-	bk, err := NewBackend(backendName, storageInfo)
-	if err != nil {
-		return "", err
-	}
-
-	err = analyzePools(bk, storageInfo)
-	if err != nil {
-		return "", err
-	}
-
-	err = bk.Plugin.Init(storageInfo, bk.Parameters, true)
-	if err != nil {
-		log.Errorf("Init backend plugin error: %v", err)
-		return "", err
-	}
-
-	err = addProtocolTopology(bk, app.GetGlobalConfig().DriverName)
-	if err != nil {
-		log.Errorf("Add protocol topology error: %v", err)
-		return "", err
-	}
-
-	csiBackends[backendName] = bk
-
-	updateMetroBackends()
-
-	log.AddContext(ctx).Infof("The backend: [%s] is registered successfully. Registered: [%+v]",
-		backendName, csiBackends)
-	return backendName, nil
-}
-
-// RegisterAllBackend used to synchronize all backend from storageBackendContent to driver
-func RegisterAllBackend(ctx context.Context) error {
-	log.AddContext(ctx).Infoln("Synchronize backend from online storageBackendContent.")
-	defer log.AddContext(ctx).Infoln("Finish synchronize backend from online storageBackendContent.")
-
-	// Obtains all storageBackendClaims in the CSI namespace.
-	claims, err := pkgUtils.ListClaim(ctx, app.GetGlobalConfig().BackendUtils, app.GetGlobalConfig().Namespace)
-	if err != nil {
-		msg := fmt.Sprintf("List storageBackendClaim failed, error: [%v].", err)
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-
-	// Get all online storageBackendContent
-	var onlineContents []*xuanwuv1.StorageBackendContent
-	for _, claim := range claims.Items {
-		content, err := pkgUtils.GetContent(ctx, app.GetGlobalConfig().BackendUtils, claim.Status.BoundContentName)
-		if err != nil {
-			log.AddContext(ctx).Warningf("Get storageBackendContent failed, error: [%v]", err)
-			continue
-		}
-		if content == nil || content.Status == nil {
-			log.AddContext(ctx).Warningf("Get empty storageBackendContent, content: %+v", content)
-			continue
-		}
-		if !content.Status.Online {
-			log.AddContext(ctx).Warningf("StorageBackendContent: [%s] is offline(online: false), "+
-				"will not register.", content.Name)
-			continue
-		}
-		onlineContents = append(onlineContents, content)
-	}
-
-	// If the backend name is not in csiBackends, invoke RegisterOneBackend for registration.
-	for _, content := range onlineContents {
-		configmapMeta, secretMeta, err := pkgUtils.GetConfigMeta(ctx, content.Spec.BackendClaim)
-		if err != nil {
-			log.AddContext(ctx).Warningf("Get storageBackendClaim: [%s] ConfigMeta failed, storageBackendContent: "+
-				"[%s], error: [%v]", content.Spec.BackendClaim, content.Name, err)
-			continue
-		}
-
-		useCert, certSecret, err := pkgUtils.GetCertMeta(ctx, content.Spec.BackendClaim)
-		if err != nil {
-			log.AddContext(ctx).Warningf("Get storageBackendClaim: [%s] CertMeta failed, storageBackendContent: "+
-				"[%s], error: [%v]", content.Spec.BackendClaim, content.Name, err)
-			continue
-		}
-
-		_, err = RegisterOneBackend(ctx, content.Spec.BackendClaim, configmapMeta, secretMeta, certSecret, useCert)
-		if err != nil {
-			log.AddContext(ctx).Warningf("RegisterOneBackend failed, meta: [%s %s %s], error: %v",
-				content.Spec.BackendClaim, configmapMeta, secretMeta, err)
-		}
-	}
-
-	return nil
-}
-
 // RemoveOneBackend remove a storage backend from plugin
 func RemoveOneBackend(ctx context.Context, storageBackendId string) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	if _, exist := csiBackends[storageBackendId]; exist {
-		delete(csiBackends, storageBackendId)
-	}
-	log.AddContext(ctx).Infof("storageBackends: Successful remove backend %s. csiBackends: [%v] ",
-		storageBackendId, csiBackends)
-
-	finalizers.RemoveStorageBackendMutex(ctx, storageBackendId)
-	return
-}
-
-func IsBackendRegistered(backendName string) bool {
-	return csiBackends[backendName] != nil
+	cache.BackendCacheProvider.Delete(ctx, storageBackendId)
+	log.AddContext(ctx).Infof("storageBackends: Successful remove backend %s.",
+		storageBackendId)
 }

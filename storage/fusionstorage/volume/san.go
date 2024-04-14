@@ -31,14 +31,19 @@ import (
 )
 
 const (
-	SCSITYPE  = 0
+	// SCSITYPE defines scsi type
+	SCSITYPE = 0
+
+	// ISCSITYPE defines iscsi type
 	ISCSITYPE = 1
 )
 
+// SAN provides san storage client
 type SAN struct {
 	cli *client.Client
 }
 
+// NewSAN inits a new san client
 func NewSAN(cli *client.Client) *SAN {
 	return &SAN{
 		cli: cli,
@@ -93,6 +98,7 @@ func (p *SAN) preCreate(ctx context.Context, params map[string]interface{}) erro
 	return nil
 }
 
+// Create creates lun volume
 func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.Volume, error) {
 	err := p.preCreate(ctx, params)
 	if err != nil {
@@ -287,6 +293,7 @@ func (p *SAN) createQoS(ctx context.Context, params, taskResult map[string]inter
 	}, nil
 }
 
+// Query queries volume by name
 func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
 	vol, err := p.cli.GetVolumeByName(ctx, name)
 	if err != nil {
@@ -309,6 +316,7 @@ func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
 	return volObj, nil
 }
 
+// Delete deletes volume by name
 func (p *SAN) Delete(ctx context.Context, name string) error {
 	vol, err := p.cli.GetVolumeByName(ctx, name)
 	if err != nil {
@@ -330,6 +338,7 @@ func (p *SAN) Delete(ctx context.Context, name string) error {
 	return p.cli.DeleteVolume(ctx, name)
 }
 
+// Expand expands volume size
 func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, error) {
 	lun, err := p.cli.GetVolumeByName(ctx, name)
 	if err != nil {
@@ -400,6 +409,7 @@ func (p *SAN) expandLocalLun(ctx context.Context,
 	return nil, nil
 }
 
+// CreateSnapshot creates lun snapshot
 func (p *SAN) CreateSnapshot(ctx context.Context,
 	lunName, snapshotName string) (map[string]interface{}, error) {
 	lun, err := p.cli.GetVolumeByName(ctx, lunName)
@@ -461,6 +471,7 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 	}, nil
 }
 
+// DeleteSnapshot deletes lun snapshot
 func (p *SAN) DeleteSnapshot(ctx context.Context, snapshotName string) error {
 	snapshot, err := p.cli.GetSnapshotByName(ctx, snapshotName)
 	if err != nil {

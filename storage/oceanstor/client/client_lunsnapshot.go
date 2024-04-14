@@ -29,6 +29,7 @@ const (
 	snapshotNotActivated int64 = 1077937891
 )
 
+// LunSnapshot defines interfaces for lun snapshot operations
 type LunSnapshot interface {
 	// GetLunSnapshotByName used for get lun snapshot by name
 	GetLunSnapshotByName(ctx context.Context, name string) (map[string]interface{}, error)

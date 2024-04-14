@@ -28,6 +28,7 @@ const (
 	clonePairNotExist int64 = 1073798147
 )
 
+// Clone defines interfaces for clone operations
 type Clone interface {
 	// DeleteClonePair used for delete clone pair
 	DeleteClonePair(ctx context.Context, clonePairID string) error

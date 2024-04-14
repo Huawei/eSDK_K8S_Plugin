@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package attacher provide operations of volume attach
 package attacher
 
 import (
@@ -35,6 +36,7 @@ const (
 	lunGroupType  = 256
 )
 
+// AttacherPlugin defines interfaces of attach operations
 type AttacherPlugin interface {
 	ControllerAttach(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
 	ControllerDetach(context.Context, string, map[string]interface{}) (string, error)
@@ -42,6 +44,7 @@ type AttacherPlugin interface {
 	getLunInfo(context.Context, string) (map[string]interface{}, error)
 }
 
+// Attacher defines attacher to attach volume
 type Attacher struct {
 	cli      client.BaseClientInterface
 	protocol string
@@ -50,6 +53,7 @@ type Attacher struct {
 	alua     map[string]interface{}
 }
 
+// NewAttacher init a new attacher
 func NewAttacher(
 	product string,
 	cli client.BaseClientInterface,
@@ -315,7 +319,7 @@ func (p *Attacher) needUpdateInitiatorAlua(initiator map[string]interface{}) boo
 
 	if multiPathType != initiator["MULTIPATHTYPE"] {
 		return true
-	} else if initiator["MULTIPATHTYPE"] == MULTIPATHTYPE_DEFAULT {
+	} else if initiator["MULTIPATHTYPE"] == MultiPathTypeDefault {
 		return false
 	}
 
@@ -819,6 +823,7 @@ func (p *Attacher) doUnmapping(ctx context.Context, hostID, lunName string) (str
 	return lunUniqueId, nil
 }
 
+// ControllerDetach detaches volume and unmaps lun from host
 func (p *Attacher) ControllerDetach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (string, error) {

@@ -87,9 +87,9 @@ func getInputString(tips string, isVisible bool) (string, error) {
 
 	var cmd *exec.Cmd
 	if isVisible {
-		cmd = exec.Command("/bin/bash", "-c", "stty erase '^H' -isig -ixon && read -r str && echo $str")
+		cmd = exec.Command("/bin/bash", "-c", "read -r str && echo $str")
 	} else {
-		cmd = exec.Command("/bin/bash", "-c", "stty erase '^H' -isig -ixon && read -sr pwd && echo $pwd")
+		cmd = exec.Command("/bin/bash", "-c", "read -sr pwd && echo $pwd")
 	}
 
 	cmd.Stdin = os.Stdin

@@ -17,10 +17,11 @@
 package client
 
 import (
+	"context"
 	"testing"
 
 	"github.com/prashantv/gostub"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/smartystreets/goconvey/convey"
 
 	"huawei-csi-driver/csi/app"
 	cfg "huawei-csi-driver/csi/app/config"
@@ -49,34 +50,33 @@ func TestMain(m *testing.M) {
 		UseCert:         false,
 		CertSecretMeta:  "",
 	}
-
-	testClient = NewClient(clientConfig)
+	testClient = NewClient(context.Background(), clientConfig)
 
 	m.Run()
 }
 
 func TestGetErrorCode(t *testing.T) {
-	Convey("Normal case", t, func() {
+	convey.Convey("Normal case", t, func() {
 		errCode, err := getErrorCode(map[string]any{
 			"name":       "mock-name",
 			"errorCode":  12345.0,
 			"suggestion": "mock-suggestion",
 		})
-		So(errCode, ShouldEqual, 12345)
-		So(err, ShouldBeNil)
+		convey.So(errCode, convey.ShouldEqual, 12345)
+		convey.So(err, convey.ShouldBeNil)
 	})
 
-	Convey("Error code is string ", t, func() {
+	convey.Convey("Error code is string ", t, func() {
 		errCode, err := getErrorCode(map[string]any{
 			"name":       "mock-name",
 			"errorCode":  "12345",
 			"suggestion": "mock-suggestion",
 		})
-		So(errCode, ShouldEqual, 12345)
-		So(err, ShouldBeNil)
+		convey.So(errCode, convey.ShouldEqual, 12345)
+		convey.So(err, convey.ShouldBeNil)
 	})
 
-	Convey("Error code in result", t, func() {
+	convey.Convey("Error code in result", t, func() {
 		errCode, err := getErrorCode(map[string]any{
 			"result": map[string]any{
 				"code": 12345.0,
@@ -85,11 +85,11 @@ func TestGetErrorCode(t *testing.T) {
 				"name": "mock-name",
 			},
 		})
-		So(errCode, ShouldEqual, 12345)
-		So(err, ShouldBeNil)
+		convey.So(errCode, convey.ShouldEqual, 12345)
+		convey.So(err, convey.ShouldBeNil)
 	})
 
-	Convey("Can not convert to int", t, func() {
+	convey.Convey("Can not convert to int", t, func() {
 		_, err := getErrorCode(map[string]any{
 			"result": map[string]any{
 				"code": "a12345",
@@ -98,6 +98,6 @@ func TestGetErrorCode(t *testing.T) {
 				"name": "mock-name",
 			},
 		})
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }

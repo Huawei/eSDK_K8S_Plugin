@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -35,12 +36,18 @@ import (
 )
 
 const (
-	ApiVersion              = "v1"
-	XuanWuApiVersion        = "xuanwu.huawei.io/v1"
-	KindSecret              = "Secret"
-	KindConfigMap           = "ConfigMap"
+	// ApiVersion is the version of meta type
+	ApiVersion = "v1"
+	// XuanWuApiVersion is the version of xuanwu api
+	XuanWuApiVersion = "xuanwu.huawei.io/v1"
+	// KindSecret is secret kind string
+	KindSecret = "Secret"
+	// KindConfigMap is the configmap kind string
+	KindConfigMap = "ConfigMap"
+	// KindStorageBackendClaim is the storage backend claim kind string
 	KindStorageBackendClaim = "StorageBackendClaim"
-	YamlSeparator           = "---"
+	// YamlSeparator defines the separator of yaml file
+	YamlSeparator = "---"
 )
 
 // BackendConfiguration backend config
@@ -139,7 +146,7 @@ func (b *BackendShowWide) ShowWithContentOption(content xuanwuv1.StorageBackendC
 
 // ShowWithConfigOption set BackendConfiguration value for BackendShowWide
 func (b *BackendShowWide) ShowWithConfigOption(configuration BackendConfiguration) *BackendShowWide {
-	b.Url = strings.Join(configuration.Urls, "\n")
+	b.Url = strings.Join(configuration.Urls, ";")
 	return b
 }
 
@@ -274,20 +281,26 @@ func (c *StorageBackendClaimConfig) ToStorageBackendClaim() xuanwuv1.StorageBack
 }
 
 // LoadBackendsFromJson load backend from json bytes
-func LoadBackendsFromJson(jsonData []byte) (map[string]*BackendConfiguration, error) {
-	result := make(map[string]*BackendConfiguration)
+func LoadBackendsFromJson(filename string) (map[string]*BackendConfiguration, error) {
+	jsonData, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
 
+	result := make(map[string]*BackendConfiguration)
 	configmap := corev1.ConfigMap{}
-	err := json.Unmarshal(jsonData, &configmap)
+	err = json.Unmarshal(jsonData, &configmap)
 	if err != nil {
 		return result, err
 	}
 
-	return LoadBackendsFromConfigMap(configmap)
+	return LoadBackendsFromConfigMap(configmap, filename)
 }
 
-// LoadBackendsFromConfigMap load backend from configmap resource
-func LoadBackendsFromConfigMap(configmap corev1.ConfigMap) (map[string]*BackendConfiguration, error) {
+// LoadBackendsFromConfigMap load backend from configmap resource.
+// fromLocalFile should be "" if the configmap is from kubernetes.
+func LoadBackendsFromConfigMap(configmap corev1.ConfigMap,
+	fromLocalFile string) (map[string]*BackendConfiguration, error) {
 	result := make(map[string]*BackendConfiguration)
 	jsonStr, ok := configmap.Data["csi.json"]
 	if !ok {
@@ -310,6 +323,9 @@ func LoadBackendsFromConfigMap(configmap corev1.ConfigMap) (map[string]*BackendC
 	}
 
 	for _, backend := range backends {
+		if _, ok := result[backend.Name]; fromLocalFile != "" && ok {
+			return result, helper.BackendAlreadyExistsError(backend.Name, fromLocalFile)
+		}
 		result[backend.Name] = backend
 	}
 	return result, nil
@@ -353,15 +369,23 @@ func LoadMultipleBackendFromConfigmap(jsonStr string) ([]*BackendConfiguration, 
 }
 
 // LoadBackendsFromYaml load backend from yaml
-func LoadBackendsFromYaml(yamlData []byte) (map[string]*BackendConfiguration, error) {
+func LoadBackendsFromYaml(filename string) (map[string]*BackendConfiguration, error) {
+	yamlData, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
 	cleanYamlData := strings.Trim(strings.TrimSpace(string(yamlData)), YamlSeparator)
 	decoder := yaml.NewDecoder(bytes.NewReader([]byte(cleanYamlData)))
 
 	var backends = map[string]*BackendConfiguration{}
 	config := &BackendConfiguration{}
-	err := decoder.Decode(config)
+	err = decoder.Decode(config)
 	for err == nil {
 		if !reflect.DeepEqual(*config, BackendConfiguration{}) {
+			if _, ok := backends[config.Name]; ok {
+				return backends, helper.BackendAlreadyExistsError(config.Name, filename)
+			}
 			backends[config.Name] = config
 		}
 		config = &BackendConfiguration{}

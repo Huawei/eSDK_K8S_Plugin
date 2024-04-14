@@ -26,6 +26,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// RoCE defines interfaces for RoCE operations
 type RoCE interface {
 	// GetRoCEInitiator used for get RoCE initiator
 	GetRoCEInitiator(ctx context.Context, initiator string) (map[string]interface{}, error)

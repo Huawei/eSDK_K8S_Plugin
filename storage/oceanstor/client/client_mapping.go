@@ -33,6 +33,7 @@ const (
 	mappingNotExist           int64 = 1077951819
 )
 
+// Mapping defines interfaces for mapping operations
 type Mapping interface {
 	// DeleteMapping used for delete mapping
 	DeleteMapping(ctx context.Context, id string) error

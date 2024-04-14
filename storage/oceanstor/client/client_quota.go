@@ -24,16 +24,26 @@ import (
 )
 
 const (
-	QuotaTypeDir       int = 1
-	QuotaTypeUser      int = 2
+	// QuotaTypeDir defines dir type quota
+	QuotaTypeDir int = 1
+
+	// QuotaTypeUser defines user type
+	QuotaTypeUser int = 2
+
+	// QuotaTypeUserGroup defines user group type
 	QuotaTypeUserGroup int = 3
 
+	// SpaceUnitTypeGB defines GB type of space unit
 	SpaceUnitTypeGB int = 3
 
-	ForceFlagTrue  bool = true
+	// ForceFlagTrue defines force flag true
+	ForceFlagTrue bool = true
+
+	// ForceFlagFalse defines force flag false
 	ForceFlagFalse bool = false
 )
 
+// OceanStorQuota defines interfaces for quota operations
 type OceanStorQuota interface {
 	// CreateQuota use for create quota for dTree or file system
 	CreateQuota(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error)
@@ -47,6 +57,7 @@ type OceanStorQuota interface {
 	DeleteQuota(ctx context.Context, quotaID, vStoreID string, forceFlag bool) error
 }
 
+// CreateQuota creates quota by params
 func (cli *BaseClient) CreateQuota(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error) {
 	resp, err := cli.Post(ctx, "/FS_QUOTA", params)
 	if err != nil {
@@ -60,6 +71,7 @@ func (cli *BaseClient) CreateQuota(ctx context.Context, params map[string]interf
 	return cli.getResponseDataMap(ctx, resp.Data)
 }
 
+// UpdateQuota updates quota by id
 func (cli *BaseClient) UpdateQuota(ctx context.Context, quotaID string, params map[string]interface{}) error {
 	resp, err := cli.Put(ctx, fmt.Sprintf("/FS_QUOTA/%v", quotaID), params)
 	if err != nil {
@@ -73,6 +85,7 @@ func (cli *BaseClient) UpdateQuota(ctx context.Context, quotaID string, params m
 	return nil
 }
 
+// GetQuota gets quota info by id
 func (cli *BaseClient) GetQuota(ctx context.Context, quotaID, vStoreID string, spaceUnitType uint32) (map[string]interface{}, error) {
 	resp, err := cli.Get(ctx, fmt.Sprintf("/FS_QUOTA/%v", quotaID), map[string]interface{}{
 		"SPACEUNITTYPE": spaceUnitType,
@@ -89,6 +102,7 @@ func (cli *BaseClient) GetQuota(ctx context.Context, quotaID, vStoreID string, s
 	return cli.getResponseDataMap(ctx, resp.Data)
 }
 
+// BatchGetQuota gets quotas filtered by params
 func (cli *BaseClient) BatchGetQuota(ctx context.Context, params map[string]interface{}) ([]interface{}, error) {
 	url := fmt.Sprintf("/FS_QUOTA?PARENTTYPE=%v&PARENTID=%v&range=%v&vstoreId=%v&QUERYTYPE=%v&SPACEUNITTYPE=%v",
 		params["PARENTTYPE"], params["PARENTID"], params["range"], params["vstoreId"],
@@ -105,6 +119,7 @@ func (cli *BaseClient) BatchGetQuota(ctx context.Context, params map[string]inte
 	return cli.getResponseDataList(ctx, resp.Data)
 }
 
+// DeleteQuota deletes quota by id
 func (cli *BaseClient) DeleteQuota(ctx context.Context, quotaID, vStoreID string, forceFlag bool) error {
 	resp, err := cli.Delete(ctx, fmt.Sprintf("/FS_QUOTA/%v", quotaID), map[string]interface{}{
 		"forceFlag": forceFlag,

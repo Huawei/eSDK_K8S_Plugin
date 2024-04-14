@@ -27,10 +27,12 @@ type resourceTuple struct {
 	Name     string
 }
 
+// Resource is a resource for Kubernetes
 type Resource struct {
 	*ResourceBuilder
 }
 
+// ResourceBuilder is used to build a resource object
 type ResourceBuilder struct {
 	names []string
 

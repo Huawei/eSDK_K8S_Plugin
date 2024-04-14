@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package options defines options which user can input
 package options
 
 import (
@@ -23,6 +24,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// FlagsOptions is used for processing flags which user input
 type FlagsOptions struct {
 	cmd *cobra.Command
 }
@@ -129,5 +131,12 @@ func (b *FlagsOptions) WithAllNodes() *FlagsOptions {
 func (b *FlagsOptions) WithNodeName() *FlagsOptions {
 	b.cmd.PersistentFlags().StringVarP(&config.NodeName, "nodename", "N", "", "Specify the node "+
 		"for which information is to be collected.")
+	return b
+}
+
+// WithLogDir This function will add log-dir
+func (b *FlagsOptions) WithLogDir() *FlagsOptions {
+	b.cmd.PersistentFlags().StringVarP(&config.LogDir, "log-dir", "", "/var/log/huawei", "Specify the "+
+		"directory for printing log files.")
 	return b
 }

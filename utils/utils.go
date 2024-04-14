@@ -19,6 +19,7 @@ package utils
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"math"
@@ -36,8 +37,8 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/metadata"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"huawei-csi-driver/cli/helper"
 	"huawei-csi-driver/csi/app"
@@ -850,9 +851,20 @@ func RecoverPanic(ctx context.Context) {
 }
 
 // IsDebugLog is used to determine whether debug log are required.
-func IsDebugLog(method, url string, debugLogMap map[string]map[string]bool) bool {
-	ret, exist := debugLogMap[method]
-	return exist && ret[url]
+func IsDebugLog(method, url string, debugLogMap map[string]map[string]bool, regLogs map[string][]string) bool {
+	if ret, exist := debugLogMap[method]; exist && ret[url] {
+		return true
+	}
+	if filter, exist := regLogs[method]; exist {
+		for _, k := range filter {
+			match, err := regexp.MatchString(k, url)
+			if err == nil && match {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // GetPasswordFromSecret used to get password from secret
@@ -977,7 +989,40 @@ func AtoiWithDefault(s string, defaultResult int) int {
 	return result
 }
 
-// NewContext new a context
-func NewContext() context.Context {
-	return context.WithValue(context.Background(), "requestId", string(uuid.NewUUID()))
+// NewContextWithRequestID new a context
+func NewContextWithRequestID() context.Context {
+	ctx := context.Background()
+
+	var requestID string
+	md, ok := metadata.FromIncomingContext(ctx)
+	// if no metadata, generate one
+	if !ok {
+		md = metadata.Pairs()
+		ctx = metadata.NewIncomingContext(ctx, md)
+	}
+
+	if reqIDs, ok := md[string(log.CsiRequestID)]; ok && len(reqIDs) > 0 {
+		requestID = reqIDs[0]
+	}
+
+	if requestID == "" {
+		randomID, err := crand.Prime(crand.Reader, 32)
+		if err != nil {
+			log.Errorf("Failed in random ID generation for topo request ID logging: %v", err)
+			return ctx
+		}
+		requestID = randomID.String()
+	}
+
+	return context.WithValue(ctx, log.CsiRequestID, requestID)
+}
+
+// Contains sources contains target
+func Contains(sources []int64, target int64) bool {
+	for _, source := range sources {
+		if source == target {
+			return true
+		}
+	}
+	return false
 }

@@ -48,17 +48,28 @@ const (
 	noRootSquash = 1
 )
 
+// NASHyperMetro defines HyperMetro nas storage
 type NASHyperMetro struct {
 	FsHyperMetroActiveSite bool
 	LocVStoreID            string
 	RmtVStoreID            string
 }
 
+// NAS provides base nas client
 type NAS struct {
 	Base
 	NASHyperMetro
 }
 
+type allowNfsShareAccessParam struct {
+	shareID      string
+	authClient   string
+	vStoreID     string
+	activeClient client.BaseClientInterface
+	accesses     map[string]interface{}
+}
+
+// NewNAS inits a new nas client
 func NewNAS(cli, metroRemoteCli, replicaRemoteCli client.BaseClientInterface, product string, nasHyperMetro NASHyperMetro) *NAS {
 	return &NAS{
 		Base: Base{
@@ -156,6 +167,7 @@ func (p *NAS) preCreate(ctx context.Context, params map[string]interface{}) erro
 	return nil
 }
 
+// Create creates fs volume
 func (p *NAS) Create(ctx context.Context, params map[string]interface{}) (utils.Volume, error) {
 	err := p.preCreate(ctx, params)
 	if err != nil {
@@ -189,9 +201,11 @@ func (p *NAS) Create(ctx context.Context, params map[string]interface{}) (utils.
 		taskflow.AddTask("Create-HyperMetro", p.createHyperMetro, p.revertHyperMetro)
 	}
 
-	taskflow.AddTask("Create-Share", p.createShare, p.revertShare)
-	taskflow.AddTask("Allow-Share-Access", p.allowShareAccess, p.revertShareAccess)
-	taskflow.AddTask("Create-QoS", p.createLocalQoS, p.revertLocalQoS)
+	if skipShare, exist := params["skipNfsShareAndQos"].(bool); !exist || !skipShare {
+		taskflow.AddTask("Create-Share", p.createShare, p.revertShare)
+		taskflow.AddTask("Allow-Share-Access", p.allowShareAccess, p.revertShareAccess)
+		taskflow.AddTask("Create-QoS", p.createLocalQoS, p.revertLocalQoS)
+	}
 
 	params["localVStoreID"] = p.LocVStoreID
 	params["remoteVStoreID"] = p.RmtVStoreID
@@ -714,48 +728,37 @@ func (p *NAS) getCurrentShareAccess(ctx context.Context, shareID, vStoreID strin
 
 func (p *NAS) allowShareAccess(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	shareID, ok := taskResult["shareID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert shareID to string failed, data: %v", taskResult["shareID"])
-	}
-	authClient, ok := params["authclient"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert authClient to string failed, data: %v", params["authclient"])
-	}
-	activeClient := p.getActiveClient(taskResult)
-	vStoreID := p.getVStoreID(taskResult)
-	accesses, err := p.getCurrentShareAccess(ctx, shareID, vStoreID, activeClient)
+	allowShareAccessParam, err := p.preShareAccessParam(ctx, params, taskResult)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get current access of share %s error: %v", shareID, err)
 		return nil, err
 	}
 
-	for _, i := range strings.Split(authClient, ";") {
-		_, exist := accesses[i]
-		delete(accesses, i)
-
-		if exist {
+	for _, i := range strings.Split(allowShareAccessParam.authClient, ";") {
+		if _, exist := allowShareAccessParam.accesses[i]; exist {
+			delete(allowShareAccessParam.accesses, i)
 			continue
 		}
 
 		req := &client.AllowNfsShareAccessRequest{
-			Name:       i,
-			ParentID:   shareID,
-			AccessVal:  1,
-			Sync:       0,
-			AllSquash:  params["allsquash"].(int),
-			RootSquash: params["rootsquash"].(int),
-			VStoreID:   vStoreID,
+			Name:        i,
+			ParentID:    allowShareAccessParam.shareID,
+			AccessVal:   1,
+			Sync:        0,
+			AllSquash:   params["allsquash"].(int),
+			RootSquash:  params["rootsquash"].(int),
+			VStoreID:    allowShareAccessParam.vStoreID,
+			AccessKrb5:  formatKerberosParam(params["accesskrb5"]),
+			AccessKrb5i: formatKerberosParam(params["accesskrb5i"]),
+			AccessKrb5p: formatKerberosParam(params["accesskrb5p"]),
 		}
-		err := activeClient.AllowNfsShareAccess(ctx, req)
-		if err != nil {
+		if err = allowShareAccessParam.activeClient.AllowNfsShareAccess(ctx, req); err != nil {
 			log.AddContext(ctx).Errorf("Allow nfs share access %v failed. error: %v", req, err)
 			return nil, err
 		}
 	}
 
 	// Remove all other extra access
-	for _, i := range accesses {
+	for _, i := range allowShareAccessParam.accesses {
 		access, ok := i.(map[string]interface{})
 		if !ok {
 			log.AddContext(ctx).Warningf("convert access to map failed, data: %v", i)
@@ -766,15 +769,39 @@ func (p *NAS) allowShareAccess(ctx context.Context,
 			log.AddContext(ctx).Warningf("convert accessID to string failed, data: %v", access["ID"])
 			continue
 		}
-		err := activeClient.DeleteNfsShareAccess(ctx, accessID, vStoreID)
-		if err != nil {
+		if err = allowShareAccessParam.activeClient.DeleteNfsShareAccess(ctx, accessID,
+			allowShareAccessParam.vStoreID); err != nil {
 			log.AddContext(ctx).Warningf("Delete extra nfs share access %s error: %v", accessID, err)
 		}
 	}
 
 	return map[string]interface{}{
-		"authClient": authClient,
+		"authClient": allowShareAccessParam.authClient,
 	}, nil
+}
+
+func (p *NAS) preShareAccessParam(ctx context.Context, params,
+	taskResult map[string]interface{}) (*allowNfsShareAccessParam, error) {
+	var res allowNfsShareAccessParam
+	var err error
+	var b bool
+	res.shareID, b = taskResult["shareID"].(string)
+	if !b {
+		return nil, pkgUtils.Errorf(ctx, "convert shareID to string failed, data: %v",
+			taskResult["shareID"])
+	}
+	res.authClient, b = params["authclient"].(string)
+	if !b {
+		return nil, pkgUtils.Errorf(ctx, "convert authClient to string failed, data: %v",
+			params["authclient"])
+	}
+	res.activeClient = p.getActiveClient(taskResult)
+	res.vStoreID = p.getVStoreID(taskResult)
+	res.accesses, err = p.getCurrentShareAccess(ctx, res.shareID, res.vStoreID, res.activeClient)
+	if err != nil {
+		return nil, pkgUtils.Errorf(ctx, "Get current access of share %s error: %v", res.shareID, err)
+	}
+	return &res, nil
 }
 
 func (p *NAS) revertShareAccess(ctx context.Context, taskResult map[string]interface{}) error {
@@ -817,6 +844,7 @@ func (p *NAS) revertShareAccess(ctx context.Context, taskResult map[string]inter
 	return nil
 }
 
+// Query queries volume by name
 func (p *NAS) Query(ctx context.Context, fsName string, params map[string]interface{}) (utils.Volume, error) {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
@@ -833,14 +861,19 @@ func (p *NAS) Query(ctx context.Context, fsName string, params map[string]interf
 	}
 
 	volObj := utils.NewVolume(fsName)
+
 	// set the size, need to trans Sectors to Bytes
 	if capacity, err := strconv.ParseInt(fs["CAPACITY"].(string), 10, 64); err == nil {
 		volObj.SetSize(utils.TransK8SCapacity(capacity, 512))
+	}
+	if fileSystemMode, ok := fs["fileSystemMode"].(string); ok {
+		volObj.SetFilesystemMode(fileSystemMode)
 	}
 
 	return volObj, nil
 }
 
+// Delete deletes volume by name
 func (p *NAS) Delete(ctx context.Context, fsName string) error {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
@@ -938,6 +971,7 @@ func (p *NAS) Delete(ctx context.Context, fsName string) error {
 	return err
 }
 
+// Expand expands volume size
 func (p *NAS) Expand(ctx context.Context, fsName string, newSize int64) error {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
@@ -1402,9 +1436,9 @@ func (p *NAS) getHyperMetroParams(ctx context.Context,
 
 func (p *NAS) createHyperMetro(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	vStorePairID, ok := params["vStorePairID"].(string)
+	vStorePairID, ok := params["vstorepairid"].(string)
 	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert vStorePairID to string failed, data: %v", params["vStorePairID"])
+		return nil, pkgUtils.Errorf(ctx, "convert vStorePairID to string failed, data: %v", params["vstorepairid"])
 	}
 	localFSID, ok := taskResult["localFSID"].(string)
 	if !ok {
@@ -1695,6 +1729,7 @@ func (p *NAS) expandLocalFS(ctx context.Context,
 	return nil, err
 }
 
+// CreateSnapshot creates fs snapshot
 func (p *NAS) CreateSnapshot(ctx context.Context, fsName, snapshotName string) (map[string]interface{}, error) {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
@@ -1737,6 +1772,7 @@ func (p *NAS) CreateSnapshot(ctx context.Context, fsName, snapshotName string) (
 	return p.getSnapshotReturnInfo(snapshot, snapshotSize), nil
 }
 
+// DeleteSnapshot deletes fs snapshot
 func (p *NAS) DeleteSnapshot(ctx context.Context, snapshotParentId, snapshotName string) error {
 	snapshot, err := p.cli.GetFSSnapshotByName(ctx, snapshotParentId, snapshotName)
 	if err != nil {

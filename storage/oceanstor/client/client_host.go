@@ -32,6 +32,7 @@ const (
 	hostGroupNotExist      int64 = 1077937500
 )
 
+// Host defines interfaces for host operations
 type Host interface {
 	// QueryAssociateHostGroup used for query associate host group
 	QueryAssociateHostGroup(ctx context.Context, objType int, objID string) ([]interface{}, error)

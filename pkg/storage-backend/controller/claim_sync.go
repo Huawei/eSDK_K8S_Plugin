@@ -220,7 +220,6 @@ func (ctrl *BackendController) createContent(ctx context.Context, storageBackend
 		needUpdate = true
 	}
 
-	// TODO filter the StorageBackendContent through claim name
 	storageBackendContent := &xuanwuv1.StorageBackendContent{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: utils.GenDynamicContentName(storageBackend),

@@ -27,6 +27,7 @@ type KubernetesClient interface {
 	GetNameSpace() (string, error)
 	OperateResourceByYaml(yaml, operate string, ignoreNotfound bool) error
 	DeleteResourceByQualifiedNames(qualifiedNames []string, namespace string) (string, error)
+	DeleteFinalizersInResourceByQualifiedNames(qualifiedNames []string, namespace string) error
 	GetResource(name []string, namespace, outputType string, resourceType ResourceType) ([]byte, error)
 	CheckResourceExist(name, namespace string, resourceType ResourceType) (bool, error)
 

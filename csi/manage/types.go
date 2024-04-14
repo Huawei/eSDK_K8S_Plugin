@@ -24,12 +24,12 @@ import (
 	"huawei-csi-driver/connector/nvme"
 )
 
+// Manager defines the operations which storage manager should implement
 type Manager interface {
 	StageVolume(context.Context, *csi.NodeStageVolumeRequest) error
 	UnStageVolume(context.Context, *csi.NodeUnstageVolumeRequest) error
 	ExpandVolume(context.Context, *csi.NodeExpandVolumeRequest) error
 	UnStageWithWwn(ctx context.Context, wwn, volumeId string) error
-	GetDTreeVolume(ctx context.Context) (string, bool)
 }
 
 // ControllerPublishInfo context passed by ControllerPublishVolume
@@ -56,4 +56,5 @@ type BackendConfig struct {
 	protocol        string
 	dTreeParentName string
 	portals         []string
+	metroPortals    []string
 }

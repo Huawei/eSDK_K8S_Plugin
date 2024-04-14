@@ -31,6 +31,7 @@ import (
 
 	"huawei-csi-driver/cli/config"
 	"huawei-csi-driver/cli/helper"
+	"huawei-csi-driver/utils/log"
 )
 
 const (
@@ -289,7 +290,10 @@ func getConsoleLogs(ctx context.Context, namespace, containerName, podName, node
 	if err != nil {
 		_ = helper.LogWarningf(ctx, "get container console logs failed, error: %v", err)
 	} else {
-		_ = saveConsoleLog(logs, namespace, podName, containerName, nodeName, isHistoryLogs)
+		err = saveConsoleLog(logs, namespace, podName, containerName, nodeName, isHistoryLogs)
+		if err != nil {
+			log.Errorf("save console log failed, error: %v", err)
+		}
 	}
 }
 
@@ -313,6 +317,11 @@ func saveConsoleLog(logs []byte, namespace, podName, containerName, nodeName str
 		return helper.LogWarningf(ctx, "create container console log file failed, error: %v", err)
 	}
 	defer file.Close()
+
+	err = file.Chmod(0600)
+	if err != nil {
+		return helper.LogWarningf(ctx, "set the file permission failed, error: %v", err)
+	}
 
 	_, err = file.Write(logs)
 	if err != nil {

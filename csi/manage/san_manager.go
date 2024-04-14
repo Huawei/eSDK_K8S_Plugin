@@ -28,6 +28,7 @@ import (
 	"huawei-csi-driver/utils/taskflow"
 )
 
+// SanManager implements Manager interface
 type SanManager struct {
 	Conn     connector.Connector
 	protocol string
@@ -159,11 +160,6 @@ func (m *SanManager) UnStageWithWwn(ctx context.Context, wwn, volumeId string) e
 			"volumeId: %s, error: %v", volumeId, err)
 	}
 	return nil
-}
-
-// GetDTreeVolume use to get volume with type is dtree
-func (m *SanManager) GetDTreeVolume(ctx context.Context) (string, bool) {
-	return "", false
 }
 
 func getDeviceWwn(ctx context.Context, volumeId, targetPath string,

@@ -28,19 +28,25 @@ import (
 )
 
 const (
-	filesystemNotExist    int64  = 1073752065
-	shareNotExist         int64  = 1077939717
-	sharePathInvalid      int64  = 1077939729
-	shareAlreadyExist     int64  = 1077939724
-	sharePathAlreadyExist int64  = 1077940500
-	systemBusy            int64  = 1077949006
-	msgTimeOut            int64  = 1077949001
-	exceedFSCapacityUpper int64  = 1073844377
-	lessFSCapacityLower   int64  = 1073844376
-	localFilesystem       string = "0"
-	hyperMetroFilesystem  string = "1"
+	filesystemNotExist    int64 = 1073752065
+	shareNotExist         int64 = 1077939717
+	sharePathInvalid      int64 = 1077939729
+	shareAlreadyExist     int64 = 1077939724
+	sharePathAlreadyExist int64 = 1077940500
+	systemBusy            int64 = 1077949006
+	msgTimeOut            int64 = 1077949001
+	exceedFSCapacityUpper int64 = 1073844377
+	lessFSCapacityLower   int64 = 1073844376
 )
 
+const (
+	// LocalFilesystemMode normal volume
+	LocalFilesystemMode string = "0"
+	// HyperMetroFilesystemMode hyper metro volume
+	HyperMetroFilesystemMode string = "1"
+)
+
+// Filesystem defines interfaces for file system operations
 type Filesystem interface {
 	// GetFileSystemByName used for get file system by name
 	GetFileSystemByName(ctx context.Context, name string) (map[string]interface{}, error)
@@ -315,13 +321,16 @@ func (cli *BaseClient) ExtendFileSystem(ctx context.Context, fsID string, newCap
 
 // AllowNfsShareAccessRequest used for AllowNfsShareAccess request
 type AllowNfsShareAccessRequest struct {
-	Name       string
-	ParentID   string
-	AccessVal  int
-	Sync       int
-	AllSquash  int
-	RootSquash int
-	VStoreID   string
+	Name        string
+	ParentID    string
+	VStoreID    string
+	AccessVal   int
+	Sync        int
+	AllSquash   int
+	RootSquash  int
+	AccessKrb5  int
+	AccessKrb5i int
+	AccessKrb5p int
 }
 
 // AllowNfsShareAccess used for allow nfs share access
@@ -333,6 +342,15 @@ func (cli *BaseClient) AllowNfsShareAccess(ctx context.Context, req *AllowNfsSha
 		"SYNC":       req.Sync,
 		"ALLSQUASH":  req.AllSquash,
 		"ROOTSQUASH": req.RootSquash,
+	}
+	if req.AccessKrb5 != -1 {
+		data["ACCESSKRB5"] = req.AccessKrb5
+	}
+	if req.AccessKrb5i != -1 {
+		data["ACCESSKRB5I"] = req.AccessKrb5i
+	}
+	if req.AccessKrb5p != -1 {
+		data["ACCESSKRB5P"] = req.AccessKrb5p
 	}
 	if req.VStoreID != "" {
 		data["vstoreId"] = req.VStoreID
@@ -524,12 +542,14 @@ func (cli *BaseClient) CreateFileSystem(ctx context.Context, params map[string]i
 	}
 
 	if hyperMetro, hyperMetroOK := params["hypermetro"].(bool); hyperMetroOK && hyperMetro {
-		data["fileSystemMode"] = hyperMetroFilesystem
+		data["fileSystemMode"] = HyperMetroFilesystemMode
 		if vstoreId, exist := params["vstoreId"].(string); exist && vstoreId != "" {
 			data["vstoreId"] = vstoreId
 		}
+	} else if val, exist := params["filesystemmode"].(string); exist {
+		data["fileSystemMode"] = val
 	} else {
-		data["fileSystemMode"] = localFilesystem
+		data["fileSystemMode"] = LocalFilesystemMode
 	}
 
 	if val, ok := params["workloadTypeID"].(string); ok {

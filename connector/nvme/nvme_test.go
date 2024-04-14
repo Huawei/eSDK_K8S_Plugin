@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -180,7 +179,7 @@ func TestMain(m *testing.M) {
 
 	if err := lock.InitLock(*driverName); err != nil {
 		log.Errorf("test lock init failed: %v", err)
-		os.Exit(1)
+		return
 	}
 
 	m.Run()

@@ -24,6 +24,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// ISCSI implements the Connector interface for ISCSI protocol
 type ISCSI struct {
 }
 
@@ -31,6 +32,10 @@ func init() {
 	connector.RegisterConnector(connector.ISCSIDriver, &ISCSI{})
 }
 
+// ConnectVolume to mount the source to target path, the source path can be block or nfs
+// Example:
+//    mount /dev/sdb /<target-path>
+//    mount <source-path> /<target-path>
 func (isc *ISCSI) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
 	log.AddContext(ctx).Infof("ISCSI Start to connect volume ==> connect info: %v", conn)
 	tgtLunWWN, exist := conn["tgtLunWWN"].(string)
@@ -40,6 +45,7 @@ func (isc *ISCSI) ConnectVolume(ctx context.Context, conn map[string]interface{}
 	return connector.ConnectVolumeCommon(ctx, conn, tgtLunWWN, connector.ISCSIDriver, tryConnectVolume)
 }
 
+// DisConnectVolume to unmount the target path
 func (isc *ISCSI) DisConnectVolume(ctx context.Context, tgtLunWWN string) error {
 	log.AddContext(ctx).Infof("ISCSI Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
 	return connector.DisConnectVolumeCommon(ctx, tgtLunWWN, connector.ISCSIDriver, tryDisConnectVolume)

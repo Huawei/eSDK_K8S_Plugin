@@ -27,6 +27,9 @@ const (
 	// OceanStorV5 is oceanstor v5
 	OceanStorV5 = "OceanStorV5"
 
+	// DoradoV615 is Dorado V6.1.5
+	DoradoV615 = "6.1.5"
+
 	// MinVersionSupportLabel version gte 6.1.7 support label function
 	MinVersionSupportLabel = "6.1.7"
 )
@@ -34,13 +37,32 @@ const (
 // BackendCapability backend capability
 type BackendCapability string
 
+// SupportThin defines backend capability SupportThin
 var SupportThin BackendCapability = "SupportThin"
+
+// SupportThick defines backend capability SupportThick
 var SupportThick BackendCapability = "SupportThick"
+
+// SupportQoS defines backend capability SupportQoS
 var SupportQoS BackendCapability = "SupportQoS"
+
+// SupportQuota defines backend capability SupportQuota
 var SupportQuota BackendCapability = "SupportQuota"
+
+// SupportClone defines backend capability SupportClone
 var SupportClone BackendCapability = "SupportClone"
+
+// SupportMetro defines backend capability SupportMetro
 var SupportMetro BackendCapability = "SupportMetro"
+
+// SupportReplication defines backend capability SupportReplication
 var SupportReplication BackendCapability = "SupportReplication"
+
+// SupportApplicationType defines backend capability SupportApplicationType
 var SupportApplicationType BackendCapability = "SupportApplicationType"
+
+// SupportMetroNAS defines backend capability SupportMetroNAS
 var SupportMetroNAS BackendCapability = "SupportMetroNAS"
+
+// SupportLabel defines backend capability SupportLabel
 var SupportLabel BackendCapability = "SupportLabel"

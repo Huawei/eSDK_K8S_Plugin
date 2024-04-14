@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package version offers version inits options
 package version
 
 import (

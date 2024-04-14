@@ -2,6 +2,25 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
+## Changes since v4.2.0
+
+- Support OpenShift 4.14
+- Support OceanStor Dorado 6.1.7
+- Support OceanStor 6.1.7
+- Support OceanStor Pacific 8.2.0
+- Support Tanzu Kubernetes TKGI 1.17 and TKGI 1.18
+- Support Debian 12 x86_64
+- Support Ubuntu 22.04 ARM
+- Support Kylin V10 SP3 x86_64
+- Support Red Hat CoreOS 4.14 x86_64
+- Support EulerOS V2R12 ARM/x86_64
+- Support UOS V20 x86_64
+- Support BC-linux ARM
+- Support NFS v4 Kerberos encryption in Dorado V6
+- Support NFS over RDMA
+- Support configuring requests and limits of container
+- The log directory of the oceanctl tool can be configured
+
 ## Changes since v4.1.0
 
 - Support OpenShift 4.13

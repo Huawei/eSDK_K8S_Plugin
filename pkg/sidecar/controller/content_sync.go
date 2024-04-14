@@ -18,6 +18,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+
 	coreV1 "k8s.io/api/core/v1"
 
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
@@ -45,12 +47,11 @@ func (ctrl *backendController) initContentStatus(ctx context.Context, content *x
 			VendorName:      "",
 			ProviderVersion: "",
 			Online:          true,
-			Capacity:        make(map[xuanwuv1.CapacityType]string),
 			Capabilities:    make(map[string]bool),
 		}
 	}
 
-	log.AddContext(ctx).Infof("Init content %s with status %v.", newContent.Name, newContent.Status)
+	log.AddContext(ctx).Infof("Init content %s with status %+v.", newContent.Name, newContent.Status)
 	return utils.UpdateContentStatus(ctx, ctrl.clientSet, newContent)
 }
 
@@ -98,7 +99,7 @@ func (ctrl *backendController) createContentWrapper(ctx context.Context,
 
 func (ctrl *backendController) shouldUpdateContent(ctx context.Context, content *xuanwuv1.StorageBackendContent,
 	status *drcsi.GetBackendStatsResponse, backendId string) bool {
-	defer log.AddContext(ctx).Infof("Update content status %s", content.Status)
+	defer log.AddContext(ctx).Debugf("Update content status %v", content.Status)
 
 	var needUpdate bool
 	if backendId != "" && content.Status.ContentName != backendId {
@@ -136,6 +137,14 @@ func (ctrl *backendController) shouldUpdateContent(ctx context.Context, content 
 		return needUpdate
 	}
 
+	return ctrl.shouldUpdateContentStatus(ctx, content, status)
+}
+func (ctrl *backendController) shouldUpdateContentStatus(ctx context.Context, content *xuanwuv1.StorageBackendContent,
+	status *drcsi.GetBackendStatsResponse) bool {
+
+	log.AddContext(ctx).Debugf("content.Status: [%+v]; status: [%+v]",
+		content.Status, status)
+
 	if content.Status.VendorName != status.VendorName {
 		content.Status.VendorName = status.VendorName
 	}
@@ -148,14 +157,27 @@ func (ctrl *backendController) shouldUpdateContent(ctx context.Context, content 
 		content.Status.Online = status.Online
 	}
 
-	log.AddContext(ctx).Infof("content.Status.Capabilities: [%v]; status.Capabilities: [%v]",
-		content.Status, status.Capabilities)
-	if status.Capabilities != nil {
+	if content.Status.SN != status.Specifications["LocalDeviceSN"] {
+		content.Status.SN = status.Specifications["LocalDeviceSN"]
+	}
+
+	if !reflect.DeepEqual(content.Status.Capabilities, status.Capabilities) {
 		content.Status.Capabilities = status.Capabilities
 	}
 
-	if status.Specifications != nil {
+	if !reflect.DeepEqual(content.Status.Specification, status.Specifications) {
 		content.Status.Specification = status.Specifications
+	}
+
+	if !reflect.DeepEqual(content.Status.Pools, status.Pools) {
+		pools := make([]xuanwuv1.Pool, 0)
+		for _, pool := range status.Pools {
+			pools = append(pools, xuanwuv1.Pool{
+				Name:       pool.GetName(),
+				Capacities: pool.GetCapacities(),
+			})
+		}
+		content.Status.Pools = pools
 	}
 
 	return true
@@ -164,7 +186,7 @@ func (ctrl *backendController) shouldUpdateContent(ctx context.Context, content 
 func (ctrl *backendController) getContentStats(ctx context.Context, content *xuanwuv1.StorageBackendContent) (
 	*xuanwuv1.StorageBackendContent, error) {
 
-	log.AddContext(ctx).Infof("Start to get content status %s backendId %s within backend handler",
+	log.AddContext(ctx).Debugf("Start to get content status %s backendId %s within backend handler",
 		content.Name, content.Status.ContentName)
 
 	status, err := ctrl.handler.GetStorageBackendStats(ctx, content.Name, content.Spec.BackendClaim)
@@ -174,7 +196,7 @@ func (ctrl *backendController) getContentStats(ctx context.Context, content *xua
 		return nil, err
 	}
 
-	log.AddContext(ctx).Infof("getContentStats status %v", status)
+	log.AddContext(ctx).Debugf("getContentStats status %+v", status)
 	if !ctrl.shouldUpdateContent(ctx, content, status, "") {
 		return content, nil
 	}
@@ -225,9 +247,7 @@ func (ctrl *backendController) updateContentObj(
 	newContent, err := ctrl.updateContentStatusWithEvent(
 		ctx, content, "UpdateContent", "Successful update content")
 	if err != nil {
-		log.AddContext(ctx).Errorf("updateContentObj: update content %s status failed, error: %v",
-			content.Name, err)
-		return nil, err
+		return nil, fmt.Errorf("updateContentObj: update content %s status failed, error: %w", content.Name, err)
 	}
 	return newContent, nil
 }

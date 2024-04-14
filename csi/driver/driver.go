@@ -19,21 +19,26 @@ package driver
 import (
 	"strings"
 
+	"huawei-csi-driver/csi/backend/handler"
 	"huawei-csi-driver/utils/k8sutils"
 )
 
+// Driver defines csi driver
 type Driver struct {
-	name     string
-	version  string
-	k8sUtils k8sutils.Interface
-	nodeName string
+	name            string
+	version         string
+	k8sUtils        k8sutils.Interface
+	nodeName        string
+	backendSelector handler.BackendSelectInterface
 }
 
+// NewDriver used to inits a new driver
 func NewDriver(name, version string, k8sUtils k8sutils.Interface, nodeName string) *Driver {
 	return &Driver{
-		name:     name,
-		version:  version,
-		k8sUtils: k8sUtils,
-		nodeName: strings.TrimSpace(nodeName),
+		name:            name,
+		version:         version,
+		k8sUtils:        k8sUtils,
+		nodeName:        strings.TrimSpace(nodeName),
+		backendSelector: handler.NewBackendSelector(),
 	}
 }

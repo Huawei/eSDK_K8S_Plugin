@@ -247,7 +247,7 @@ func TestGetCertFromSecretSuccess(t *testing.T) {
 
 		pw, err := GetCertFromSecret(context.TODO(), "sec-name", "sec-namespace")
 		So(err, ShouldBeNil)
-		So(pw, ShouldEqual, []byte("mock-cert"))
+		So(pw, ShouldResemble, []byte("mock-cert"))
 	})
 }
 
@@ -275,7 +275,6 @@ func TestIsContainFileType(t *testing.T) {
 		assert.Equal(t, c.expected, expected)
 	}
 }
-
 func TestMain(m *testing.M) {
 	log.MockInitLogging(logName)
 	defer log.MockStopLogging(logName)

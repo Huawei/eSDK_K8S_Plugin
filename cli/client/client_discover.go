@@ -18,6 +18,7 @@ package client
 
 import (
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -25,37 +26,62 @@ import (
 )
 
 // DiscoverKubernetesCLI used to discover kubernetes CLI.
-func DiscoverKubernetesCLI() (string, error) {
+func DiscoverKubernetesCLI(detailPath string) (string, error) {
+	var supportedClis []string
 	for _, discoverFun := range LoadSupportedCLI() {
-		if cli, err := discoverFun(); err == nil {
+		cli, err := discoverFun()
+		if err == nil {
 			return cli, nil
 		}
+		supportedClis = append(supportedClis, cli)
 	}
-	return "", errors.New("Could not find any supported CLI")
+	return "", errors.New(noneSupportedCliErrorMsg(supportedClis, detailPath))
+}
+
+// noneSupportedCliErrorMsg used to generate error messages when could not find any supported CLI
+func noneSupportedCliErrorMsg(supportedClis []string, detailPath string) string {
+	prompt := "Could not find any supported CLI"
+	promptFmt := "%s, e.g. %s, details see " + detailPath
+	length := len(supportedClis)
+	switch length {
+	case 0:
+		return prompt
+	case 1:
+		return fmt.Sprintf(promptFmt, prompt, supportedClis[0])
+	case 2:
+		return fmt.Sprintf(promptFmt, prompt, strings.Join(supportedClis, " or "))
+	default:
+		clis := strings.Join(supportedClis[0:length-1], ", ")
+		lastone := supportedClis[length-1]
+		return fmt.Sprintf(promptFmt, prompt, clis+" or "+lastone)
+	}
 }
 
 // discoverKubeCLI used to discover kubectl CLI.
 func discoverKubeCLI() (string, error) {
-	_, err := exec.Command(CLIKubernetes, "version").CombinedOutput()
+	output, err := exec.Command(CLIKubernetes, "version").CombinedOutput()
 	if err == nil {
 		return CLIKubernetes, nil
 	}
-	return "", errors.New("Could not find the Kubernetes CLI")
+	log.Errorf("run '%s version' failed, error: %v, output: %s", CLIKubernetes, err, output)
+	return CLIKubernetes, errors.New("Could not find the Kubernetes CLI: " + CLIKubernetes)
 }
 
 // discoverOpenShiftCLI used to discover oc CLI.
 func discoverOpenShiftCLI() (string, error) {
-	_, err := exec.Command(CLIOpenShift, "version").CombinedOutput()
+	output, err := exec.Command(CLIOpenShift, "version").CombinedOutput()
 	if err == nil && verifyOpenShiftAPIResources() {
 		return CLIOpenShift, nil
 	}
-	return "", errors.New("Could not find the OpenShift CLI")
+	log.Errorf("run '%s version' failed, error: %v, output: %s", CLIOpenShift, err, output)
+	return CLIOpenShift, errors.New("Could not find the OpenShift CLI: " + CLIOpenShift)
 }
 
 // verifyOpenShiftAPIResources used to verify api-resources.
 func verifyOpenShiftAPIResources() bool {
 	out, err := exec.Command("oc", "api-resources").CombinedOutput()
 	if err != nil {
+		log.Errorf("run 'oc api-resource' command failed, error: %v", err)
 		return false
 	}
 

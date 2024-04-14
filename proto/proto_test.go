@@ -181,7 +181,7 @@ func TestVerifyIscsiPortals(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		portals, err := VerifyIscsiPortals(c.portals)
+		portals, err := VerifyIscsiPortals(context.Background(), c.portals)
 		assert.Equal(t, c.wantErr, err, c.name)
 		assert.Equal(t, c.wantVal, portals, c.name)
 	}

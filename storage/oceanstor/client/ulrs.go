@@ -17,4 +17,5 @@
 // Package client defines Urls of oceanstor storage
 package client
 
+// SplitCloneFileSystem provides storage url for split clone filesystem
 const SplitCloneFileSystem = "/filesystem_split_switch"

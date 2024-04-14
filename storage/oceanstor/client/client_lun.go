@@ -36,6 +36,7 @@ const (
 	parameterIncorrect int64 = 50331651
 )
 
+// Lun defines interfaces for lun operations
 type Lun interface {
 	// QueryAssociateLunGroup used for query associate lun group by object type and object id
 	QueryAssociateLunGroup(ctx context.Context, objType int, objID string) ([]interface{}, error)

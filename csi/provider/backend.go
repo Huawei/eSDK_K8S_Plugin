@@ -22,8 +22,8 @@ import (
 	"errors"
 	"fmt"
 
+	"huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/lib/drcsi"
 	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
@@ -37,20 +37,14 @@ func (p *Provider) AddStorageBackend(ctx context.Context, req *drcsi.AddStorageB
 	log.AddContext(ctx).Infof("Start to add storage backend %s.", req.Name)
 	defer log.AddContext(ctx).Infof("Finished to add storage backend %s.", req.Name)
 
-	useCert, certSecret, err := pkgUtils.GetCertMeta(ctx, req.Name)
+	_, backendName, err := pkgUtils.SplitMetaNamespaceKey(req.Name)
+	_, err = p.register.FetchAndRegisterOneBackend(ctx, backendName, false)
 	if err != nil {
-		msg := fmt.Sprintf("GetCertMeta %s failed. error: %v", req.Name, err)
-		return nil, pkgUtils.Errorln(ctx, msg)
+		log.AddContext(ctx).Errorf("fetch and register backend failed, error: %v", err)
+		return nil, err
 	}
 
-	// backendId: <namespace>/<backend-name> eg:huawei-csi/nfs-180
-	backendId, err := backend.RegisterOneBackend(ctx, req.Name, req.ConfigmapMeta, req.SecretMeta, certSecret, useCert)
-	if err != nil {
-		msg := fmt.Sprintf("RegisterBackend %s failed, error %v", req.Name, err)
-		return nil, pkgUtils.Errorln(ctx, msg)
-	}
-
-	log.AddContext(ctx).Infof("Add storage backend: [%s] success.", backendId)
+	log.AddContext(ctx).Infof("Add storage backend: [%s] success.", req.Name)
 	return &drcsi.AddStorageBackendResponse{BackendId: req.Name}, nil
 }
 
@@ -68,7 +62,7 @@ func (p *Provider) RemoveStorageBackend(ctx context.Context, req *drcsi.RemoveSt
 		return nil, errors.New(msg)
 	}
 
-	backend.RemoveOneBackend(ctx, backendName)
+	p.register.RemoveRegisteredOneBackend(ctx, backendName)
 
 	return &drcsi.RemoveStorageBackendResponse{}, nil
 }
@@ -89,9 +83,10 @@ func (p *Provider) UpdateStorageBackend(ctx context.Context, req *drcsi.UpdateSt
 		return nil, errors.New(msg)
 	}
 
-	bk := backend.GetBackendWithFresh(ctx, backendName, false)
-	if bk != nil {
-		backend.RemoveOneBackend(ctx, bk.Name)
+	_, err = p.register.FetchAndRegisterOneBackend(ctx, backendName, false)
+	if err != nil {
+		log.AddContext(ctx).Errorf("fetch and register backend failed, error: %v", err)
+		return nil, err
 	}
 
 	err = pkgUtils.SetStorageBackendContentOnlineStatus(ctx, req.BackendId, true)
@@ -101,19 +96,6 @@ func (p *Provider) UpdateStorageBackend(ctx context.Context, req *drcsi.UpdateSt
 		return &drcsi.UpdateStorageBackendResponse{}, pkgUtils.Errorln(ctx, msg)
 	}
 
-	useCert, certSecret, err := pkgUtils.GetCertMeta(ctx, req.BackendId)
-	if err != nil {
-		msg := fmt.Sprintf("GetCertMeta [%s] failed. error: %v", req.BackendId, err)
-		return &drcsi.UpdateStorageBackendResponse{}, pkgUtils.Errorln(ctx, msg)
-	}
-
-	// backendId: <namespace>/<backend-name> eg:huawei-csi/nfs-180
-	_, err = backend.RegisterOneBackend(ctx, req.BackendId, req.ConfigmapMeta, req.SecretMeta, certSecret, useCert)
-	if err != nil {
-		msg := fmt.Sprintf("RegisterBackend %s failed, error %v", req.Name, err)
-		return nil, pkgUtils.Errorln(ctx, msg)
-	}
-
 	return &drcsi.UpdateStorageBackendResponse{}, nil
 }
 
@@ -121,13 +103,14 @@ func (p *Provider) UpdateStorageBackend(ctx context.Context, req *drcsi.UpdateSt
 func (p *Provider) GetBackendStats(ctx context.Context, req *drcsi.GetBackendStatsRequest) (
 	*drcsi.GetBackendStatsResponse, error) {
 
-	log.AddContext(ctx).Infof("Start to get storage backend %s status.", req.BackendId)
-	defer log.AddContext(ctx).Infof("Finish to get storage backend %s status.", req.BackendId)
+	log.AddContext(ctx).Debugf("Start to get storage backend %s status.", req.BackendId)
+	defer log.AddContext(ctx).Debugf("Finish to get storage backend %s status.", req.BackendId)
 
 	// If the sbct is offline, the status information is not obtained.
 	if !pkgUtils.IsSBCTOnline(ctx, req.BackendId) {
 		msg := fmt.Sprintf("GetBackendStats backend: [%s] is offline, skip get stats", req.BackendId)
-		return nil, pkgUtils.Errorln(ctx, msg)
+		log.AddContext(ctx).Warningln(msg)
+		return nil, errors.New(msg)
 	}
 
 	_, backendName, err := pkgUtils.SplitMetaNamespaceKey(req.BackendId)
@@ -137,27 +120,64 @@ func (p *Provider) GetBackendStats(ctx context.Context, req *drcsi.GetBackendSta
 		return nil, errors.New(msg)
 	}
 
-	// If the backend does not exist in the memory, the get operation is not performed to prevent users from being
-	// locked in the update scenario.
-	if !backend.IsBackendRegistered(backendName) {
-		msg := fmt.Sprintf("Backend: [%s] is not registered, skip get stats", backendName)
-		log.AddContext(ctx).Infoln(msg)
-		return nil, errors.New(msg)
-	}
-
-	capabilities, specifications, err := backend.GetBackendCapabilities(ctx, backendName)
+	details, err := p.storageService.GetBackendDetails(ctx, backendName)
 	if err != nil {
-		msg := fmt.Sprintf("GetBackendCapabilities backend:[%s] failed, error: [%v]", backendName, err)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
+		log.AddContext(ctx).Errorf("get backend details failed, error: %v", err)
+		return nil, err
 	}
 
-	return &drcsi.GetBackendStatsResponse{
+	response := &drcsi.GetBackendStatsResponse{
 		VendorName:      constants.ProviderVendorName,
 		ProviderName:    app.GetGlobalConfig().DriverName,
 		ProviderVersion: constants.ProviderVersion,
-		Capabilities:    capabilities,
-		Specifications:  specifications,
+		Capabilities:    details.Capabilities,
+		Specifications:  details.Specifications,
+		Pools:           details.Pools,
 		Online:          true,
-	}, nil
+	}
+
+	p.registerOrUpdateOneBackend(ctx, backendName, req.BackendId, response)
+	return response, nil
+}
+
+func (p *Provider) registerOrUpdateOneBackend(ctx context.Context, name, backendId string,
+	response *drcsi.GetBackendStatsResponse) {
+	var err error
+	var sbct *v1.StorageBackendContent
+	_, exists := p.cache.Load(name)
+	if !exists {
+		sbct, err = p.fetcher.FetchBackendByName(ctx, name, false)
+		if err != nil {
+			log.AddContext(ctx).Errorf("fetch backend %s failed, error: %v", name, err)
+			return
+		}
+	} else {
+		sbct = &v1.StorageBackendContent{
+			Spec:   v1.StorageBackendContentSpec{BackendClaim: backendId},
+			Status: &v1.StorageBackendContentStatus{},
+		}
+	}
+	if sbct == nil || sbct.Status == nil {
+		log.AddContext(ctx).Errorf("backend %s status is nil", name)
+		return
+	}
+	sbct.Status.Capabilities = response.Capabilities
+	sbct.Status.Pools = convertPool(response.Pools)
+	sbct.Status.Online = true
+
+	err = p.register.UpdateOrRegisterOneBackend(ctx, sbct)
+	if err != nil {
+		log.AddContext(ctx).Errorf("update backend cache failed, error: %v", err)
+	}
+}
+
+func convertPool(source []*drcsi.Pool) []v1.Pool {
+	pools := make([]v1.Pool, 0)
+	for _, pool := range source {
+		pools = append(pools, v1.Pool{
+			Name:       pool.GetName(),
+			Capacities: pool.GetCapacities(),
+		})
+	}
+	return pools
 }

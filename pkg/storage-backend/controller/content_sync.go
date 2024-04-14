@@ -28,7 +28,7 @@ import (
 )
 
 func (ctrl *BackendController) updateContent(ctx context.Context, content *xuanwuv1.StorageBackendContent) error {
-	log.AddContext(ctx).Infof("updateContent %s", content.Name)
+	log.AddContext(ctx).Debugf("updateContent %s", content.Name)
 	updated, err := ctrl.updateContentStore(ctx, content)
 	if err != nil {
 		log.AddContext(ctx).Errorf("updateContentStore error %v", err)
@@ -46,7 +46,7 @@ func (ctrl *BackendController) updateContent(ctx context.Context, content *xuanw
 }
 
 func (ctrl *BackendController) syncContent(ctx context.Context, content *xuanwuv1.StorageBackendContent) error {
-	log.AddContext(ctx).Infof("Start to syncContent %s.", content.Name)
+	log.AddContext(ctx).Debugf("Start to syncContent %s.", content.Name)
 	if utils.NeedAddContentBoundFinalizers(content) {
 		if err := ctrl.addContentFinalizer(ctx, content); err != nil {
 			msg := fmt.Sprintf("Failed to add bound Finalizer to StorageBackendContent %s,"+

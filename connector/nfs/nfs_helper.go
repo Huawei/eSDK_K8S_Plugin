@@ -220,7 +220,7 @@ func mountUnix(ctx context.Context, sourcePath, targetPath string, flags mountPa
 
 		// if the checkSourcePath is false, check the filesystem by comparing the sourcePath and mountPath
 		if value == sourcePath || path.Base(path.Dir(targetPath)) == path.Base(path.Dir(sourcePath)) ||
-			containSourceDevice(ctx, sourcePath, value) {
+			ContainSourceDevice(ctx, sourcePath, value) {
 			log.AddContext(ctx).Infof("Mount %s to %s is already exist", sourcePath, targetPath)
 			return nil
 		}
@@ -249,8 +249,8 @@ func mountUnix(ctx context.Context, sourcePath, targetPath string, flags mountPa
 	return nil
 }
 
-// containSourceDevice used to check target path referenced source device is equal sourceDev
-func containSourceDevice(ctx context.Context, targetPath, sourceDev string) bool {
+// ContainSourceDevice used to check target path referenced source device is equal sourceDev
+func ContainSourceDevice(ctx context.Context, targetPath, sourceDev string) bool {
 	for _, value := range findSourceDevice(ctx, targetPath) {
 		if value == sourceDev {
 			return true

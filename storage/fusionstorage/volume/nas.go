@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package volume defines operations of fusion storage
 package volume
 
 import (
@@ -58,10 +59,12 @@ const (
 	noRootSquash              = 1
 )
 
+// NAS provides nas storage client
 type NAS struct {
 	cli *client.Client
 }
 
+// NewNAS inits a new nas client
 func NewNAS(cli *client.Client) *NAS {
 	return &NAS{
 		cli: cli,
@@ -279,6 +282,7 @@ func (p *NAS) preCreate(ctx context.Context, params map[string]interface{}) erro
 	return nil
 }
 
+// Create creates fs volume
 func (p *NAS) Create(ctx context.Context, params map[string]interface{}) (utils.Volume, error) {
 	err := p.preCreate(ctx, params)
 	if err != nil {
@@ -656,6 +660,7 @@ func (p *NAS) allowShareAccess(ctx context.Context, params, taskResult map[strin
 	return nil, nil
 }
 
+// Query queries volume by name
 func (p *NAS) Query(ctx context.Context, fsName string) (utils.Volume, error) {
 	quota, err := p.cli.GetQuotaByFileSystemName(ctx, fsName)
 	if err != nil {
@@ -687,6 +692,7 @@ func (p *NAS) setSize(ctx context.Context, fsName string, quota map[string]inter
 	return volObj, nil
 }
 
+// DeleteNfsShare deletes nfs share
 func (p *NAS) DeleteNfsShare(ctx context.Context, fsName, accountId string) (string, error) {
 	sharePath := utils.GetOriginSharePath(fsName)
 	share, err := p.cli.GetNfsShareByPath(ctx, sharePath, accountId)
@@ -718,6 +724,7 @@ func (p *NAS) DeleteNfsShare(ctx context.Context, fsName, accountId string) (str
 	return fsIdInShare, nil
 }
 
+// Delete deletes volume by name
 func (p *NAS) Delete(ctx context.Context, fsName string) error {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
@@ -761,6 +768,7 @@ func (p *NAS) Delete(ctx context.Context, fsName string) error {
 	return nil
 }
 
+// Expand expands volume size
 func (p *NAS) Expand(ctx context.Context, fsName string, newSize int64) error {
 	quota, err := p.cli.GetQuotaByFileSystemName(ctx, fsName)
 	if err != nil {

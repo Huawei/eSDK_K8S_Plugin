@@ -32,7 +32,11 @@ func TestKubernetesCLI_GetObject_success(t *testing.T) {
 	var mockObjectType ObjectType = Pod
 	var mockOutputType OutputType = JSON
 	var mockData, except coreV1.Pod = coreV1.Pod{}, coreV1.Pod{}
-	json.Unmarshal([]byte(returnStr), &except)
+	err := json.Unmarshal([]byte(returnStr), &except)
+	if err != nil {
+		t.Errorf("mock return string error, error: %v", err)
+		return
+	}
 	ctx := context.Background()
 	// mock
 	patches := mockExecReturnStdOut("kubectl get pod huawei-csi-node-9lxhm -n huawei-csi -o=json")
@@ -40,6 +44,10 @@ func TestKubernetesCLI_GetObject_success(t *testing.T) {
 
 	convey.Convey("test get object success", t, func() {
 		// action
+		if mockCli == nil {
+			t.Errorf("mockCLi is nil")
+			return
+		}
 		err := mockCli.GetObject(ctx, mockObjectType, mockNamespace, mockNodeName, mockOutputType, &mockData,
 			mockObjectName)
 
@@ -63,6 +71,10 @@ func TestKubernetesCLI_GetObject_failed_without_objectType(t *testing.T) {
 
 	convey.Convey("test get object success", t, func() {
 		// action
+		if mockCli == nil {
+			t.Errorf("mockCLi is nil")
+			return
+		}
 		err := mockCli.GetObject(ctx, mockObjectType, mockNamespace, mockNodeName, mockOutputType, &mockData,
 			mockObjectName)
 
@@ -85,6 +97,10 @@ func TestKubernetesCLI_CopyContainerFileToLocal_success(t *testing.T) {
 
 	convey.Convey("test copy file from container to local", t, func() {
 		// action
+		if mockCli == nil {
+			t.Errorf("mockCLi is nil")
+			return
+		}
 		out, err := mockCli.CopyContainerFileToLocal(mockCtx, mockNamespace, mockContainerName, mockSrc, mockDst,
 			mockObjectName)
 
@@ -106,6 +122,10 @@ func TestKubernetesCLI_GetConsoleLogs_success(t *testing.T) {
 
 	convey.Convey("test get container console logs", t, func() {
 		// action
+		if mockCli == nil {
+			t.Errorf("mockCLi is nil")
+			return
+		}
 		out, err := mockCli.GetConsoleLogs(mockCtx, mockNamespace, mockContainerName, false, mockObjectName)
 
 		//assert
@@ -127,6 +147,10 @@ func TestKubernetesCLI_ExecCmdInSpecifiedContainer_success(t *testing.T) {
 
 	convey.Convey("test exec script in container", t, func() {
 		// action
+		if mockCli == nil {
+			t.Errorf("mockCLi is nil")
+			return
+		}
 		out, err := mockCli.ExecCmdInSpecifiedContainer(mockCtx, mockNamespace, mockContainerName, mockCmd,
 			mockObjectName)
 

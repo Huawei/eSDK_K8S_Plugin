@@ -28,6 +28,7 @@ const (
 	hyperMetroNotExist int64 = 1077674242
 )
 
+// HyperMetro defines interfaces for hyper metro operations
 type HyperMetro interface {
 	// GetHyperMetroDomainByName used for get hyper metro domain by name
 	GetHyperMetroDomainByName(ctx context.Context, name string) (map[string]interface{}, error)

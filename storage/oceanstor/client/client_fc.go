@@ -24,6 +24,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// FC defines interfaces for fc operations
 type FC interface {
 	// QueryFCInitiatorByHost used for get fc initiator by host id
 	QueryFCInitiatorByHost(ctx context.Context, hostID string) ([]interface{}, error)

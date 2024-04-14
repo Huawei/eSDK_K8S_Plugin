@@ -1,8 +1,8 @@
 images:
   # Images provided by Huawei
-  huaweiCSIService: huawei-csi:4.2.1
-  storageBackendSidecar: storage-backend-sidecar:4.2.1
-  storageBackendController: storage-backend-controller:4.2.1
+  huaweiCSIService: huawei-csi:4.3.0
+  storageBackendSidecar: storage-backend-sidecar:4.3.0
+  storageBackendController: storage-backend-controller:4.3.0
 
   # CSI-related sidecar images provided by the Kubernetes community.
   # These must match the appropriate Kubernetes version.
@@ -77,6 +77,10 @@ controller:
   # You can change the port to another port that is not occupied.
   webhookPort: 4433
 
+  # Controller container probe port. The default port is 9808.
+  # You can change the port to another port that is not occupied.
+  livenessProbePort: 9808
+
   snapshot:
     # enabled: Enable/Disable volume snapshot feature
     # If the Kubernetes version is lower than 1.17, set this parameter to false.
@@ -113,10 +117,10 @@ controller:
   tolerations:
   # Uncomment if nodes you wish to use have the node-role.kubernetes.io/master taint
   #  - key: "node-role.kubernetes.io/master"
+  #    operator: "Exists"
   # Uncomment if nodes you wish to use have the node-role.kubernetes.io/control-plane taint
   #  - key: "node-role.kubernetes.io/control-plane"
   #    operator: "Exists"
-  #    effect: "NoSchedule"
 
 node:
   # maxVolumesPerNode: Defines the maximum number of volumes that can be used by a node.
@@ -157,6 +161,14 @@ node:
 #    - key: "node-role.kubernetes.io/master"
 #      operator: "Exists"
 #      effect: "NoSchedule"
+
+  # Node container probe port. The default port is 9800.
+  # You can change the port to another port that is not occupied.
+  livenessProbePort: 9800
+
+  # After successful MountVolume for block volume, publish directory structure will be like below
+  # /var/lib/kubelet/plugins/kubernetes.io/csi/{kubeletVolumeDevicesDirName}/publish/{specName}/{podUID}
+  kubeletVolumeDevicesDirName: volumeDevices
 
 
 # The CSI driver parameter configuration

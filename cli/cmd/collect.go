@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package command for collecting messages in Kubernetes.
 package command
 
 import (

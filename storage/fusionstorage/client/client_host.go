@@ -28,6 +28,7 @@ const (
 	hostnameAlreadyExist int64 = 50157019
 )
 
+// GetHostByName used to get host by name
 func (cli *Client) GetHostByName(ctx context.Context, hostName string) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"hostName": hostName,
@@ -64,6 +65,7 @@ func (cli *Client) GetHostByName(ctx context.Context, hostName string) (map[stri
 	return nil, nil
 }
 
+// CreateHost used to create host
 func (cli *Client) CreateHost(ctx context.Context,
 	hostName string,
 	alua map[string]interface{}) error {
@@ -94,6 +96,7 @@ func (cli *Client) CreateHost(ctx context.Context,
 	return nil
 }
 
+// UpdateHost used to update host
 func (cli *Client) UpdateHost(ctx context.Context, hostName string, alua map[string]interface{}) error {
 	data := map[string]interface{}{
 		"hostName": hostName,
@@ -120,6 +123,7 @@ func (cli *Client) UpdateHost(ctx context.Context, hostName string, alua map[str
 	return nil
 }
 
+// QueryHostByPort used query host by port
 func (cli *Client) QueryHostByPort(ctx context.Context, port string) (string, error) {
 	data := map[string]interface{}{
 		"portName": []string{port},
@@ -155,6 +159,7 @@ func (cli *Client) QueryHostByPort(ctx context.Context, port string) (string, er
 	return hosts[0].(string), nil
 }
 
+// AddPortToHost used add port to host
 func (cli *Client) AddPortToHost(ctx context.Context, initiatorName, hostName string) error {
 	data := map[string]interface{}{
 		"hostName":  hostName,
@@ -176,6 +181,7 @@ func (cli *Client) AddPortToHost(ctx context.Context, initiatorName, hostName st
 	return nil
 }
 
+// AddLunToHost usd to add lun to host
 func (cli *Client) AddLunToHost(ctx context.Context, lunName, hostName string) error {
 	data := map[string]interface{}{
 		"hostName": hostName,
@@ -195,6 +201,7 @@ func (cli *Client) AddLunToHost(ctx context.Context, lunName, hostName string) e
 	return nil
 }
 
+// DeleteLunFromHost used to delete lun from host
 func (cli *Client) DeleteLunFromHost(ctx context.Context, lunName, hostName string) error {
 	data := map[string]interface{}{
 		"hostName": hostName,
@@ -214,6 +221,7 @@ func (cli *Client) DeleteLunFromHost(ctx context.Context, lunName, hostName stri
 	return nil
 }
 
+// QueryHostOfVolume used to query host of volume
 func (cli *Client) QueryHostOfVolume(ctx context.Context, lunName string) ([]map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"lunName": lunName,

@@ -76,7 +76,7 @@ func (cdr *drCSIHandler) GetStorageBackendStats(ctx context.Context, contentName
 	if err != nil {
 		return nil, err
 	}
-	log.AddContext(ctx).Infof("GetStorageBackendStats: get backend [%s] status [%v] within backend handler",
+	log.AddContext(ctx).Debugf("GetStorageBackendStats: get backend [%s] status [%v] within backend handler",
 		backendName, status)
 	return status, nil
 }

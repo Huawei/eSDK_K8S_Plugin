@@ -14,13 +14,13 @@
  *  limitations under the License.
  */
 
+// Package driver provides csi driver with controller, node, identity services
 package driver
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/protobuf/ptypes/timestamp"
@@ -28,13 +28,13 @@ import (
 	"google.golang.org/grpc/status"
 
 	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/csi/backend/plugin"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
+// CreateVolume used to create volume
 func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 	log.AddContext(ctx).Infof("Start to create volume %s", req.GetName())
@@ -46,12 +46,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 	annotations, err := app.GetGlobalConfig().K8sUtils.GetVolumeConfiguration(ctx, req.GetName())
 	if err != nil {
-		if !strings.Contains(err.Error(), "PVCNotFound") {
-			return nil, err
-		}
-		log.AddContext(ctx).Infof("The PVC %s is not the imported volume, "+
-			"try to create a new one.", req.GetName())
-		return d.createVolume(ctx, req)
+		log.AddContext(ctx).Errorf("get pvc info failed, error: %v", err)
+		return nil, status.Error(codes.FailedPrecondition, "PVC NotFound")
+	}
+
+	if err := processAnnotations(annotations, req); err != nil {
+		log.AddContext(ctx).Errorf("process annotations error: %v", err)
+		return nil, err
 	}
 
 	volumeName, volumeOk := annotations[app.GetGlobalConfig().DriverName+annManageVolumeName]
@@ -68,27 +69,27 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	return d.createVolume(ctx, req)
 }
 
+// DeleteVolume used to delete volume
 func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	volumeId := req.GetVolumeId()
 	log.AddContext(ctx).Infof("Start to delete volume %s", volumeId)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
 
-	b := backend.GetBackendWithFresh(ctx, backendName, true)
-	if b == nil {
+	bk, err := d.backendSelector.SelectBackend(ctx, backendName)
+	if bk == nil || err != nil {
 		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
 			"CAUTION: volume need to manually delete from array.", backendName)
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
-	var err error
-	if b.Storage == plugin.DTreeStorage {
-		err = b.Plugin.DeleteDTreeVolume(ctx, map[string]interface{}{
-			"parentname": b.Parameters["parentname"],
+	if bk.Storage == plugin.DTreeStorage {
+		err = bk.Plugin.DeleteDTreeVolume(ctx, map[string]interface{}{
+			"parentname": bk.Parameters["parentname"],
 			"name":       volName,
 		})
 	} else {
-		err = b.Plugin.DeleteVolume(ctx, volName)
+		err = bk.Plugin.DeleteVolume(ctx, volName)
 	}
 
 	if err != nil {
@@ -105,6 +106,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
+// ControllerExpandVolume used to controller expand volume
 func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (
 	*csi.ControllerExpandVolumeResponse, error) {
 
@@ -125,10 +127,10 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	}
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackendWithFresh(ctx, backendName, true)
-	if backend == nil {
+	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
+	if backend == nil || err != nil {
 		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
-		log.AddContext(ctx).Errorln(msg)
+		log.AddContext(ctx).Errorf(" %s, error: %v", msg, err)
 		return nil, status.Error(codes.Internal, msg)
 	}
 
@@ -137,7 +139,6 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	}
 
 	var nodeExpansionRequired bool
-	var err error
 	if backend.Storage == plugin.DTreeStorage {
 		nodeExpansionRequired, err = backend.Plugin.ExpandDTreeVolume(ctx, map[string]interface{}{
 			"name":           volName,
@@ -159,6 +160,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 	}, nil
 }
 
+// ControllerPublishVolume used to controller publish volume
 func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (
 	*csi.ControllerPublishVolumeResponse, error) {
 
@@ -167,7 +169,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	log.AddContext(ctx).Infof("Run controller publish volume %s to node %s", volumeId, nodeId)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackendWithFresh(ctx, backendName, true)
+	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
 	if backend == nil {
 		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
 		log.AddContext(ctx).Errorln(msg)
@@ -176,7 +178,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 
 	var parameters map[string]interface{}
 
-	err := json.Unmarshal([]byte(nodeId), &parameters)
+	err = json.Unmarshal([]byte(nodeId), &parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Unmarshal node info of %s error: %v", nodeId, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -197,11 +199,13 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 	log.AddContext(ctx).Infof("Volume %s is controller published to node %s", volumeId, nodeId)
 	return &csi.ControllerPublishVolumeResponse{
 		PublishContext: map[string]string{
-			"publishInfo": string(publishInfo),
+			"publishInfo":    string(publishInfo),
+			"filesystemMode": getBackendFilesystemMode(ctx, backend, volName),
 		},
 	}, nil
 }
 
+// ControllerUnpublishVolume used to controller unpublish volume
 func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (
 	*csi.ControllerUnpublishVolumeResponse, error) {
 
@@ -211,7 +215,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	log.AddContext(ctx).Infof("Start to controller unpublish volume %s from node %s", volumeId, nodeInfo)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackendWithFresh(ctx, backendName, true)
+	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
 	if backend == nil {
 		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
 			"CAUTION: volume %s need to manually detach from array.", backendName, volName)
@@ -220,7 +224,7 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 
 	var parameters map[string]interface{}
 
-	err := json.Unmarshal([]byte(nodeInfo), &parameters)
+	err = json.Unmarshal([]byte(nodeInfo), &parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Unmarshal node info of %s error: %v", nodeInfo, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -236,20 +240,24 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
+// ValidateVolumeCapabilities used to validate volume capabilities
 func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (
 	*csi.ValidateVolumeCapabilitiesResponse, error) {
 
 	return nil, status.Error(codes.Unimplemented, "Not implemented")
 }
 
+// ListVolumes used to list volumes
 func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "Not implemented")
 }
 
+// GetCapacity used to get volume capacity
 func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "Not implemented")
 }
 
+// ControllerGetCapabilities used to controller get capabilities
 func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (
 	*csi.ControllerGetCapabilitiesResponse, error) {
 
@@ -294,6 +302,7 @@ func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.Control
 	}, nil
 }
 
+// CreateSnapshot used to create snapshot for volume
 func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (
 	*csi.CreateSnapshotResponse, error) {
 
@@ -309,7 +318,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	log.AddContext(ctx).Infof("Start to Create snapshot %s for volume %s", snapshotName, volumeId)
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
-	backend := backend.GetBackendWithFresh(ctx, backendName, true)
+	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
 	if backend == nil {
 		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
 		log.AddContext(ctx).Errorln(msg)
@@ -334,6 +343,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}, nil
 }
 
+// DeleteSnapshot used to delete snapshot
 func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (
 	*csi.DeleteSnapshotResponse, error) {
 
@@ -344,14 +354,14 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	log.AddContext(ctx).Infof("Start to Delete snapshot %s.", snapshotId)
 
 	backendName, snapshotParentId, snapshotName := utils.SplitSnapshotId(snapshotId)
-	backend := backend.GetBackendWithFresh(ctx, backendName, true)
+	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
 	if backend == nil {
 		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
 			"CAUTION: snapshot need to manually delete from array.", backendName)
 		return &csi.DeleteSnapshotResponse{}, nil
 	}
 
-	err := backend.Plugin.DeleteSnapshot(ctx, snapshotParentId, snapshotName)
+	err = backend.Plugin.DeleteSnapshot(ctx, snapshotParentId, snapshotName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete snapshot %s error: %v", snapshotName, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -361,6 +371,7 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	return &csi.DeleteSnapshotResponse{}, nil
 }
 
+// ListSnapshots used to list snapshots
 func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }

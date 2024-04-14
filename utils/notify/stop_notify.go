@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package notify offers a wait and notify mechanism
 package notify
 
 import (
@@ -22,19 +23,19 @@ import (
 
 var stopChan = make(chan struct{})
 
-//Stop used to throw out the stop signal
+// Stop used to throw out the stop signal
 func Stop(format string, args ...interface{}) {
 	log.Errorf(format, args...)
 	stopChan <- struct{}{}
 	wait()
 }
 
-//GetStopChan used to get stop channel
+// GetStopChan used to get stop channel
 func GetStopChan() chan struct{} {
 	return stopChan
 }
 
 func wait() {
-	//The purpose is to block business goroutine
+	// The purpose is to block business goroutine
 	stopChan <- struct{}{}
 }

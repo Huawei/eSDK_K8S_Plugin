@@ -18,20 +18,17 @@ package backend
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
-	. "github.com/smartystreets/goconvey/convey"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/app"
 	cfg "huawei-csi-driver/csi/app/config"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	pkgUtils "huawei-csi-driver/pkg/utils"
+	"huawei-csi-driver/csi/backend/cache"
+	"huawei-csi-driver/csi/backend/model"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -54,20 +51,20 @@ func TestMain(m *testing.M) {
 func TestAnalyzePools(t *testing.T) {
 	tests := []struct {
 		name      string
-		backend   *Backend
+		backend   *model.Backend
 		config    map[string]interface{}
 		expectErr bool
 	}{
 		{"Normal",
-			&Backend{Name: "testBackend1", Storage: "OceanStor-5000"},
+			&model.Backend{Name: "testBackend1", Storage: "OceanStor-5000"},
 			map[string]interface{}{"pools": []interface{}{"pool1", "pool2"}},
 			false},
 		{"NotHavePools",
-			&Backend{Name: "testBackend1", Storage: "OceanStor-5000"},
+			&model.Backend{Name: "testBackend1", Storage: "OceanStor-5000"},
 			map[string]interface{}{"pools": []interface{}{""}},
 			true},
 		{"Normal9000",
-			&Backend{Name: "testBackend1", Storage: "OceanStor-9000"},
+			&model.Backend{Name: "testBackend1", Storage: "OceanStor-9000"},
 			map[string]interface{}{"pools": []interface{}{"pool1", "pool2"}},
 			false},
 	}
@@ -163,24 +160,24 @@ func TestGetSupportedTopologies(t *testing.T) {
 func TestAddProtocolTopology(t *testing.T) {
 	tests := []struct {
 		name       string
-		backend    *Backend
+		backend    *model.Backend
 		driverName string
 		expectErr  bool
 		expect     []map[string]string
 	}{
 		{"Normal",
-			&Backend{Parameters: map[string]interface{}{"protocol": "iscsi"},
+			&model.Backend{Parameters: map[string]interface{}{"protocol": "iscsi"},
 				SupportedTopologies: []map[string]string{}},
 			"csi.huawei.com",
 			false,
 			[]map[string]string{{"topology.kubernetes.io/protocol.iscsi": "csi.huawei.com"}}},
 		{"NotHaveProtocol",
-			&Backend{Parameters: map[string]interface{}{}, SupportedTopologies: []map[string]string{}},
+			&model.Backend{Parameters: map[string]interface{}{}, SupportedTopologies: []map[string]string{}},
 			"csi.huawei.com",
 			true,
 			[]map[string]string{}},
 		{"SupportedTopoNotEmpty",
-			&Backend{Parameters: map[string]interface{}{"protocol": "iscsi"},
+			&model.Backend{Parameters: map[string]interface{}{"protocol": "iscsi"},
 				SupportedTopologies: []map[string]string{{"key1": "val1"}}},
 			"csi.huawei.com",
 			false,
@@ -205,20 +202,20 @@ func TestFilterByBackendName(t *testing.T) {
 	tests := []struct {
 		name           string
 		backendName    string
-		candidatePools []*StoragePool
+		candidatePools []*model.StoragePool
 		expectErr      bool
-		expect         []*StoragePool
+		expect         []*model.StoragePool
 	}{
 		{"Normal",
 			"targetBackend",
-			[]*StoragePool{{Parent: "targetBackend"}, {Parent: "otherBackend"}},
+			[]*model.StoragePool{{Parent: "targetBackend"}, {Parent: "otherBackend"}},
 			false,
-			[]*StoragePool{{Parent: "targetBackend"}}},
+			[]*model.StoragePool{{Parent: "targetBackend"}}},
 		{"NotSpecified",
 			"",
-			[]*StoragePool{{Parent: "targetBackend"}, {Parent: "otherBackend"}},
+			[]*model.StoragePool{{Parent: "targetBackend"}, {Parent: "otherBackend"}},
 			false,
-			[]*StoragePool{{Parent: "targetBackend"}, {Parent: "otherBackend"}},
+			[]*model.StoragePool{{Parent: "targetBackend"}, {Parent: "otherBackend"}},
 		},
 	}
 
@@ -236,17 +233,17 @@ func TestFilterByStoragePool(t *testing.T) {
 	tests := []struct {
 		name           string
 		poolName       string
-		candidatePools []*StoragePool
-		expect         []*StoragePool
+		candidatePools []*model.StoragePool
+		expect         []*model.StoragePool
 	}{
 		{"Normal",
 			"targetPool",
-			[]*StoragePool{{Name: "targetPool"}, {Name: "otherPool"}},
-			[]*StoragePool{{Name: "targetPool"}}},
+			[]*model.StoragePool{{Name: "targetPool"}, {Name: "otherPool"}},
+			[]*model.StoragePool{{Name: "targetPool"}}},
 		{"NotSpecified",
 			"",
-			[]*StoragePool{{Name: "targetPool"}, {Name: "otherPool"}},
-			[]*StoragePool{{Name: "targetPool"}, {Name: "otherPool"}},
+			[]*model.StoragePool{{Name: "targetPool"}, {Name: "otherPool"}},
+			[]*model.StoragePool{{Name: "targetPool"}, {Name: "otherPool"}},
 		},
 	}
 
@@ -264,26 +261,27 @@ func TestFilterByVolumeType(t *testing.T) {
 	tests := []struct {
 		name           string
 		volumeType     string
-		candidatePools []*StoragePool
-		expect         []*StoragePool
+		candidatePools []*model.StoragePool
+		expect         []*model.StoragePool
 	}{
 		{"defaultVolumeType",
 			"",
-			[]*StoragePool{{Storage: "oceanstor-san"}, {Storage: "oceanstor-nas"},
+			[]*model.StoragePool{{Storage: "oceanstor-san"}, {Storage: "oceanstor-nas"},
 				{Storage: "fusionstorage-san"}, {Storage: "fusionstorage-nas"}},
-			[]*StoragePool{{Storage: "oceanstor-san"}, {Storage: "fusionstorage-san"}}},
+			[]*model.StoragePool{{Storage: "oceanstor-san"}, {Storage: "fusionstorage-san"}}},
 		{"normalLun",
 			"lun",
-			[]*StoragePool{{Storage: "oceanstor-san"}, {Storage: "oceanstor-nas"}},
-			[]*StoragePool{{Storage: "oceanstor-san"}}},
+			[]*model.StoragePool{{Storage: "oceanstor-san"}, {Storage: "oceanstor-nas"}},
+			[]*model.StoragePool{{Storage: "oceanstor-san"}}},
 		{"normalFs",
 			"fs",
-			[]*StoragePool{{Storage: "oceanstor-san"}, {Storage: "oceanstor-nas"}},
-			[]*StoragePool{{Storage: "oceanstor-nas"}}},
+			[]*model.StoragePool{{Storage: "oceanstor-san"}, {Storage: "oceanstor-nas"}},
+			[]*model.StoragePool{{Storage: "oceanstor-nas"}}},
 		{"oceanstor-9000",
 			"fs",
-			[]*StoragePool{{Storage: "oceanstor-san"}, {Storage: "oceanstor-nas"}, {Storage: "oceanstor-9000"}},
-			[]*StoragePool{{Storage: "oceanstor-nas"}, {Storage: "oceanstor-9000"}}},
+			[]*model.StoragePool{{Storage: "oceanstor-san"}, {Storage: "oceanstor-nas"},
+				{Storage: "oceanstor-9000"}},
+			[]*model.StoragePool{{Storage: "oceanstor-nas"}, {Storage: "oceanstor-9000"}}},
 	}
 
 	for _, tt := range tests {
@@ -303,29 +301,29 @@ func TestFilterByAllocType(t *testing.T) {
 	tests := []struct {
 		name           string
 		allocType      string
-		candidatePools []*StoragePool
-		expect         []*StoragePool
+		candidatePools []*model.StoragePool
+		expect         []*model.StoragePool
 	}{
 		{"default",
 			"",
-			[]*StoragePool{
-				{Name: "pool1", Capabilities: map[string]interface{}{"SupportThin": true}},
-				{Name: "pool2", Capabilities: map[string]interface{}{"SupportThin": false}}},
-			[]*StoragePool{{Name: "pool1", Capabilities: map[string]interface{}{"SupportThin": true}}},
+			[]*model.StoragePool{
+				{Name: "pool1", Capabilities: map[string]bool{"SupportThin": true}},
+				{Name: "pool2", Capabilities: map[string]bool{"SupportThin": false}}},
+			[]*model.StoragePool{{Name: "pool1", Capabilities: map[string]bool{"SupportThin": true}}},
 		},
 		{"normalThin",
 			"thin",
-			[]*StoragePool{
-				{Name: "pool1", Capabilities: map[string]interface{}{"SupportThin": true}},
-				{Name: "pool2", Capabilities: map[string]interface{}{"SupportThin": false}}},
-			[]*StoragePool{{Name: "pool1", Capabilities: map[string]interface{}{"SupportThin": true}}},
+			[]*model.StoragePool{
+				{Name: "pool1", Capabilities: map[string]bool{"SupportThin": true}},
+				{Name: "pool2", Capabilities: map[string]bool{"SupportThin": false}}},
+			[]*model.StoragePool{{Name: "pool1", Capabilities: map[string]bool{"SupportThin": true}}},
 		},
 		{"normalThick",
 			"thick",
-			[]*StoragePool{
-				{Name: "pool1", Capabilities: map[string]interface{}{"SupportThick": true}},
-				{Name: "pool2", Capabilities: map[string]interface{}{"SupportThick": false}}},
-			[]*StoragePool{{Name: "pool1", Capabilities: map[string]interface{}{"SupportThick": true}}},
+			[]*model.StoragePool{
+				{Name: "pool1", Capabilities: map[string]bool{"SupportThick": true}},
+				{Name: "pool2", Capabilities: map[string]bool{"SupportThick": false}}},
+			[]*model.StoragePool{{Name: "pool1", Capabilities: map[string]bool{"SupportThick": true}}},
 		},
 	}
 
@@ -340,25 +338,28 @@ func TestFilterByAllocType(t *testing.T) {
 }
 
 func TestFilterByMetroNormal(t *testing.T) {
-	stub := gostub.Stub(&csiBackends, map[string]*Backend{"testBackend1": {
-		Name:         "testBackend1",
-		MetroBackend: &Backend{Name: "TestMetroBackend1"}}})
-	defer stub.Reset()
+	load := gomonkey.ApplyMethod(reflect.TypeOf(&cache.BackendCache{}), "Load",
+		func(_ *cache.BackendCache, backendName string) (model.Backend, bool) {
+			return model.Backend{
+				Name:         "testBackend1",
+				MetroBackend: &model.Backend{Name: "TestMetroBackend1"}}, true
+		})
+	defer load.Reset()
 
 	hyperMetro := "true"
-	candidatePools := []*StoragePool{
+	candidatePools := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportMetro": true},
+			Capabilities: map[string]bool{"SupportMetro": true},
 			Parent:       "testBackend1"},
 		{
 			Name:         "pool2",
-			Capabilities: map[string]interface{}{"SupportMetro": false},
+			Capabilities: map[string]bool{"SupportMetro": false},
 			Parent:       "testBackend2"}}
-	expect := []*StoragePool{
+	expect := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportMetro": true},
+			Capabilities: map[string]bool{"SupportMetro": true},
 			Parent:       "testBackend1"}}
 
 	got, _ := filterByMetro(ctx, hyperMetro, candidatePools)
@@ -371,29 +372,32 @@ func TestFilterByMetroNormal(t *testing.T) {
 }
 
 func TestFilterByMetroNotHyperMetro(t *testing.T) {
-	stub := gostub.Stub(&csiBackends, map[string]*Backend{"testBackend1": {
-		Name:         "testBackend1",
-		MetroBackend: &Backend{Name: "TestMetroBackend1"}}})
-	defer stub.Reset()
+	load := gomonkey.ApplyMethod(reflect.TypeOf(&cache.BackendCache{}), "Load",
+		func(_ *cache.BackendCache, backendName string) (model.Backend, bool) {
+			return model.Backend{
+				Name:         "testBackend1",
+				MetroBackend: &model.Backend{Name: "TestMetroBackend1"}}, true
+		})
+	defer load.Reset()
 
 	hyperMetro := "false"
-	candidatePools := []*StoragePool{
+	candidatePools := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportMetro": true},
+			Capabilities: map[string]bool{"SupportMetro": true},
 			Parent:       "testBackend1"},
 		{
 			Name:         "pool2",
-			Capabilities: map[string]interface{}{"SupportMetro": false},
+			Capabilities: map[string]bool{"SupportMetro": false},
 			Parent:       "testBackend2"}}
-	expect := []*StoragePool{
+	expect := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportMetro": true},
+			Capabilities: map[string]bool{"SupportMetro": true},
 			Parent:       "testBackend1"},
 		{
 			Name:         "pool2",
-			Capabilities: map[string]interface{}{"SupportMetro": false},
+			Capabilities: map[string]bool{"SupportMetro": false},
 			Parent:       "testBackend2"}}
 
 	got, _ := filterByMetro(ctx, hyperMetro, candidatePools)
@@ -406,22 +410,23 @@ func TestFilterByMetroNotHyperMetro(t *testing.T) {
 }
 
 func TestFilterByMetroParentNotExist(t *testing.T) {
-	stub := gostub.Stub(&csiBackends, map[string]*Backend{"testBackend1": {
-		Name:         "testBackend1",
-		MetroBackend: &Backend{Name: "TestMetroBackend1"}}})
-	defer stub.Reset()
+	load := gomonkey.ApplyMethod(reflect.TypeOf(&cache.BackendCache{}), "Load",
+		func(_ *cache.BackendCache, backendName string) (model.Backend, bool) {
+			return model.Backend{}, false
+		})
+	defer load.Reset()
 
 	hyperMetro := "true"
-	candidatePools := []*StoragePool{
+	candidatePools := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportMetro": true},
+			Capabilities: map[string]bool{"SupportMetro": true},
 			Parent:       "notExist"},
 		{
 			Name:         "pool2",
-			Capabilities: map[string]interface{}{"SupportMetro": false},
+			Capabilities: map[string]bool{"SupportMetro": false},
 			Parent:       "notExist"}}
-	expect := []*StoragePool{}
+	expect := []*model.StoragePool{}
 
 	got, _ := filterByMetro(ctx, hyperMetro, candidatePools)
 	if len(got) == 0 && len(expect) == 0 {
@@ -433,25 +438,28 @@ func TestFilterByMetroParentNotExist(t *testing.T) {
 }
 
 func TestFilterByReplicationNormal(t *testing.T) {
-	stub := gostub.Stub(&csiBackends, map[string]*Backend{"testBackend1": {
-		Name:           "testBackend1",
-		ReplicaBackend: &Backend{Name: "TestMetroBackend1"}}})
-	defer stub.Reset()
+	load := gomonkey.ApplyMethod(reflect.TypeOf(&cache.BackendCache{}), "Load",
+		func(_ *cache.BackendCache, backendName string) (model.Backend, bool) {
+			return model.Backend{
+				Name:           "testBackend1",
+				ReplicaBackend: &model.Backend{Name: "TestMetroBackend1"}}, true
+		})
+	defer load.Reset()
 
 	replication := "true"
-	candidatePools := []*StoragePool{
+	candidatePools := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportReplication": true},
+			Capabilities: map[string]bool{"SupportReplication": true},
 			Parent:       "testBackend1"},
 		{
 			Name:         "pool2",
-			Capabilities: map[string]interface{}{"SupportReplication": false},
+			Capabilities: map[string]bool{"SupportReplication": false},
 			Parent:       "testBackend2"}}
-	expect := []*StoragePool{
+	expect := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportReplication": true},
+			Capabilities: map[string]bool{"SupportReplication": true},
 			Parent:       "testBackend1"}}
 
 	got, _ := filterByReplication(ctx, replication, candidatePools)
@@ -464,29 +472,32 @@ func TestFilterByReplicationNormal(t *testing.T) {
 }
 
 func TestFilterByReplicationWithFalse(t *testing.T) {
-	stub := gostub.Stub(&csiBackends, map[string]*Backend{"testBackend1": {
-		Name:           "testBackend1",
-		ReplicaBackend: &Backend{Name: "TestMetroBackend1"}}})
-	defer stub.Reset()
+	load := gomonkey.ApplyMethod(reflect.TypeOf(&cache.BackendCache{}), "Load",
+		func(_ *cache.BackendCache, backendName string) (model.Backend, bool) {
+			return model.Backend{
+				Name:         "testBackend1",
+				MetroBackend: &model.Backend{Name: "TestMetroBackend1"}}, true
+		})
+	defer load.Reset()
 
 	replication := "false"
-	candidatePools := []*StoragePool{
+	candidatePools := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportReplication": true},
+			Capabilities: map[string]bool{"SupportReplication": true},
 			Parent:       "testBackend1"},
 		{
 			Name:         "pool2",
-			Capabilities: map[string]interface{}{"SupportReplication": false},
+			Capabilities: map[string]bool{"SupportReplication": false},
 			Parent:       "testBackend2"}}
-	expect := []*StoragePool{
+	expect := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportReplication": true},
+			Capabilities: map[string]bool{"SupportReplication": true},
 			Parent:       "testBackend1"},
 		{
 			Name:         "pool2",
-			Capabilities: map[string]interface{}{"SupportReplication": false},
+			Capabilities: map[string]bool{"SupportReplication": false},
 			Parent:       "testBackend2"}}
 
 	got, _ := filterByReplication(ctx, replication, candidatePools)
@@ -499,22 +510,25 @@ func TestFilterByReplicationWithFalse(t *testing.T) {
 }
 
 func TestFilterByReplicationParentNotExist(t *testing.T) {
-	stub := gostub.Stub(&csiBackends, map[string]*Backend{"testBackend1": {
-		Name:           "testBackend1",
-		ReplicaBackend: &Backend{Name: "TestMetroBackend1"}}})
-	defer stub.Reset()
+	load := gomonkey.ApplyMethod(reflect.TypeOf(&cache.BackendCache{}), "Load",
+		func(_ *cache.BackendCache, backendName string) (model.Backend, bool) {
+			return model.Backend{
+				Name:         "testBackend1",
+				MetroBackend: &model.Backend{Name: "TestMetroBackend1"}}, true
+		})
+	defer load.Reset()
 
 	replication := "true"
-	candidatePools := []*StoragePool{
+	candidatePools := []*model.StoragePool{
 		{
 			Name:         "pool1",
-			Capabilities: map[string]interface{}{"SupportReplication": true},
+			Capabilities: map[string]bool{"SupportReplication": true},
 			Parent:       "notExist"},
 		{
 			Name:         "pool2",
-			Capabilities: map[string]interface{}{"SupportReplication": false},
+			Capabilities: map[string]bool{"SupportReplication": false},
 			Parent:       "notExist"}}
-	expect := []*StoragePool{}
+	expect := []*model.StoragePool{}
 
 	got, _ := filterByReplication(ctx, replication, candidatePools)
 	if len(got) == 0 && len(expect) == 0 {
@@ -529,24 +543,24 @@ func TestFilterByNFSProtocol(t *testing.T) {
 	tests := []struct {
 		name           string
 		nfsProtocol    string
-		candidatePools []*StoragePool
+		candidatePools []*model.StoragePool
 		expect         int64
 	}{
 		{"Normal",
 			"nfs3",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportNFS3": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportNFS3": true}}},
 			1},
 		{"NormalMulti",
 			"nfs4",
-			[]*StoragePool{
-				{Capabilities: map[string]interface{}{"SupportNFS4": true}},
-				{Capabilities: map[string]interface{}{"SupportNFS4": true}}},
+			[]*model.StoragePool{
+				{Capabilities: map[string]bool{"SupportNFS4": true}},
+				{Capabilities: map[string]bool{"SupportNFS4": true}}},
 			2},
 		{"NFS41NotSupport",
 			"nfs41",
-			[]*StoragePool{
-				{Capabilities: map[string]interface{}{"SupportNFS41": true}},
-				{Capabilities: map[string]interface{}{"SupportNFS41": false}}},
+			[]*model.StoragePool{
+				{Capabilities: map[string]bool{"SupportNFS41": true}},
+				{Capabilities: map[string]bool{"SupportNFS41": false}}},
 			1},
 		{"ProtocolEmpty",
 			"",
@@ -567,31 +581,31 @@ func TestFilterBySupportClone(t *testing.T) {
 	tests := []struct {
 		name           string
 		cloneSource    string
-		candidatePools []*StoragePool
+		candidatePools []*model.StoragePool
 		expect         int64
 	}{
 		{"Normal",
 			"source",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportClone": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportClone": true}}},
 			1},
 		{"NormalMulti",
 			"source",
-			[]*StoragePool{
-				{Capabilities: map[string]interface{}{"SupportClone": true}},
-				{Capabilities: map[string]interface{}{"SupportClone": true}}},
+			[]*model.StoragePool{
+				{Capabilities: map[string]bool{"SupportClone": true}},
+				{Capabilities: map[string]bool{"SupportClone": true}}},
 			2},
 		{"HasNotSupportClone",
 			"source",
-			[]*StoragePool{
-				{Capabilities: map[string]interface{}{"SupportClone": true}},
-				{Capabilities: map[string]interface{}{"SupportClone": false}}},
+			[]*model.StoragePool{
+				{Capabilities: map[string]bool{"SupportClone": true}},
+				{Capabilities: map[string]bool{"SupportClone": false}}},
 			1},
 		{"AllNotSupportClone",
 			"source",
-			[]*StoragePool{
-				{Capabilities: map[string]interface{}{"SupportClone": false}},
-				{Capabilities: map[string]interface{}{"SupportClone": false}},
-				{Capabilities: map[string]interface{}{"SupportClone": false}}},
+			[]*model.StoragePool{
+				{Capabilities: map[string]bool{"SupportClone": false}},
+				{Capabilities: map[string]bool{"SupportClone": false}},
+				{Capabilities: map[string]bool{"SupportClone": false}}},
 			0},
 		{"cloneSourceEmpty",
 			"",
@@ -613,47 +627,47 @@ func TestFilterByCapacity(t *testing.T) {
 		name           string
 		requestSize    int64
 		allocType      string
-		candidatePools []*StoragePool
+		candidatePools []*model.StoragePool
 		expect         int64
 	}{
 		{"NormalThin",
 			1024,
 			"thin",
-			[]*StoragePool{
-				{Capabilities: map[string]interface{}{"SupportThin": true}},
-				{Capabilities: map[string]interface{}{"SupportThin": true}}},
-			2},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportThin": true}},
+				{Capabilities: map[string]bool{"SupportThin": true}}}, 2},
 		{"NormalThick",
 			1024,
 			"thick",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportThick": true, "FreeCapacity": int64(1025)}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportThick": true},
+				Capacities: map[string]string{"FreeCapacity": "1025"},
+			}},
 			1},
 		{"NormalThinIsEmpty",
 			1024,
 			"",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportThin": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportThin": true}}},
 			1},
 		{"NotHasSupportThinParam",
 			1024,
 			"thin",
-			[]*StoragePool{{Capabilities: map[string]interface{}{}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{}}},
 			0},
 		{"NotSupportThin",
 			1024,
 			"thin",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportThin": false}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportThin": false}}},
 			0},
 		{"SizeInsufficient",
 			1024,
 			"thick",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportThick": true, "FreeCapacity": int64(1023)}}},
-			0},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportThick": true},
+				Capacities: map[string]string{"FreeCapacity": "1023"}}}, 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := filterByCapacity(tt.requestSize, tt.allocType, tt.candidatePools); int64(len(got)) != tt.expect {
-				t.Errorf("test filterByCapacity faild. got: %v expect: %v", len(got), tt.expect)
+			if got := FilterByCapacity(tt.requestSize, tt.allocType, tt.candidatePools); int64(len(got)) != tt.expect {
+				t.Errorf("test FilterByCapacity faild. got: %v expect: %v", len(got), tt.expect)
 			}
 		})
 	}
@@ -662,18 +676,18 @@ func TestFilterByCapacity(t *testing.T) {
 func TestWeightByFreeCapacity(t *testing.T) {
 	tests := []struct {
 		name           string
-		candidatePools []*StoragePool
-		expect         *StoragePool
+		candidatePools []*model.StoragePool
+		expect         *model.StoragePool
 	}{
 		{"Normal",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"FreeCapacity": int64(1024)}}},
-			&StoragePool{Capabilities: map[string]interface{}{"FreeCapacity": int64(1024)}},
+			[]*model.StoragePool{{Capacities: map[string]string{"FreeCapacity": "1024"}}},
+			&model.StoragePool{Capacities: map[string]string{"FreeCapacity": "1024"}},
 		},
 		{"NormalMulti",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"FreeCapacity": int64(1024)}},
-				{Capabilities: map[string]interface{}{"FreeCapacity": int64(4096)}},
-				{Capabilities: map[string]interface{}{"FreeCapacity": int64(2048)}}},
-			&StoragePool{Capabilities: map[string]interface{}{"FreeCapacity": int64(4096)}},
+			[]*model.StoragePool{{Capacities: map[string]string{"FreeCapacity": "1024"}},
+				{Capacities: map[string]string{"FreeCapacity": "4096"}},
+				{Capacities: map[string]string{"FreeCapacity": "2048"}}},
+			&model.StoragePool{Capacities: map[string]string{"FreeCapacity": "4096"}},
 		},
 		{
 			"InputNil",
@@ -695,43 +709,43 @@ func TestFilterByApplicationType(t *testing.T) {
 	tests := []struct {
 		name           string
 		appType        string
-		candidatePools []*StoragePool
+		candidatePools []*model.StoragePool
 		expect         int64
 	}{
 		{"Normal",
 			"SQL_Server_OLAP",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportApplicationType": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportApplicationType": true}}},
 			1,
 		},
 		{"NormalMulti",
 			"SQL_Server_OLAP",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportApplicationType": true}},
-				{Capabilities: map[string]interface{}{"SupportApplicationType": true}},
-				{Capabilities: map[string]interface{}{"SupportApplicationType": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportApplicationType": true}},
+				{Capabilities: map[string]bool{"SupportApplicationType": true}},
+				{Capabilities: map[string]bool{"SupportApplicationType": true}}},
 			3,
 		},
 		{
 			"AppTypeEmpty",
 			"",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportApplicationType": true}},
-				{Capabilities: map[string]interface{}{"SupportApplicationType": false}},
-				{Capabilities: map[string]interface{}{"SupportApplicationType": false}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportApplicationType": true}},
+				{Capabilities: map[string]bool{"SupportApplicationType": false}},
+				{Capabilities: map[string]bool{"SupportApplicationType": false}}},
 			3,
 		},
 		{
 			"SomeNotSupport",
 			"SQL_Server_OLAP",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportApplicationType": false}},
-				{Capabilities: map[string]interface{}{"SupportApplicationType": true}},
-				{Capabilities: map[string]interface{}{"SupportApplicationType": false}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportApplicationType": false}},
+				{Capabilities: map[string]bool{"SupportApplicationType": true}},
+				{Capabilities: map[string]bool{"SupportApplicationType": false}}},
 			1,
 		},
 		{
 			"AllNotSupport",
 			"SQL_Server_OLAP",
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportApplicationType": false}},
-				{Capabilities: map[string]interface{}{"SupportApplicationType": false}},
-				{Capabilities: map[string]interface{}{"SupportApplicationType": false}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportApplicationType": false}},
+				{Capabilities: map[string]bool{"SupportApplicationType": false}},
+				{Capabilities: map[string]bool{"SupportApplicationType": false}}},
 			0,
 		},
 	}
@@ -749,43 +763,43 @@ func TestFilterByStorageQuota(t *testing.T) {
 	tests := []struct {
 		name           string
 		storageQuota   string
-		candidatePools []*StoragePool
+		candidatePools []*model.StoragePool
 		expect         int64
 		expectErr      bool
 	}{
 		{"NormalSoftQuota",
 			`{"spaceQuota": "softQuota", "gracePeriod": 100}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportQuota": true}}},
 			1,
 			false,
 		},
 		{"NormalHardQuota",
 			`{"spaceQuota": "hardQuota"}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportQuota": true}}},
 			1,
 			false,
 		},
 		{"NegativePeriod",
 			`{"spaceQuota": "hardQuota", "gracePeriod": -1}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportQuota": true}}},
 			0,
 			true,
 		},
 		{"ExceedsTheMaximumPeriod",
 			`{"spaceQuota": "hardQuota", "gracePeriod": 4294967295}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportQuota": true}}},
 			0,
 			true,
 		},
 		{"WrongType",
 			`{"spaceQuota": "WrongType"`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportQuota": true}}},
 			0,
 			true,
 		},
 		{"HardWithPeriod",
 			`{"spaceQuota": "hardQuota", "gracePeriod": 10}`,
-			[]*StoragePool{{Capabilities: map[string]interface{}{"SupportQuota": true}}},
+			[]*model.StoragePool{{Capabilities: map[string]bool{"SupportQuota": true}}},
 			0,
 			true,
 		},
@@ -801,12 +815,12 @@ func TestFilterByStorageQuota(t *testing.T) {
 	}
 }
 
-func mockStoragePool(features ...string) []*StoragePool {
-	var pools []*StoragePool
+func mockStoragePool(features ...string) []*model.StoragePool {
+	var pools []*model.StoragePool
 	for i, feature := range features {
-		pool := &StoragePool{
+		pool := &model.StoragePool{
 			Name:         fmt.Sprintf("pool-%d", i),
-			Capabilities: map[string]interface{}{feature: true},
+			Capabilities: map[string]bool{feature: true},
 			Storage:      "oceanstor-nas",
 		}
 		pools = append(pools, pool)
@@ -815,8 +829,8 @@ func mockStoragePool(features ...string) []*StoragePool {
 	return pools
 }
 
-func mockStorageBackend(storage string, pool []*StoragePool) *Backend {
-	return &Backend{
+func mockStorageBackend(storage string, pool []*model.StoragePool) *model.Backend {
+	return &model.Backend{
 		Name:       "mock-backend",
 		Storage:    storage,
 		Available:  true,
@@ -854,41 +868,4 @@ func TestValidateBackend(t *testing.T) {
 	if err != nil {
 		t.Errorf("test validateBackend error %v", err)
 	}
-}
-
-func TestRegisterAllBackend(t *testing.T) {
-	Convey("List claim failed", t, func() {
-		m := gomonkey.ApplyFunc(pkgUtils.ListClaim,
-			func(ctx context.Context, client clientSet.Interface, namespace string) (
-				*xuanwuv1.StorageBackendClaimList, error) {
-				return &xuanwuv1.StorageBackendClaimList{}, errors.New("mock list claim failed")
-			})
-		defer m.Reset()
-
-		So(RegisterAllBackend(ctx), ShouldBeError)
-	})
-
-	Convey("Get content failed", t, func() {
-		m := gomonkey.ApplyFunc(pkgUtils.ListClaim,
-			func(ctx context.Context, client clientSet.Interface, namespace string) (
-				*xuanwuv1.StorageBackendClaimList, error) {
-				claim := &xuanwuv1.StorageBackendClaim{
-					Status: &xuanwuv1.StorageBackendClaimStatus{
-						BoundContentName: "mock content name",
-					},
-				}
-				return &xuanwuv1.StorageBackendClaimList{
-					Items: []xuanwuv1.StorageBackendClaim{*claim},
-				}, nil
-			})
-		defer m.Reset()
-
-		m.ApplyFunc(pkgUtils.GetContent,
-			func(ctx context.Context, client clientSet.Interface, contentName string) (
-				*xuanwuv1.StorageBackendContent, error) {
-				return &xuanwuv1.StorageBackendContent{}, errors.New("mock get content failed")
-			})
-
-		So(RegisterAllBackend(ctx), ShouldBeNil)
-	})
 }

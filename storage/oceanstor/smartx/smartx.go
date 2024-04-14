@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package smartx provides operations for storage qos and snapshot
 package smartx
 
 import (
@@ -236,10 +237,12 @@ func ValidateQoSParameters(product string, qosParam map[string]float64) (map[str
 	return validatedParameters, nil
 }
 
+// SmartX provides smartx client
 type SmartX struct {
 	cli client.BaseClientInterface
 }
 
+// NewSmartX inits a new smartx client
 func NewSmartX(cli client.BaseClientInterface) *SmartX {
 	return &SmartX{
 		cli: cli,
@@ -251,6 +254,7 @@ func (p *SmartX) getQosName(objID, objType string) string {
 	return fmt.Sprintf("k8s_%s%s_%s", objType, objID, now)
 }
 
+// CreateQos creates qos and return its id
 func (p *SmartX) CreateQos(ctx context.Context,
 	objID, objType, vStoreID string,
 	params map[string]int) (string, error) {
@@ -309,6 +313,7 @@ func (p *SmartX) CreateQos(ctx context.Context,
 	return qosID, nil
 }
 
+// DeleteQos deletes qos by id
 func (p *SmartX) DeleteQos(ctx context.Context, qosID, objID, objType, vStoreID string) error {
 	qos, err := p.cli.GetQosByID(ctx, qosID, vStoreID)
 	if err != nil {
@@ -371,6 +376,7 @@ func (p *SmartX) DeleteQos(ctx context.Context, qosID, objID, objType, vStoreID 
 	return nil
 }
 
+// CreateLunSnapshot creates lun snapshot
 func (p *SmartX) CreateLunSnapshot(ctx context.Context, name, srcLunID string) (map[string]interface{}, error) {
 	snapshot, err := p.cli.CreateLunSnapshot(ctx, name, srcLunID)
 	if err != nil {
@@ -392,6 +398,7 @@ func (p *SmartX) CreateLunSnapshot(ctx context.Context, name, srcLunID string) (
 	return snapshot, nil
 }
 
+// DeleteLunSnapshot deletes lun snapshot by id
 func (p *SmartX) DeleteLunSnapshot(ctx context.Context, snapshotID string) error {
 	err := p.cli.DeactivateLunSnapshot(ctx, snapshotID)
 	if err != nil {
@@ -408,6 +415,7 @@ func (p *SmartX) DeleteLunSnapshot(ctx context.Context, snapshotID string) error
 	return nil
 }
 
+// CreateFSSnapshot creates fs snapshot
 func (p *SmartX) CreateFSSnapshot(ctx context.Context, name, srcFSID string) (string, error) {
 	snapshot, err := p.cli.CreateFSSnapshot(ctx, name, srcFSID)
 	if err != nil {
@@ -422,6 +430,7 @@ func (p *SmartX) CreateFSSnapshot(ctx context.Context, name, srcFSID string) (st
 	return snapshotID, nil
 }
 
+// DeleteFSSnapshot deletes fs snapshot by id
 func (p *SmartX) DeleteFSSnapshot(ctx context.Context, snapshotID string) error {
 	err := p.cli.DeleteFSSnapshot(ctx, snapshotID)
 	if err != nil {

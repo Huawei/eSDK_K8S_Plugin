@@ -21,7 +21,9 @@ import (
 	"errors"
 	"fmt"
 
+	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/pkg/constants"
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/volume"
 	"huawei-csi-driver/utils"
@@ -29,13 +31,15 @@ import (
 )
 
 const (
+	// DTreeStorage defines DTree storage name
 	DTreeStorage = "oceanstor-dtree"
 )
 
+// OceanstorDTreePlugin implements storage Plugin interface
 type OceanstorDTreePlugin struct {
 	OceanstorPlugin
 
-	portal     string
+	portals    []string
 	parentName string
 }
 
@@ -43,30 +47,31 @@ func init() {
 	RegPlugin(DTreeStorage, &OceanstorDTreePlugin{})
 }
 
+// NewPlugin used to create new plugin
 func (p *OceanstorDTreePlugin) NewPlugin() Plugin {
 	return &OceanstorDTreePlugin{}
 }
 
-func (p *OceanstorDTreePlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
-	protocol, exist := utils.ToStringWithFlag(parameters["protocol"])
-	if !exist || protocol != "nfs" {
-		return errors.New("protocol must be provided and be \"nfs\" for oceanstor-dtree backend")
+// Init used to init the plugin
+func (p *OceanstorDTreePlugin) Init(ctx context.Context, config map[string]interface{},
+	parameters map[string]interface{}, keepLogin bool) error {
+	var exist bool
+	p.parentName, exist = utils.ToStringWithFlag(parameters["parentname"])
+	if !exist || p.parentName == "" {
+		return pkgUtils.Errorf(ctx, "Verify parentname: [%v] failed. \nParentname must be provided for "+
+			"oceanstor-dtree backend\n", parameters["parentname"])
 	}
 
-	if _, ok := parameters["portals"]; !ok {
-		return errors.New("portals must be provided for oceanstor-dtree backend and just support one portal")
-	}
-	portals, exist := parameters["portals"].([]interface{})
-	if !exist || len(portals) != 1 {
-		return errors.New("portals must be provided for oceanstor-dtree backend and just support one portal")
-	}
-	p.portal, _ = utils.ToStringWithFlag(portals[0])
-
-	p.parentName, _ = utils.ToStringWithFlag(parameters["parentname"])
-
-	err := p.init(config, keepLogin)
+	var err error
+	_, p.portals, err = verifyProtocolAndPortals(parameters)
 	if err != nil {
-		log.AddContext(context.Background()).Errorf("init dtree plugin failed, data:")
+		log.Errorf("verify protocol and portals failed, err: %v", err)
+		return err
+	}
+
+	err = p.init(ctx, config, keepLogin)
+	if err != nil {
+		log.AddContext(ctx).Errorf("init dtree plugin failed, data:")
 		return err
 	}
 
@@ -77,6 +82,7 @@ func (p *OceanstorDTreePlugin) getDTreeObj() *volume.DTree {
 	return volume.NewDTree(p.cli)
 }
 
+// CreateVolume used to create volume
 func (p *OceanstorDTreePlugin) CreateVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
 	if p == nil {
@@ -106,12 +112,14 @@ func (p *OceanstorDTreePlugin) CreateVolume(ctx context.Context, name string, pa
 	return volObj, nil
 }
 
+// QueryVolume used to query volume
 func (p *OceanstorDTreePlugin) QueryVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
 
 	return nil, errors.New(" not implement")
 }
 
+// DeleteDTreeVolume used to delete DTree volume
 func (p *OceanstorDTreePlugin) DeleteDTreeVolume(ctx context.Context, params map[string]interface{}) error {
 	if p == nil {
 		return errors.New("empty dtree plugin")
@@ -126,6 +134,7 @@ func (p *OceanstorDTreePlugin) DeleteDTreeVolume(ctx context.Context, params map
 
 }
 
+// ExpandDTreeVolume used to expand DTree volume
 func (p *OceanstorDTreePlugin) ExpandDTreeVolume(ctx context.Context, params map[string]interface{}) (bool, error) {
 	dTree := p.getDTreeObj()
 
@@ -153,15 +162,18 @@ func (p *OceanstorDTreePlugin) ExpandDTreeVolume(ctx context.Context, params map
 	return false, nil
 }
 
+// DeleteVolume used to delete volume
 func (p *OceanstorDTreePlugin) DeleteVolume(ctx context.Context, name string) error {
 	return errors.New("not implement")
 
 }
 
+// ExpandVolume used to expand volume
 func (p *OceanstorDTreePlugin) ExpandVolume(ctx context.Context, name string, size int64) (bool, error) {
 	return false, errors.New("not implement")
 }
 
+// Validate used to validate OceanstorDTreePlugin parameters
 func (p *OceanstorDTreePlugin) Validate(ctx context.Context, param map[string]interface{}) error {
 	log.AddContext(ctx).Infoln("Start to validate OceanstorDTreePlugin parameters.")
 
@@ -176,7 +188,7 @@ func (p *OceanstorDTreePlugin) Validate(ctx context.Context, param map[string]in
 	}
 
 	// Login verification
-	cli, err := client.NewClient(clientConfig)
+	cli, err := client.NewClient(ctx, clientConfig)
 	if err != nil {
 		return err
 	}
@@ -217,50 +229,48 @@ func verifyOceanstorDTreeParam(ctx context.Context, config map[string]interface{
 	}
 
 	// verify protocol portals
-	protocol, exist := utils.ToStringWithFlag(parameters["protocol"])
-	if !exist || protocol != "nfs" {
-		msg := fmt.Sprintf("Verify protocol: [%v] failed. \nProtocol must be provided and must be \"nfs\" for "+
-			"oceanstor-dtree backend\n", parameters["protocol"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-
-	if _, ok := parameters["portals"]; !ok {
-		msg := fmt.Sprintf("Verify portals: [%v] failed. \nportals must be provided for oceanstor-dtree backend "+
-			"and just support one portal\n", parameters["portals"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-	portals, exist := parameters["portals"].([]interface{})
-	if !exist || len(portals) != 1 {
-		msg := fmt.Sprintf("Verify portals: [%v] failed. \nportals must be provided for oceanstor-dtree backend "+
-			"and just support one portal\n", parameters["portals"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
+	_, _, err := verifyProtocolAndPortals(parameters)
+	if err != nil {
+		return pkgUtils.Errorf(ctx, "check nas parameter failed, err: %v", err)
 	}
 
 	return nil
 }
 
+// CreateSnapshot used to create snapshot
 func (p *OceanstorDTreePlugin) CreateSnapshot(ctx context.Context, s, s2 string) (map[string]interface{}, error) {
 	return nil, errors.New("not implement")
 
 }
 
+// DeleteSnapshot used to delete snapshot
 func (p *OceanstorDTreePlugin) DeleteSnapshot(ctx context.Context, s, s2 string) error {
 	return errors.New("not implement")
 }
 
-func (p *OceanstorDTreePlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
-	capabilities, specifications, err := p.OceanstorPlugin.UpdateBackendCapabilities()
+// UpdateBackendCapabilities used to update backend capabilities
+func (p *OceanstorDTreePlugin) UpdateBackendCapabilities(ctx context.Context) (map[string]interface{},
+	map[string]interface{}, error) {
+	capabilities, specifications, err := p.OceanstorPlugin.UpdateBackendCapabilities(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// close dTree pvc label switch
 	capabilities[string(constants.SupportLabel)] = false
+	capabilities[string(constants.SupportMetro)] = false
+	capabilities[string(constants.SupportMetroNAS)] = false
+	capabilities[string(constants.SupportReplication)] = false
+	capabilities[string(constants.SupportClone)] = false
+	capabilities[string(constants.SupportApplicationType)] = false
+	capabilities[string(constants.SupportQoS)] = false
 
-	err = p.updateNFS4Capability(capabilities)
+	err = p.updateSmartThin(capabilities)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = p.updateNFS4Capability(ctx, capabilities)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -268,25 +278,28 @@ func (p *OceanstorDTreePlugin) UpdateBackendCapabilities() (map[string]interface
 	return capabilities, specifications, nil
 }
 
-func (p *OceanstorDTreePlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
+// UpdatePoolCapabilities used to update pool capabilities
+func (p *OceanstorDTreePlugin) UpdatePoolCapabilities(ctx context.Context, poolNames []string) (map[string]interface{},
+	error) {
 	capabilities := make(map[string]interface{})
 
-	defaultMap := map[string]interface{}{
-		"FreeCapacity": 0,
-	}
 	for _, poolName := range poolNames {
-		capabilities[poolName] = defaultMap
+		capabilities[poolName] = map[string]interface{}{
+			string(v1.FreeCapacity):  int64(0),
+			string(v1.UsedCapacity):  int64(0),
+			string(v1.TotalCapacity): int64(0),
+		}
 	}
 	return capabilities, nil
 
 }
 
-func (p *OceanstorDTreePlugin) updateNFS4Capability(capabilities map[string]interface{}) error {
+func (p *OceanstorDTreePlugin) updateNFS4Capability(ctx context.Context, capabilities map[string]interface{}) error {
 	if capabilities == nil {
 		capabilities = make(map[string]interface{})
 	}
 
-	nfsServiceSetting, err := p.cli.GetNFSServiceSetting(context.Background())
+	nfsServiceSetting, err := p.cli.GetNFSServiceSetting(ctx)
 	if err != nil {
 		return err
 	}
@@ -305,5 +318,16 @@ func (p *OceanstorDTreePlugin) updateNFS4Capability(capabilities map[string]inte
 		capabilities["SupportNFS41"] = true
 	}
 
+	return nil
+}
+
+// updateSmartThin for fileSystem on dorado storage, only Thin is supported
+func (p *OceanstorDTreePlugin) updateSmartThin(capabilities map[string]interface{}) error {
+	if capabilities == nil {
+		return nil
+	}
+	if p.product == "Dorado" || p.product == "DoradoV6" {
+		capabilities["SupportThin"] = true
+	}
 	return nil
 }

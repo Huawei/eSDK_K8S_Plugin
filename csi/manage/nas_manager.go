@@ -22,31 +22,43 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"huawei-csi-driver/connector"
+	"huawei-csi-driver/csi/backend/plugin"
+	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
+// NasManager implements Manager interface
 type NasManager struct {
 	protocol        string
-	portal          string
+	portals         []string
+	metroPortals    []string
 	dTreeParentName string
 	Conn            connector.Connector
 }
 
 // NewNasManager build a nas manager instance according to the protocol
-func NewNasManager(ctx context.Context, protocol, portal, dTreeParentName string) (Manager, error) {
+func NewNasManager(ctx context.Context, protocol, dTreeParentName string, portals, metroPortals []string) (Manager,
+	error) {
 	return &NasManager{
 		protocol:        protocol,
-		portal:          portal,
+		portals:         portals,
+		metroPortals:    metroPortals,
 		dTreeParentName: dTreeParentName,
-		Conn:            connector.GetConnector(ctx, connector.NFSDriver),
+		Conn:            getConnectorByProtocol(ctx, protocol),
 	}, nil
 }
 
 // StageVolume stage volume
 func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) error {
+	if m.dTreeParentName != "" {
+		log.AddContext(ctx).Infoln("dtree needn't to stage volume")
+		return nil
+	}
+
 	parameters, err := BuildParameters(
 		WithProtocol(m.protocol),
+		WithPortals(req.PublishContext, m.protocol, m.portals, m.metroPortals),
 		WithVolumeCapability(ctx, req),
 	)
 	if err != nil {
@@ -54,15 +66,20 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return err
 	}
 
-	volumeId := req.GetVolumeId()
-	_, volumeName := utils.SplitVolumeId(volumeId)
+	_, volumeName := utils.SplitVolumeId(req.GetVolumeId())
 	if volumeName == "" {
-		return utils.Errorf(ctx, "volume name is blank, volumeId: %s", volumeId)
+		return utils.Errorf(ctx, "volume name is blank, volumeId: %s", req.GetVolumeId())
 	}
 
-	sourcePath := m.portal + ":/" + volumeName
-	if m.protocol == "dpc" {
+	var sourcePath string
+	switch m.protocol {
+	case plugin.PROTOCOL_DPC:
 		sourcePath = "/" + volumeName
+	case plugin.ProtocolNfs, plugin.ProtocolNfsPlus:
+		sourcePath = m.portals[0] + ":/" + volumeName
+	default:
+		return pkgUtils.Errorf(ctx, "stage volume protocol is invalid, protocol: %s, param: %+v",
+			m.protocol, parameters)
 	}
 
 	connectInfo := map[string]interface{}{
@@ -71,6 +88,7 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		"targetPath": parameters["targetPath"],
 		"mountFlags": parameters["mountFlags"],
 		"protocol":   parameters["protocol"],
+		"portals":    parameters["portals"],
 	}
 
 	return Mount(ctx, connectInfo)
@@ -78,6 +96,10 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 // UnStageVolume for nas volumes, unstage is only umount the staging target path
 func (m *NasManager) UnStageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) error {
+	if m.dTreeParentName != "" {
+		log.AddContext(ctx).Infoln("dtree needn't to unstage volume")
+		return nil
+	}
 	return Unmount(ctx, req.GetStagingTargetPath())
 }
 
@@ -92,12 +114,4 @@ func (m *NasManager) ExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 func (m *NasManager) UnStageWithWwn(ctx context.Context, wwn, volumeId string) error {
 	log.AddContext(ctx).Infof("start to unstage nas volume with wwn, wwn: %s, volumeId: %s", wwn, volumeId)
 	return nil
-}
-
-// IsDTreeVolume use for valid volume type
-func (m *NasManager) GetDTreeVolume(ctx context.Context) (string, bool) {
-	if m.dTreeParentName != "" {
-		return m.portal + ":/" + m.dTreeParentName, true
-	}
-	return "", false
 }

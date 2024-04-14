@@ -47,8 +47,10 @@ type serviceConfig struct {
 	KubeletRootDir   string
 	VolumeNamePrefix string
 
-	MaxVolumesPerNode     int
-	WebHookPort           int
+	MaxVolumesPerNode int
+	WebHookPort       int
+	// address of webhook server
+	WebHookAddress        string
 	WorkerThreads         int
 	BackendUpdateInterval int
 
@@ -57,6 +59,9 @@ type serviceConfig struct {
 	LeaderRetryPeriod   time.Duration
 	ReSyncPeriod        time.Duration
 	Timeout             time.Duration
+
+	// kubeletVolumeDevicesDirName, default is /volumeDevices/
+	KubeletVolumeDevicesDirName string
 }
 
 type connectorConfig struct {
@@ -89,6 +94,7 @@ type CompletedConfig struct {
 	BackendUtils clientSet.Interface
 }
 
+// Complete the Config and return the CompletedConfig
 func (cfg *Config) Complete() (*CompletedConfig, error) {
 	k8sUtils, err := k8sutils.NewK8SUtils(cfg.KubeConfig, cfg.VolumeNamePrefix,
 		map[string]string{"provisioner": cfg.DriverName})

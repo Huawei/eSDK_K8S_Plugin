@@ -23,6 +23,7 @@ import (
 	URL "net/url"
 )
 
+// ApplicationType defines interfaces for application type operations
 type ApplicationType interface {
 	// GetApplicationTypeByName used for get application type
 	GetApplicationTypeByName(ctx context.Context, appType string) (string, error)

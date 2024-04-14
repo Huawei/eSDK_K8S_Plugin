@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package config defines the global configurations for oceanctl
 package config
 
 import (
@@ -22,7 +23,7 @@ import (
 
 const (
 	// CliVersion oceanctl version
-	CliVersion = "v4.2.1"
+	CliVersion = "v4.3.0"
 
 	// DefaultMaxClientThreads default max client threads
 	DefaultMaxClientThreads = "30"
@@ -38,6 +39,24 @@ const (
 
 	// DefaultInputFormat default input format
 	DefaultInputFormat = "yaml"
+
+	// DefaultLogName default log file name
+	DefaultLogName = "oceanctl-log"
+
+	// DefaultLogSize default log file size
+	DefaultLogSize = "20M"
+
+	// DefaultLogModule default log file module
+	DefaultLogModule = "file"
+
+	// DefaultLogLevel default log file level
+	DefaultLogLevel = "info"
+
+	// DefaultLogMaxBackups default log file max backups
+	DefaultLogMaxBackups = 9
+
+	// DefaultLogDir default log dir
+	DefaultLogDir = "/var/log/huawei"
 )
 
 var (
@@ -81,4 +100,7 @@ var (
 
 	// NodeName the value of nodeName flag, set by options.WithNodeName()
 	NodeName string
+
+	// LogDir the value of log-dir flag, set by options.WithLogDir()
+	LogDir string
 )

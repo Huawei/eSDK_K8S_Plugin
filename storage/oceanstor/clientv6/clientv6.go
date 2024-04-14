@@ -26,11 +26,13 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// ClientV6 provides base client of clientv6
 type ClientV6 struct {
 	client.BaseClient
 }
 
-func NewClientV6(param *client.NewClientConfig) (*ClientV6, error) {
+// NewClientV6 inits a new client of clientv6
+func NewClientV6(ctx context.Context, param *client.NewClientConfig) (*ClientV6, error) {
 	var err error
 	var parallelCount int
 
@@ -45,10 +47,10 @@ func NewClientV6(param *client.NewClientConfig) (*ClientV6, error) {
 		parallelCount = client.DefaultParallelCount
 	}
 
-	log.Infof("Init parallel count is %d", parallelCount)
+	log.AddContext(ctx).Infof("Init parallel count is %d", parallelCount)
 	client.ClientSemaphore = utils.NewSemaphore(parallelCount)
 
-	cli, err := client.NewClient(param)
+	cli, err := client.NewClient(ctx, param)
 	if err != nil {
 		return nil, err
 	}

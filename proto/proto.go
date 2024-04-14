@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package proto provides initiators with protocols
 package proto
 
 import (
@@ -27,6 +28,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// GetISCSIInitiator used to get iscsi initiator
 func GetISCSIInitiator(ctx context.Context) (string, error) {
 	output, err := utils.ExecShellCmd(ctx,
 		"awk 'BEGIN{FS=\"=\";ORS=\"\"}/^InitiatorName=/{print $2}' /etc/iscsi/initiatorname.iscsi")
@@ -42,6 +44,7 @@ func GetISCSIInitiator(ctx context.Context) (string, error) {
 	return output, nil
 }
 
+// GetFCInitiator used to get fc initiator
 func GetFCInitiator(ctx context.Context) ([]string, error) {
 	output, err := utils.ExecShellCmd(ctx,
 		"cat /sys/class/fc_host/host*/port_name | awk 'BEGIN{FS=\"0x\";ORS=\" \"}{print $2}'")
@@ -57,6 +60,7 @@ func GetFCInitiator(ctx context.Context) ([]string, error) {
 	return strings.Fields(output), nil
 }
 
+// GetRoCEInitiator used to get roce initiator
 func GetRoCEInitiator(ctx context.Context) (string, error) {
 	output, err := utils.ExecShellCmd(ctx, "cat /etc/nvme/hostnqn")
 	if err != nil {
@@ -71,7 +75,8 @@ func GetRoCEInitiator(ctx context.Context) (string, error) {
 	return strings.TrimRight(output, "\n"), nil
 }
 
-func VerifyIscsiPortals(portals []interface{}) ([]string, error) {
+// VerifyIscsiPortals used to verify iscsi portals
+func VerifyIscsiPortals(ctx context.Context, portals []interface{}) ([]string, error) {
 	if len(portals) < 1 {
 		return nil, errors.New("at least 1 portal must be provided for iscsi backend")
 	}
@@ -81,7 +86,7 @@ func VerifyIscsiPortals(portals []interface{}) ([]string, error) {
 	for _, i := range portals {
 		portal, ok := i.(string)
 		if !ok {
-			log.Warningf("VerifyIscsiPortals, convert portal to string failed, data: %v", i)
+			log.AddContext(ctx).Warningf("VerifyIscsiPortals, convert portal to string failed, data: %v", i)
 			continue
 		}
 		ip := net.ParseIP(portal)

@@ -23,7 +23,7 @@ import (
 
 	"bou.ke/monkey"
 	"github.com/agiledragon/gomonkey/v2"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/smartystreets/goconvey/convey"
 
 	"huawei-csi-driver/storage/oceanstor/client"
 )
@@ -66,7 +66,7 @@ func TestInit(t *testing.T) {
 	for _, tt := range tests {
 		var p = &OceanstorNasPlugin{}
 		t.Run(tt.name, func(t *testing.T) {
-			if err := p.Init(tt.config, tt.parameters, tt.keepLogin); (err != nil) != tt.wantErr {
+			if err := p.Init(ctx, tt.config, tt.parameters, tt.keepLogin); (err != nil) != tt.wantErr {
 				t.Errorf("Init error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -74,12 +74,12 @@ func TestInit(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-	Convey("Empty", t, func() {
+	convey.Convey("Empty", t, func() {
 		err := mockOceanstorNasPlugin.Validate(ctx, map[string]interface{}{})
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 
-	Convey("Normal", t, func() {
+	convey.Convey("Normal", t, func() {
 		portals := []interface{}{"127.0.0.1"}
 		parameters := map[string]interface{}{
 			"protocol": "nfs",
@@ -102,6 +102,6 @@ func TestValidate(t *testing.T) {
 		defer m.Reset()
 
 		err := mockOceanstorNasPlugin.Validate(ctx, config)
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 }

@@ -17,6 +17,7 @@
 // Package volume defines the required struct
 package volume
 
+// CloneFilesystemRequest used for CloneFilesystem request
 type CloneFilesystemRequest struct {
 	FsName               string
 	VStoreId             string

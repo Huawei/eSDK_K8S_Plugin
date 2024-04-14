@@ -27,7 +27,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
@@ -58,13 +57,9 @@ func initPVCWatcher(ctx context.Context, helper *KubeClient) {
 	// Set up a watch for PVCs
 	helper.pvcSource = &cache.ListWatch{
 		ListFunc: func(options metaV1.ListOptions) (runtime.Object, error) {
-			options.LabelSelector = labels.Set(metaV1.LabelSelector{
-				MatchLabels: helper.volumeLabels}.MatchLabels).String()
 			return helper.clientSet.CoreV1().PersistentVolumeClaims(v1.NamespaceAll).List(ctx, options)
 		},
 		WatchFunc: func(options metaV1.ListOptions) (watch.Interface, error) {
-			options.LabelSelector = labels.Set(metaV1.LabelSelector{
-				MatchLabels: helper.volumeLabels}.MatchLabels).String()
 			return helper.clientSet.CoreV1().PersistentVolumeClaims(v1.NamespaceAll).Watch(ctx, options)
 		},
 	}
@@ -150,6 +145,7 @@ func (k *KubeClient) processPVCEvent(pvc *v1.PersistentVolumeClaim, eventType st
 	}
 }
 
+// GetVolumeConfiguration return pvc's annotations
 func (k *KubeClient) GetVolumeConfiguration(ctx context.Context, pvName string) (map[string]string, error) {
 	log.AddContext(ctx).Infof("Start to get volume %s configuration.", pvName)
 	// Get the PVC corresponding to the new PV being provisioned

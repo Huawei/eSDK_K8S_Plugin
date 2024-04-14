@@ -29,6 +29,7 @@ const (
 	smartQosAlreadyExist int64 = 1077948993
 )
 
+// Qos defines interfaces for qos operations
 type Qos interface {
 	// GetQosByName used for get qos by name
 	GetQosByName(ctx context.Context, name, vStoreID string) (map[string]interface{}, error)

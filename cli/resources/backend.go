@@ -19,7 +19,6 @@ package resources
 import (
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -34,6 +33,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// Backend is a storage backend object
 type Backend struct {
 	// resource of request
 	resource *Resource
@@ -95,6 +95,7 @@ func (b *Backend) Get() error {
 	return nil
 }
 
+// Delete backend resource
 func (b *Backend) Delete() error {
 	storageBackendClaimClient := client.NewCommonCallHandler[xuanwuV1.StorageBackendClaim](config.Client)
 	claims, err := storageBackendClaimClient.QueryList(b.resource.namespace, b.resource.names...)
@@ -250,18 +251,25 @@ func deleteSbcReferenceResources(claim xuanwuV1.StorageBackendClaim) error {
 	_, secretName := k8string.SplitQualifiedName(claim.Spec.SecretMeta)
 	_, configmapName := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
 	_, certSecretName := k8string.SplitQualifiedName(claim.Spec.CertSecret)
-	referenceResources := []string{
-		k8string.JoinQualifiedName(string(client.Secret), secretName),
+	needDeleteFinalizersResources := []string{
 		k8string.JoinQualifiedName(string(client.ConfigMap), configmapName),
-		k8string.JoinQualifiedName(string(client.Storagebackendclaim), claim.Name),
 	}
+
+	err := config.Client.DeleteFinalizersInResourceByQualifiedNames(needDeleteFinalizersResources, claim.Namespace)
+	if err != nil {
+		return err
+	}
+
+	referenceResources := append(needDeleteFinalizersResources,
+		k8string.JoinQualifiedName(string(client.Secret), secretName),
+		k8string.JoinQualifiedName(string(client.Storagebackendclaim), claim.Name))
 
 	if certSecretName != "" {
 		referenceResources = append(referenceResources,
 			k8string.JoinQualifiedName(string(client.Secret), certSecretName))
 	}
 
-	_, err := config.Client.DeleteResourceByQualifiedNames(referenceResources, claim.Namespace)
+	_, err = config.Client.DeleteResourceByQualifiedNames(referenceResources, claim.Namespace)
 	return err
 }
 
@@ -286,7 +294,7 @@ func FetchBackendConfig(namespace string, names ...string) (map[string]*BackendC
 
 	result := make(map[string]*BackendConfiguration)
 	for _, configMap := range configMapList {
-		backendConfig, err := LoadBackendsFromConfigMap(configMap)
+		backendConfig, err := LoadBackendsFromConfigMap(configMap, "")
 		if err != nil {
 			return result, err
 		}
@@ -298,6 +306,7 @@ func FetchBackendConfig(namespace string, names ...string) (map[string]*BackendC
 	return result, nil
 }
 
+// Create backend resource
 func (b *Backend) Create() error {
 	creatingBackends, err := b.LoadBackendFile()
 	if err != nil {
@@ -335,6 +344,7 @@ func (b *Backend) Create() error {
 	return nil
 }
 
+// FetchConfiguredBackends to fetch backend configuration
 func FetchConfiguredBackends(namespace string) (map[string]*BackendConfiguration, error) {
 	storageBackendClaimClient := client.NewCommonCallHandler[xuanwuV1.StorageBackendClaim](config.Client)
 	sbcList, err := storageBackendClaimClient.QueryList(namespace)
@@ -350,10 +360,12 @@ func FetchConfiguredBackends(namespace string) (map[string]*BackendConfiguration
 	return FetchBackendConfig(namespace, configuredBackend...)
 }
 
+// MergeBackends to merge two backend configuration
 func MergeBackends(notConfigured, configured map[string]*BackendConfiguration) []*BackendConfiguration {
 	var backends []*BackendConfiguration
 	for name, configuration := range configured {
 		if _, ok := notConfigured[name]; ok {
+			helper.PrintBackendAlreadyExists(name)
 			delete(notConfigured, name)
 		}
 		configuration.Configured = true
@@ -434,17 +446,13 @@ func selectOneBackend(backendList []*BackendConfiguration) (*BackendConfiguratio
 	return backendList[number-1], nil
 }
 
+// LoadBackendFile to load backend defined file on disk, the file type can be "json" or "yaml"
 func (b *Backend) LoadBackendFile() (map[string]*BackendConfiguration, error) {
-	data, err := os.ReadFile(b.resource.fileName)
-	if err != nil {
-		return nil, err
-	}
-
 	switch b.resource.fileType {
 	case "json":
-		return LoadBackendsFromJson(data)
+		return LoadBackendsFromJson(b.resource.fileName)
 	case "yaml":
-		return LoadBackendsFromYaml(data)
+		return LoadBackendsFromYaml(b.resource.fileName)
 	default:
 		return nil, errors.New(fmt.Sprintf("file type [%s] is not supported", b.resource.fileType))
 	}

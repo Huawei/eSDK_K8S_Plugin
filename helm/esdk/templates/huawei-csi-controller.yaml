@@ -1,3 +1,11 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-controller
+  namespace: {{ .Values.kubernetes.namespace }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -19,6 +27,22 @@ rules:
     resources: [ "storagebackendclaims", "storagebackendclaims/status", "storagebackendcontents",
                  "storagebackendcontents/status" ]
     verbs: [ "create", "get", "list", "watch", "update", "delete" ]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-backend-controller-binding
+  labels:
+    app: xuanwu-volume-service
+    provisioner: csi.huawei.com
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-controller
+    namespace: {{ .Values.kubernetes.namespace }}
+roleRef:
+  kind: ClusterRole
+  name: storage-backend-controller-role
+  apiGroup: rbac.authorization.k8s.io
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -41,25 +65,10 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: storage-backend-controller-binding
-  labels:
-    app: xuanwu-volume-service
-subjects:
-  - kind: ServiceAccount
-    name: huawei-csi-controller
-    namespace: {{ .Values.kubernetes.namespace }}
-roleRef:
-  kind: ClusterRole
-  name: storage-backend-controller-role
-  apiGroup: rbac.authorization.k8s.io
-
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
   name: storage-backend-sidecar-binding
   labels:
     app: xuanwu-volume-service
+    provisioner: csi.huawei.com
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
@@ -68,14 +77,19 @@ roleRef:
   kind: ClusterRole
   name: storage-backend-sidecar-role
   apiGroup: rbac.authorization.k8s.io
+
 ---
-apiVersion: v1
-kind: ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-controller
+  name: huawei-csi-attacher-cfg
   namespace: {{ .Values.kubernetes.namespace }}
+rules:
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "get","watch","list","delete","update","create" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -92,26 +106,31 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: {{ .Values.kubernetes.namespace }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-attacher-cfg
+  name: huawei-csi-provisioner-cfg
   namespace: {{ .Values.kubernetes.namespace }}
 rules:
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
+  - apiGroups: [ "" ]
+    resources: [ "endpoints" ]
+    verbs: [ "get","watch","list","delete","update","create" ]
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "get","watch","list","delete","update","create" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "csistoragecapacities" ]
+    verbs: [ "get","list","watch","create","update","patch","delete" ]
+  - apiGroups: [ "" ]
+    resources: [ "pods" ]
+    verbs: [ "get" ]
+  - apiGroups: [ "apps" ]
+    resources: [ "replicasets" ]
+    verbs: [ "get" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -128,61 +147,36 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: {{ .Values.kubernetes.namespace }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-provisioner-cfg
-  namespace: {{ .Values.kubernetes.namespace }}
+  name: huawei-csi-provisioner-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - endpoints
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - csistoragecapacities
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - update
-      - patch
-      - delete
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-  - apiGroups:
-      - apps
-    resources:
-      - replicasets
-    verbs:
-      - get
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes" ]
+    verbs: [ "get","list","watch","create","delete","update" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumeclaims" ]
+    verbs: [ "get","list","watch","update" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "storageclasses","csinodes" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list","watch","create","update","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshots","volumesnapshotcontents" ]
+    verbs: [ "get","list" ]
+  - apiGroups: [ "" ]
+    resources: [ "nodes" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "volumeattachments" ]
+    verbs: [ "get","list","watch","update" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -198,91 +192,27 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: {{ .Values.kubernetes.namespace }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-provisioner-runner
+  name: huawei-csi-attacher-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - delete
-      - update
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims
-    verbs:
-      - get
-      - list
-      - watch
-      - update
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - storageclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshots
-    verbs:
-      - get
-      - list
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents
-    verbs:
-      - get
-      - list
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - csinodes
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - volumeattachments
-    verbs:
-      - get
-      - list
-      - watch
-      - update
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes" ]
+    verbs: [ "get","list","watch","patch","update" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "csinodes" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "volumeattachments" ]
+    verbs: [ "get","list","watch","patch","update" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "volumeattachments/status" ]
+    verbs: [ "patch" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -298,49 +228,19 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: {{ .Values.kubernetes.namespace }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-attacher-runner
+  name: huawei-csi-resizer-cfg
+  namespace: {{ .Values.kubernetes.namespace }}
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-      - patch
-      - update
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - csinodes
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - volumeattachments
-    verbs:
-      - get
-      - list
-      - watch
-      - patch
-      - update
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - volumeattachments/status
-    verbs:
-      - patch
-
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "get","watch","list","delete","update","create" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -357,26 +257,27 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: {{ .Values.kubernetes.namespace }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-resizer-cfg
-  namespace: {{ .Values.kubernetes.namespace }}
+  name: huawei-csi-resizer-runner
 rules:
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes" ]
+    verbs: [ "get","list","watch","patch","update" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumeclaims","pods" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumeclaims/status" ]
+    verbs: [ "patch","update" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list","watch","create","update","patch" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -392,59 +293,28 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: {{ .Values.kubernetes.namespace }}
+
+  {{ if .Values.controller.snapshot.enabled }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-resizer-runner
+  name: huawei-csi-snapshotter-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-      - patch
-      - update
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims/status
-    verbs:
-      - patch
-      - update
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-
-{{ if .Values.controller.snapshot.enabled }}
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list","watch","create","update","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotclasses" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotcontents" ]
+    verbs: [ "create","get","list","watch","update","delete","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotcontents/status" ]
+    verbs: [ "update","patch" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -460,51 +330,42 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: {{ .Values.kubernetes.namespace }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-snapshotter-runner
+  name: huawei-csi-snapshot-controller-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents
-    verbs:
-      - create
-      - get
-      - list
-      - watch
-      - update
-      - delete
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents/status
-    verbs:
-      - update
-      - patch
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes","nodes" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumeclaims" ]
+    verbs: [ "get","list","watch","update" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "storageclasses" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list","watch","create","update","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotclasses" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotcontents" ]
+    verbs: [ "create","get","list","watch","update","delete","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotcontents/status" ]
+    verbs: [ "patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshots" ]
+    verbs: [ "get","list","watch","update","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshots/status" ]
+    verbs: [ "update","patch" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -520,101 +381,8 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: {{ .Values.kubernetes.namespace }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-snapshot-controller-runner
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims
-    verbs:
-      - get
-      - list
-      - watch
-      - update
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - storageclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents
-    verbs:
-      - create
-      - get
-      - list
-      - watch
-      - update
-      - delete
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents/status
-    verbs:
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshots
-    verbs:
-      - get
-      - list
-      - watch
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshots/status
-    verbs:
-      - update
-      - patch
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-    verbs:
-      - get
-      - list
-      - watch
-{{ end }}
+  {{ end }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -666,6 +434,9 @@ spec:
       provisioner: csi.huawei.com
   template:
     metadata:
+      annotations:
+        # Each call to the template method generates a unique random string.
+        rollme: {{ randAlphaNum 5 | quote }}
       labels:
         app: huawei-csi-controller
         provisioner: csi.huawei.com
@@ -684,12 +455,19 @@ spec:
         - name: liveness-probe
           args:
             - "--csi-address=/csi/csi.sock"
-            - "--health-port=9808"
+            - "--health-port={{ int .Values.controller.livenessProbePort | default 9808 }}"
           image: {{ .Values.images.sidecar.livenessProbe }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 128Mi
         - name: csi-provisioner
           args:
             - "--csi-address=$(ADDRESS)"
@@ -706,6 +484,13 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+          resources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
         # When 'isCreate' is true and 'attachRequired' is false, csi-attacher sidecar will not be deployed
         {{ if or (not .Values.CSIDriverObject.isCreate) (.Values.CSIDriverObject.attachRequired)}}
         - name: csi-attacher
@@ -722,6 +507,13 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+          resources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
         {{ end }}
         {{ if .Values.controller.resizer.enabled }}
         - name: csi-resizer
@@ -740,6 +532,13 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+          resources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
         {{ end }}
         {{ if .Values.controller.snapshot.enabled }}
         - name: csi-snapshotter
@@ -757,6 +556,13 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+          resources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
         - name: snapshot-controller
           args:
             - "--v=5"
@@ -765,6 +571,13 @@ spec:
             {{ end }}
           image: {{ .Values.images.sidecar.snapshotController }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
+          resources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
         {{ end }}
         - name: storage-backend-controller
           image: {{ required "Must provide the .Values.images.storageBackendController" .Values.images.storageBackendController }}
@@ -775,6 +588,10 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           args:
             - "--logging-module={{ ((.Values.csiDriver).controllerLogging).module | default "file" }}"
             - "--log-level={{ ((.Values.csiDriver).controllerLogging).level | default "info" }}"
@@ -782,6 +599,7 @@ spec:
             - "--log-file-size={{ ((.Values.csiDriver).controllerLogging).fileSize | default "20M" }}"
             - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
             - "--web-hook-port={{ int .Values.controller.webhookPort | default 4433 }}"
+            - "--web-hook-address=$(POD_IP)"
             {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
             - "--enable-leader-election=true"
             {{ else }}
@@ -801,6 +619,15 @@ spec:
           volumeMounts:
             - mountPath: /var/log
               name: log
+            - mountPath: /etc/localtime
+              name: host-time
+          resources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
         - name: storage-backend-sidecar
           image: {{ required "Must provide the .Values.images.storageBackendSidecar" .Values.images.storageBackendSidecar }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
@@ -818,26 +645,22 @@ spec:
             - "--log-file-dir={{ ((.Values.csiDriver).controllerLogging).fileDir | default "/var/log/huawei" }}"
             - "--log-file-size={{ ((.Values.csiDriver).controllerLogging).fileSize | default "20M" }}"
             - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
+            - "--backend-update-interval={{ .Values.csiDriver.backendUpdateInterval }}"
             - "--dr-endpoint=$(DRCSI_ENDPOINT)"
-            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
-            - "--enable-leader-election=true"
-            {{ else }}
-            - "--enable-leader-election=false"
-            {{ end }}
-            {{ if (.Values.leaderElection).leaseDuration }}
-            - "--leader-lease-duration={{ .Values.leaderElection.leaseDuration }}"
-            {{ end }}
-            {{ if (.Values.leaderElection).renewDeadline }}
-            - "--leader-renew-deadline={{ .Values.leaderElection.renewDeadline }}"
-            {{ end }}
-            {{ if (.Values.leaderElection).retryPeriod }}
-            - "--leader-retry-period={{ .Values.leaderElection.retryPeriod }}"
-            {{ end }}
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
             - mountPath: /var/log
               name: log
+            - mountPath: /etc/localtime
+              name: host-time
+          resources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
         - name: huawei-csi-driver
           image: {{ required "Must provide the CSI controller service container image." .Values.images.huaweiCSIService }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
@@ -875,7 +698,7 @@ spec:
             periodSeconds: 60
             timeoutSeconds: 3
           ports:
-            - containerPort: 9808
+            - containerPort: {{ int .Values.controller.livenessProbePort | default 9808 }}
               name: healthz
               protocol: TCP
           volumeMounts:
@@ -883,13 +706,15 @@ spec:
               name: socket-dir
             - mountPath: /var/log
               name: log
+            - mountPath: /etc/localtime
+              name: host-time
           resources:
             limits:
-              cpu: 300m
+              cpu: 500m
               memory: 1Gi
             requests:
               cpu: 50m
-              memory: 100Mi
+              memory: 128Mi
       volumes:
         - emptyDir: null
           name: socket-dir
@@ -897,6 +722,10 @@ spec:
             path: /var/log/
             type: Directory
           name: log
+        - hostPath:
+            path: /etc/localtime
+            type: File
+          name: host-time
 
 ---
 apiVersion: v1
@@ -905,6 +734,7 @@ metadata:
   name: huawei-csi-controller
   namespace: {{ .Values.kubernetes.namespace }}
   labels:
+    provisioner: csi.huawei.com
     app: huawei-csi-controller
 spec:
   selector:

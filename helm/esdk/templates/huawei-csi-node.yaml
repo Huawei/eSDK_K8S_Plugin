@@ -5,6 +5,27 @@ metadata:
     provisioner: csi.huawei.com
   name: huawei-csi-node
   namespace: {{ .Values.kubernetes.namespace }}
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-driver-registrar-runner
+rules:
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "get","list","watch","create","update","patch" ]
+  - apiGroups: [ "" ]
+    resources: [ "nodes" ]
+    verbs: [ "get" ]
+  - apiGroups: [ "" ]
+    resources: [ "pods" ]
+    verbs: [ "list" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes","persistentvolumeclaims" ]
+    verbs: [ "get" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -20,44 +41,7 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-node
     namespace: {{ .Values.kubernetes.namespace }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    provisioner: csi.huawei.com
-  name: huawei-csi-driver-registrar-runner
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - update
-      - patch
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-    verbs:
-      - get
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - list
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-      - persistentvolumeclaims
-    verbs:
-      - get
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -66,39 +50,18 @@ metadata:
     provisioner: csi.huawei.com
   name: huawei-csi-node-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - secrets
-    verbs:
-      - get
-      - update
-      - create
-  - apiGroups:
-      - ""
-    resources:
-      - configmaps
-    verbs:
-      - get
-      - update
-      - create
-  - apiGroups:
-      - "xuanwu.huawei.io"
-    resources:
-      - storagebackendclaims
-      - storagebackendcontents
-    verbs:
-      - get
+  - apiGroups: [ "" ]
+    resources: [ "secrets","configmaps" ]
+    verbs: [ "get","update","create" ]
+  - apiGroups: [ "xuanwu.huawei.io" ]
+    resources: [ "storagebackendclaims","storagebackendcontents" ]
+    verbs: [ "get" ]
   - apiGroups: [ "xuanwu.huawei.io" ]
     resources: [ "resourcetopologies" ]
     verbs: [ "create", "get", "update", "delete" ]
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - list
-      - get
+  - apiGroups: [ "" ]
+    resources: [ "pods" ]
+    verbs: [ "list","get" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -114,6 +77,7 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-node
     namespace: {{ .Values.kubernetes.namespace }}
+
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -129,6 +93,9 @@ spec:
       provisioner: csi.huawei.com
   template:
     metadata:
+      annotations:
+        # Each call to the template method generates a unique random string.
+        rollme: {{ randAlphaNum 5 | quote }}
       labels:
         app: huawei-csi-node
         provisioner: csi.huawei.com
@@ -145,12 +112,19 @@ spec:
         - name: liveness-probe
           args:
             - "--csi-address=/csi/csi.sock"
-            - "--health-port=9800"
+            - "--health-port={{ int .Values.node.livenessProbePort | default 9800 }}"
           image: {{ .Values.images.sidecar.livenessProbe }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 128Mi
         - name: csi-node-driver-registrar
           args:
             - "--csi-address=/csi/csi.sock"
@@ -162,6 +136,13 @@ spec:
               name: socket-dir
             - mountPath: /registration
               name: registration-dir
+          resources:
+            limits:
+              cpu: 300m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
         - name: huawei-csi-driver
           image: {{ required "Must provide the CSI node service node image." .Values.images.huaweiCSIService }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
@@ -171,6 +152,7 @@ spec:
             - "--connector-threads={{ .Values.csiDriver.connectorThreads }}"
             - "--volume-use-multipath={{ .Values.csiDriver.volumeUseMultipath }}"
             - "--all-path-online={{ default false .Values.csiDriver.allPathOnline }}"
+            - "--kubelet-volume-devices-dir-name=/{{ default "volumeDevices" .Values.node.kubeletVolumeDevicesDirName }}/"
             {{ if .Values.csiDriver.volumeUseMultipath }}
             - "--scsi-multipath-type={{ .Values.csiDriver.scsiMultipathType }}"
             - "--nvme-multipath-type={{ .Values.csiDriver.nvmeMultipathType }}"
@@ -214,7 +196,7 @@ spec:
             periodSeconds: 60
             timeoutSeconds: 3
           ports:
-            - containerPort: 9800
+            - containerPort: {{ int .Values.node.livenessProbePort | default 9800 }}
               name: healthz
               protocol: TCP
           securityContext:
@@ -240,13 +222,15 @@ spec:
               name: iscsi-config-dir
             - mountPath: /etc/nvme
               name: nvme-config-dir
+            - mountPath: /etc/localtime
+              name: host-time
           resources:
             limits:
-              cpu: 300m
-              memory: 500Mi
+              cpu: 500m
+              memory: 1Gi
             requests:
               cpu: 50m
-              memory: 100Mi
+              memory: 128Mi
       hostNetwork: true
       hostPID: true
       serviceAccountName: huawei-csi-node
@@ -282,3 +266,7 @@ spec:
             path: /etc/nvme
             type: DirectoryOrCreate
           name: nvme-config-dir
+        - hostPath:
+            path: /etc/localtime
+            type: File
+          name: host-time

@@ -115,7 +115,7 @@ func (b *backend) UpdateStorageBackend(ctx context.Context, contentName, backend
 // GetStorageBackendStats get all backend info from the provider
 func (b *backend) GetStorageBackendStats(ctx context.Context, contentName, backendName string) (
 	*drcsi.GetBackendStatsResponse, error) {
-	log.AddContext(ctx).Infof("GetStorageBackendStats of backend %s", backendName)
+	log.AddContext(ctx).Debugf("GetStorageBackendStats of backend %s", backendName)
 	if backendName == "" {
 		return &drcsi.GetBackendStatsResponse{}, errors.New("backendName can not be empty")
 	}

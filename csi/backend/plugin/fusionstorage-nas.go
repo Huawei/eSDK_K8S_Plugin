@@ -27,6 +27,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// FusionStorageNasPlugin implements storage Plugin interface
 type FusionStorageNasPlugin struct {
 	FusionStoragePlugin
 	portal   string
@@ -37,11 +38,14 @@ func init() {
 	RegPlugin("fusionstorage-nas", &FusionStorageNasPlugin{})
 }
 
+// NewPlugin used to create new plugin
 func (p *FusionStorageNasPlugin) NewPlugin() Plugin {
 	return &FusionStorageNasPlugin{}
 }
 
-func (p *FusionStorageNasPlugin) Init(config, parameters map[string]interface{}, keepLogin bool) error {
+// Init used to init the plugin
+func (p *FusionStorageNasPlugin) Init(ctx context.Context, config map[string]interface{},
+	parameters map[string]interface{}, keepLogin bool) error {
 	protocol, exist := parameters["protocol"].(string)
 	if !exist || (protocol != "nfs" && protocol != "dpc") {
 		return errors.New("protocol must be provided and be \"nfs\" or \"dpc\" for fusionstorage-nas backend")
@@ -59,7 +63,7 @@ func (p *FusionStorageNasPlugin) Init(config, parameters map[string]interface{},
 		}
 	}
 
-	err := p.init(config, keepLogin)
+	err := p.init(ctx, config, keepLogin)
 	if err != nil {
 		return err
 	}
@@ -75,6 +79,7 @@ func (p *FusionStorageNasPlugin) updateNasCapacity(ctx context.Context, params, 
 	return nil
 }
 
+// CreateVolume used to create volume
 func (p *FusionStorageNasPlugin) CreateVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
 
@@ -107,19 +112,22 @@ func (p *FusionStorageNasPlugin) CreateVolume(ctx context.Context, name string, 
 	return volObj, nil
 }
 
+// QueryVolume used to query volume
 func (p *FusionStorageNasPlugin) QueryVolume(ctx context.Context, name string, params map[string]interface{}) (
 	utils.Volume, error) {
 	nas := volume.NewNAS(p.cli)
 	return nas.Query(ctx, name)
 }
 
+// DeleteVolume used to delete volume
 func (p *FusionStorageNasPlugin) DeleteVolume(ctx context.Context, name string) error {
 	nas := volume.NewNAS(p.cli)
 	return nas.Delete(ctx, name)
 }
 
 // UpdateBackendCapabilities to update the backend capabilities, such as thin, thick, qos and etc.
-func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interface{}, map[string]interface{}, error) {
+func (p *FusionStorageNasPlugin) UpdateBackendCapabilities(ctx context.Context) (map[string]interface{},
+	map[string]interface{}, error) {
 	capabilities := map[string]interface{}{
 		"SupportThin":  true,
 		"SupportThick": false,
@@ -129,23 +137,26 @@ func (p *FusionStorageNasPlugin) UpdateBackendCapabilities() (map[string]interfa
 		"SupportLabel": false,
 	}
 
-	err := p.updateNFS4Capability(capabilities)
+	err := p.updateNFS4Capability(ctx, capabilities)
 	if err != nil {
 		return nil, nil, err
 	}
 	return capabilities, nil, nil
 }
 
+// CreateSnapshot used to create snapshot
 func (p *FusionStorageNasPlugin) CreateSnapshot(ctx context.Context,
 	lunName, snapshotName string) (map[string]interface{}, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
+// DeleteSnapshot used to delete snapshot
 func (p *FusionStorageNasPlugin) DeleteSnapshot(ctx context.Context,
 	snapshotParentID, snapshotName string) error {
 	return fmt.Errorf("unimplemented")
 }
 
+// ExpandVolume used to expand volume
 func (p *FusionStorageNasPlugin) ExpandVolume(ctx context.Context,
 	name string,
 	size int64) (bool, error) {
@@ -153,16 +164,18 @@ func (p *FusionStorageNasPlugin) ExpandVolume(ctx context.Context,
 	return false, nas.Expand(ctx, name, size)
 }
 
-func (p *FusionStorageNasPlugin) UpdatePoolCapabilities(poolNames []string) (map[string]interface{}, error) {
-	return p.updatePoolCapabilities(poolNames, FusionStorageNas)
+// UpdatePoolCapabilities used to update pool capabilities
+func (p *FusionStorageNasPlugin) UpdatePoolCapabilities(ctx context.Context,
+	poolNames []string) (map[string]interface{}, error) {
+	return p.updatePoolCapabilities(ctx, poolNames, FusionStorageNas)
 }
 
-func (p *FusionStorageNasPlugin) updateNFS4Capability(capabilities map[string]interface{}) error {
+func (p *FusionStorageNasPlugin) updateNFS4Capability(ctx context.Context, capabilities map[string]interface{}) error {
 	if capabilities == nil {
 		capabilities = make(map[string]interface{})
 	}
 
-	nfsServiceSetting, err := p.cli.GetNFSServiceSetting(context.Background())
+	nfsServiceSetting, err := p.cli.GetNFSServiceSetting(ctx)
 	if err != nil {
 		return err
 	}
@@ -179,6 +192,7 @@ func (p *FusionStorageNasPlugin) updateNFS4Capability(capabilities map[string]in
 	return nil
 }
 
+// Validate used to validate FusionStorageNasPlugin parameters
 func (p *FusionStorageNasPlugin) Validate(ctx context.Context, param map[string]interface{}) error {
 	log.AddContext(ctx).Infoln("Start to validate FusionStorageNasPlugin parameters.")
 
@@ -193,7 +207,7 @@ func (p *FusionStorageNasPlugin) Validate(ctx context.Context, param map[string]
 	}
 
 	// Login verification
-	cli := client.NewClient(clientConfig)
+	cli := client.NewClient(ctx, clientConfig)
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err
@@ -234,10 +248,12 @@ func (p *FusionStorageNasPlugin) verifyFusionStorageNasParam(ctx context.Context
 	return nil
 }
 
+// DeleteDTreeVolume used to delete DTree volume
 func (p *FusionStorageNasPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
 	return errors.New("not implement")
 }
 
+// ExpandDTreeVolume used to expand DTree volume
 func (p *FusionStorageNasPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
 	return false, errors.New("not implement")
 }

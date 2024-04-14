@@ -26,11 +26,13 @@ import (
 	"huawei-csi-driver/cli/config"
 )
 
+// Validator is used to validate a Resource object
 type Validator struct {
 	errs     []error
 	resource *Resource
 }
 
+// ValidatorBuilder is used to build a Validator object
 type ValidatorBuilder struct {
 	*Validator
 }

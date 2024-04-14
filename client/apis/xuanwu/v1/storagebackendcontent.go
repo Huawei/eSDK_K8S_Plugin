@@ -66,6 +66,9 @@ type StorageBackendContentStatus struct {
 	// ProviderVersion means the version of the provider
 	ProviderVersion string `json:"providerVersion,omitempty" protobuf:"bytes,1,opt,name=providerVersion"`
 
+	// Pools get all pools storage capacity
+	Pools []Pool `json:"pools,omitempty" protobuf:"bytes,1,opt,name=pools"`
+
 	// Capacity get the storage total capacity, used capacity and free capacity.
 	Capacity map[CapacityType]string `json:"capacity,omitempty" protobuf:"bytes,1,opt,name=capacity"`
 
@@ -97,7 +100,7 @@ type StorageBackendContentStatus struct {
 	CertSecret string `json:"certSecret,omitempty" protobuf:"bytes,9,opt,name=certSecret"`
 }
 
-// CapacityType means the capacity types
+// CapacityType type for capacity
 type CapacityType string
 
 const (
@@ -108,6 +111,12 @@ const (
 	// FreeCapacity the total capacity of the storage pool
 	FreeCapacity CapacityType = "FreeCapacity"
 )
+
+// Pool is the schema for storage pool capacity
+type Pool struct {
+	Name       string            `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+	Capacities map[string]string `json:"capacities,omitempty" protobuf:"bytes,1,opt,name=capacities"`
+}
 
 // +genclient
 // +genclient:nonNamespaced

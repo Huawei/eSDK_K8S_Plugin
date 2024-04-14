@@ -23,7 +23,9 @@ import (
 )
 
 const (
+	// ExitCodeSuccess is the successful code when program exits
 	ExitCodeSuccess = 0
+	// ExitCodeFailure is the failure code when program exits
 	ExitCodeFailure = 1
 )
 

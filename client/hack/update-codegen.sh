@@ -29,7 +29,7 @@ MODULE=huawei-csi-driver
 # crd group name
 GROUP=xuanwu
 # code folder location, modify according to your project location
-OUTPUT_BASE=/root/CSI
+OUTPUT_BASE=/root/xuanwu/CSI
 
 # clear the old file before executing script
 if  [ -d "${OUTPUT_BASE}/${MODULE}" ];

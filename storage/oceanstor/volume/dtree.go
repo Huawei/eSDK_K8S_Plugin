@@ -28,10 +28,12 @@ import (
 	"huawei-csi-driver/utils/taskflow"
 )
 
+// DTree provides base DTree client
 type DTree struct {
 	Base
 }
 
+// NewDTree inits a new DTree client
 func NewDTree(cli client.BaseClientInterface) *DTree {
 	return &DTree{
 		Base: Base{
@@ -89,6 +91,7 @@ func (p *DTree) preCreate(ctx context.Context, params map[string]interface{}) er
 	return nil
 }
 
+// Create creates DTree volume
 func (p *DTree) Create(ctx context.Context, params map[string]interface{}) (utils.Volume, error) {
 	err := p.preCreate(ctx, params)
 	if err != nil {
@@ -112,6 +115,7 @@ func (p *DTree) Create(ctx context.Context, params map[string]interface{}) (util
 	return volObj, nil
 }
 
+// Delete deletes volume
 func (p *DTree) Delete(ctx context.Context, params map[string]interface{}) error {
 	var err error
 
@@ -130,6 +134,7 @@ func (p *DTree) Delete(ctx context.Context, params map[string]interface{}) error
 	return nil
 }
 
+// Expand expands volume size
 func (p *DTree) Expand(ctx context.Context, parentName, dTreeName, vstoreID string, spaceSoftQuota,
 	spaceHardQuota int64) error {
 	dTreeID, err := p.getDtreeID(ctx, parentName, vstoreID, dTreeName)
@@ -304,7 +309,6 @@ func (p *DTree) deleteDtree(ctx context.Context, params,
 }
 
 func (p *DTree) allowShareAccess(ctx context.Context, params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-
 	shareID, _ := utils.ToStringWithFlag(taskResult["shareId"])
 	authClient, _ := utils.ToStringWithFlag(params["authclient"])
 	vStoreID, _ := utils.ToStringWithFlag(params["vstoreid"])
@@ -324,13 +328,16 @@ func (p *DTree) allowShareAccess(ctx context.Context, params, taskResult map[str
 		}
 
 		req := &client.AllowNfsShareAccessRequest{
-			Name:       i,
-			ParentID:   shareID,
-			AccessVal:  1,
-			Sync:       0,
-			AllSquash:  params["allsquash"].(int),
-			RootSquash: params["rootsquash"].(int),
-			VStoreID:   vStoreID,
+			Name:        i,
+			ParentID:    shareID,
+			AccessVal:   1,
+			Sync:        0,
+			AllSquash:   params["allsquash"].(int),
+			RootSquash:  params["rootsquash"].(int),
+			VStoreID:    vStoreID,
+			AccessKrb5:  formatKerberosParam(params["accesskrb5"]),
+			AccessKrb5i: formatKerberosParam(params["accesskrb5i"]),
+			AccessKrb5p: formatKerberosParam(params["accesskrb5p"]),
 		}
 		err = p.cli.AllowNfsShareAccess(ctx, req)
 		if err != nil {
@@ -661,4 +668,24 @@ func (p *DTree) getDtreeID(ctx context.Context, parentName, vstoreID, dTreeName 
 	dTreeID, _ := utils.ToStringWithFlag(dTreeInfo["ID"])
 
 	return dTreeID, nil
+}
+
+func formatKerberosParam(data interface{}) int {
+	if data == nil {
+		return -1
+	}
+	str, ok := data.(string)
+	if !ok {
+		return -1
+	}
+	switch str {
+	case "read_only":
+		return 0
+	case "read_write":
+		return 1
+	case "none":
+		return 5
+	default:
+		return -1
+	}
 }

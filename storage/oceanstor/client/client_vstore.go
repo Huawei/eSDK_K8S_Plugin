@@ -24,6 +24,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// VStore defines interfaces for vstore operations
 type VStore interface {
 	// GetvStoreName used for get vstore name in *BaseClient
 	GetvStoreName() string
@@ -31,6 +32,8 @@ type VStore interface {
 	GetvStoreByName(ctx context.Context, name string) (map[string]interface{}, error)
 	// GetvStorePairByID used for get vstore pair by pair id
 	GetvStorePairByID(ctx context.Context, pairID string) (map[string]interface{}, error)
+	// GetVStorePairs used for vStore pairs
+	GetVStorePairs(ctx context.Context) ([]interface{}, error)
 }
 
 // GetvStoreName used for get vstore name in *BaseClient
@@ -69,6 +72,30 @@ func (cli *BaseClient) GetvStoreByName(ctx context.Context, name string) (map[st
 		return nil, pkgUtils.Errorf(ctx, "convert respData[0] to map failed, data: %v", respData[0])
 	}
 	return vstore, nil
+}
+
+// GetVStorePairs used for get vStore pairs
+func (cli *BaseClient) GetVStorePairs(ctx context.Context) ([]interface{}, error) {
+	resp, err := cli.Get(ctx, "/vstore_pair?RETYPE=1", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return nil, fmt.Errorf("Get vstore pair by reType error: %d", code)
+	}
+	if resp.Data == nil {
+		log.AddContext(ctx).Debugln("vstore pairs with reType does not exist")
+		return nil, nil
+	}
+
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+	}
+
+	return respData, nil
 }
 
 // GetvStorePairByID used for get vstore pair by pair id

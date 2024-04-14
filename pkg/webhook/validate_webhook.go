@@ -26,6 +26,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// AdmissionWebHookCFG defines cfg of admission webhook
 type AdmissionWebHookCFG struct {
 	WebhookName   string
 	ServiceName   string
@@ -35,6 +36,7 @@ type AdmissionWebHookCFG struct {
 	AdmissionRule AdmissionRule
 }
 
+// AdmissionRule includes admission rules
 type AdmissionRule struct {
 	APIGroups   []string
 	APIVersions []string

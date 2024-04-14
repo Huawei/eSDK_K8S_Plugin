@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package manage provides manage operations for storage
 package manage
 
 import (
@@ -27,10 +28,13 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"huawei-csi-driver/connector"
+	_ "huawei-csi-driver/connector/nfs_plus"
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend"
+	"huawei-csi-driver/csi/backend/plugin"
 	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
+	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -91,6 +95,22 @@ func WithMultiPathType(protocol string) BuildParameterOption {
 func WithProtocol(protocol string) BuildParameterOption {
 	return func(parameters map[string]interface{}) error {
 		parameters["protocol"] = protocol
+		return nil
+	}
+}
+
+// WithPortals build portals for the request parameters
+func WithPortals(publishContext map[string]string, protocol string, portals, metroPortals []string,
+) BuildParameterOption {
+	return func(parameters map[string]interface{}) error {
+		if filesystemMode, ok := publishContext["filesystemMode"]; ok &&
+			filesystemMode == client.HyperMetroFilesystemMode && protocol == plugin.ProtocolNfsPlus {
+			newPortals := append(portals, metroPortals...)
+			parameters["portals"] = newPortals
+			return nil
+		}
+
+		parameters["portals"] = portals
 		return nil
 	}
 }
@@ -191,6 +211,10 @@ func ExtractWwn(parameters map[string]interface{}) (string, error) {
 // Mount use nfs protocol to mount
 func Mount(ctx context.Context, parameters map[string]interface{}) error {
 	conn := connector.GetConnector(ctx, connector.NFSDriver)
+	if protocol, exist := parameters["protocol"]; exist && protocol == plugin.ProtocolNfsPlus {
+		conn = connector.GetConnector(ctx, connector.NFSPlusDriver)
+	}
+
 	_, err := conn.ConnectVolume(ctx, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Mount share %v to %v error: %v",
@@ -208,31 +232,88 @@ func Unmount(ctx context.Context, targetPath string) error {
 
 // NewManager build a manager instance, such as NasManager, SanManager
 func NewManager(ctx context.Context, backendName string) (Manager, error) {
-	config, err := GetBackendConfig(ctx, backendName)
+	backend, err := GetBackendConfig(ctx, backendName)
 	if err != nil {
+		log.AddContext(ctx).Errorf("nas manager get backend failed, backendName: %s err: %v", backendName, err)
 		return nil, err
 	}
 
-	if config.protocol == "nfs" && len(config.portals) == 0 {
-		return nil, utils.Errorf(ctx, "portals can not be blank when protocol is %s ", config.protocol)
+	switch backend.protocol {
+	case plugin.ProtocolNfs:
+		if len(backend.portals) != 1 {
+			return nil, utils.Errorf(ctx, "portals must be one when protocol is %s", plugin.ProtocolNfs)
+		}
+		return NewNasManager(ctx, backend.protocol, backend.dTreeParentName, backend.portals[0:1], []string{})
+	case plugin.ProtocolNfsPlus:
+		if len(backend.portals) == 0 {
+			return nil, utils.Errorf(ctx, "portals can not be blank when protocol is %s", plugin.ProtocolNfsPlus)
+		}
+		return NewNasManager(ctx, backend.protocol, backend.dTreeParentName, backend.portals, backend.metroPortals)
+	case plugin.PROTOCOL_DPC:
+		return NewNasManager(ctx, backend.protocol, backend.dTreeParentName, []string{}, []string{})
+	default:
+		return NewSanManager(ctx, backend.protocol)
 	}
-
-	var portal string
-	if config.protocol == "nfs" {
-		portal = config.portals[0]
-	}
-	if config.protocol == "nfs" || config.protocol == "dpc" {
-		return NewNasManager(ctx, config.protocol, portal, config.dTreeParentName)
-	}
-
-	return NewSanManager(ctx, config.protocol)
 }
 
 // GetBackendConfig returns a BackendConfig if specified backendName exists in configmap.
 // If backend doesn't exist in configmap, returns an error from call backend.GetBackendConfigmapByClaimName().
 // If parameters and protocol doesn't exist, a custom error will be returned.
-// If protocol exist and equal to nfs, portals in parameters must exist, otherwise an error will be returned.
+// If protocol exist and equal to nfs or nfs+, portals in parameters must exist, otherwise an error will be returned.
 func GetBackendConfig(ctx context.Context, backendName string) (*BackendConfig, error) {
+	backendInfo, err := getBackendConfigMap(ctx, backendName)
+	if err != nil {
+		return nil, err
+	}
+
+	parameters, ok := backendInfo["parameters"].(map[string]interface{})
+	if !ok {
+		return nil, utils.Errorln(ctx, "convert parameters to map failed")
+	}
+	protocol, ok := parameters["protocol"].(string)
+	if !ok {
+		return nil, fmt.Errorf("protocol can not be empty, parameters:%v", parameters)
+	}
+	portalList, ok := parameters["portals"].([]interface{})
+	// portals can't be empty when protocol is nfs or nfs+
+	if (!ok || len(portalList) == 0) && (protocol == plugin.ProtocolNfs || protocol == plugin.ProtocolNfsPlus) {
+		return nil, errors.New("portals can't be empty")
+	}
+	if protocol == plugin.ProtocolNfs && len(portalList) != 1 {
+		return nil, fmt.Errorf("%s just support one portal", protocol)
+	}
+	portals := pkgUtils.ConvertToStringSlice(portalList)
+	metroPortals := make([]string, 0)
+	if metroBackendName, ok := backendInfo["metroBackend"].(string); ok && protocol == plugin.ProtocolNfsPlus {
+		metroBackendInfo, err := getBackendConfigMap(ctx, metroBackendName)
+		if err != nil {
+			return nil, err
+		}
+		metroParameters, ok := metroBackendInfo["parameters"].(map[string]interface{})
+		if !ok {
+			return nil, utils.Errorln(ctx, "convert metro parameters to map failed")
+		}
+		metroPortalList, ok := metroParameters["portals"].([]interface{})
+		if !ok {
+			return nil, errors.New("convert metro portals to slice failed")
+		}
+		if len(metroPortalList) == 0 {
+			return nil, errors.New("metro portals can't be empty")
+		}
+		metroPortals = pkgUtils.ConvertToStringSlice(metroPortalList)
+	}
+
+	storage, ok := backendInfo["storage"]
+	var dTreeParentName string
+	if ok && storage == "oceanstor-dtree" {
+		dTreeParentName, _ = utils.ToStringWithFlag(parameters["parentname"])
+	}
+
+	return &BackendConfig{protocol: protocol, portals: portals, metroPortals: metroPortals,
+		dTreeParentName: dTreeParentName}, nil
+}
+
+func getBackendConfigMap(ctx context.Context, backendName string) (map[string]interface{}, error) {
 	claimMeta := pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backendName)
 	configmap, err := pkgUtils.GetBackendConfigmapByClaimName(ctx, claimMeta)
 	if err != nil {
@@ -243,39 +324,7 @@ func GetBackendConfig(ctx context.Context, backendName string) (*BackendConfig, 
 		return nil, err
 	}
 
-	parameters, ok := backendInfo["parameters"].(map[string]interface{})
-	if !ok {
-		return nil, utils.Errorln(ctx, "convert parameters to map failed")
-	}
-
-	protocol, ok := parameters["protocol"].(string)
-	if !ok {
-		return nil, fmt.Errorf("protocol can not be empty, parameters:%v", parameters)
-	}
-
-	var portals []string
-	if protocol == "nfs" {
-		portalList, ok := parameters["portals"].([]interface{})
-		if !ok || len(portalList) != 1 {
-			return nil, fmt.Errorf("%s just support one portal", protocol)
-		}
-
-		for _, elem := range portalList {
-			portal, ok := elem.(string)
-			if !ok {
-				return nil, fmt.Errorf("portals not string slice, current portal :%v", elem)
-			}
-			portals = append(portals, portal)
-		}
-	}
-
-	storage, ok := backendInfo["storage"]
-	var dTreeParentName string
-	if ok && storage == "oceanstor-dtree" {
-		dTreeParentName, _ = utils.ToStringWithFlag(parameters["parentname"])
-	}
-
-	return &BackendConfig{protocol: protocol, portals: portals, dTreeParentName: dTreeParentName}, nil
+	return backendInfo, nil
 }
 
 // PublishBlock publish block device
@@ -311,18 +360,24 @@ func PublishFilesystem(ctx context.Context, req *csi.NodePublishVolumeRequest) e
 	sourcePath := req.GetStagingTargetPath()
 	targetPath := req.GetTargetPath()
 	backendName, volumeName := utils.SplitVolumeId(volumeId)
-	manager, err := NewManager(ctx, backendName)
+	bk, err := GetBackendConfig(ctx, backendName)
 	if err != nil {
-		log.AddContext(ctx).Errorf("publish init manager fail, backend: %s, error: %v", backendName, err)
+		log.AddContext(ctx).Errorf("publish get backend failed, backendName: %s err: %v", backendName, err)
 		return err
 	}
-	opts := []string{"bind"}
 
+	protocol := plugin.ProtocolNfs
+	opts := []string{"bind"}
 	// process volume with type is dTree
-	nfsShare, isDTree := manager.GetDTreeVolume(ctx)
-	if isDTree {
-		sourcePath = nfsShare + "/" + volumeName
-		opts = make([]string, 0)
+	if bk.dTreeParentName != "" {
+		sourcePath = bk.portals[0] + ":/" + bk.dTreeParentName + "/" + volumeName
+		protocol = bk.protocol
+		if req.GetVolumeCapability() != nil && req.GetVolumeCapability().GetMount() != nil &&
+			req.GetVolumeCapability().GetMount().GetMountFlags() != nil {
+			opts = req.GetVolumeCapability().GetMount().GetMountFlags()
+		} else {
+			opts = make([]string, 0)
+		}
 	}
 	if req.GetReadonly() {
 		opts = append(opts, "ro")
@@ -333,6 +388,8 @@ func PublishFilesystem(ctx context.Context, req *csi.NodePublishVolumeRequest) e
 		"sourcePath": sourcePath,
 		"targetPath": targetPath,
 		"mountFlags": strings.Join(opts, ","),
+		"protocol":   protocol,
+		"portals":    bk.portals,
 	}
 
 	if err = Mount(ctx, connectInfo); err != nil {
@@ -342,4 +399,12 @@ func PublishFilesystem(ctx context.Context, req *csi.NodePublishVolumeRequest) e
 
 	log.AddContext(ctx).Infof("Volume %s is node published to %s", volumeId, targetPath)
 	return nil
+}
+
+func getConnectorByProtocol(ctx context.Context, protocol string) connector.Connector {
+	return map[string]connector.Connector{
+		plugin.ProtocolNfs:     connector.GetConnector(ctx, connector.NFSDriver),
+		plugin.PROTOCOL_DPC:    connector.GetConnector(ctx, connector.NFSDriver),
+		plugin.ProtocolNfsPlus: connector.GetConnector(ctx, connector.NFSPlusDriver),
+	}[protocol]
 }

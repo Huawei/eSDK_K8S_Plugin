@@ -23,116 +23,11 @@ import (
 	"errors"
 	"fmt"
 
-	coreV1 "k8s.io/api/core/v1"
-	apiErrors "k8s.io/apimachinery/pkg/api/errors"
-
 	"huawei-csi-driver/csi/app"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
+	coreV1 "k8s.io/api/core/v1"
 )
-
-// GetBackendCapabilities used to get storage backend status, such as the license, capacity
-func GetBackendCapabilities(ctx context.Context, storageBackendId string) (map[string]bool, map[string]string, error) {
-	backend := GetBackendWithFresh(ctx, storageBackendId, true)
-	if backend == nil {
-		msg := fmt.Sprintf("Failed to get backend %s", storageBackendId)
-		return nil, nil, pkgUtils.Errorln(ctx, msg)
-	}
-
-	// If sbct is offline, delete the backend from the csiBackends.
-	backendID := pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backend.Name)
-	online, err := pkgUtils.GetSBCTOnlineStatusByClaim(context.TODO(), backendID)
-	if !online {
-		RemoveOneBackend(ctx, backend.Name)
-		msg := fmt.Sprintf("SBCT: [%s] online status is false, RemoveOneBackend: [%s]", backendID, backend.Name)
-		return nil, nil, pkgUtils.Errorln(ctx, msg)
-	}
-
-	capabilities, specifications, err := backend.Plugin.UpdateBackendCapabilities()
-	if err != nil {
-		log.AddContext(ctx).Errorf("Cannot update backend [%s] capabilities, ret: [%+v], error: [%v]",
-			backend.Name, capabilities, err)
-		return nil, nil, err
-	}
-
-	capabilityMap := map[string]bool{}
-	for key, val := range capabilities {
-		v, ok := val.(bool)
-		if !ok {
-			log.AddContext(ctx).Warningf("Convert capability [%s] val: [%v] to bool failed.", key, val)
-			continue
-		}
-		capabilityMap[key] = v
-	}
-
-	specificationMap := map[string]string{}
-	for key, val := range specifications {
-		v, ok := val.(string)
-		if !ok {
-			log.AddContext(ctx).Warningf("Convert specifications [%s] val: [%v] to string failed.", key, val)
-			continue
-		}
-		specificationMap[key] = v
-	}
-
-	return capabilityMap, specificationMap, nil
-}
-
-// GetBackendWithFresh used to obtain registered backends
-var GetBackendWithFresh = func(ctx context.Context, backendName string, update bool) *Backend {
-	// Registered backend exists in the cache.
-	if csiBackends[backendName] != nil || !update {
-		return csiBackends[backendName]
-	}
-
-	// The backend can be registered only when the storageBackendContent exists and [online: true].
-	backendMeta := pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backendName)
-	if !isBackendOnline(ctx, backendMeta) {
-		return nil
-	}
-
-	configmapMeta, secretMeta, err := pkgUtils.GetConfigMeta(ctx, backendMeta)
-	if err != nil {
-		log.AddContext(ctx).Errorf("GetConfigMeta %s failed, error %v", backendMeta, err)
-		return nil
-	}
-
-	useCert, certSecret, err := pkgUtils.GetCertMeta(ctx, backendMeta)
-	if err != nil {
-		log.AddContext(ctx).Errorf("GetCertMeta %s failed, error %v", backendMeta, err)
-		return nil
-	}
-
-	_, err = RegisterOneBackend(ctx, backendMeta, configmapMeta, secretMeta, certSecret, useCert)
-	if err != nil {
-		msg := fmt.Sprintf("RegisterBackend %s failed, error %v", backendMeta, err)
-		log.AddContext(ctx).Errorln(msg)
-	}
-
-	return csiBackends[backendName]
-}
-
-func isBackendOnline(ctx context.Context, claimNameMeta string) bool {
-	log.AddContext(ctx).Infof("Start to check storageBackendContent: [%s] Online status.", claimNameMeta)
-
-	content, err := pkgUtils.GetContentByClaimMeta(ctx, claimNameMeta)
-	if err != nil {
-		if apiErrors.IsNotFound(err) {
-			log.AddContext(ctx).Infof("Get storageBackendContent by claim: [%s] failed, sbct does not exist.", claimNameMeta)
-			return false
-		}
-		log.AddContext(ctx).Errorf("Get storageBackendContent: [%s] failed, error: [%v].", claimNameMeta, err)
-		return false
-	}
-
-	if content.Status == nil {
-		log.AddContext(ctx).Errorf("StorageBackendContent: [%s] Status is nil.", content.Name)
-		return false
-	}
-
-	log.AddContext(ctx).Infof("storageBackendContent status: [Online: %v]", content.Status.Online)
-	return content.Status.Online
-}
 
 // GetBackendConfigmap used to get Configmap
 func GetBackendConfigmap(ctx context.Context, configmapMeta string) (*coreV1.ConfigMap, error) {
@@ -159,6 +54,7 @@ func GetBackendConfigmapMap(ctx context.Context, configmapMeta string) (map[stri
 	return ConvertConfigmapToMap(ctx, configmap)
 }
 
+// ConvertConfigmapToMap converts a configmap to a map object
 func ConvertConfigmapToMap(ctx context.Context, configmap *coreV1.ConfigMap) (map[string]interface{}, error) {
 	if configmap.Data == nil {
 		msg := fmt.Sprintf("Configmap: [%s] the configmap.Data is nil", configmap.Name)
@@ -215,7 +111,6 @@ func GetStorageBackendInfo(ctx context.Context, backendID, configmapMeta, secret
 	}
 
 	backendMapData["backendID"] = backendID
-
 	backendMapData["useCert"] = useCert
 	backendMapData["certSecret"] = certSecret
 

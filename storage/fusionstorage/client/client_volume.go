@@ -31,6 +31,7 @@ const (
 	queryVolumeNotExist  int64 = 31000000
 )
 
+// CreateVolume creates volume by params
 func (cli *Client) CreateVolume(ctx context.Context, params map[string]interface{}) error {
 	data := map[string]interface{}{
 		"volName": params["name"].(string),
@@ -52,6 +53,7 @@ func (cli *Client) CreateVolume(ctx context.Context, params map[string]interface
 	return nil
 }
 
+// GetVolumeByName gets volume info by name
 func (cli *Client) GetVolumeByName(ctx context.Context, name string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/dsware/service/v1.3/volume/queryByName?volName=%s", name)
 	resp, err := cli.get(ctx, url, nil)
@@ -84,6 +86,7 @@ func (cli *Client) GetVolumeByName(ctx context.Context, name string) (map[string
 	return lun, nil
 }
 
+// DeleteVolume deletes volume by name
 func (cli *Client) DeleteVolume(ctx context.Context, name string) error {
 	data := map[string]interface{}{
 		"volNames": []string{name},
@@ -135,6 +138,7 @@ func (cli *Client) DeleteVolume(ctx context.Context, name string) error {
 	return nil
 }
 
+// AttachVolume attaches volume target ip
 func (cli *Client) AttachVolume(ctx context.Context, name, ip string) error {
 	data := map[string]interface{}{
 		"volName": []string{name},
@@ -164,6 +168,7 @@ func (cli *Client) AttachVolume(ctx context.Context, name, ip string) error {
 	return nil
 }
 
+// DetachVolume detaches volume from target ip
 func (cli *Client) DetachVolume(ctx context.Context, name, ip string) error {
 	data := map[string]interface{}{
 		"volName": []string{name},
@@ -193,6 +198,7 @@ func (cli *Client) DetachVolume(ctx context.Context, name, ip string) error {
 	return nil
 }
 
+// ExtendVolume extends volume capacity
 func (cli *Client) ExtendVolume(ctx context.Context, lunName string, newCapacity int64) error {
 	data := map[string]interface{}{
 		"volName":    lunName,
@@ -212,6 +218,7 @@ func (cli *Client) ExtendVolume(ctx context.Context, lunName string, newCapacity
 	return nil
 }
 
+// GetHostLunId gets host lun id of hostName
 func (cli *Client) GetHostLunId(ctx context.Context, hostName, lunName string) (string, error) {
 	data := map[string]interface{}{
 		"hostName": hostName,

@@ -33,8 +33,16 @@ import (
 	connutils "huawei-csi-driver/connector/utils"
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/concurrent"
 	"huawei-csi-driver/utils/log"
 )
+
+var singleGroup = concurrent.NewSingleGroup[connectResult]()
+
+type connectResult struct {
+	sessionId  string
+	manualScan bool
+}
 
 type chapInfo struct {
 	authUserName string
@@ -246,6 +254,17 @@ func getAllISCSISession(ctx context.Context) [][]string {
 	return iSCSIInfo
 }
 
+func singleConnectISCSIPortal(ctx context.Context, tgtPortal, targetIQN string, tgtChapInfo chapInfo) (string, bool) {
+	key := fmt.Sprintf("%s::%s", tgtPortal, targetIQN)
+	res, _ := singleGroup.Do(key, func() (connectResult, error) {
+		result := connectResult{}
+		result.sessionId, result.manualScan = connectISCSIPortal(ctx, tgtPortal, targetIQN, tgtChapInfo)
+		return result, nil
+	})
+
+	return res.sessionId, res.manualScan
+}
+
 func connectISCSIPortal(ctx context.Context,
 	tgtPortal, targetIQN string,
 	tgtChapInfo chapInfo) (string, bool) {
@@ -426,7 +445,7 @@ func connectVol(ctx context.Context,
 	iSCSIShareData *shareData) {
 	var device string
 
-	session, manualScan := connectISCSIPortal(ctx, tgt.tgtPortal, tgt.tgtIQN, conn.tgtChapInfo)
+	session, manualScan := singleConnectISCSIPortal(ctx, tgt.tgtPortal, tgt.tgtIQN, conn.tgtChapInfo)
 	if session != "" {
 		var numRescans, secondNextScan int
 		var hostChannelTargetLun []string
@@ -671,15 +690,15 @@ func addMultiWWN(ctx context.Context, tgtLunWWN string) (bool, error) {
 }
 
 func addMultiPath(ctx context.Context, devPath string) error {
-	output, err := utils.ExecShellCmd(ctx, "multipath add path %s", devPath)
+	output, err := utils.ExecShellCmd(ctx, "multipathd add path %s", devPath)
 	if err != nil {
-		msg := "run cmd multipath add path error"
+		msg := "run cmd multipathd add path error"
 		log.AddContext(ctx).Errorln(msg)
 		return errors.New(msg)
 	}
 
 	if strings.TrimSpace(output) != "ok" {
-		log.AddContext(ctx).Warningln("run cmd multiPath add path, output is not ok")
+		log.AddContext(ctx).Warningln("run cmd multipathd add path, output is not ok")
 	}
 	return nil
 }

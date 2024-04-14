@@ -27,11 +27,17 @@ import (
 	"huawei-csi-driver/utils"
 )
 
+// InitiatorType defines the initiator type
 type InitiatorType int
 
 const (
+	// ISCSI defines iscsi initiator type
 	ISCSI InitiatorType = iota
+
+	// FC defines fc initiator type
 	FC
+
+	// ROCE defines roce initiator type
 	ROCE
 )
 

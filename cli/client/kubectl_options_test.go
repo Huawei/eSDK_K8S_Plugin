@@ -86,7 +86,11 @@ func TestKubernetesCLIArgs_Get_success(t *testing.T) {
 		WithSpecifiedNode(IgnoreNode).
 		WithOutPutFormat(JSON)
 	var mockData, except = coreV1.Pod{}, coreV1.Pod{}
-	json.Unmarshal([]byte(returnStr), &except)
+	err := json.Unmarshal([]byte(returnStr), &except)
+	if err != nil {
+		t.Errorf("mock return string error, error: %v", err)
+		return
+	}
 	mockCtx := context.Background()
 	// mock
 	patches := mockExecReturnStdOut("kubectl get pod huawei-csi-node-9lxhm -n huawei-csi -o=json")

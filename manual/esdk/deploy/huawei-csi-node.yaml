@@ -80,6 +80,8 @@ rules:
       - configmaps
     verbs:
       - get
+      - update
+      - create
   - apiGroups:
       - "xuanwu.huawei.io"
     resources:
@@ -141,6 +143,13 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 128Mi
         - name: csi-node-driver-registrar
           args:
             - "--csi-address=/csi/csi.sock"
@@ -152,8 +161,15 @@ spec:
               name: socket-dir
             - mountPath: /registration
               name: registration-dir
+          resources:
+            limits:
+              cpu: 300m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:4.2.0
+          image: huawei-csi:4.3.0
           imagePullPolicy: "IfNotPresent"
           args:
             - "--endpoint=/csi/csi.sock"
@@ -170,6 +186,7 @@ spec:
             - "--log-file-dir=/var/log/huawei"
             - "--log-file-size=20M"
             - "--max-backups=9"
+            - "--kubelet-volume-devices-dir-name=/volumeDevices/"
           env:
             - name: CSI_NODENAME
               valueFrom:
@@ -223,13 +240,15 @@ spec:
               name: iscsi-config-dir
             - mountPath: /etc/nvme
               name: nvme-config-dir
+            - mountPath: /etc/localtime
+              name: host-time
           resources:
             limits:
-              cpu: 300m
-              memory: 500Mi
+              cpu: 500m
+              memory: 1Gi
             requests:
               cpu: 50m
-              memory: 100Mi
+              memory: 128Mi
       hostNetwork: true
       hostPID: true
       serviceAccountName: huawei-csi-node
@@ -265,3 +284,7 @@ spec:
             path: /etc/nvme
             type: DirectoryOrCreate
           name: nvme-config-dir
+        - hostPath:
+            path: /etc/localtime
+            type: File
+          name: host-time

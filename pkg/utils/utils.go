@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"reflect"
 	"strconv"
 	"syscall"
 
@@ -99,7 +100,7 @@ func StoreObjectUpdate(ctx context.Context, store cache.Store, obj interface{}, 
 		return false, nil
 	}
 
-	log.AddContext(ctx).Infof("storeObjectUpdate updating %s %q with version %s",
+	log.AddContext(ctx).Debugf("storeObjectUpdate updating %s %q with version %s",
 		className, objName, objAccessor.GetResourceVersion())
 	if err = store.Update(obj); err != nil {
 		return false, fmt.Errorf("error updating %s %q in controller cache: %v", className, objName, err)
@@ -274,4 +275,32 @@ func WaitExitSignal(ctx context.Context, components string) {
 	stopSignal := <-signalChan
 	log.AddContext(ctx).Warningf("stop %s, stopSignal is [%v]", components, stopSignal)
 	close(signalChan)
+}
+
+// ConvertToStringSlice convert interface slice to string slice
+func ConvertToStringSlice(inputs []interface{}) []string {
+	var outputs []string
+	for _, input := range inputs {
+		inputStr, ok := input.(string)
+		if ok {
+			outputs = append(outputs, inputStr)
+		}
+	}
+	return outputs
+}
+
+// ConvertToMapValueX convert map value to x
+func ConvertToMapValueX[T bool | string | int64 | map[string]interface{}](ctx context.Context,
+	m map[string]interface{}) map[string]T {
+	r := make(map[string]T)
+	for k, v := range m {
+		t, ok := v.(T)
+		if !ok {
+			log.AddContext(ctx).Warningf("func: ConvertToMapValueX %s from %v %+v to %v %v failed",
+				k, reflect.TypeOf(v), v, reflect.TypeOf(t), t)
+			continue
+		}
+		r[k] = t
+	}
+	return r
 }

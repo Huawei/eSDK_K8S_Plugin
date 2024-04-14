@@ -43,7 +43,6 @@ func MockInitLogging(logName string) {
 		MaxBackups:    mockMaxBackups,
 	}); err != nil {
 		logrus.Errorf("init logging: %s failed. error: %v", logName, err)
-		os.Exit(1)
 	}
 }
 
@@ -52,6 +51,5 @@ func MockStopLogging(logName string) {
 	logFile := path.Join(mockLogFileDir, logName)
 	if err := os.RemoveAll(logFile); err != nil {
 		logrus.Errorf("Remove file: %s failed. error: %s", logFile, err)
-		os.Exit(1)
 	}
 }

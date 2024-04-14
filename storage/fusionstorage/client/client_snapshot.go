@@ -27,6 +27,7 @@ const (
 	snapshotNotExist int64 = 50150006
 )
 
+// CreateSnapshot creates volume snapshot
 func (cli *Client) CreateSnapshot(ctx context.Context, snapshotName, volName string) error {
 	data := map[string]interface{}{
 		"volName":      volName,
@@ -46,6 +47,7 @@ func (cli *Client) CreateSnapshot(ctx context.Context, snapshotName, volName str
 	return nil
 }
 
+// DeleteSnapshot deletes volume snapshot
 func (cli *Client) DeleteSnapshot(ctx context.Context, snapshotName string) error {
 	data := map[string]interface{}{
 		"snapshotName": snapshotName,
@@ -64,6 +66,7 @@ func (cli *Client) DeleteSnapshot(ctx context.Context, snapshotName string) erro
 	return nil
 }
 
+// GetSnapshotByName get snapshot by name
 func (cli *Client) GetSnapshotByName(ctx context.Context, snapshotName string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/dsware/service/v1.3/snapshot/queryByName?snapshotName=%s", snapshotName)
 	resp, err := cli.get(ctx, url, nil)
@@ -90,6 +93,7 @@ func (cli *Client) GetSnapshotByName(ctx context.Context, snapshotName string) (
 	return snapshot, nil
 }
 
+// CreateVolumeFromSnapshot creates volume from snapshot
 func (cli *Client) CreateVolumeFromSnapshot(ctx context.Context,
 	volName string,
 	volSize int64,

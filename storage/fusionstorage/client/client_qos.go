@@ -99,6 +99,7 @@ func (cli *Client) DeleteConvergedQoS(ctx context.Context, qosName string) error
 	return utils.CheckErrorCode(resp)
 }
 
+// CreateQoS used to create QoS
 func (cli *Client) CreateQoS(ctx context.Context, qosName string, qosData map[string]int) error {
 	data := map[string]interface{}{
 		"qosName":     qosName,
@@ -119,6 +120,7 @@ func (cli *Client) CreateQoS(ctx context.Context, qosName string, qosData map[st
 	return nil
 }
 
+// DeleteQoS used to delete QoS by name
 func (cli *Client) DeleteQoS(ctx context.Context, qosName string) error {
 	data := map[string]interface{}{
 		"qosNames": []string{qosName},
@@ -169,6 +171,7 @@ func (cli *Client) AssociateConvergedQoSWithVolume(ctx context.Context,
 	return utils.CheckErrorCode(resp)
 }
 
+// AssociateQoSWithVolume used to associate QoS with volume
 func (cli *Client) AssociateQoSWithVolume(ctx context.Context, volName, qosName string) error {
 	data := map[string]interface{}{
 		"keyNames": []string{volName},
@@ -189,6 +192,7 @@ func (cli *Client) AssociateQoSWithVolume(ctx context.Context, volName, qosName 
 	return nil
 }
 
+// DisassociateQoSWithVolume used to disassociate QoS with volume
 func (cli *Client) DisassociateQoSWithVolume(ctx context.Context, volName, qosName string) error {
 	data := map[string]interface{}{
 		"keyNames": []string{volName},
@@ -280,6 +284,7 @@ func (cli *Client) GetQoSPolicyIdByFsName(ctx context.Context, namespaceName str
 	return types.NoQoSPolicyId, nil
 }
 
+// GetQoSNameByVolume used to get QoS name by volume name
 func (cli *Client) GetQoSNameByVolume(ctx context.Context, volName string) (string, error) {
 	url := fmt.Sprintf("/dsware/service/v1.3/volume/qos?volName=%s", volName)
 	resp, err := cli.get(ctx, url, nil)
@@ -301,6 +306,7 @@ func (cli *Client) GetQoSNameByVolume(ctx context.Context, volName string) (stri
 	return qosName, nil
 }
 
+// GetAssociateCountOfQoS used to get associate count of QoS
 func (cli *Client) GetAssociateCountOfQoS(ctx context.Context, qosName string) (int, error) {
 	storagePools, err := cli.getAllPools(ctx)
 	if err != nil {

@@ -53,7 +53,9 @@ const (
 )
 
 var (
-	DisconnectVolumeTimeOut      = time.Minute
+	// DisconnectVolumeTimeOut defines the timeout period for disconnecting volume
+	DisconnectVolumeTimeOut = time.Minute
+	// DisconnectVolumeTimeInterval defines the time interval for checking if connected volume
 	DisconnectVolumeTimeInterval = time.Second
 )
 
@@ -64,9 +66,13 @@ type deviceInfo struct {
 	multipathType  int
 }
 
+// DMDeviceInfo is the information of DM device
 type DMDeviceInfo struct {
-	Name    string
-	Sysfs   string
+	// Name device name
+	Name string
+	// Name device file system
+	Sysfs string
+	// Devices device list
 	Devices []string
 }
 
@@ -296,6 +302,7 @@ var getDeviceFromDM = func(dm string) ([]string, error) {
 	return devices, nil
 }
 
+// DeleteSDDev is used to delete the sd device
 func DeleteSDDev(ctx context.Context, sd string) error {
 	output, err := utils.ExecShellCmd(ctx, "echo 1 > /sys/block/%s/device/delete", sd)
 	if err != nil {
@@ -309,6 +316,7 @@ func DeleteSDDev(ctx context.Context, sd string) error {
 	return nil
 }
 
+// FlushDMDevice is the device of flush DM
 var FlushDMDevice = func(ctx context.Context, dm string) error {
 	// command awk can always return success, just check the output
 	mPath, _ := utils.ExecShellCmd(ctx, "ls -l /dev/mapper/ | grep -w %s | awk '{print $9}'", dm)
@@ -715,6 +723,7 @@ func removeMultiPathDevice(ctx context.Context, multiPathName string, devices []
 	return multiPathName, nil
 }
 
+// RemoveDevice is used to remove specified device
 func RemoveDevice(ctx context.Context, device string) (string, error) {
 	var multiPathName string
 	var err error
@@ -1348,6 +1357,7 @@ func VerifyDeviceAvailableOfDM(ctx context.Context, tgtLunWWN string, expectPath
 	return "", err
 }
 
+// RemoveDevices is used to remove devices
 func RemoveDevices(ctx context.Context, devices []string) error {
 	return removeDevices(ctx, devices)
 }

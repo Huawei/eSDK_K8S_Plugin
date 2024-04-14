@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package host defines a set of useful methods, which can help Connector to operate host information
 package host
 
 import (
@@ -40,11 +41,16 @@ const (
 	hostInfoSecretName = "huawei-csi-host-info"
 )
 
+// NodeHostInfo defines the base information of node host
 type NodeHostInfo struct {
-	HostName       string   `json:"hostName"`
-	IscsiInitiator string   `json:"iscsiInitiator"`
-	FCInitiators   []string `json:"fCInitiators"`
-	RoCEInitiator  string   `json:"roCEInitiator"`
+	// HostName the name of host
+	HostName string `json:"hostName"`
+	// IscsiInitiator the initiator of ISCSI protocol
+	IscsiInitiator string `json:"iscsiInitiator"`
+	// FCInitiators the initiator of FC protocol
+	FCInitiators []string `json:"fCInitiators"`
+	// RoCEInitiator the initiator of RoCE protocol
+	RoCEInitiator string `json:"roCEInitiator"`
 }
 
 // NewNodeHostInfo instantiates this node host info.
@@ -80,7 +86,7 @@ func NewNodeHostInfo(ctx context.Context) (*NodeHostInfo, error) {
 	}, nil
 }
 
-//SaveNodeHostInfoToSecret save the current node host information to secret.
+// SaveNodeHostInfoToSecret save the current node host information to secret.
 // secret namespace use the namespace of the current pod.
 func SaveNodeHostInfoToSecret(ctx context.Context) error {
 	k8sUtils := app.GetGlobalConfig().K8sUtils

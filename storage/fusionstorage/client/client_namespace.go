@@ -33,6 +33,7 @@ const (
 	notForbidden       int   = 0
 )
 
+// CreateFileSystem used to create file system by params
 func (cli *Client) CreateFileSystem(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"name":            params["name"].(string),
@@ -83,6 +84,7 @@ func (cli *Client) CreateFileSystem(ctx context.Context, params map[string]inter
 	return nil, fmt.Errorf("failed to create filesystem %v", data)
 }
 
+// DeleteFileSystem used to delete file system by id
 func (cli *Client) DeleteFileSystem(ctx context.Context, id string) error {
 	url := fmt.Sprintf("/api/v2/converged_service/namespaces/%s", id)
 	resp, err := cli.delete(ctx, url, nil)
@@ -105,6 +107,7 @@ func (cli *Client) DeleteFileSystem(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetFileSystemByName used to get file system by name
 func (cli *Client) GetFileSystemByName(ctx context.Context, name string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/api/v2/converged_service/namespaces?name=%s", name)
 	resp, err := cli.get(ctx, url, nil)
@@ -140,6 +143,7 @@ func (cli *Client) GetFileSystemByName(ctx context.Context, name string) (map[st
 	return nil, nil
 }
 
+// CreateNfsShare used to create nfs share by params
 func (cli *Client) CreateNfsShare(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"share_path":     params["sharepath"].(string),
@@ -180,6 +184,7 @@ func (cli *Client) CreateNfsShare(ctx context.Context, params map[string]interfa
 	return nil, fmt.Errorf("failed to create NFS share %v", data)
 }
 
+// DeleteNfsShare used to delete nfs share by id
 func (cli *Client) DeleteNfsShare(ctx context.Context, id, accountId string) error {
 	url := fmt.Sprintf("/api/v2/nas_protocol/nfs_share?id=%s&account_id=%s", id, accountId)
 	resp, err := cli.delete(ctx, url, nil)
@@ -203,6 +208,7 @@ func (cli *Client) DeleteNfsShare(ctx context.Context, id, accountId string) err
 	return nil
 }
 
+// GetNfsShareByPath used to get nfs share by path
 func (cli *Client) GetNfsShareByPath(ctx context.Context, path, accountId string) (map[string]interface{}, error) {
 	bytesPath, err := json.Marshal([]map[string]string{{"share_path": path}})
 	if err != nil {
@@ -299,6 +305,7 @@ func (cli *Client) AllowNfsShareAccess(ctx context.Context, req *AllowNfsShareAc
 	return nil
 }
 
+// DeleteNfsShareAccess used to delete nfs share access by id
 func (cli *Client) DeleteNfsShareAccess(ctx context.Context, accessID string) error {
 	url := fmt.Sprintf("/api/v2/nas_protocol/nfs_share_auth_client?id=%s", accessID)
 	resp, err := cli.delete(ctx, url, nil)
@@ -321,6 +328,7 @@ func (cli *Client) DeleteNfsShareAccess(ctx context.Context, accessID string) er
 	return nil
 }
 
+// GetNfsShareAccess used to get nfs share access by id
 func (cli *Client) GetNfsShareAccess(ctx context.Context, shareID string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/api/v2/nas_protocol/nfs_share_auth_client_list?filter=share_id::%s", shareID)
 	resp, err := cli.get(ctx, url, nil)

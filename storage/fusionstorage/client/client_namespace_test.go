@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"bou.ke/monkey"
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/smartystreets/goconvey/convey"
 )
 
 const (
@@ -30,7 +30,7 @@ const (
 )
 
 func TestAllowNfsShareAccess(t *testing.T) {
-	Convey("Normal", t, func() {
+	convey.Convey("Normal", t, func() {
 		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
 			func(_ *Client, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
 				return map[string]interface{}{
@@ -48,10 +48,10 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash:  1,
 			AccountId:   "0",
 		})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 
-	Convey("Result Code Not Exist", t, func() {
+	convey.Convey("Result Code Not Exist", t, func() {
 		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
 			func(_ *Client, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
 				return map[string]interface{}{
@@ -68,10 +68,10 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash:  1,
 			AccountId:   "0",
 		})
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 
-	Convey("Client Already Exist", t, func() {
+	convey.Convey("Client Already Exist", t, func() {
 		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
 			func(_ *Client, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
 				return map[string]interface{}{
@@ -89,10 +89,10 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash:  1,
 			AccountId:   "0",
 		})
-		So(err, ShouldBeNil)
+		convey.So(err, convey.ShouldBeNil)
 	})
 
-	Convey("Error code is not zero", t, func() {
+	convey.Convey("Error code is not zero", t, func() {
 		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
 			func(_ *Client, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
 				return map[string]interface{}{
@@ -110,6 +110,6 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash:  1,
 			AccountId:   "0",
 		})
-		So(err, ShouldBeError)
+		convey.So(err, convey.ShouldBeError)
 	})
 }

@@ -69,7 +69,9 @@ type WebHook struct {
 	SecretName       string
 
 	WebHookPort int
-	WebHookType AdmissionWebHookType
+	// address of webhook server
+	WebHookAddress string
+	WebHookType    AdmissionWebHookType
 
 	PrivateKey     string
 	PrivateCert    string
@@ -283,8 +285,8 @@ func (c *Controller) Start(ctx context.Context, webHookCfg WebHook, admissionWeb
 		return err
 	}
 
-	c.srv = &http.Server{Addr: fmt.Sprintf(":%d", webHookCfg.WebHookPort),
-		TLSConfig: &tls.Config{Certificates: []tls.Certificate{tlsCert}}}
+	c.srv = &http.Server{Addr: fmt.Sprintf("%s:%d", webHookCfg.WebHookAddress, webHookCfg.WebHookPort),
+		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{tlsCert}}}
 	for _, pair := range webHookCfg.HandleFuncPair {
 		serverRequest := func(w http.ResponseWriter, r *http.Request) {
 			c.serve(w, r, newDelegateToV1AdmitHandler(pair.WebHookFunc))

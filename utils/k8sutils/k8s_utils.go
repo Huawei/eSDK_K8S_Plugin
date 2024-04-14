@@ -75,6 +75,7 @@ type Interface interface {
 	persistentVolumeClaimOps
 }
 
+// KubeClient provides a wrapper for kubernetes client interface.
 type KubeClient struct {
 	clientSet kubernetes.Interface
 
@@ -123,6 +124,7 @@ func NewK8SUtils(kubeConfig string, volumeNamePrefix string, volumeLabels map[st
 	return helper, nil
 }
 
+// GetNodeTopology gets topology belonging to this node by node name
 func (k *KubeClient) GetNodeTopology(ctx context.Context, nodeName string) (map[string]string, error) {
 	k8sNode, err := k.getNode(ctx, nodeName)
 	if err != nil {
@@ -244,17 +246,20 @@ func (k *KubeClient) getPVByPVCName(ctx context.Context, namespace string,
 	return pv, nil
 }
 
+// GetPVByName gets the pv by pv name
 func (k *KubeClient) GetPVByName(ctx context.Context, name string) (*corev1.PersistentVolume, error) {
 	return k.clientSet.CoreV1().
 		PersistentVolumes().
 		Get(ctx, name, metav1.GetOptions{})
 }
 
+// ListPods lists all pods from this namespace
 func (k *KubeClient) ListPods(ctx context.Context, namespace string) (*corev1.PodList, error) {
 	return k.clientSet.CoreV1().
 		Pods(namespace).List(ctx, metav1.ListOptions{})
 }
 
+// GetPod gets a pod by pod name from this namespace
 func (k *KubeClient) GetPod(ctx context.Context, namespace, podName string) (*corev1.Pod, error) {
 	return k.clientSet.CoreV1().
 		Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
@@ -274,11 +279,13 @@ func (k *KubeClient) GetVolumeAttributes(ctx context.Context, pvName string) (ma
 	return pv.Spec.CSI.VolumeAttributes, nil
 }
 
+// Activate activate k8s helpers
 func (k *KubeClient) Activate() {
 	log.Infoln("Activate k8S helpers.")
 	go k.pvcController.Run(k.pvcControllerStopChan)
 }
 
+// Deactivate deactivate k8s helpers
 func (k *KubeClient) Deactivate() {
 	log.Infoln("Deactivate k8S helpers.")
 	close(k.pvcControllerStopChan)

@@ -28,6 +28,7 @@ const (
 	replicationNotExist int64 = 1077937923
 )
 
+// Replication defines interfaces for replication operations
 type Replication interface {
 	// GetReplicationPairByResID used for get replication
 	GetReplicationPairByResID(ctx context.Context, resID string, resType int) ([]map[string]interface{}, error)

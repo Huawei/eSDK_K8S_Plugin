@@ -66,7 +66,6 @@ func (ctrl *backendController) clearContentStatus(ctx context.Context, contentNa
 			ContentName:     "",
 			VendorName:      "",
 			ProviderVersion: "",
-			Capacity:        nil,
 			Capabilities:    nil,
 		}
 	}

@@ -24,6 +24,7 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ConfigmapOps defines interfaces required by configmap
 type ConfigmapOps interface {
 	// CreateConfigmap creates the given configmap
 	CreateConfigmap(context.Context, *coreV1.ConfigMap) (*coreV1.ConfigMap, error)
@@ -31,6 +32,8 @@ type ConfigmapOps interface {
 	GetConfigmap(context.Context, string, string) (*coreV1.ConfigMap, error)
 	// UpdateConfigmap update the configmap object given its name and namespace
 	UpdateConfigmap(context.Context, *coreV1.ConfigMap) (*coreV1.ConfigMap, error)
+	// DeleteConfigmap delete the configmap object given its name and namespace
+	DeleteConfigmap(context.Context, *coreV1.ConfigMap) error
 }
 
 // CreateConfigmap creates the given configmap
@@ -47,4 +50,9 @@ func (k *KubeClient) GetConfigmap(ctx context.Context, name, namespace string) (
 // UpdateConfigmap update configmap
 func (k *KubeClient) UpdateConfigmap(ctx context.Context, configmap *coreV1.ConfigMap) (*coreV1.ConfigMap, error) {
 	return k.clientSet.CoreV1().ConfigMaps(configmap.Namespace).Update(ctx, configmap, metaV1.UpdateOptions{})
+}
+
+// DeleteConfigmap delete configmap
+func (k *KubeClient) DeleteConfigmap(ctx context.Context, configmap *coreV1.ConfigMap) error {
+	return k.clientSet.CoreV1().ConfigMaps(configmap.Namespace).Delete(ctx, configmap.Name, metaV1.DeleteOptions{})
 }

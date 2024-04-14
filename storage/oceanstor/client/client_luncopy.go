@@ -28,6 +28,7 @@ const (
 	lunCopyNotExist int64 = 1077950183
 )
 
+// LunCopy defines interfaces for lun copy operations
 type LunCopy interface {
 	// GetLunCopyByID used for get lun copy by id
 	GetLunCopyByID(ctx context.Context, lunCopyID string) (map[string]interface{}, error)

@@ -24,6 +24,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// RoCE implements the Connector interface for RoCE protocol
 type RoCE struct {
 }
 
@@ -36,6 +37,10 @@ func init() {
 	connector.RegisterConnector(connector.RoCEDriver, &RoCE{})
 }
 
+// ConnectVolume to mount the source to target path, the source path can be block or nfs
+// Example:
+//    mount /dev/sdb /<target-path>
+//    mount <source-path> /<target-path>
 func (roce *RoCE) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
 	log.AddContext(ctx).Infof("RoCE Start to connect volume ==> connect info: %v", conn)
 	tgtLunGUID, exist := conn["tgtLunGuid"].(string)
@@ -45,6 +50,7 @@ func (roce *RoCE) ConnectVolume(ctx context.Context, conn map[string]interface{}
 	return connector.ConnectVolumeCommon(ctx, conn, tgtLunGUID, connector.RoCEDriver, tryConnectVolume)
 }
 
+// DisConnectVolume to unmount the target path
 func (roce *RoCE) DisConnectVolume(ctx context.Context, tgtLunGuid string) error {
 	log.AddContext(ctx).Infof("RoCE Start to disconnect volume ==> Volume Guid info: %v", tgtLunGuid)
 	return connector.DisConnectVolumeCommon(ctx, tgtLunGuid, connector.RoCEDriver, tryDisConnectVolume)

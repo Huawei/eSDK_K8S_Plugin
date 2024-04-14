@@ -17,9 +17,7 @@
 package command
 
 import (
-	"os"
-
-	"github.com/olekukonko/tablewriter"
+	"fmt"
 	"github.com/spf13/cobra"
 
 	"huawei-csi-driver/cli/config"
@@ -34,12 +32,6 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version of oceanctl",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		head := []string{"Oceanctl Version"}
-		data := []string{config.CliVersion}
-
-		table := tablewriter.NewWriter(os.Stdout)
-		table.SetHeader(head)
-		table.Append(data)
-		table.Render()
+		fmt.Printf("Oceanctl Version: %s\n", config.CliVersion)
 	},
 }

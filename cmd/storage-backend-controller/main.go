@@ -12,6 +12,7 @@
  limitations under the License.
 */
 
+// Package main entry point for application
 package main
 
 import (

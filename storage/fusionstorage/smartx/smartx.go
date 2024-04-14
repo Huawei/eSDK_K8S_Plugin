@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package smartx provides operations for qos
 package smartx
 
 import (
@@ -28,6 +29,7 @@ import (
 )
 
 var (
+	// ValidQosKey defines valid qos key
 	ValidQosKey = map[string]func(int) bool{
 		"maxMBPS": func(value int) bool {
 			return value > 0
@@ -38,6 +40,7 @@ var (
 	}
 )
 
+// VerifyQos verifies qos config and return formatted params
 func VerifyQos(ctx context.Context, qosConfig string) (map[string]int, error) {
 	var msg string
 	var params map[string]int
@@ -52,37 +55,39 @@ func VerifyQos(ctx context.Context, qosConfig string) (map[string]int, error) {
 		f, exist := ValidQosKey[k]
 		if !exist {
 			msg = fmt.Sprintf("%s is an invalid key for QoS", k)
-			goto ERROR
+			log.AddContext(ctx).Errorln(msg)
+			return nil, errors.New(msg)
 		}
 
 		if !f(v) {
 			msg = fmt.Sprintf("%s of qos specs is invalid", k)
-			goto ERROR
+			log.AddContext(ctx).Errorln(msg)
+			return nil, errors.New(msg)
 		}
 	}
 
 	return params, nil
-
-ERROR:
-	log.AddContext(ctx).Errorln(msg)
-	return nil, errors.New(msg)
 }
 
+// QoS provides qos client
 type QoS struct {
 	cli *client.Client
 }
 
+// NewQoS inits a new qos client
 func NewQoS(cli *client.Client) *QoS {
 	return &QoS{
 		cli: cli,
 	}
 }
 
+// ConstructQosNameByCurrentTime constructs qos name by current time
 func ConstructQosNameByCurrentTime(objType string) string {
 	now := time.Now().Format("20060102150405")
 	return fmt.Sprintf("k8s_%s_%s", objType, now)
 }
 
+// AddQoS create a qos and associate the qos with volume
 func (p *QoS) AddQoS(ctx context.Context, volName string, params map[string]int) (string, error) {
 	qosName := ConstructQosNameByCurrentTime("volume")
 	err := p.cli.CreateQoS(ctx, qosName, params)
@@ -106,6 +111,7 @@ func (p *QoS) AddQoS(ctx context.Context, volName string, params map[string]int)
 	return qosName, nil
 }
 
+// RemoveQoS removes qos of the volume
 func (p *QoS) RemoveQoS(ctx context.Context, volName string) error {
 	qosName, err := p.cli.GetQoSNameByVolume(ctx, volName)
 	if err != nil {

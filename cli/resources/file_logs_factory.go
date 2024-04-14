@@ -29,27 +29,36 @@ import (
 
 	"huawei-csi-driver/cli/config"
 	"huawei-csi-driver/cli/helper"
+	"huawei-csi-driver/utils/log"
 )
 
+// FileLogsCollect is the interface to collect file logs.
 type FileLogsCollect interface {
 	GetFileLogs(namespace, podName string, container *corev1.Container) (err error)
 	GetHostInformation(namespace, containerName, nodeName, podName string) error
 	CopyToLocal(namespace, nodeName, podName, containerName string) error
 }
 
+// BaseFileLogsCollect collect file logs.
 type BaseFileLogsCollect struct{}
 
+// FileLogsCollector collect specific file logs.
 type FileLogsCollector struct {
 	BaseFileLogsCollect
 	fileLogPath string
 }
 
+// PodType defines the type of pod.
 type PodType byte
 
 const (
-	CSI    PodType = 0
-	CSM    PodType = 1
+	// CSI is the pod type of CSI.
+	CSI PodType = 0
+	// CSM is the pod type of CSM.
+	CSM PodType = 1
+	// Xuanwu is the pod type of Xuanwu.
 	Xuanwu PodType = 2
+	// UnKnow is the unknown pod type.
 	UnKnow PodType = 3
 
 	temporaryDirectoryNamePrefix = "huawei"
@@ -155,17 +164,19 @@ func (b *BaseFileLogsCollect) GetHostInformation(namespace, containerName, nodeN
 
 // GetFileLogs get the file log of a specified node.
 func (c *FileLogsCollector) GetFileLogs(namespace, podName string, container *corev1.Container) (err error) {
-	c.fileLogPath, err = getContainerFileLogPaths(container)
-	if err != nil {
+	if c.fileLogPath, err = getContainerFileLogPaths(container); err != nil {
+		log.Errorf("get container file Log paths failed, error: %v", err)
 		return
 	}
 
 	if err = c.getContainerFileLogs(namespace, podName, container.Name, c.fileLogPath); err != nil {
+		log.Errorf("get container file logs failed, error: %v", err)
 		return
 	}
 
-	err = c.compressLogsInContainer(namespace, podName, container.Name)
-
+	if err = c.compressLogsInContainer(namespace, podName, container.Name); err != nil {
+		log.Errorf("compress logs in container failed, error: %v", err)
+	}
 	return
 }
 
@@ -177,7 +188,7 @@ func RegisterCollector(name PodType, collector FileLogsCollect) {
 // LoadSupportedCollector used to load supported collector. Return a collector of type FileLogsCollect and nil error
 // if a client with the specified testName exists. If not exists, return an error with not supported.
 func LoadSupportedCollector(name PodType) (FileLogsCollect, error) {
-	if client, ok := fileLogCollectSet[name]; ok {
+	if client, ok := fileLogCollectSet[name]; ok && client != nil {
 		return client, nil
 	}
 	return nil, errors.New("not valid collector")

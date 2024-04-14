@@ -18,6 +18,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -274,5 +275,28 @@ func TestGetNameSpaceFromEnv(t *testing.T) {
 	ns := GetNameSpaceFromEnv("", xuanwuNamespace)
 	if ns != xuanwuNamespace {
 		t.Error("TestGetNameSpaceFromEnv test failed")
+	}
+}
+
+// TestConvertToMapValueX test convert map value
+func TestConvertToMapValueX(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	poolCapabilities := make(map[string]interface{})
+	capability := map[string]interface{}{
+		string(xuanwuv1.FreeCapacity):  int64(100),
+		string(xuanwuv1.TotalCapacity): int64(100),
+		string(xuanwuv1.UsedCapacity):  int64(100),
+	}
+	poolCapabilities["pool1"] = capability
+	poolCapabilities["pool2"] = capability
+
+	// act
+	poolCapacibilityMap := ConvertToMapValueX[map[string]interface{}](ctx, poolCapabilities)
+
+	// assert
+	if !reflect.DeepEqual(poolCapacibilityMap["pool1"], capability) {
+		t.Errorf("ConvertToMapValueX map[string]interface{} from %+v to %+v failed",
+			poolCapabilities["pool1"], capability)
 	}
 }

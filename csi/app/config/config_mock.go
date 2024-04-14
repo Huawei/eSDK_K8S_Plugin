@@ -60,10 +60,12 @@ func mockServiceConfig() serviceConfig {
 		KubeletRootDir:   "",
 		VolumeNamePrefix: "",
 
-		MaxVolumesPerNode:     0,
-		WebHookPort:           0,
-		WorkerThreads:         0,
-		BackendUpdateInterval: 0,
+		MaxVolumesPerNode:           0,
+		WebHookPort:                 0,
+		WebHookAddress:              "",
+		WorkerThreads:               0,
+		BackendUpdateInterval:       0,
+		KubeletVolumeDevicesDirName: "",
 	}
 }
 

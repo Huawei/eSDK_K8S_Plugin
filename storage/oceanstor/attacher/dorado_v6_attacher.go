@@ -25,12 +25,14 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+// DoradoV6Attacher implements interface AttacherPlugin
 type DoradoV6Attacher struct {
 	Attacher
 }
 
 const (
-	ACCESS_MODE_BALANCED = "0"
+	// AccessModeBalanced defines balanced mode of access
+	AccessModeBalanced = "0"
 )
 
 func newDoradoV6Attacher(
@@ -57,7 +59,7 @@ func (p *DoradoV6Attacher) needUpdateHost(host map[string]interface{}, hostAlua 
 
 	if accessMode != host["accessMode"] {
 		return true
-	} else if host["accessMode"] == ACCESS_MODE_BALANCED {
+	} else if host["accessMode"] == AccessModeBalanced {
 		return false
 	}
 
@@ -69,6 +71,7 @@ func (p *DoradoV6Attacher) needUpdateHost(host map[string]interface{}, hostAlua 
 	return false
 }
 
+// ControllerAttach attaches volume and maps lun to host
 func (p *DoradoV6Attacher) ControllerAttach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (map[string]interface{}, error) {

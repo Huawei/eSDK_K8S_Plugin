@@ -299,9 +299,10 @@ func TestNewManagerForNfs(t *testing.T) {
 		protocol:    "nfs",
 		backendName: "test_backend_name",
 		want: &NasManager{
-			protocol: "nfs",
-			portal:   "127.0.0.1",
-			Conn:     connector.GetConnector(context.Background(), connector.NFSDriver),
+			protocol:     "nfs",
+			portals:      []string{"127.0.0.1"},
+			metroPortals: []string{},
+			Conn:         connector.GetConnector(context.Background(), connector.NFSDriver),
 		},
 		wantErr: false,
 	}
@@ -314,8 +315,10 @@ func TestNewManagerForDpc(t *testing.T) {
 		protocol:    "dpc",
 		backendName: "test_backend_name",
 		want: &NasManager{
-			protocol: "dpc",
-			Conn:     connector.GetConnector(context.Background(), connector.NFSDriver),
+			protocol:     "dpc",
+			Conn:         connector.GetConnector(context.Background(), connector.NFSDriver),
+			portals:      []string{},
+			metroPortals: []string{},
 		},
 		wantErr: false,
 	}
@@ -424,7 +427,7 @@ func newManagerTest(t *testing.T, testCase testCaseStructForNewManager) {
 		if testCase.protocol == "nfs" {
 			portals = []string{"127.0.0.1"}
 		}
-		return &BackendConfig{protocol: testCase.protocol, portals: portals}, nil
+		return &BackendConfig{protocol: testCase.protocol, portals: portals, metroPortals: []string{}}, nil
 	})
 	defer getBackendConfig.Reset()
 
@@ -435,6 +438,6 @@ func newManagerTest(t *testing.T, testCase testCaseStructForNewManager) {
 	}
 
 	if !reflect.DeepEqual(got, testCase.want) {
-		t.Errorf("NewManager() want manager = %v, got manager = %v", testCase.want, got)
+		t.Errorf("NewManager() want manager = %+v, got manager = %+v", testCase.want, got)
 	}
 }

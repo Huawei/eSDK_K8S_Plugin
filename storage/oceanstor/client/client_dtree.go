@@ -25,12 +25,17 @@ import (
 )
 
 const (
-	ParentTypeFS    int = 40
+	// ParentTypeFS defines fs type of parent
+	ParentTypeFS int = 40
+
+	// ParentTypeDTree defines DTree type of parent
 	ParentTypeDTree int = 16445
 
+	// SecurityStyleUnix defines unix style of security
 	SecurityStyleUnix int = 3
 )
 
+// DTree defines interfaces for DTree operations
 type DTree interface {
 	// CreateDTree use for create a dTree
 	CreateDTree(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error)

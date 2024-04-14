@@ -18,7 +18,7 @@ package manage
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -59,13 +59,16 @@ func mockExpectedConnectInfo() map[string]interface{} {
 func TestNasManagerStageNfsVolume(t *testing.T) {
 	manager := &NasManager{
 		protocol: "nfs",
-		portal:   "127.0.0.1",
+		portals:  []string{"127.0.0.1"},
 		Conn:     connector.GetConnector(context.Background(), connector.NFSDriver),
 	}
 
 	mockMountShare := gomonkey.ApplyFunc(Mount, func(ctx context.Context, parameters map[string]interface{}) error {
-		if !reflect.DeepEqual(parameters, mockExpectedConnectInfo()) {
-			return errors.New("stage nfs volume error")
+		expectedConnectInfo := mockExpectedConnectInfo()
+		expectedConnectInfo["portals"] = []string{"127.0.0.1"}
+		if !reflect.DeepEqual(parameters, expectedConnectInfo) {
+			return fmt.Errorf("stage nfs volume error parameter: %+v expectConnectInfo: %+v", parameters,
+				expectedConnectInfo)
 		}
 		return nil
 	})
@@ -81,15 +84,18 @@ func TestNasManagerStageDpcVolume(t *testing.T) {
 	manager := &NasManager{
 		protocol: "dpc",
 		Conn:     connector.GetConnector(context.Background(), connector.NFSDriver),
+		portals:  []string{},
 	}
 
 	mockMountShare := gomonkey.ApplyFunc(Mount, func(ctx context.Context, parameters map[string]interface{}) error {
 		expectedConnectInfo := mockExpectedConnectInfo()
 		expectedConnectInfo["sourcePath"] = "/pvc-nas-xxx"
 		expectedConnectInfo["protocol"] = "dpc"
+		expectedConnectInfo["portals"] = []string{}
 
 		if !reflect.DeepEqual(parameters, expectedConnectInfo) {
-			return errors.New("stage dpc volume error")
+			return fmt.Errorf("stage dpc volume error, parameter: %+v, expectConnectInfo: %+v", parameters,
+				expectedConnectInfo)
 		}
 		return nil
 	})
