@@ -4,6 +4,7 @@
 
 ## Changes since v4.2.0
 
+- Support UltraPath 31.2.1/NVMe over RoCE on Rocky Linux 8.6 X86_64
 - Support OpenShift 4.14
 - Support OceanStor Dorado 6.1.7
 - Support OceanStor 6.1.7
