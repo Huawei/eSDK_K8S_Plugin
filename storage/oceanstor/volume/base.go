@@ -37,6 +37,23 @@ type Base struct {
 	product          string
 }
 
+func (p *Base) commonPreModify(ctx context.Context, params map[string]interface{}) error {
+	analyzers := [...]func(context.Context, map[string]interface{}) error{
+		p.getAllocType,
+		p.getQoS,
+		p.getFileMode,
+	}
+
+	for _, analyzer := range analyzers {
+		err := analyzer(ctx, params)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (p *Base) commonPreCreate(ctx context.Context, params map[string]interface{}) error {
 	analyzers := [...]func(context.Context, map[string]interface{}) error{
 		p.getAllocType,
@@ -186,79 +203,6 @@ func (p *Base) getSnapshotReturnInfo(snapshot map[string]interface{}, snapshotSi
 		"SizeBytes":    snapshotSizeBytes,
 		"ParentID":     snapshot["PARENTID"].(string),
 	}
-}
-
-func (p *Base) createReplicationPair(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	resType, ok := taskResult["resType"].(int)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert resType to int failed, data: %v", taskResult["resType"])
-	}
-	remoteDeviceID, ok := taskResult["remoteDeviceID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert remoteDeviceID to string failed, data: %v", taskResult["remoteDeviceID"])
-	}
-
-	var localID string
-	var remoteID string
-	if resType == 11 {
-		localID, ok = taskResult["localLunID"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "convert localID to string failed, data: %v", taskResult["localLunID"])
-		}
-		remoteID, ok = taskResult["remoteLunID"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "convert remoteID to string failed, data: %v", taskResult["remoteLunID"])
-		}
-	} else {
-		localID, ok = taskResult["localFSID"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "convert localID to string failed, data: %v", taskResult["localFSID"])
-		}
-		remoteID, ok = taskResult["remoteFSID"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "convert remoteID to string failed, data: %v", taskResult["remoteFSID"])
-		}
-	}
-
-	data := map[string]interface{}{
-		"LOCALRESID":       localID,
-		"LOCALRESTYPE":     resType,
-		"REMOTEDEVICEID":   remoteDeviceID,
-		"REMOTERESID":      remoteID,
-		"REPLICATIONMODEL": 2, // asynchronous replication
-		"SYNCHRONIZETYPE":  2, // timed wait after synchronization begins
-		"SPEED":            4, // highest speed
-	}
-
-	replicationSyncPeriod, exist := params["replicationsyncperiod"].(string)
-	if exist {
-		data["TIMINGVAL"] = replicationSyncPeriod
-	}
-
-	vStorePairID, exist := taskResult["vStorePairID"]
-	if exist {
-		data["VSTOREPAIRID"] = vStorePairID
-	}
-
-	pair, err := p.cli.CreateReplicationPair(ctx, data)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Create replication pair error: %v", err)
-		return nil, err
-	}
-
-	pairID, ok := pair["ID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert pairID to string failed, data: %v", pair["ID"])
-	}
-	err = p.cli.SyncReplicationPair(ctx, pairID)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Sync replication pair %s error: %v", pairID, err)
-		p.cli.DeleteReplicationPair(ctx, pairID)
-		return nil, err
-	}
-
-	return nil, nil
 }
 
 func (p *Base) getRemoteDeviceID(ctx context.Context, deviceSN string) (string, error) {

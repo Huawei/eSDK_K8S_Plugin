@@ -353,8 +353,13 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 
 	isAttached := int64(lun["volType"].(float64)) == SCSITYPE || int64(lun["volType"].(float64)) == ISCSITYPE
 	curSize := int64(lun["volSize"].(float64))
-	if newSize <= curSize {
-		msg := fmt.Sprintf("Lun %s newSize %d must be greater than curSize %d", name, newSize, curSize)
+	if newSize == curSize {
+		log.AddContext(ctx).Infof("the size of lun %s has not changed and the current size is %d",
+			name, newSize)
+		return isAttached, nil
+	} else if newSize < curSize {
+		msg := fmt.Sprintf("Lun %s newSize %d must be greater than or equal to curSize %d",
+			name, newSize, curSize)
 		log.AddContext(ctx).Errorln(msg)
 		return false, errors.New(msg)
 	}

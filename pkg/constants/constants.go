@@ -22,7 +22,7 @@ type FileType string
 
 const (
 	// ProviderVersion defines provider version
-	ProviderVersion = "4.3.0"
+	ProviderVersion = "4.4.0"
 	// ProviderVendorName defines provider vendor name
 	ProviderVendorName = "Huawei"
 	// EndpointDirPermission defines permission of endpoint dir
@@ -75,6 +75,9 @@ const (
 
 	// DefaultKubeletVolumeDevicesDirName default kubelet volumeDevice name
 	DefaultKubeletVolumeDevicesDirName = "/volumeDevices/"
+
+	// AllocationUnitBytes default is 512
+	AllocationUnitBytes = 512
 )
 
 var (

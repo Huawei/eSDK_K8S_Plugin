@@ -75,12 +75,17 @@ func main() {
 		return
 	}
 
-	ctx := context.Background()
-	k8sClient, storageBackendClient, err := utils.GetK8SAndSBCClient(ctx)
+	ctx, err := log.SetRequestInfo(context.Background())
 	if err != nil {
-		log.AddContext(ctx).Errorf("GetKubernetesClient failed, error: %v", err)
+		log.AddContext(ctx).Infof("set request id failed, error is [%v]", err)
+	}
+
+	k8sClient, crdClient, err := utils.GetK8SAndCrdClient(ctx)
+	if err != nil {
+		log.AddContext(ctx).Errorf("GetK8SAndCrdClient failed, error: %v", err)
 		return
 	}
+
 	// init the recorder
 	recorder := initRecorder(k8sClient)
 	connect, providerName = initProvider()
@@ -89,7 +94,7 @@ func main() {
 	defer close(signalChan)
 
 	if !app.GetGlobalConfig().EnableLeaderElection {
-		go runController(ctx, storageBackendClient, recorder, signalChan)
+		go runController(ctx, crdClient, recorder, signalChan)
 	} else {
 		leaderElection := utils.LeaderElectionConf{
 			LeaderName:    leaderLockObjectName + providerName,
@@ -97,8 +102,13 @@ func main() {
 			RenewDeadline: app.GetGlobalConfig().LeaderRenewDeadline,
 			RetryPeriod:   app.GetGlobalConfig().LeaderRetryPeriod,
 		}
-		go utils.RunWithLeaderElection(ctx, leaderElection, k8sClient, storageBackendClient, recorder,
-			runController, signalChan)
+
+		runFun := func(ctx context.Context, ch chan os.Signal) {
+			runController(ctx, crdClient, recorder, ch)
+		}
+
+		go utils.RunWithLeaderElection(ctx, leaderElection, k8sClient, recorder,
+			runFun, signalChan)
 	}
 
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGILL, syscall.SIGKILL, syscall.SIGTERM)
@@ -112,11 +122,8 @@ func initRecorder(client kubernetes.Interface) record.EventRecorder {
 	return eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf(eventComponentName)})
 }
 
-func runController(
-	ctx context.Context,
-	storageBackendClient *clientSet.Clientset,
+func runController(ctx context.Context, crdClient *clientSet.Clientset,
 	eventRecorder record.EventRecorder, ch chan os.Signal) {
-
 	if ch == nil {
 		log.Errorln("the channel should not be nil")
 		return
@@ -129,18 +136,18 @@ func runController(
 		return
 	}
 
-	if err := ensureCRDExist(ctx, storageBackendClient); err != nil {
+	if err := ensureCRDExist(ctx, crdClient); err != nil {
 		log.AddContext(ctx).Errorf("Exiting due to failure to ensure CRDs exist during startup: %+v", err)
 		ch <- syscall.SIGINT
 		return
 	}
 
 	backend := storageBackend.NewBackend(connect)
-	factory := backendInformers.NewSharedInformerFactory(storageBackendClient,
+	factory := backendInformers.NewSharedInformerFactory(crdClient,
 		time.Second*time.Duration(app.GetGlobalConfig().BackendUpdateInterval))
 	ctrl := controller.NewSideCarBackendController(controller.BackendControllerRequest{
 		ProviderName:    providerName,
-		ClientSet:       storageBackendClient,
+		ClientSet:       crdClient,
 		Backend:         backend,
 		TimeOut:         app.GetGlobalConfig().Timeout,
 		ContentInformer: factory.Xuanwu().V1().StorageBackendContents(),
@@ -159,7 +166,7 @@ func runController(
 		close(stopCh)
 	}
 
-	run(context.TODO())
+	run(ctx)
 }
 
 func initProvider() (*grpc.ClientConn, string) {

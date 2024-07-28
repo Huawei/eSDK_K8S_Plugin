@@ -50,7 +50,7 @@ const (
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 
-	csiVersion      = "4.3.0"
+	csiVersion      = "4.4.0"
 	endpointDirPerm = 0755
 )
 
@@ -176,6 +176,7 @@ func registerDRCSIServer() {
 	grpcServer := grpc.NewServer(opts...)
 	drcsi.RegisterIdentityServer(grpcServer, p)
 	drcsi.RegisterStorageBackendServer(grpcServer, p)
+	drcsi.RegisterModifyVolumeInterfaceServer(grpcServer, p)
 
 	if err := grpcServer.Serve(drListener); err != nil {
 		notify.Stop("Start Huawei CSI driver error: %v", err)

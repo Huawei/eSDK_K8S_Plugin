@@ -20,11 +20,36 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
 
+	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	"google.golang.org/grpc"
 
+	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/lib/drcsi"
+	"huawei-csi-driver/lib/drcsi/connection"
+	"huawei-csi-driver/utils/log"
 )
+
+// ConnectProvider connect provider
+func ConnectProvider() (*grpc.ClientConn, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), app.GetGlobalConfig().Timeout)
+	defer cancel()
+
+	metricsManager := metrics.NewCSIMetricsManager("")
+	conn, err := connection.Connect(ctx, app.GetGlobalConfig().DrEndpoint, metricsManager)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to connect to DR CSI provider: %w", err)
+	}
+
+	name, err := GetProviderName(ctx, conn)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get DR-CSI provider name: %w", err)
+	}
+	log.AddContext(ctx).Infof("DR-CSI provider name: %s", name)
+
+	return conn, name, nil
+}
 
 // GetProviderName returns name of DR-CSI driver.
 func GetProviderName(ctx context.Context, conn *grpc.ClientConn) (string, error) {

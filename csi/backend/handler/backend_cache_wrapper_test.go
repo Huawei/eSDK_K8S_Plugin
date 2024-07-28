@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import (
 	"huawei-csi-driver/csi/app/config"
 	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/csi/backend/model"
+	"huawei-csi-driver/csi/backend/plugin"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -60,7 +61,7 @@ func TestCacheWrapper_AddBackendToCache(t *testing.T) {
 	// mock
 	patches := gomonkey.ApplyFunc(backend.BuildBackend, func(context.Context,
 		v1.StorageBackendContent) (*model.Backend, error) {
-		return &model.Backend{}, nil
+		return &model.Backend{Plugin: &plugin.OceanstorNasPlugin{}}, nil
 	})
 
 	defer patches.Reset()

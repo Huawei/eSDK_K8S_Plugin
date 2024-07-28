@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,10 +19,10 @@ package model
 
 import (
 	"context"
-	"huawei-csi-driver/utils/log"
 
 	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/backend/plugin"
+	"huawei-csi-driver/utils/log"
 )
 
 // StorageBackendTuple contains sbc and sbct
@@ -57,6 +57,7 @@ func (b *Backend) SetAvailable(ctx context.Context, available bool) {
 		log.AddContext(ctx).Infof("change cache backend %s online to %v", b.Name, available)
 	}
 	b.Available = available
+	b.Plugin.SetOnline(available)
 }
 
 // UpdatePools update Backend pools

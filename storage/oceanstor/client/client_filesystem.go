@@ -72,10 +72,14 @@ type Filesystem interface {
 	CreateNfsShare(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error)
 	// DeleteFileSystem used for delete file system
 	DeleteFileSystem(ctx context.Context, params map[string]interface{}) error
+	// SafeDeleteFileSystem used for delete file system
+	SafeDeleteFileSystem(ctx context.Context, params map[string]interface{}) error
 	// DeleteNfsShareAccess used for delete nfs share access
 	DeleteNfsShareAccess(ctx context.Context, accessID, vStoreID string) error
 	// DeleteNfsShare used for delete nfs share by id
 	DeleteNfsShare(ctx context.Context, id, vStoreID string) error
+	// SafeDeleteNfsShare used for delete nfs share by id
+	SafeDeleteNfsShare(ctx context.Context, id, vStoreID string) error
 	// GetNFSServiceSetting used for get nfs service setting
 	GetNFSServiceSetting(ctx context.Context) (map[string]bool, error)
 }
@@ -83,6 +87,26 @@ type Filesystem interface {
 // DeleteFileSystem used for delete file system
 func (cli *BaseClient) DeleteFileSystem(ctx context.Context, params map[string]interface{}) error {
 	resp, err := cli.Delete(ctx, "/filesystem", params)
+	if err != nil {
+		return err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code == filesystemNotExist {
+		log.AddContext(ctx).Infof("Filesystem %s does not exist while deleting", params)
+		return nil
+	}
+
+	if code != 0 {
+		return utils.Errorf(ctx, "Delete filesystem %s error: %d", params, code)
+	}
+
+	return nil
+}
+
+// SafeDeleteFileSystem used for delete file system
+func (cli *BaseClient) SafeDeleteFileSystem(ctx context.Context, params map[string]interface{}) error {
+	resp, err := cli.SafeDelete(ctx, "/filesystem", params)
 	if err != nil {
 		return err
 	}
@@ -470,6 +494,32 @@ func (cli *BaseClient) DeleteNfsShare(ctx context.Context, id, vStoreID string) 
 	return nil
 }
 
+// SafeDeleteNfsShare used for delete nfs share by id
+func (cli *BaseClient) SafeDeleteNfsShare(ctx context.Context, id, vStoreID string) error {
+	url := fmt.Sprintf("/NFSHARE/%s", id)
+	var data = make(map[string]interface{})
+	if vStoreID != "" {
+		data["vstoreId"] = vStoreID
+	}
+
+	resp, err := cli.SafeDelete(ctx, url, data)
+	if err != nil {
+		return err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code == shareNotExist {
+		log.AddContext(ctx).Infof("Nfs share %s does not exist while deleting", id)
+		return nil
+	}
+
+	if code != 0 {
+		return fmt.Errorf("delete nfs share %s error: %d", id, code)
+	}
+
+	return nil
+}
+
 // GetNFSServiceSetting used for get nfs service setting
 func (cli *BaseClient) GetNFSServiceSetting(ctx context.Context) (map[string]bool, error) {
 	resp, err := cli.Get(ctx, "/nfsservice", nil)
@@ -520,48 +570,7 @@ func (cli *BaseClient) GetNFSServiceSetting(ctx context.Context) (map[string]boo
 // CreateFileSystem used for create file system
 func (cli *BaseClient) CreateFileSystem(ctx context.Context, params map[string]interface{}) (
 	map[string]interface{}, error) {
-
-	data := map[string]interface{}{
-		"NAME":        params["name"].(string),
-		"PARENTID":    params["parentid"].(string),
-		"CAPACITY":    params["capacity"].(int64),
-		"DESCRIPTION": params["description"].(string),
-		"ALLOCTYPE":   params["alloctype"].(int),
-	}
-
-	if params["fspermission"] != nil && params["fspermission"] != "" {
-		data["unixPermissions"] = params["fspermission"]
-	}
-
-	if val, exist := params["isshowsnapdir"].(bool); exist {
-		data["ISSHOWSNAPDIR"] = val
-	}
-
-	if val, exist := params["reservedsnapshotspaceratio"].(int); exist {
-		data["SNAPSHOTRESERVEPER"] = val
-	}
-
-	if hyperMetro, hyperMetroOK := params["hypermetro"].(bool); hyperMetroOK && hyperMetro {
-		data["fileSystemMode"] = HyperMetroFilesystemMode
-		if vstoreId, exist := params["vstoreId"].(string); exist && vstoreId != "" {
-			data["vstoreId"] = vstoreId
-		}
-	} else if val, exist := params["filesystemmode"].(string); exist {
-		data["fileSystemMode"] = val
-	} else {
-		data["fileSystemMode"] = LocalFilesystemMode
-	}
-
-	if val, ok := params["workloadTypeID"].(string); ok {
-		res, err := strconv.ParseUint(val, 0, 32)
-		if err != nil {
-			return nil, fmt.Errorf("cannot convert workloadtype to int32: %v", err)
-		}
-
-		data["workloadTypeId"] = uint32(res)
-	}
-
-	resp, err := cli.Post(ctx, "/filesystem", data)
+	resp, err := cli.Post(ctx, "/filesystem", params)
 	if err != nil {
 		return nil, err
 	}

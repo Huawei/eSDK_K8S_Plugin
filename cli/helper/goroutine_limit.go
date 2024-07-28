@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,78 +18,47 @@ package helper
 
 import (
 	"sync"
-	"sync/atomic"
 
 	"huawei-csi-driver/utils/log"
 )
 
-// GlobalGoroutineLimit Configure the total goroutine limit
+// GlobalGoroutineLimit is used to limit concurrency of goroutine
 type GlobalGoroutineLimit struct {
-	localNum        int32
-	maxGoroutineNum int32
-	limit           int32
-	allCond         []*sync.Cond
-}
-
-// LocalGoroutineLimit Record local goroutine limit under total limit
-type LocalGoroutineLimit struct {
-	cond                *sync.Cond
-	currentGoroutineNum int32
-	limit               *int32
+	sem chan struct{}
+	wg  *sync.WaitGroup
 }
 
 // NewGlobalGoroutineLimit initialize a GlobalGoroutineLimit instance
-func NewGlobalGoroutineLimit(maxGoroutineNum int32) *GlobalGoroutineLimit {
+func NewGlobalGoroutineLimit(maxGoroutineNum int) *GlobalGoroutineLimit {
 	res := &GlobalGoroutineLimit{
-		allCond:         make([]*sync.Cond, maxGoroutineNum),
-		maxGoroutineNum: maxGoroutineNum,
-		limit:           maxGoroutineNum,
+		sem: make(chan struct{}, maxGoroutineNum),
+		wg:  &sync.WaitGroup{},
 	}
 	return res
 }
 
-// NewLocalGoroutineLimit initialize a LocalGoroutineLimit instance
-func NewLocalGoroutineLimit(global *GlobalGoroutineLimit) *LocalGoroutineLimit {
-	res := &LocalGoroutineLimit{
-		limit: &global.limit,
-		cond:  sync.NewCond(&sync.Mutex{}),
-	}
-	atomic.AddInt32(&global.localNum, 1)
-	atomic.StoreInt32(&global.limit, global.maxGoroutineNum/global.localNum)
-	global.allCond = append(global.allCond, res.cond)
-	return res
-}
-
-// Do create a Goroutine to Execution function
-func (l *LocalGoroutineLimit) Do(f func()) {
-	l.cond.L.Lock()
-	for atomic.LoadInt32(&l.currentGoroutineNum) >= atomic.LoadInt32(l.limit) {
-		l.cond.Wait()
-	}
-	l.cond.L.Unlock()
-	atomic.AddInt32(&l.currentGoroutineNum, 1)
+// HandleWork handle the work func with limit
+func (n *GlobalGoroutineLimit) HandleWork(work func()) {
 	go func() {
+		n.sem <- struct{}{}
 		defer func() {
 			if e := recover(); e != nil {
-				log.Errorf("an error occurred when executing the sub-goroutine, error: %v", e)
+				log.Errorf("an error occurred when executing the work goroutine, error: %v", e)
 			}
-			atomic.AddInt32(&l.currentGoroutineNum, -1)
-			l.cond.Signal()
+
+			<-n.sem
+			n.wg.Done()
 		}()
-		f()
+		work()
 	}()
 }
 
-// Update LocalGoroutine number to Decrease the limit per LocalGoroutine
-func (g *GlobalGoroutineLimit) Update() {
-	atomic.AddInt32(&g.localNum, -1)
-	if atomic.LoadInt32(&g.localNum) == 0 {
-		return
-	}
-	atomic.StoreInt32(&g.limit, g.maxGoroutineNum/atomic.LoadInt32(&g.localNum))
-	for _, cond := range g.allCond {
-		if cond != nil {
-			cond.Signal()
-		}
-	}
+// AddWork add the work num for wait
+func (n *GlobalGoroutineLimit) AddWork(num int) {
+	n.wg.Add(num)
+}
+
+// Wait wait all works done
+func (n *GlobalGoroutineLimit) Wait() {
+	n.wg.Wait()
 }

@@ -383,6 +383,41 @@ subjects:
     namespace: {{ .Values.kubernetes.namespace }}
   {{ end }}
 
+  {{ if .Values.controller.csiExtender.volumeModify.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-extender-runner
+rules:
+  - apiGroups: [ "xuanwu.huawei.io" ]
+    resources: [ "volumemodifyclaims","volumemodifycontents","volumemodifyclaims/status","volumemodifycontents/status" ]
+    verbs: [ "create","get","update","delete","list","watch" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "storageclasses" ]
+    verbs: [ "get","create","delete" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes"]
+    verbs: [ "get","list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-extender-role
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: huawei-csi-extender-runner
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-controller
+    namespace: {{ .Values.kubernetes.namespace }}
+  {{ end }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -391,12 +426,9 @@ metadata:
     provisioner: csi.huawei.com
   name: huawei-csi-controller-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - secrets
-    verbs:
-      - get
+  - apiGroups: [ "" ]
+    resources: [ "secrets" ]
+    verbs: [ "get" ]
   - apiGroups: [ "xuanwu.huawei.io" ]
     resources: [ "resourcetopologies" ]
     verbs: [ "create", "get", "update", "delete" ]
@@ -455,7 +487,7 @@ spec:
         - name: liveness-probe
           args:
             - "--csi-address=/csi/csi.sock"
-            - "--health-port={{ int .Values.controller.livenessProbePort | default 9808 }}"
+            - "--http-endpoint=$(HEALTHZ_HTTP_ENDPOINT)"
           image: {{ .Values.images.sidecar.livenessProbe }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
           volumeMounts:
@@ -468,6 +500,13 @@ spec:
             requests:
               cpu: 10m
               memory: 128Mi
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HEALTHZ_HTTP_ENDPOINT
+              value: "$(POD_IP):{{ int .Values.controller.livenessProbePort | default 9808 }}"
         - name: csi-provisioner
           args:
             - "--csi-address=$(ADDRESS)"
@@ -661,6 +700,57 @@ spec:
             requests:
               cpu: 50m
               memory: 128Mi
+        {{ if .Values.controller.csiExtender.volumeModify.enabled }}
+        - name: huawei-csi-extender
+          image: {{ required "Must provide the .Values.images.huaweiCSIExtender" .Values.images.huaweiCSIExtender }}
+          imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
+          env:
+            - name: DRCSI_ENDPOINT
+              value: {{ .Values.csiDriver.drEndpoint }}
+            - name: CSI_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          args:
+            - "--logging-module={{ ((.Values.csiDriver).controllerLogging).module | default "file" }}"
+            - "--log-level={{ ((.Values.csiDriver).controllerLogging).level | default "info" }}"
+            - "--log-file-dir={{ ((.Values.csiDriver).controllerLogging).fileDir | default "/var/log/huawei" }}"
+            - "--log-file-size={{ ((.Values.csiDriver).controllerLogging).fileSize | default "20M" }}"
+            - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
+            - "--dr-endpoint=$(DRCSI_ENDPOINT)"
+            - "--volume-modify-retry-base-delay={{ ((.Values.csiExtender).volumeModify).retryBaseDelay | default "5s" }}"
+            - "--volume-modify-retry-max-delay={{ ((.Values.csiExtender).volumeModify).retryMaxDelay | default "5m" }}"
+            - "--volume-modify-reconcile-delay={{ ((.Values.csiExtender).volumeModify).reconcileDelay | default "1s" }}"
+            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
+            - "--enable-leader-election=true"
+            {{ else }}
+            - "--enable-leader-election=false"
+            {{ end }}
+            {{ if (.Values.leaderElection).leaseDuration }}
+            - "--leader-lease-duration={{ .Values.leaderElection.leaseDuration }}"
+            {{ end }}
+            {{ if (.Values.leaderElection).renewDeadline }}
+            - "--leader-renew-deadline={{ .Values.leaderElection.renewDeadline }}"
+            {{ end }}
+            {{ if (.Values.leaderElection).retryPeriod }}
+            - "--leader-retry-period={{ .Values.leaderElection.retryPeriod }}"
+            {{ end }}
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/log
+              name: log
+            - mountPath: /etc/localtime
+              name: host-time
+          resources:
+            limits:
+              cpu: 300m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+        {{ end }}
         - name: huawei-csi-driver
           image: {{ required "Must provide the CSI controller service container image." .Values.images.huaweiCSIService }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	coreV1 "k8s.io/api/core/v1"
@@ -49,7 +48,7 @@ const (
 	maxTransmissionTaskWait = 100
 	maxTransmissionsNum     = 10
 
-	maxCollectGoroutineNum = 1000
+	maxNodeGoroutineLimit = 1000
 )
 
 var (
@@ -129,6 +128,11 @@ func (lg *Logs) initialize() error {
 	if lg.resource == nil {
 		return helper.LogErrorf("collect failed, error: %v", errors.New("resource is nil"))
 	}
+
+	if lg.resource.maxNodeThreads <= 0 || lg.resource.maxNodeThreads > maxNodeGoroutineLimit {
+		return helper.LogErrorf("collect failed, error: %v", errors.New("threads-max must in range [1~1000]"))
+	}
+
 	initFun()
 	err := lg.checkNamespaceExist()
 	if err != nil {
@@ -161,30 +165,39 @@ func (lg *Logs) Collect() error {
 	}
 	defer deleteLocalLogsFile()
 
-	wg := sync.WaitGroup{}
-	wg.Add(len(lg.nodePodList))
+	ctx, cancel := context.WithCancel(context.Background())
+
 	display := NewDisplay()
-	globalGoroutineLimit := helper.NewGlobalGoroutineLimit(maxCollectGoroutineNum)
+
+	nodeLimiter := helper.NewGlobalGoroutineLimit(lg.resource.maxNodeThreads)
+	nodeLimiter.AddWork(len(lg.nodePodList))
+
 	transmitter := helper.NewTransmitter(maxTransmissionsNum, maxTransmissionTaskWait)
 	transmitter.Start()
-	for nodeName, pods := range lg.nodePodList {
-		localGoroutineLimit := helper.NewLocalGoroutineLimit(globalGoroutineLimit)
-		nodeLogsCollector := NewNodeLogsCollector(pods, localGoroutineLimit, transmitter, display)
-		display.Add(fmt.Sprintf("node[%s] ", nodeName), nodeLogsCollector.completionStatus.Display)
-		go func(nodeLogsCollector *NodeLogCollector) {
-			nodeLogsCollector.Collect()
-			globalGoroutineLimit.Update()
-			wg.Done()
-		}(nodeLogsCollector)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
+
+	lg.collect(ctx, transmitter, display, nodeLimiter)
+
 	go display.Show(ctx)
-	wg.Wait()
+
+	nodeLimiter.Wait()
 	cancel()
 	transmitter.Wait()
 
 	err = compressLocalLogs(lg.nodePodList, lg.getLocalCompressedLogsFileName())
 	return err
+}
+
+func (lg *Logs) collect(ctx context.Context, transmitter *helper.TaskHandler, display *Display,
+	nodeLimiter *helper.GlobalGoroutineLimit) {
+	for nodeName, pods := range lg.nodePodList {
+		nodeLogsCollector := NewNodeLogsCollector(pods, transmitter, display)
+		display.Add(fmt.Sprintf("node[%s] ", nodeName), nodeLogsCollector.completionStatus.Display)
+
+		nodeLimiter.HandleWork(func() {
+			nodeLogsCollector.Collect()
+		})
+
+	}
 }
 
 func createNodeLogsPath(nodeList map[string][]coreV1.Pod) error {
@@ -277,7 +290,8 @@ func walkFunc(rootPath string, zipWriter *zip.Writer) filepath.WalkFunc {
 		}
 
 		// Set compression method.
-		header.Method = zip.Deflate
+		// Select store method  because the file is already compressed.
+		header.Method = zip.Store
 
 		// Set relative path of a file as the header name.
 		header.Name, err = filepath.Rel(filepath.Dir(rootPath), path)

@@ -17,11 +17,11 @@ package versioned
 
 import (
 	"fmt"
-	"k8s.io/client-go/tools/clientcmd"
 	"net/http"
 
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 
 	xuanwuv1 "huawei-csi-driver/pkg/client/clientset/versioned/typed/xuanwu/v1"

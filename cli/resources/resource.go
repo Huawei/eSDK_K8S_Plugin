@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@ type ResourceBuilder struct {
 
 	isAllNodes bool
 	nodeName   string
+
+	maxNodeThreads int
 }
 
 // NewResourceBuilder initialize a ResourceBuilder instance
@@ -177,5 +179,11 @@ func (b *ResourceBuilder) AllNodes(isAllNodes bool) *ResourceBuilder {
 // NodeName instructs the builder to request node name.
 func (b *ResourceBuilder) NodeName(nodeName string) *ResourceBuilder {
 	b.nodeName = nodeName
+	return b
+}
+
+// MaxNodeThreads instructs the builder to request maxNodeThreads.
+func (b *ResourceBuilder) MaxNodeThreads(maxNodeThreads int) *ResourceBuilder {
+	b.maxNodeThreads = maxNodeThreads
 	return b
 }

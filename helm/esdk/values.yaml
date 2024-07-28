@@ -1,8 +1,9 @@
 images:
   # Images provided by Huawei
-  huaweiCSIService: huawei-csi:4.3.0
-  storageBackendSidecar: storage-backend-sidecar:4.3.0
-  storageBackendController: storage-backend-controller:4.3.0
+  huaweiCSIService: huawei-csi:4.4.0
+  storageBackendSidecar: storage-backend-sidecar:4.4.0
+  storageBackendController: storage-backend-controller:4.4.0
+  huaweiCSIExtender: huawei-csi-extender:4.4.0
 
   # CSI-related sidecar images provided by the Kubernetes community.
   # These must match the appropriate Kubernetes version.
@@ -97,6 +98,22 @@ controller:
     #   false: disable volume snapshot feature(do not install resizer sidecar)
     # Default value: None
     enabled: true
+
+  csiExtender:
+    # volume modify feature
+    volumeModify:
+      # enabled: Enable/Disable volume modify feature
+      # Allowed values:
+      #   true: enable volume modify feature
+      #   false: disable volume modify feature
+      # Default value: false
+      enabled: false
+      # Duration, the base delay time when the resource of volume modify enters limit queue
+      retryBaseDelay: 5s
+      # Duration, the max delay time when the resource of volume modify enters limit queue
+      retryMaxDelay: 5m
+      # Duration, volume modify resource reconcile delay time
+      reconcileDelay: 1s
 
   # nodeSelector: Define node selection constraints for controller pods.
   # For the pod to be eligible to run on a node, the node must have each

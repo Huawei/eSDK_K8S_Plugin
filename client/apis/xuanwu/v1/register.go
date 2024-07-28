@@ -53,6 +53,10 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&StorageBackendContentList{},
 		&ResourceTopology{},
 		&ResourceTopologyList{},
+		&VolumeModifyClaim{},
+		&VolumeModifyClaimList{},
+		&VolumeModifyContent{},
+		&VolumeModifyContentList{},
 	)
 	v1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

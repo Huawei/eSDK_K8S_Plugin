@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ type optionsManager struct {
 	connectorOption *connectorOptions
 	serviceOption   *serviceOptions
 	k8sOption       *k8sOptions
+	extenderOption  *extenderOptions
 }
 
 // NewOptionsManager return options manager
@@ -39,6 +40,7 @@ func NewOptionsManager() *optionsManager {
 		connectorOption: NewConnectorOptions(),
 		serviceOption:   NewServiceOptions(),
 		k8sOption:       NewK8sOptions(),
+		extenderOption:  NewExtenderOptions(),
 	}
 }
 
@@ -48,6 +50,7 @@ func (opt *optionsManager) AddFlags(ff *flag.FlagSet) {
 	opt.connectorOption.AddFlags(ff)
 	opt.serviceOption.AddFlags(ff)
 	opt.k8sOption.AddFlags(ff)
+	opt.extenderOption.AddFlags(ff)
 }
 
 // ApplyFlags assign the flags
@@ -56,6 +59,7 @@ func (opt *optionsManager) ApplyFlags(cfg *config.Config) {
 	opt.connectorOption.ApplyFlags(cfg)
 	opt.serviceOption.ApplyFlags(cfg)
 	opt.k8sOption.ApplyFlags(cfg)
+	opt.extenderOption.ApplyFlags(cfg)
 }
 
 // ValidateFlags validate the flags

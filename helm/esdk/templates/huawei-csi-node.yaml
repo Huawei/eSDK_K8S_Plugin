@@ -112,7 +112,7 @@ spec:
         - name: liveness-probe
           args:
             - "--csi-address=/csi/csi.sock"
-            - "--health-port={{ int .Values.node.livenessProbePort | default 9800 }}"
+            - "--http-endpoint=$(HEALTHZ_HTTP_ENDPOINT)"
           image: {{ .Values.images.sidecar.livenessProbe }}
           imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
           volumeMounts:
@@ -125,6 +125,13 @@ spec:
             requests:
               cpu: 10m
               memory: 128Mi
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: HEALTHZ_HTTP_ENDPOINT
+              value: "$(POD_IP):{{ int .Values.node.livenessProbePort | default 9800 }}"
         - name: csi-node-driver-registrar
           args:
             - "--csi-address=/csi/csi.sock"

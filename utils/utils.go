@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ package utils
 import (
 	"context"
 	crand "crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -81,7 +82,10 @@ const (
 	fusionstorageNas string = "fusionstorage-nas"
 )
 
-var maskObject = []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
+var (
+	maskObject     = []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
+	maskConnObject = []string{"iqn"}
+)
 
 type VolumeMetrics struct {
 	Available  *resource.Quantity
@@ -105,11 +109,19 @@ var PathExist = func(path string) (bool, error) {
 	return true, nil
 }
 
+func MaskConnSensitiveInfo(info interface{}) string {
+	return maskSensitiveInfo(info, maskConnObject)
+}
+
 func MaskSensitiveInfo(info interface{}) string {
+	return maskSensitiveInfo(info, maskObject)
+}
+
+func maskSensitiveInfo(info interface{}, maskObjects []string) string {
 	message := fmt.Sprintf("%s", info)
 	substitute := "***"
 
-	for _, value := range maskObject {
+	for _, value := range maskObjects {
 		if strings.Contains(strings.ToLower(message), strings.ToLower(value)) {
 			rePattern := fmt.Sprintf(`(?is)%s.*?\s`, value)
 			re := regexp.MustCompile(rePattern)
@@ -1018,11 +1030,38 @@ func NewContextWithRequestID() context.Context {
 }
 
 // Contains sources contains target
-func Contains(sources []int64, target int64) bool {
+func Contains[T comparable](sources []T, target T) bool {
 	for _, source := range sources {
 		if source == target {
 			return true
 		}
 	}
 	return false
+}
+
+// ConvertMapToStruct converts map[string]any to struct
+func ConvertMapToStruct[T any](params map[string]any) (*T, error) {
+	jsonBody, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+	var s T
+	if err := json.Unmarshal(jsonBody, &s); err != nil {
+		return nil, err
+	}
+
+	return &s, nil
+}
+
+// RemoveString returns a newly created []string that contains all items from slice that
+// are not equal to s.
+func RemoveString(slice []string, s string) []string {
+	newSlice := make([]string, 0)
+	for _, item := range slice {
+		if item == s {
+			continue
+		}
+		newSlice = append(newSlice, item)
+	}
+	return newSlice
 }

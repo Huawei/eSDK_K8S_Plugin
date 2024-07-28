@@ -20,3 +20,7 @@ type ResourceTopologyExpansion interface{}
 type StorageBackendClaimExpansion interface{}
 
 type StorageBackendContentExpansion interface{}
+
+type VolumeModifyClaimExpansion interface{}
+
+type VolumeModifyContentExpansion interface{}

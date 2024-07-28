@@ -32,6 +32,8 @@ const (
 
 	// MinVersionSupportLabel version gte 6.1.7 support label function
 	MinVersionSupportLabel = "6.1.7"
+	// OceanStorNas storage type is oceanstor-nas
+	OceanStorNas = "oceanstor-nas"
 )
 
 // BackendCapability backend capability

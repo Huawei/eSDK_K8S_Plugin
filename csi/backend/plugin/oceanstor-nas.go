@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,16 +18,20 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"strconv"
 
+	"huawei-csi-driver/cli/helper"
 	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
+	pkgVolume "huawei-csi-driver/pkg/volume"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/volume"
+	"huawei-csi-driver/storage/oceanstor/volume/creator"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -94,6 +98,8 @@ func (p *OceanstorNasPlugin) Init(ctx context.Context, config map[string]interfa
 	}
 
 	if protocol == ProtocolNfsPlus && p.cli.GetStorageVersion() < constants.MinVersionSupportLabel {
+		p.Logout(ctx)
+
 		return errors.New("only oceanstor nas version gte 6.1.7 support nfs_plus")
 	}
 
@@ -124,21 +130,22 @@ func (p *OceanstorNasPlugin) checkNfsPlusPortalsFormat(portals []string) bool {
 
 func (p *OceanstorNasPlugin) getNasObj() *volume.NAS {
 	var metroRemoteCli client.BaseClientInterface
-	var replicaRemoteCli client.BaseClientInterface
 
 	if p.metroRemotePlugin != nil {
 		metroRemoteCli = p.metroRemotePlugin.cli
 	}
-	if p.replicaRemotePlugin != nil {
-		replicaRemoteCli = p.replicaRemotePlugin.cli
-	}
 
-	return volume.NewNAS(p.cli, metroRemoteCli, replicaRemoteCli, p.product, p.nasHyperMetro)
+	return volume.NewNAS(p.cli, metroRemoteCli, p.product, p.nasHyperMetro, p.isLogicPortRunningOnOwnSite())
 }
 
 // CreateVolume used to create volume
 func (p *OceanstorNasPlugin) CreateVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
+	if p.metroRemotePlugin == nil {
+		if err := p.assertLogicPortRunOnOwnSite(ctx); err != nil {
+			return nil, err
+		}
+	}
 	size, ok := parameters["size"].(int64)
 	if !ok || !utils.IsCapacityAvailable(size, SectorSize) {
 		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", size)
@@ -175,12 +182,22 @@ func (p *OceanstorNasPlugin) QueryVolume(ctx context.Context, name string, param
 
 // DeleteVolume used to delete volume
 func (p *OceanstorNasPlugin) DeleteVolume(ctx context.Context, name string) error {
+	if p.metroRemotePlugin == nil {
+		if err := p.assertLogicPortRunOnOwnSite(ctx); err != nil {
+			return err
+		}
+	}
 	nas := p.getNasObj()
 	return nas.Delete(ctx, name)
 }
 
 // ExpandVolume used to expand volume
 func (p *OceanstorNasPlugin) ExpandVolume(ctx context.Context, name string, size int64) (bool, error) {
+	if p.metroRemotePlugin == nil {
+		if err := p.assertLogicPortRunOnOwnSite(ctx); err != nil {
+			return false, err
+		}
+	}
 	if !utils.IsCapacityAvailable(size, SectorSize) {
 		msg := fmt.Sprintf("Expand Volume: the capacity %d is not an integer multiple of 512.", size)
 		log.AddContext(ctx).Errorln(msg)
@@ -255,6 +272,11 @@ func (p *OceanstorNasPlugin) UpdateMetroRemotePlugin(ctx context.Context, remote
 // CreateSnapshot used to create snapshot
 func (p *OceanstorNasPlugin) CreateSnapshot(ctx context.Context,
 	fsName, snapshotName string) (map[string]interface{}, error) {
+	if p.metroRemotePlugin == nil {
+		if err := p.assertLogicPortRunOnOwnSite(ctx); err != nil {
+			return nil, err
+		}
+	}
 	nas := p.getNasObj()
 
 	snapshotName = utils.GetFSSnapshotName(snapshotName)
@@ -268,6 +290,11 @@ func (p *OceanstorNasPlugin) CreateSnapshot(ctx context.Context,
 
 // DeleteSnapshot used to delete snapshot
 func (p *OceanstorNasPlugin) DeleteSnapshot(ctx context.Context, snapshotParentId, snapshotName string) error {
+	if p.metroRemotePlugin == nil {
+		if err := p.assertLogicPortRunOnOwnSite(ctx); err != nil {
+			return err
+		}
+	}
 	nas := p.getNasObj()
 
 	snapshotName = utils.GetFSSnapshotName(snapshotName)
@@ -370,7 +397,7 @@ func (p *OceanstorNasPlugin) updateHyperMetroCapability(ctx context.Context,
 			capabilities["SupportMetro"] = false
 		}
 	}
-	p.UpdateRemoteCapabilities(ctx, capabilities)
+	p.UpdateSupportMetroByRemoteLicense(ctx, capabilities)
 	return nil
 }
 
@@ -422,10 +449,14 @@ func (p *OceanstorNasPlugin) updateNFS4Capability(ctx context.Context, capabilit
 	return nil
 }
 
-// UpdateRemoteCapabilities used to update remote storage capabilities
-func (p *OceanstorNasPlugin) UpdateRemoteCapabilities(ctx context.Context, capabilities map[string]interface{}) {
-	// update the hyperMetro remote backend capabilities
-	if p.metroRemotePlugin == nil || p.metroRemotePlugin.cli == nil {
+// UpdateSupportMetroByRemoteLicense updates the support metro capability by remote storage license
+func (p *OceanstorNasPlugin) UpdateSupportMetroByRemoteLicense(ctx context.Context,
+	capabilities map[string]interface{}) {
+	if capabilities == nil {
+		return
+	}
+
+	if p.metroRemotePlugin == nil || p.metroRemotePlugin.cli == nil || !p.metroRemotePlugin.GetOnline() {
 		capabilities["SupportMetro"] = false
 		return
 	}
@@ -492,4 +523,226 @@ func (p *OceanstorNasPlugin) DeleteDTreeVolume(ctx context.Context, m map[string
 // ExpandDTreeVolume used to expand DTree volume
 func (p *OceanstorNasPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
 	return false, errors.New("not implement")
+}
+
+// ModifyVolume used to modify volume hyperMetro status
+func (p *OceanstorNasPlugin) ModifyVolume(ctx context.Context, VolumeId string, modifyType pkgVolume.ModifyVolumeType,
+	param map[string]string) error {
+
+	log.AddContext(ctx).Infof("ModifyVolume, VolumeId: %s, param: %v", VolumeId, param)
+	if err := p.canModify(); err != nil {
+		log.AddContext(ctx).Infof("volume can't modify, cause by: %v", err)
+		return err
+	}
+
+	if param == nil {
+		param = make(map[string]string)
+	}
+	param["vStorePairID"] = p.vStorePairID
+
+	var err error
+	if modifyType == pkgVolume.Local2HyperMetro {
+		err = p.modifyVolumeFromLocalToHyperMetro(ctx, VolumeId, param)
+	} else if modifyType == pkgVolume.HyperMetro2Local {
+		err = p.modifyVolumeFromHyperMetroToLocal(ctx, VolumeId, param)
+	} else {
+		errMsg := fmt.Sprintf("wrong modifyType: %v", modifyType)
+		log.AddContext(ctx).Errorln(errMsg)
+		return errors.New(errMsg)
+	}
+
+	return err
+}
+
+func (p *OceanstorNasPlugin) canModify() error {
+	if p.metroRemotePlugin == nil || p.metroRemotePlugin.cli == nil {
+		return fmt.Errorf("metro plugin not exist")
+	}
+
+	if p.cli.GetCurrentSiteWwn() == "" || p.metroRemotePlugin.cli.GetCurrentSiteWwn() == "" {
+		return fmt.Errorf("backend: [%s] or [%s] wwn is empty, can't modify volume", p.name,
+			p.metroRemotePlugin.name)
+	}
+
+	if p.cli.GetCurrentSiteWwn() == p.metroRemotePlugin.cli.GetCurrentSiteWwn() {
+		return fmt.Errorf("backend: [%s] and [%s] is running on the same storage device", p.name,
+			p.metroRemotePlugin.name)
+	}
+
+	if !p.isLogicPortRunningOnOwnSite() {
+		return fmt.Errorf("local backend: [%s] is not running on own storage device", p.name)
+	}
+
+	if !p.metroRemotePlugin.isLogicPortRunningOnOwnSite() {
+		return fmt.Errorf("metro backend: [%s] is not running on own storage device", p.metroRemotePlugin.name)
+	}
+	return nil
+}
+
+// GetLocal2HyperMetroParameters used to get local -> hyperMetro parameters
+func (p *OceanstorNasPlugin) GetLocal2HyperMetroParameters(ctx context.Context, VolumeId string,
+	parameters map[string]string) (map[string]interface{}, error) {
+
+	// init param, SC parameters fill here after conversion.
+	param := pkgUtils.ConvertMapString2MapInterface(parameters)
+	param["hyperMetro"] = "true"
+
+	backendName, volumeName := utils.SplitVolumeId(VolumeId)
+	param["backend"] = helper.GetBackendName(backendName)
+
+	ret := map[string]any{
+		"name":     volumeName,
+		"vstoreId": "0",
+	}
+
+	toLowerParams(param, ret)
+	processBoolParams(ctx, param, ret)
+	ret[creator.ModifyVolumeKey] = true
+	log.AddContext(ctx).Infof("getParams finish, parameters: %v", ret)
+	return ret, nil
+}
+
+func (p *OceanstorNasPlugin) modifyVolumeFromLocalToHyperMetro(ctx context.Context, VolumeId string,
+	parameters map[string]string) error {
+	log.AddContext(ctx).Infoln("modifyVolumeFromLocalToHyperMetro begin.")
+
+	// get params
+	param, err := p.GetLocal2HyperMetroParameters(ctx, VolumeId, parameters)
+	if err != nil {
+		errMsg := fmt.Sprintf("GetLocal2HyperMetroParameters failed, error: %v", err)
+		log.AddContext(ctx).Errorln(errMsg)
+		return err
+	}
+	log.AddContext(ctx).Infof("param: %v", param)
+
+	// create hyperMetro fs
+	nas := p.getNasObj()
+	_, err = nas.Modify(ctx, param)
+	if err != nil {
+		errMsg := fmt.Sprintf("Create volume failed, volumeID: %v, error: %v.", VolumeId, err)
+		log.AddContext(ctx).Errorln(errMsg)
+		return err
+	}
+
+	log.AddContext(ctx).Infof("modify volume: %s from local to hyperMetro volume success.", VolumeId)
+	return nil
+}
+
+func (p *OceanstorNasPlugin) deleteHyperMetroPair(ctx context.Context, VolumeId string) error {
+	// use active cli to delete pair
+	nas := p.getNasObj()
+	activeCli := nas.GetActiveHyperMetroCli()
+	_, volumeName := utils.SplitVolumeId(VolumeId)
+	fsInfo, err := activeCli.GetFileSystemByName(ctx, volumeName)
+	if err != nil {
+		return fmt.Errorf("get filesystem by name failed, volumeName: %v, error: %w", volumeName, err)
+	}
+
+	if fsInfo["HYPERMETROPAIRIDS"] != nil {
+		var hyperMetroIDs []string
+		hyperMetroIdBytes := []byte(fsInfo["HYPERMETROPAIRIDS"].(string))
+		err = json.Unmarshal(hyperMetroIdBytes, &hyperMetroIDs)
+		if err != nil {
+			return fmt.Errorf("unmarshal hyperMetroIdBytes failed, error: %w", err)
+		}
+
+		log.AddContext(ctx).Infof("Delete HyperMetro pair: %v, len(hyperMetroIDs): %d",
+			hyperMetroIDs, len(hyperMetroIDs))
+		if len(hyperMetroIDs) > 0 {
+			_, err = nas.DeleteHyperMetro(ctx,
+				map[string]interface{}{"hypermetroIDs": hyperMetroIDs},
+				map[string]interface{}{"activeClient": activeCli})
+			if err != nil {
+				return fmt.Errorf("delete hypermetro pair failed, error: %w", err)
+			}
+		}
+	}
+
+	log.AddContext(ctx).Infoln("deleteHyperMetroPair success.")
+	return nil
+}
+
+func (p *OceanstorNasPlugin) deleteRemoteFilesystem(ctx context.Context, VolumeId string) error {
+	// No matter what the upper layer delivers, only the remote volume is deleted.
+	if p.metroRemotePlugin == nil || p.metroRemotePlugin.cli == nil {
+		return fmt.Errorf("p.metroRemotePlugin or p.metroRemotePlugin.cli is nil")
+	}
+
+	_, volumeName := utils.SplitVolumeId(VolumeId)
+	remoteFsInfo, err := p.metroRemotePlugin.cli.GetFileSystemByName(ctx, volumeName)
+	if err != nil {
+		return fmt.Errorf("get filesystem by name failed, volumeName: %v, error: %w", volumeName, err)
+	}
+	if remoteFsInfo != nil {
+		// 1. Delete share
+		vStoreId, ok := remoteFsInfo["vstoreId"].(string)
+		if !ok {
+			vStoreId = SystemVStore
+		}
+
+		nas := p.getNasObj()
+		err = nas.SafeDeleteShare(ctx, volumeName, vStoreId, p.metroRemotePlugin.cli)
+		if err != nil {
+			return fmt.Errorf("DeleteShare failed, volumeName: %s, vStoreId: %s, error: %w",
+				volumeName, vStoreId, err)
+		}
+
+		// 2. Delete fs
+		deleteParams := map[string]interface{}{"ID": remoteFsInfo["ID"], "vstoreId": remoteFsInfo["vstoreId"]}
+		err = p.metroRemotePlugin.cli.SafeDeleteFileSystem(ctx, deleteParams)
+		if err != nil {
+			return fmt.Errorf("use backend [%s] deleteFileSystem failed, error: %w", p.metroRemotePlugin.name, err)
+		}
+	}
+
+	log.AddContext(ctx).Infoln("deleteRemoteFilesystem success.")
+	return nil
+}
+
+func (p *OceanstorNasPlugin) modifyVolumeFromHyperMetroToLocal(ctx context.Context, VolumeId string,
+	parameters map[string]string) error {
+	log.AddContext(ctx).Infoln("modifyVolumeFromHyperMetroToLocal begin.")
+
+	err := p.deleteHyperMetroPair(ctx, VolumeId)
+	if err != nil {
+		return pkgUtils.Errorf(ctx, "deleteHyperMetroPair failed, error: %v", err)
+	}
+
+	err = p.deleteRemoteFilesystem(ctx, VolumeId)
+	if err != nil {
+		return pkgUtils.Errorf(ctx, "deleteRemoteFilesystem failed, error: %v", err)
+	}
+
+	log.AddContext(ctx).Infof("modify volume: %s from hyperMetro to local volume success.", VolumeId)
+	return nil
+}
+
+func (p *OceanstorNasPlugin) assertLogicPortRunOnOwnSite(ctx context.Context) error {
+	log.AddContext(ctx).Debugf("currentLifWwn: %s, currentSiteWwn: %s",
+		p.cli.GetCurrentLifWwn(), p.cli.GetCurrentSiteWwn())
+
+	if p.cli.GetCurrentLifWwn() == "" || p.cli.GetCurrentSiteWwn() == "" {
+		return nil
+	}
+
+	if p.cli.GetCurrentLifWwn() != p.cli.GetCurrentSiteWwn() {
+		return fmt.Errorf("logic port [%s] is not running on own site, currentSiteWwn: %s, currentLifWwn: %s",
+			p.cli.GetCurrentLif(ctx), p.cli.GetCurrentSiteWwn(), p.cli.GetCurrentLifWwn())
+	}
+
+	return nil
+}
+
+func (p *OceanstorNasPlugin) isLogicPortRunningOnOwnSite() bool {
+	// The homeSiteWwn of logical port only has value when it belongs to the hyper metro vStore.
+	// so if the value of wwn is empty, the logical port is running on its own site by default.
+	if p.cli == nil {
+		return false
+	}
+
+	if p.cli.GetCurrentLifWwn() == "" || p.cli.GetCurrentSiteWwn() == "" {
+		return true
+	}
+
+	return p.cli.GetCurrentLifWwn() == p.cli.GetCurrentSiteWwn()
 }

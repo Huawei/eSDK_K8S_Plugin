@@ -29,8 +29,11 @@ type Volume interface {
 	GetDTreeParentName() string
 	GetFilesystemMode() string
 	SetFilesystemMode(string)
+	GetID() string
+	SetID(string)
 }
 type volume struct {
+	id              string
 	name            string
 	lunWWN          string
 	size            int64
@@ -92,4 +95,14 @@ func (vol *volume) GetFilesystemMode() string {
 
 func (vol *volume) SetFilesystemMode(filesystemMode string) {
 	vol.filesystemMode = filesystemMode
+}
+
+// GetID Get storage ID of volume object
+func (vol *volume) GetID() string {
+	return vol.id
+}
+
+// SetID Get storage ID of volume object
+func (vol *volume) SetID(id string) {
+	vol.id = id
 }

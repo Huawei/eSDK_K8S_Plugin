@@ -341,8 +341,8 @@ func SetStorageBackendContentOnlineStatus(ctx context.Context, backendID string,
 	return nil
 }
 
-// GetK8SAndSBCClient return k8sClient, storageBackendClient
-func GetK8SAndSBCClient(ctx context.Context) (*kubernetes.Clientset, *clientSet.Clientset, error) {
+// GetK8SAndCrdClient return k8sClient, crdClient
+func GetK8SAndCrdClient(ctx context.Context) (*kubernetes.Clientset, *clientSet.Clientset, error) {
 	var config *rest.Config
 	var err error
 	if app.GetGlobalConfig().KubeConfig != "" {
@@ -352,24 +352,24 @@ func GetK8SAndSBCClient(ctx context.Context) (*kubernetes.Clientset, *clientSet.
 	}
 
 	if err != nil {
-		log.AddContext(ctx).Errorf("Error getting cluster config, kube config: %s, %v",
+		log.AddContext(ctx).Errorf("Error getting cluster config, kube config: %s, error %v",
 			app.GetGlobalConfig().KubeConfig, err)
 		return nil, nil, err
 	}
 
 	k8sClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Error getting kubernetes client, %v", err)
+		log.AddContext(ctx).Errorf("Error getting kubernetes client error %v", err)
 		return nil, nil, err
 	}
 
-	storageBackendClient, err := clientSet.NewForConfig(config)
+	crdClient, err := clientSet.NewForConfig(config)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Error getting storage backend client, %v", err)
+		log.AddContext(ctx).Errorf("Error getting crd client error %v", err)
 		return nil, nil, err
 	}
 
-	return k8sClient, storageBackendClient, nil
+	return k8sClient, crdClient, nil
 }
 
 // InitRecorder used to init event recorder
@@ -377,14 +377,4 @@ func InitRecorder(client kubernetes.Interface, componentName string) record.Even
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&clientV1.EventSinkImpl{Interface: client.CoreV1().Events(v1.NamespaceAll)})
 	return eventBroadcaster.NewRecorder(scheme.Scheme, coreV1.EventSource{Component: componentName})
-}
-
-// GetEventRecorder used to get event recorder
-func GetEventRecorder(ctx context.Context) record.EventRecorder {
-	c, _, err := GetK8SAndSBCClient(ctx)
-	if err != nil {
-		log.AddContext(ctx).Errorf("GetK8SAndSBCClient failed.")
-	}
-
-	return InitRecorder(c, "huawei-csi")
 }

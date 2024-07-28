@@ -1,0 +1,10 @@
+apiVersion: xuanwu.huawei.io/v1
+kind: VolumeModifyClaim
+metadata:
+  name: myvmc
+spec:
+  source:
+    kind: StorageClass
+    name: mysc
+  parameters:
+    hyperMetro: "true"

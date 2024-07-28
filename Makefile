@@ -45,6 +45,7 @@ BUILD:
 	${env} go build -o ./${PACKAGE}/bin/huawei-csi ${flag} ./csi
 	${env} go build -o ./${PACKAGE}/bin/storage-backend-controller ${flag} ./cmd/storage-backend-controller
 	${env} go build -o ./${PACKAGE}/bin/storage-backend-sidecar ${flag} ./cmd/storage-backend-sidecar
+	${env} go build -o ./${PACKAGE}/bin/huawei-csi-extender ${flag} ./cmd/huawei-csi-extender
 	${env} go build -o ./${PACKAGE}/bin/oceanctl ${flag} ./cli
 
 COPY_FILE:
@@ -57,9 +58,6 @@ COPY_FILE:
 	mkdir -p ./${PACKAGE}/manual/
 	cp -r ./manual/* ./${PACKAGE}/manual/
 	cp -r ./helm/esdk/crds ./${PACKAGE}/manual/esdk/crds
-
-	mkdir -p ./${PACKAGE}/tools
-	cp -r ./tools/imageUpload/* ./${PACKAGE}/tools
 
 PACK:
 	zip -r ${PACKAGE}.zip ./${PACKAGE}

@@ -201,3 +201,24 @@ message Pool {
   // the capacities is pool capacities
   map<string, string> capacities = 2;
 }
+
+service ModifyVolumeInterface  {
+  rpc ModifyVolume(ModifyVolumeRequest) returns (ModifyVolumeResponse) {}
+}
+
+message ModifyVolumeRequest{
+  // Contains identity information for the existing volume.
+  // This field is REQUIRED.
+  string VolumeId = 1;
+  // specific source sc parameters, passed in as
+  // opaque key-value pairs.
+  map<string, string> StorageClassParameters = 2;
+  // specific volume attributes to mutate, passed in as
+  // opaque key-value pairs.
+  map<string, string> MutableParameters = 3;
+}
+
+message ModifyVolumeResponse{
+  // Reserved for expansion
+  map<string, string> VolumeAttributes = 1;
+}

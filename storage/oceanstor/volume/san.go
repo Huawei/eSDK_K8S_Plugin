@@ -86,26 +86,15 @@ func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.
 
 	taskflow := taskflow.NewTaskFlow(ctx, "Create-LUN-Volume")
 
-	replication, replicationOK := params["replication"].(bool)
 	hyperMetro, hyperMetroOK := params["hypermetro"].(bool)
-	if (replicationOK && replication) && (hyperMetroOK && hyperMetro) {
-		msg := "cannot create replication and hypermetro for a volume at the same time"
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	} else if replicationOK && replication {
-		taskflow.AddTask("Get-Replication-Params", p.getReplicationParams, nil)
-	} else if hyperMetroOK && hyperMetro {
+	if hyperMetroOK && hyperMetro {
 		taskflow.AddTask("Get-HyperMetro-Params", p.getHyperMetroParams, nil)
 	}
 
 	taskflow.AddTask("Create-Local-LUN", p.createLocalLun, p.revertLocalLun)
 	taskflow.AddTask("Create-Local-QoS", p.createLocalQoS, p.revertLocalQoS)
 
-	if replicationOK && replication {
-		taskflow.AddTask("Create-Remote-LUN", p.createRemoteLun, p.revertRemoteLun)
-		taskflow.AddTask("Create-Remote-QoS", p.createRemoteQoS, p.revertRemoteQoS)
-		taskflow.AddTask("Create-Replication-Pair", p.createReplicationPair, nil)
-	} else if hyperMetroOK && hyperMetro {
+	if hyperMetroOK && hyperMetro {
 		taskflow.AddTask("Create-Remote-LUN", p.createRemoteLun, p.revertRemoteLun)
 		taskflow.AddTask("Create-Remote-QoS", p.createRemoteQoS, p.revertRemoteQoS)
 		taskflow.AddTask("Create-HyperMetro", p.createHyperMetro, p.revertHyperMetro)
@@ -173,11 +162,6 @@ func (p *SAN) Delete(ctx context.Context, name string) error {
 		taskflow.AddTask("Delete-HyperMetro-Remote-LUN", p.deleteHyperMetroRemoteLun, nil)
 	}
 
-	if remoteReplication, ok := rss["RemoteReplication"]; ok && remoteReplication == "TRUE" {
-		taskflow.AddTask("Delete-Replication-Pair", p.deleteReplicationPair, nil)
-		taskflow.AddTask("Delete-Replication-Remote-LUN", p.deleteReplicationRemoteLun, nil)
-	}
-
 	if lunCopy, ok := rss["LunCopy"]; ok && lunCopy == "TRUE" {
 		taskflow.AddTask("Delete-Local-LunCopy", p.deleteLocalLunCopy, nil)
 	}
@@ -213,8 +197,13 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 
 	isAttached := lun["EXPOSEDTOINITIATOR"] == "true"
 	curSize := utils.ParseIntWithDefault(lun["CAPACITY"].(string), 10, 64, 0)
-	if newSize <= curSize {
-		msg := fmt.Sprintf("Lun %s newSize %d must be greater than curSize %d", lunName, newSize, curSize)
+	if newSize == curSize {
+		log.AddContext(ctx).Infof("the size of lun %s has not changed and the current size is %d",
+			lunName, newSize)
+		return isAttached, nil
+	} else if newSize < curSize {
+		msg := fmt.Sprintf("Lun %s newSize %d must be greater than or equal to curSize %d",
+			lunName, newSize, curSize)
 		log.AddContext(ctx).Errorln(msg)
 		return false, errors.New(msg)
 	}
@@ -234,21 +223,10 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 		expandTask.AddTask("Expand-HyperMetro-Remote-LUN", p.expandHyperMetroRemoteLun, nil)
 	}
 
-	if remoteReplication, ok := rss["RemoteReplication"]; ok && remoteReplication == "TRUE" {
-		expandTask.AddTask("Expand-Replication-Remote-PreCheck-Capacity",
-			p.preExpandReplicationCheckRemoteCapacity, nil)
-		expandTask.AddTask("Split-Replication", p.splitReplication, nil)
-		expandTask.AddTask("Expand-Replication-Remote-LUN", p.expandReplicationRemoteLun, nil)
-	}
-
 	expandTask.AddTask("Expand-Local-Lun", p.expandLocalLun, nil)
 
 	if hyperMetro, ok := rss["HyperMetro"]; ok && hyperMetro == "TRUE" {
 		expandTask.AddTask("Sync-HyperMetro", p.syncHyperMetro, nil)
-	}
-
-	if remoteReplication, ok := rss["RemoteReplication"]; ok && remoteReplication == "TRUE" {
-		expandTask.AddTask("Sync-Replication", p.syncReplication, nil)
 	}
 
 	params := map[string]interface{}{
@@ -1183,7 +1161,7 @@ func (p *SAN) getHyperMetroParams(ctx context.Context,
 	}
 
 	if p.metroRemoteCli == nil {
-		msg := "remote client for hypermetro is nil"
+		msg := "hypermetro backend is not configured"
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
@@ -1366,7 +1344,7 @@ func (p *SAN) preExpandCheckRemoteCapacity(ctx context.Context,
 	}
 
 	if newSize < curSize {
-		msg := fmt.Sprintf("Remote Lun %s newSize %d must be greater than curSize %d",
+		msg := fmt.Sprintf("Remote Lun %s newSize %d must be greater than or equal to curSize %d",
 			remoteLunName, newSize, curSize)
 		log.AddContext(ctx).Errorln(msg)
 		return "", errors.New(msg)
@@ -1378,18 +1356,6 @@ func (p *SAN) preExpandCheckRemoteCapacity(ctx context.Context,
 func (p *SAN) preExpandHyperMetroCheckRemoteCapacity(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
 	remoteLunID, err := p.preExpandCheckRemoteCapacity(ctx, params, p.metroRemoteCli)
-	if err != nil {
-		return nil, err
-	}
-
-	return map[string]interface{}{
-		"remoteLunID": remoteLunID,
-	}, nil
-}
-
-func (p *SAN) preExpandReplicationCheckRemoteCapacity(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	remoteLunID, err := p.preExpandCheckRemoteCapacity(ctx, params, p.replicaRemoteCli)
 	if err != nil {
 		return nil, err
 	}
@@ -1707,99 +1673,6 @@ func (p *SAN) deactivateSnapshot(ctx context.Context,
 	return nil, nil
 }
 
-func (p *SAN) getReplicationParams(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	if p.replicaRemoteCli == nil {
-		msg := "remote client for replication is nil"
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
-	remotePoolID, err := p.getRemotePoolID(ctx, params, p.replicaRemoteCli)
-	if err != nil {
-		return nil, err
-	}
-
-	remoteSystem, err := p.replicaRemoteCli.GetSystem(ctx)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Remote device is abnormal: %v", err)
-		return nil, err
-	}
-
-	sn, ok := remoteSystem["ID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "parse remoteDeviceID to string failed, data: %v", remoteSystem["ID"])
-	}
-	remoteDeviceID, err := p.getRemoteDeviceID(ctx, sn)
-	if err != nil {
-		return nil, err
-	}
-
-	res := map[string]interface{}{
-		"remotePoolID":   remotePoolID,
-		"remoteCli":      p.replicaRemoteCli,
-		"remoteDeviceID": remoteDeviceID,
-		"resType":        11,
-	}
-
-	return res, nil
-}
-
-func (p *SAN) deleteReplicationPair(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID, ok := params["lunID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
-	}
-
-	pairs, err := p.cli.GetReplicationPairByResID(ctx, lunID, 11)
-	if err != nil {
-		return nil, err
-	}
-
-	if pairs == nil || len(pairs) == 0 {
-		return nil, nil
-	}
-
-	for _, pair := range pairs {
-		pairID, ok := pair["ID"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "format pairID to string failed, data: %v", pair["ID"])
-		}
-		runningStatus, ok := pair["RUNNINGSTATUS"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "format runningStatus to string failed, data: %v", pair["RUNNINGSTATUS"])
-		}
-		if runningStatus == replicationPairRunningStatusNormal ||
-			runningStatus == replicationPairRunningStatusSync {
-			p.cli.SplitReplicationPair(ctx, pairID)
-		}
-
-		err = p.cli.DeleteReplicationPair(ctx, pairID)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Delete replication pair %s error: %v", pairID, err)
-			return nil, err
-		}
-	}
-
-	return nil, nil
-}
-
-func (p *SAN) deleteReplicationRemoteLun(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	if p.replicaRemoteCli == nil {
-		log.AddContext(ctx).Warningln("Replication remote cli is nil, the remote lun will be leftover")
-		return nil, nil
-	}
-
-	lunName, ok := params["lunName"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "format lunName to string failed, data: %v", params["lunName"])
-	}
-	err := p.deleteLun(ctx, lunName, p.replicaRemoteCli)
-	return nil, err
-}
-
 func (p *SAN) deleteLun(ctx context.Context, name string, cli client.BaseClientInterface) error {
 	lun, err := cli.GetLunByName(ctx, name)
 	if err != nil {
@@ -1832,87 +1705,4 @@ func (p *SAN) deleteLun(ctx context.Context, name string, cli client.BaseClientI
 	}
 
 	return nil
-}
-
-func (p *SAN) splitReplication(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	lunID, ok := params["lunID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "format lunID to string failed, data: %v", params["lunID"])
-	}
-	pairs, err := p.cli.GetReplicationPairByResID(ctx, lunID, 11)
-	if err != nil {
-		return nil, err
-	}
-
-	if pairs == nil || len(pairs) == 0 {
-		return nil, nil
-	}
-
-	replicationPairIDs := []string{}
-
-	for _, pair := range pairs {
-		pairID, ok := pair["ID"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "format pairID to string failed, data: %v", pair["ID"])
-		}
-		runningStatus, ok := pair["RUNNINGSTATUS"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "format runningStatus to string failed, data: %v", pair["RUNNINGSTATUS"])
-		}
-
-		if runningStatus != replicationPairRunningStatusNormal &&
-			runningStatus != replicationPairRunningStatusSync {
-			continue
-		}
-
-		err := p.cli.SplitReplicationPair(ctx, pairID)
-		if err != nil {
-			return nil, err
-		}
-
-		replicationPairIDs = append(replicationPairIDs, pairID)
-	}
-
-	return map[string]interface{}{
-		"replicationPairIDs": replicationPairIDs,
-	}, nil
-}
-
-func (p *SAN) expandReplicationRemoteLun(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	remoteLunID, ok := taskResult["remoteLunID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "format remoteLunID to string failed, data: %v", taskResult["remoteLunID"])
-	}
-
-	newSize, ok := params["size"].(int64)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "format newSize to int64 failed, data: %v", params["size"])
-	}
-	err := p.replicaRemoteCli.ExtendLun(ctx, remoteLunID, newSize)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Extend replication remote lun %s error: %v", remoteLunID, err)
-		return nil, err
-	}
-
-	return nil, nil
-}
-
-func (p *SAN) syncReplication(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	replicationPairIDs, ok := taskResult["replicationPairIDs"].([]string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "format replicationPairIDs to []string failed, data: %v", taskResult["replicationPairIDs"])
-	}
-
-	for _, pairID := range replicationPairIDs {
-		err := p.cli.SyncReplicationPair(ctx, pairID)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Sync san replication pair %s error: %v", pairID, err)
-			return nil, err
-		}
-	}
-
-	return nil, nil
 }

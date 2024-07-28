@@ -34,10 +34,12 @@ func init() {
 
 // ConnectVolume to mount the source to target path, the source path can be block or nfs
 // Example:
-//    mount /dev/sdb /<target-path>
-//    mount <source-path> /<target-path>
+//
+//	mount /dev/sdb /<target-path>
+//	mount <source-path> /<target-path>
 func (isc *ISCSI) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
-	log.AddContext(ctx).Infof("ISCSI Start to connect volume ==> connect info: %v", conn)
+	log.AddContext(ctx).Infof("ISCSI Start to connect volume ==> connect info: %v",
+		utils.MaskConnSensitiveInfo(conn))
 	tgtLunWWN, exist := conn["tgtLunWWN"].(string)
 	if !exist {
 		return "", utils.Errorln(ctx, "key tgtLunWWN does not exist in connection properties")

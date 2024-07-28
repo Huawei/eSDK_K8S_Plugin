@@ -63,9 +63,14 @@ func main() {
 		logrus.Fatalf("Init logger [%s] failed. error: [%v]", containerName, err)
 	}
 
-	ctx := context.Background()
-	k8sClient, storageBackendClient, err := utils.GetK8SAndSBCClient(ctx)
+	ctx, err := log.SetRequestInfo(context.Background())
 	if err != nil {
+		log.AddContext(ctx).Infof("set request id failed, error is [%v]", err)
+	}
+
+	k8sClient, crdClient, err := utils.GetK8SAndCrdClient(ctx)
+	if err != nil {
+		log.AddContext(ctx).Errorf("GetK8SAndCrdClient failed, error: %v", err)
 		return
 	}
 
@@ -81,7 +86,7 @@ func main() {
 	signalChan := make(chan os.Signal, 1)
 	defer close(signalChan)
 
-	startWithLeaderElectionOnCondition(ctx, k8sClient, storageBackendClient, recorder, signalChan)
+	startWithLeaderElectionOnCondition(ctx, k8sClient, crdClient, recorder, signalChan)
 
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGILL, syscall.SIGKILL, syscall.SIGTERM)
 	stopSignal := <-signalChan
@@ -176,10 +181,10 @@ func ensureCRDExist(ctx context.Context, client *clientSet.Clientset) error {
 }
 
 func startWithLeaderElectionOnCondition(ctx context.Context, k8sClient *kubernetes.Clientset,
-	storageBackendClient *clientSet.Clientset, recorder record.EventRecorder, ch chan os.Signal) {
+	crdClient *clientSet.Clientset, recorder record.EventRecorder, ch chan os.Signal) {
 	if !app.GetGlobalConfig().EnableLeaderElection {
 		log.AddContext(ctx).Infoln("Start controller without leader election.")
-		go runController(ctx, storageBackendClient, recorder, ch)
+		go runController(ctx, crdClient, recorder, ch)
 	} else {
 		leaderElection := utils.LeaderElectionConf{
 			LeaderName:    leaderLockObjectName,
@@ -187,8 +192,11 @@ func startWithLeaderElectionOnCondition(ctx context.Context, k8sClient *kubernet
 			RenewDeadline: app.GetGlobalConfig().LeaderRenewDeadline,
 			RetryPeriod:   app.GetGlobalConfig().LeaderRetryPeriod,
 		}
-		go utils.RunWithLeaderElection(ctx, leaderElection,
-			k8sClient, storageBackendClient, recorder,
-			runController, ch)
+
+		runFun := func(ctx context.Context, ch chan os.Signal) {
+			runController(ctx, crdClient, recorder, ch)
+		}
+
+		go utils.RunWithLeaderElection(ctx, leaderElection, k8sClient, recorder, runFun, ch)
 	}
 }

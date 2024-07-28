@@ -23,9 +23,9 @@ import (
 	"fmt"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend/plugin"
@@ -71,6 +71,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 
 // DeleteVolume used to delete volume
 func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+	defer utils.RecoverPanic(ctx)
 	volumeId := req.GetVolumeId()
 	log.AddContext(ctx).Infof("Start to delete volume %s", volumeId)
 
@@ -109,6 +110,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 // ControllerExpandVolume used to controller expand volume
 func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (
 	*csi.ControllerExpandVolumeResponse, error) {
+	defer utils.RecoverPanic(ctx)
 
 	volumeId := req.GetVolumeId()
 	if volumeId == "" {
@@ -163,6 +165,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 // ControllerPublishVolume used to controller publish volume
 func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (
 	*csi.ControllerPublishVolumeResponse, error) {
+	defer utils.RecoverPanic(ctx)
 
 	nodeId := req.GetNodeId()
 	volumeId := req.GetVolumeId()
@@ -208,6 +211,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 // ControllerUnpublishVolume used to controller unpublish volume
 func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (
 	*csi.ControllerUnpublishVolumeResponse, error) {
+	defer utils.RecoverPanic(ctx)
 
 	volumeId := req.GetVolumeId()
 	nodeInfo := req.GetNodeId()
@@ -260,6 +264,7 @@ func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (
 // ControllerGetCapabilities used to controller get capabilities
 func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (
 	*csi.ControllerGetCapabilitiesResponse, error) {
+	defer utils.RecoverPanic(ctx)
 
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: []*csi.ControllerServiceCapability{
@@ -305,6 +310,7 @@ func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.Control
 // CreateSnapshot used to create snapshot for volume
 func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (
 	*csi.CreateSnapshotResponse, error) {
+	defer utils.RecoverPanic(ctx)
 
 	volumeId := req.GetSourceVolumeId()
 	if volumeId == "" {
@@ -337,7 +343,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 			SizeBytes:      snapshot["SizeBytes"].(int64),
 			SnapshotId:     backendName + "." + snapshot["ParentID"].(string) + "." + snapshotName,
 			SourceVolumeId: volumeId,
-			CreationTime:   &timestamp.Timestamp{Seconds: snapshot["CreationTime"].(int64)},
+			CreationTime:   &timestamppb.Timestamp{Seconds: snapshot["CreationTime"].(int64)},
 			ReadyToUse:     true,
 		},
 	}, nil
@@ -346,6 +352,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 // DeleteSnapshot used to delete snapshot
 func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (
 	*csi.DeleteSnapshotResponse, error) {
+	defer utils.RecoverPanic(ctx)
 
 	snapshotId := req.GetSnapshotId()
 	if snapshotId == "" {

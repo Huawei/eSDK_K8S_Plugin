@@ -24,6 +24,7 @@ import (
 
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	pkgUtils "huawei-csi-driver/pkg/utils"
+	pkgVolume "huawei-csi-driver/pkg/volume"
 	"huawei-csi-driver/storage/fusionstorage/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -63,6 +64,11 @@ func (p *FusionStoragePlugin) init(ctx context.Context, config map[string]interf
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			cli.Logout(ctx)
+		}
+	}()
 
 	err = cli.SetAccountId(ctx)
 	if err != nil {
@@ -217,4 +223,11 @@ func (p *FusionStoragePlugin) getNewClientConfig(ctx context.Context, config map
 	newClientConfig.CertSecretMeta, _ = config["certSecret"].(string)
 
 	return newClientConfig, nil
+}
+
+// ModifyVolume used to modify volume hyperMetro status
+func (p *FusionStoragePlugin) ModifyVolume(ctx context.Context, volumeName string,
+	modifyType pkgVolume.ModifyVolumeType, param map[string]string) error {
+
+	return errors.New("not implement")
 }

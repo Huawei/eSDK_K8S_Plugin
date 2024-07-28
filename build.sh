@@ -48,26 +48,31 @@ rm -rf build_dir
 rm -f ./huawei-csi
 rm -f ./storage-backend-controller
 rm -f ./storage-backend-sidecar
+rm -f ./huawei-csi-extender
 unzip -d build_dir -q ${package_name}.zip
 mv build_dir/${package_name}/bin/huawei-csi ./
 mv build_dir/${package_name}/bin/storage-backend-controller ./
 mv build_dir/${package_name}/bin/storage-backend-sidecar ./
+mv build_dir/${package_name}/bin/huawei-csi-extender ./
 
 docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target huawei-csi-driver -f Dockerfile -t huawei-csi:${VER} .
 docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target storage-backend-controller -f Dockerfile -t storage-backend-controller:${VER} .
 docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target storage-backend-sidecar -f Dockerfile -t storage-backend-sidecar:${VER} .
+docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target huawei-csi-extender -f Dockerfile -t huawei-csi-extender:${VER} .
 
 echo "Start to save image file"
 plat=$(echo ${PLATFORM}|tr 'A-Z' 'a-z')
 docker save huawei-csi:${VER} -o huawei-csi-v${VER}-${plat}.tar
 docker save storage-backend-controller:${VER} -o storage-backend-controller-v${VER}-${plat}.tar
 docker save storage-backend-sidecar:${VER} -o storage-backend-sidecar-v${VER}-${plat}.tar
+docker save huawei-csi-extender:${VER} -o huawei-csi-extender-v${VER}-${plat}.tar
 
 echo "Start to move image file"
 mkdir build_dir/${package_name}/image
 mv huawei-csi-v${VER}-${plat}.tar build_dir/${package_name}/image
 mv storage-backend-controller-v${VER}-${plat}.tar build_dir/${package_name}/image
 mv storage-backend-sidecar-v${VER}-${plat}.tar build_dir/${package_name}/image
+mv huawei-csi-extender-v${VER}-${plat}.tar build_dir/${package_name}/image
 
 echo "Start to packing files"
 rm -rf ${package_name}.zip

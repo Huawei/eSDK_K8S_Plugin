@@ -56,6 +56,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Xuanwu().V1().StorageBackendClaims().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("storagebackendcontents"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Xuanwu().V1().StorageBackendContents().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("volumemodifyclaims"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Xuanwu().V1().VolumeModifyClaims().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("volumemodifycontents"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Xuanwu().V1().VolumeModifyContents().Informer()}, nil
 
 	}
 

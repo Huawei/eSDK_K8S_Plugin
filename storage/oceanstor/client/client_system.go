@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	netUrl "net/url"
 
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
@@ -43,6 +44,10 @@ type System interface {
 	GetDeviceSN() string
 	// GetStorageVersion used for get storage version
 	GetStorageVersion() string
+	// GetCurrentSiteWwn used for get current site wwn
+	GetCurrentSiteWwn() string
+	// SetSystemInfo set system info
+	SetSystemInfo(ctx context.Context) error
 }
 
 // GetPoolByName used for get pool by name
@@ -174,7 +179,7 @@ func (cli *BaseClient) GetSystem(ctx context.Context) (map[string]interface{}, e
 	if !ok {
 		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
 	}
-	cli.setStorageVersion(respData)
+
 	return respData, nil
 }
 
@@ -233,4 +238,24 @@ func (cli *BaseClient) setStorageVersion(systemInfo map[string]interface{}) {
 // GetStorageVersion used for get storage version
 func (cli *BaseClient) GetStorageVersion() string {
 	return cli.StorageVersion
+}
+
+// GetCurrentSiteWwn used for get current site wwn
+func (cli *BaseClient) GetCurrentSiteWwn() string {
+	return cli.CurrentSiteWwn
+}
+
+// GetCurrentLifWwn used for get current lif wwn
+func (cli *BaseClient) GetCurrentLifWwn() string {
+	return cli.CurrentLifWwn
+}
+
+// GetCurrentLif used for get current lif wwn
+func (cli *BaseClient) GetCurrentLif(ctx context.Context) string {
+	u, err := netUrl.Parse(cli.Url)
+	if err != nil {
+		log.AddContext(ctx).Errorf("parse url failed, error: %v", err)
+		return ""
+	}
+	return u.Hostname()
 }

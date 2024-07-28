@@ -105,10 +105,15 @@ func (b *BackendSelector) SelectRemotePool(ctx context.Context, requestSize int6
 	var remotePools []*model.StoragePool
 	if hyperMetroOK && utils.StrToBool(ctx, hyperMetro) {
 		localBackend, exists := b.cacheHandler.Load(localBackendName)
-		if exists && localBackend.MetroBackend == nil {
-			return nil, fmt.Errorf("no metro backend exists for volume: %v", parameters)
+		if !exists {
+			return nil, fmt.Errorf("backend %s does not exist in cache", localBackendName)
 		}
-		remotePools, err = filterPool(ctx, requestSize, localBackend.Pools, parameters, backend.SecondaryFilterFuncs)
+		if localBackend.MetroBackend == nil {
+			return nil, fmt.Errorf("no metro backend of %s exists for volume: %v", localBackendName, parameters)
+		}
+		log.AddContext(ctx).Debugf("load backend %s success: %+v", localBackendName, localBackend)
+		remotePools, err = filterPool(ctx,
+			requestSize, localBackend.MetroBackend.Pools, parameters, backend.SecondaryFilterFuncs)
 	}
 
 	if replicationOK && utils.StrToBool(ctx, replication) {

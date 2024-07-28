@@ -2,6 +2,16 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
+## Changes since v4.3.0
+
+- Support Kubernetes 1.30
+- Support OceanStor 6.1.8
+- Support OceanStor Dorado 6.1.8
+- Support Red Hat CoreOS 4.15 x86_64
+- Support OpenEuler 22.03 LTS SP1 x86_64
+- The new feature Modify Volume allows a normal PV to be changed to a HyperMetro PV
+- Create VolumeSnapshot and Clone Persistent Volume support HyperMetro PV
+
 ## Changes since v4.2.0
 
 - Support UltraPath 31.2.1/NVMe over RoCE on Rocky Linux 8.6 X86_64

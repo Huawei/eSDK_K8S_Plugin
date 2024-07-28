@@ -38,6 +38,14 @@ func (c *FakeXuanwuV1) StorageBackendContents() v1.StorageBackendContentInterfac
 	return &FakeStorageBackendContents{c}
 }
 
+func (c *FakeXuanwuV1) VolumeModifyClaims() v1.VolumeModifyClaimInterface {
+	return &FakeVolumeModifyClaims{c}
+}
+
+func (c *FakeXuanwuV1) VolumeModifyContents() v1.VolumeModifyContentInterface {
+	return &FakeVolumeModifyContents{c}
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeXuanwuV1) RESTClient() rest.Interface {

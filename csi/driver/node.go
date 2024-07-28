@@ -62,6 +62,7 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 // NodeUnstageVolume used to unstage volume
 func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+	defer utils.RecoverPanic(ctx)
 	volumeId := req.GetVolumeId()
 	targetPath := req.GetStagingTargetPath()
 
@@ -87,6 +88,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 // NodePublishVolume used to node publish volume
 func (d *Driver) NodePublishVolume(ctx context.Context,
 	req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	defer utils.RecoverPanic(ctx)
 	volumeId := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
 
@@ -112,6 +114,7 @@ func (d *Driver) NodePublishVolume(ctx context.Context,
 // NodeUnpublishVolume used to node unpublish volume
 func (d *Driver) NodeUnpublishVolume(ctx context.Context,
 	req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	defer utils.RecoverPanic(ctx)
 
 	volumeId := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
@@ -157,6 +160,7 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context,
 
 // NodeGetInfo used to get node info
 func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	defer utils.RecoverPanic(ctx)
 	hostname, err := utils.GetHostName(ctx)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Cannot get current host's hostname")
@@ -199,6 +203,7 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 
 // NodeGetCapabilities used to get node capabilities
 func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
+	defer utils.RecoverPanic(ctx)
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: []*csi.NodeServiceCapability{
 			{
@@ -228,6 +233,7 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 
 // NodeGetVolumeStats used to get node volume status
 func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	defer utils.RecoverPanic(ctx)
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		msg := fmt.Sprintf("no volume ID provided")
@@ -313,6 +319,7 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 // NodeExpandVolume used to node expand volume
 func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (
 	*csi.NodeExpandVolumeResponse, error) {
+	defer utils.RecoverPanic(ctx)
 
 	log.AddContext(ctx).Infof("Start to node expand volume %s", req)
 	volumeId := req.GetVolumeId()

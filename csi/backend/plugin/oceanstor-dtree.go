@@ -24,6 +24,7 @@ import (
 	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
+	pkgVolume "huawei-csi-driver/pkg/volume"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/volume"
 	"huawei-csi-driver/utils"
@@ -330,4 +331,11 @@ func (p *OceanstorDTreePlugin) updateSmartThin(capabilities map[string]interface
 		capabilities["SupportThin"] = true
 	}
 	return nil
+}
+
+// ModifyVolume used to modify volume hyperMetro status
+func (p *OceanstorDTreePlugin) ModifyVolume(ctx context.Context, volumeName string,
+	modifyType pkgVolume.ModifyVolumeType, param map[string]string) error {
+
+	return errors.New("not implement")
 }

@@ -28,6 +28,8 @@ import (
 type VStore interface {
 	// GetvStoreName used for get vstore name in *BaseClient
 	GetvStoreName() string
+	// GetvStoreID used for get vstore ID in *BaseClient
+	GetvStoreID() string
 	// GetvStoreByName used for get vstore info by vstore name
 	GetvStoreByName(ctx context.Context, name string) (map[string]interface{}, error)
 	// GetvStorePairByID used for get vstore pair by pair id
@@ -39,6 +41,11 @@ type VStore interface {
 // GetvStoreName used for get vstore name in *BaseClient
 func (cli *BaseClient) GetvStoreName() string {
 	return cli.VStoreName
+}
+
+// GetvStoreID used for get vstore ID in *BaseClient
+func (cli *BaseClient) GetvStoreID() string {
+	return cli.VStoreID
 }
 
 // GetvStoreByName used for get vstore info by vstore name

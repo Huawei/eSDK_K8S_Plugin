@@ -304,3 +304,34 @@ func ConvertToMapValueX[T bool | string | int64 | map[string]interface{}](ctx co
 	}
 	return r
 }
+
+// ConvertMapString2MapInterface used to convert map[string]string to map[string]interface
+func ConvertMapString2MapInterface(param map[string]string) map[string]interface{} {
+	ret := make(map[string]interface{})
+	if param == nil {
+		return ret
+	}
+
+	for key, val := range param {
+		ret[key] = val
+	}
+	return ret
+}
+
+// CombineMap combines two maps and returns a new map, if there's a key conflict, subject to the destination map.
+func CombineMap[K comparable, V any](dst map[K]V, src map[K]V) map[K]V {
+	res := make(map[K]V, len(dst))
+	for k, v := range dst {
+		res[k] = v
+	}
+
+	for k, v := range src {
+		if _, ok := res[k]; ok {
+			continue
+		}
+
+		res[k] = v
+	}
+
+	return res
+}

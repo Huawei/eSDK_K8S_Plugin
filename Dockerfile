@@ -32,3 +32,13 @@ LABEL description="Storage Backend Sidecar"
 ARG binary=./storage-backend-sidecar
 COPY ${binary} storage-backend-sidecar
 ENTRYPOINT ["/storage-backend-sidecar"]
+
+
+FROM gcr.io/distroless/base:latest as huawei-csi-extender
+LABEL version="${VERSION}"
+LABEL maintainers="Huawei eSDK CSI development team"
+LABEL description="Huawei CSI Extender"
+
+ARG binary=./huawei-csi-extender
+COPY ${binary} huawei-csi-extender
+ENTRYPOINT ["/huawei-csi-extender"]

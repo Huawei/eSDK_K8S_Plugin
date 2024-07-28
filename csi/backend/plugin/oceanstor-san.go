@@ -27,6 +27,7 @@ import (
 
 	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/pkg/constants"
+	pkgVolume "huawei-csi-driver/pkg/volume"
 	"huawei-csi-driver/proto"
 	"huawei-csi-driver/storage/oceanstor/attacher"
 	"huawei-csi-driver/storage/oceanstor/client"
@@ -103,6 +104,8 @@ func (p *OceanstorSanPlugin) Init(ctx context.Context, config map[string]interfa
 	}
 
 	if (protocol == "roce" || protocol == "fc-nvme") && p.product != "DoradoV6" {
+		p.Logout(ctx)
+
 		msg := fmt.Sprintf("The storage backend %s does not support NVME protocol", p.product)
 		log.AddContext(ctx).Errorln(msg)
 		return errors.New(msg)
@@ -616,4 +619,11 @@ func (p *OceanstorSanPlugin) DeleteDTreeVolume(ctx context.Context, m map[string
 // ExpandDTreeVolume used to expand DTree volume
 func (p *OceanstorSanPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
 	return false, errors.New("not implement")
+}
+
+// ModifyVolume used to modify volume hyperMetro status
+func (p *OceanstorSanPlugin) ModifyVolume(ctx context.Context, volumeName string,
+	modifyType pkgVolume.ModifyVolumeType, param map[string]string) error {
+
+	return errors.New("not implement")
 }

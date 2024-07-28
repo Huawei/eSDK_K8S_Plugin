@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import (
 
 	// init the nfs connector
 	_ "huawei-csi-driver/connector/nfs"
+	pkgVolume "huawei-csi-driver/pkg/volume"
 	"huawei-csi-driver/utils"
 )
 
@@ -34,6 +35,8 @@ type Plugin interface {
 	ExpandVolume(context.Context, string, int64) (bool, error)
 	AttachVolume(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
 	DetachVolume(context.Context, string, map[string]interface{}) error
+	ModifyVolume(context.Context, string, pkgVolume.ModifyVolumeType, map[string]string) error
+
 	UpdateBackendCapabilities(context.Context) (map[string]interface{}, map[string]interface{}, error)
 	UpdatePoolCapabilities(context.Context, []string) (map[string]interface{}, error)
 	UpdateMetroRemotePlugin(context.Context, Plugin)
@@ -46,6 +49,11 @@ type Plugin interface {
 
 	DeleteDTreeVolume(context.Context, map[string]interface{}) error
 	ExpandDTreeVolume(context.Context, map[string]interface{}) (bool, error)
+
+	// SetOnline sets the online status of plugin
+	SetOnline(bool)
+	// GetOnline gets the online status of plugin
+	GetOnline() bool
 }
 
 // SmartXQoSQuery provides Quality of Service(QoS) Query operations
@@ -78,6 +86,8 @@ func GetPlugin(storageType string) Plugin {
 }
 
 type basePlugin struct {
+	name   string
+	online bool
 }
 
 func (p *basePlugin) AttachVolume(context.Context, string, map[string]interface{}) (map[string]interface{}, error) {
@@ -89,4 +99,14 @@ func (p *basePlugin) DetachVolume(context.Context, string, map[string]interface{
 }
 
 func (p *basePlugin) UpdateMetroRemotePlugin(context.Context, Plugin) {
+}
+
+// SetOnline sets the online status of plugin
+func (p *basePlugin) SetOnline(online bool) {
+	p.online = online
+}
+
+// GetOnline gets the online status of plugin
+func (p *basePlugin) GetOnline() bool {
+	return p.online
 }

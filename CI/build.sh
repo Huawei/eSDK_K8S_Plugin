@@ -40,6 +40,7 @@ fi
 package_name="eSDK_Huawei_Storage_${RELEASE_VER}_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64"
 
 cd eSDK_Enterprise_Storage_Kubernetes
+go mod tidy || go mod tidy
 make -f Makefile RELEASE_VER=$1 VER=$2 PLATFORM=$3
 
 # -------------------------------------------------------------------------------
@@ -59,26 +60,31 @@ rm -rf build_dir
 rm -f ./huawei-csi
 rm -f ./storage-backend-controller
 rm -f ./storage-backend-sidecar
+rm -f ./huawei-csi-extender
 unzip -d build_dir -q ${package_name}.zip
-cp build_dir/${package_name}/bin/huawei-csi ./
-cp build_dir/${package_name}/bin/storage-backend-controller ./
-cp build_dir/${package_name}/bin/storage-backend-sidecar ./
+mv build_dir/${package_name}/bin/huawei-csi ./
+mv build_dir/${package_name}/bin/storage-backend-controller ./
+mv build_dir/${package_name}/bin/storage-backend-sidecar ./
+mv build_dir/${package_name}/bin/huawei-csi-extender ./
 
 docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target huawei-csi-driver -f Dockerfile -t huawei-csi:${VER} .
 docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target storage-backend-controller -f Dockerfile -t storage-backend-controller:${VER} .
 docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target storage-backend-sidecar -f Dockerfile -t storage-backend-sidecar:${VER} .
+docker build ${BUILD_FLAG} --build-arg VERSION=${VER} --target huawei-csi-extender -f Dockerfile -t huawei-csi-extender:${VER} .
 
 
 plat=$(echo ${PLATFORM}|tr 'A-Z' 'a-z')
 docker save huawei-csi:${VER} -o huawei-csi-v${VER}-${plat}.tar
 docker save storage-backend-controller:${VER} -o storage-backend-controller-v${VER}-${plat}.tar
 docker save storage-backend-sidecar:${VER} -o storage-backend-sidecar-v${VER}-${plat}.tar
+docker save huawei-csi-extender:${VER} -o huawei-csi-extender-v${VER}-${plat}.tar
 
 
 mkdir build_dir/${package_name}/image
 mv huawei-csi-v${VER}-${plat}.tar build_dir/${package_name}/image
 mv storage-backend-controller-v${VER}-${plat}.tar build_dir/${package_name}/image
 mv storage-backend-sidecar-v${VER}-${plat}.tar build_dir/${package_name}/image
+mv huawei-csi-extender-v${VER}-${plat}.tar build_dir/${package_name}/image
 # -------------------------------------------------------------------------------
 
 rm -rf ${package_name}.zip
@@ -92,4 +98,4 @@ sh esdk_ci/ci/build_product_signature.sh $(pwd)/sign
 mkdir cms
 mv sign/*.cms .
 sh esdk_ci/ci/build_product_signature_hwp7s.sh $(pwd)/sign
-mv sign/* .
+mv sign/* ${WORKSPACE}/eSDK_Enterprise_Storage_Kubernetes

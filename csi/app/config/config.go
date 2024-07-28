@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -79,12 +79,27 @@ type k8sConfig struct {
 	Namespace string
 }
 
+type extenderConfig struct {
+	// VolumeModifyReSyncPeriod volume modify re-sync period
+	VolumeModifyReSyncPeriod time.Duration
+
+	// VolumeModifyRetryBaseDelay retry base delay
+	VolumeModifyRetryBaseDelay time.Duration
+
+	// VolumeModifyRetryMaxDelay retry max delay
+	VolumeModifyRetryMaxDelay time.Duration
+
+	// VolumeModifyReconcileDelay reconcile delay
+	VolumeModifyReconcileDelay time.Duration
+}
+
 // Config contains the configurations from env
 type Config struct {
 	loggingConfig
 	serviceConfig
 	connectorConfig
 	k8sConfig
+	extenderConfig
 }
 
 // CompletedConfig contains the env and config

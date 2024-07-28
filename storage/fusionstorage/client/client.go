@@ -340,7 +340,8 @@ func (cli *Client) doCall(ctx context.Context, method string, url string, data m
 	if data != nil {
 		reqBytes, err := json.Marshal(data)
 		if err != nil {
-			log.AddContext(ctx).Errorf("json.Marshal data %v error: %v", data, err)
+			log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
+				fmt.Sprintf("json.Marshal data %v error: %v", data, err))
 			return nil, nil, err
 		}
 

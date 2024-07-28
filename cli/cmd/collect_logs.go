@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ func init() {
 		WithNameSpace(true).
 		WithAllNodes().
 		WithNodeName().
+		WithMaxThreads().
 		WithParent(collectCmd)
 }
 
@@ -43,6 +44,9 @@ var (
 
 		# Collect logs of all nodes in specified namespace
 		oceanctl collect logs -n <namespace> -a
+
+		# Collect logs of all nodes in specified namespace with a maximum of 50 nodes collected at the same time
+		oceanctl collect logs -n <namespace> -a --threads-max=50
 
 		# Collect logs of specified node in specified namespace
 		oceanctl collect logs -n <namespace> -N <node> -a`)
@@ -62,6 +66,7 @@ func runCollectLogs() error {
 		AllNodes(config.IsAllNodes).
 		NodeName(config.NodeName).
 		NamespaceParam(config.Namespace).
+		MaxNodeThreads(config.MaxNodeThreads).
 		Build()
 
 	return resources.NewLogs(res).Collect()

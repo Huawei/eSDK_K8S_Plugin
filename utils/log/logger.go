@@ -43,6 +43,12 @@ const (
 	// CsiRequestID use to mark requestId for log printer
 	CsiRequestID key = "csi.requestid"
 	requestID        = "requestID"
+
+	// TagNameKey use to mark tag name key
+	TagNameKey key = "csi.tag"
+
+	// TagName use to mark tag for log printer
+	TagName = "tag"
 )
 
 // LoggingInterface is an interface exposes logging functionality
@@ -307,9 +313,16 @@ func (logger *loggerImpl) AddContext(ctx context.Context) Logger {
 	if ctx.Value(CsiRequestID) == nil {
 		return logger
 	}
-	return logger.WithFields(logrus.Fields{
+
+	fields := logrus.Fields{
 		requestID: ctx.Value(CsiRequestID),
-	})
+	}
+
+	if ctx.Value(TagNameKey) != nil {
+		fields[TagName] = ctx.Value(TagNameKey)
+	}
+
+	return logger.WithFields(fields)
 }
 
 // EnsureGRPCContext ensures adding request id in incoming context
@@ -361,4 +374,53 @@ func FilteredLog(ctx context.Context, isSkip, isDebug bool, msg string) {
 	} else {
 		AddContext(ctx).Infoln(msg)
 	}
+}
+
+// SetRequestInfo used to set the context with value
+func SetRequestInfo(ctx context.Context) (context.Context, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	// if no metadata, generate one
+	if !ok {
+		md = metadata.Pairs()
+		ctx = metadata.NewIncomingContext(ctx, md)
+	}
+
+	var requestID string
+	if reqIDs, ok := md[string(CsiRequestID)]; ok && len(reqIDs) > 0 {
+		requestID = reqIDs[0]
+	}
+
+	if requestID == "" {
+		randomID, err := rand.Prime(rand.Reader, 32)
+		if err != nil {
+			Errorf("Failed in random ID generation for GRPC request ID logging: %v", err)
+			return ctx, err
+		}
+		requestID = randomID.String()
+	}
+	return context.WithValue(ctx, CsiRequestID, requestID), nil
+}
+
+// SetRequestInfoWithTag set request tag
+func SetRequestInfoWithTag(ctx context.Context, tag string) (context.Context, error) {
+	requestCtx, err := SetRequestInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	md, ok := metadata.FromIncomingContext(ctx)
+	// if no metadata, generate one
+	if !ok {
+		md = metadata.Pairs()
+		ctx = metadata.NewIncomingContext(ctx, md)
+	}
+
+	var tagName string
+	if name, ok := md[string(TagNameKey)]; ok && len(name) > 0 {
+		tagName = name[0]
+	} else {
+		tagName = tag
+	}
+
+	return context.WithValue(requestCtx, TagNameKey, tagName), nil
 }

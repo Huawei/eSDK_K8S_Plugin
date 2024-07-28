@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,12 +18,14 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
 	"bou.ke/monkey"
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 
 	"huawei-csi-driver/storage/oceanstor/client"
 )
@@ -37,30 +39,39 @@ func TestInit(t *testing.T) {
 		wantErr    bool
 	}{
 		{"Normal",
-			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "backendID": "mock-backendID", "user": "testUser", "secretName": "mock-secretname", "secretNamespace": "mock-namespace", "keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX"},
+			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "backendID": "mock-backendID",
+				"user": "testUser", "secretName": "mock-secretname", "secretNamespace": "mock-namespace",
+				"keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX", "storage": "oceanstor-nas", "name": "test"},
 			map[string]interface{}{"protocol": "nfs", "portals": []interface{}{"*.*.*.*"}},
 			false, false,
 		},
 		{"ProtocolErr",
-			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "backendID": "mock-backendID", "user": "testUser", "secretName": "mock-secretname", "secretNamespace": "mock-namespace", "keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX"},
+			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "backendID": "mock-backendID",
+				"user": "testUser", "secretName": "mock-secretname", "secretNamespace": "mock-namespace",
+				"keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX", "storage": "oceanstor-nas", "name": "test"},
 			map[string]interface{}{"protocol": "wrong", "portals": []interface{}{"*.*.*.1"}},
 			false, true,
 		},
 		{"PortNotUnique",
-			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "backendID": "mock-backendID", "user": "testUser", "secretName": "mock-secretname", "secretNamespace": "mock-namespace", "keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX"},
+			map[string]interface{}{"urls": []interface{}{"*.*.*.*"}, "backendID": "mock-backendID",
+				"user": "testUser", "secretName": "mock-secretname", "secretNamespace": "mock-namespace",
+				"keyText": "0NuSPbY4r6rANmmAipqPTMRpSlz3OULX", "storage": "oceanstor-nas", "name": "test"},
 			map[string]interface{}{"protocol": "wrong", "portals": []interface{}{"*.*.*.1", "*.*.*.2"}},
 			false, true,
 		},
 	}
 
 	var cli *client.BaseClient
-	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Logout", func(*client.BaseClient, context.Context) {})
-	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Login", func(*client.BaseClient, context.Context) error {
-		return nil
-	})
-	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "GetSystem", func(*client.BaseClient, context.Context) (map[string]interface{}, error) {
-		return map[string]interface{}{"PRODUCTVERSION": "Test"}, nil
-	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Logout",
+		func(*client.BaseClient, context.Context) {})
+	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Login",
+		func(*client.BaseClient, context.Context) error {
+			return nil
+		})
+	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "SetSystemInfo",
+		func(*client.BaseClient, context.Context) error {
+			return nil
+		})
 	defer monkey.UnpatchAll()
 
 	for _, tt := range tests {
@@ -104,4 +115,161 @@ func TestValidate(t *testing.T) {
 		err := mockOceanstorNasPlugin.Validate(ctx, config)
 		convey.So(err, convey.ShouldBeNil)
 	})
+}
+
+func TestDeleteRemoteFilesystem_EmptyCli(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{}
+	want := errors.New("p.metroRemotePlugin or p.metroRemotePlugin.cli is nil")
+
+	// mock
+	p.metroRemotePlugin = nil
+
+	// act
+	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
+
+	// assert
+	require.Contains(t, err.Error(), want.Error())
+}
+
+func TestDeleteRemoteFilesystem_GetFsFailed(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{}
+	p.metroRemotePlugin = &OceanstorNasPlugin{}
+	p.metroRemotePlugin.cli = &client.BaseClient{}
+	want := errors.New("mock GetFileSystemByName failed")
+
+	// mock
+	m := gomonkey.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "GetFileSystemByName",
+		func(c *client.BaseClient, ctx context.Context, name string) (map[string]interface{}, error) {
+			return nil, errors.New("mock GetFileSystemByName failed")
+		})
+	defer m.Reset()
+
+	// act
+	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
+
+	// assert
+	require.Contains(t, err.Error(), want.Error())
+}
+
+func TestDeleteRemoteFilesystem_GetNfsShareByPathFailed(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{}
+	p.metroRemotePlugin = &OceanstorNasPlugin{}
+	p.metroRemotePlugin.cli = &client.BaseClient{}
+	want := errors.New("mock GetNfsShareByPath failed")
+
+	// mock
+	m := gomonkey.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "GetFileSystemByName",
+		func(c *client.BaseClient, ctx context.Context, name string) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"vstoreId": "1",
+			}, nil
+		})
+	m.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "GetNfsShareByPath",
+		func(c *client.BaseClient, ctx context.Context, path, vStoreID string) (map[string]interface{}, error) {
+			return nil, errors.New("mock GetNfsShareByPath failed")
+		})
+	defer m.Reset()
+
+	// act
+	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
+
+	// assert
+	require.Contains(t, err.Error(), want.Error())
+}
+
+func TestDeleteRemoteFilesystem_DeleteNfsShareFailed(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{}
+	p.metroRemotePlugin = &OceanstorNasPlugin{}
+	p.metroRemotePlugin.cli = &client.BaseClient{}
+	want := errors.New("mock DeleteNfsShare failed")
+
+	// mock
+	m := gomonkey.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "GetFileSystemByName",
+		func(c *client.BaseClient, ctx context.Context, name string) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"vstoreId": "1",
+			}, nil
+		})
+	m.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "GetNfsShareByPath",
+		func(c *client.BaseClient, ctx context.Context, path, vStoreID string) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"ID": "test-id",
+			}, nil
+		})
+	m.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "SafeDeleteNfsShare",
+		func(c *client.BaseClient, ctx context.Context, id, vStoreID string) error {
+			return errors.New("mock DeleteNfsShare failed")
+		})
+	defer m.Reset()
+
+	// act
+	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
+
+	// assert
+	require.Contains(t, err.Error(), want.Error())
+}
+
+func TestDeleteRemoteFilesystem_DeleteFsFailed(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{}
+	p.metroRemotePlugin = &OceanstorNasPlugin{}
+	p.metroRemotePlugin.cli = &client.BaseClient{}
+	want := errors.New("use backend [] deleteFileSystem failed, error: mock DeleteFileSystem failed")
+
+	// mock
+	m := gomonkey.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "GetFileSystemByName",
+		func(c *client.BaseClient, ctx context.Context, name string) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"vstoreId": "1",
+			}, nil
+		})
+	m.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "GetNfsShareByPath",
+		func(c *client.BaseClient, ctx context.Context, path, vStoreID string) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"ID": "test-id",
+			}, nil
+		})
+	m.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "SafeDeleteNfsShare",
+		func(c *client.BaseClient, ctx context.Context, id, vStoreID string) error {
+			return nil
+		})
+	m.ApplyMethod(reflect.TypeOf(p.metroRemotePlugin.cli), "SafeDeleteFileSystem",
+		func(c *client.BaseClient, ctx context.Context, params map[string]interface{}) error {
+			return errors.New("mock DeleteFileSystem failed")
+		})
+	defer m.Reset()
+
+	// act
+	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
+
+	// assert
+	require.Contains(t, err.Error(), want.Error())
+}
+
+func TestGetLocal2HyperMetroParameters_EmptyParam(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{}
+	p.cli = &client.BaseClient{}
+
+	// mock
+	var cli *client.BaseClient
+	m := gomonkey.ApplyMethod(reflect.TypeOf(cli), "GetFileSystemByName",
+		func(c *client.BaseClient, ctx context.Context, name string) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"CAPACITY":    "12345",
+				"DESCRIPTION": "test-description",
+				"PARENTNAME":  "test-parent-name",
+			}, nil
+		})
+	defer m.Reset()
+
+	// act
+	_, err := p.GetLocal2HyperMetroParameters(ctx, "backend-test.pvc-test", nil)
+
+	// assert
+	require.Equal(t, nil, err)
 }

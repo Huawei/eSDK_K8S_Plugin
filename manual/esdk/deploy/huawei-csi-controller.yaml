@@ -1,3 +1,10 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: huawei-csi-controller
+  namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -19,25 +26,6 @@ rules:
     resources: [ "storagebackendclaims", "storagebackendclaims/status", "storagebackendcontents",
                  "storagebackendcontents/status" ]
     verbs: [ "create", "get", "list", "watch", "update", "delete" ]
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: storage-backend-sidecar-role
-  labels:
-    provisioner: csi.huawei.com
-rules:
-  - apiGroups: [ "" ]
-    resources: [ "events", "configmaps" ]
-    verbs: [ "create", "get", "update", "delete" ]
-  - apiGroups: [ "coordination.k8s.io" ]
-    resources: [ "leases" ]
-    verbs: [ "create", "get", "update", "delete" ]
-  - apiGroups: [ "xuanwu.huawei.io" ]
-    resources: [ "storagebackendcontents", "storagebackendcontents/status" ]
-    verbs: [ "get", "list", "watch", "update" ]
-
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -56,6 +44,23 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: storage-backend-sidecar-role
+  labels:
+    provisioner: csi.huawei.com
+rules:
+  - apiGroups: [ "" ]
+    resources: [ "events", "configmaps" ]
+    verbs: [ "create", "get", "update", "delete" ]
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "create", "get", "update", "delete" ]
+  - apiGroups: [ "xuanwu.huawei.io" ]
+    resources: [ "storagebackendcontents", "storagebackendcontents/status" ]
+    verbs: [ "get", "list", "watch", "update" ]
+---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -72,13 +77,17 @@ roleRef:
   name: storage-backend-sidecar-role
   apiGroup: rbac.authorization.k8s.io
 ---
-apiVersion: v1
-kind: ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-controller
+  name: huawei-csi-attacher-cfg
   namespace: huawei-csi
+rules:
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "get","watch","list","delete","update","create" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -101,20 +110,24 @@ kind: Role
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-attacher-cfg
+  name: huawei-csi-provisioner-cfg
   namespace: huawei-csi
 rules:
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
+  - apiGroups: [ "" ]
+    resources: [ "endpoints" ]
+    verbs: [ "get","watch","list","delete","update","create" ]
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "get","watch","list","delete","update","create" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "csistoragecapacities" ]
+    verbs: [ "get","list","watch","create","update","patch","delete" ]
+  - apiGroups: [ "" ]
+    resources: [ "pods" ]
+    verbs: [ "get" ]
+  - apiGroups: [ "apps" ]
+    resources: [ "replicasets" ]
+    verbs: [ "get" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -133,59 +146,33 @@ subjects:
     namespace: huawei-csi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-provisioner-cfg
-  namespace: huawei-csi
+  name: huawei-csi-provisioner-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - endpoints
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - csistoragecapacities
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - update
-      - patch
-      - delete
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-  - apiGroups:
-      - apps
-    resources:
-      - replicasets
-    verbs:
-      - get
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes" ]
+    verbs: [ "get","list","watch","create","delete","update" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumeclaims" ]
+    verbs: [ "get","list","watch","update" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "storageclasses","csinodes" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list","watch","create","update","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshots","volumesnapshotcontents" ]
+    verbs: [ "get","list" ]
+  - apiGroups: [ "" ]
+    resources: [ "nodes" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "volumeattachments" ]
+    verbs: [ "get","list","watch","update" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -207,85 +194,20 @@ kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-provisioner-runner
+  name: huawei-csi-attacher-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-      - create
-      - delete
-      - update
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims
-    verbs:
-      - get
-      - list
-      - watch
-      - update
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - storageclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshots
-    verbs:
-      - get
-      - list
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents
-    verbs:
-      - get
-      - list
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - csinodes
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - volumeattachments
-    verbs:
-      - get
-      - list
-      - watch
-      - update
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes" ]
+    verbs: [ "get","list","watch","patch","update" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "csinodes" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "volumeattachments" ]
+    verbs: [ "get","list","watch","patch","update" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "volumeattachments/status" ]
+    verbs: [ "patch" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -301,49 +223,19 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: huawei-csi
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-attacher-runner
+  name: huawei-csi-resizer-cfg
+  namespace: huawei-csi
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-      - patch
-      - update
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - csinodes
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - volumeattachments
-    verbs:
-      - get
-      - list
-      - watch
-      - patch
-      - update
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - volumeattachments/status
-    verbs:
-      - patch
-
+  - apiGroups: [ "coordination.k8s.io" ]
+    resources: [ "leases" ]
+    verbs: [ "get","watch","list","delete","update","create" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -360,26 +252,27 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: huawei-csi
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-resizer-cfg
-  namespace: huawei-csi
+  name: huawei-csi-resizer-runner
 rules:
-  - apiGroups:
-      - coordination.k8s.io
-    resources:
-      - leases
-    verbs:
-      - get
-      - watch
-      - list
-      - delete
-      - update
-      - create
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes" ]
+    verbs: [ "get","list","watch","patch","update" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumeclaims","pods" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumeclaims/status" ]
+    verbs: [ "patch","update" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list","watch","create","update","patch" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -401,52 +294,20 @@ kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-resizer-runner
+  name: huawei-csi-snapshotter-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-      - patch
-      - update
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims/status
-    verbs:
-      - patch
-      - update
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list","watch","create","update","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotclasses" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotcontents" ]
+    verbs: [ "create","get","list","watch","update","delete","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotcontents/status" ]
+    verbs: [ "update","patch" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -468,45 +329,35 @@ kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-snapshotter-runner
+  name: huawei-csi-snapshot-controller-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents
-    verbs:
-      - create
-      - get
-      - list
-      - watch
-      - update
-      - delete
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents/status
-    verbs:
-      - update
-      - patch
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes","nodes" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumeclaims" ]
+    verbs: [ "get","list","watch","update" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "storageclasses" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list","watch","create","update","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotclasses" ]
+    verbs: [ "get","list","watch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotcontents" ]
+    verbs: [ "create","get","list","watch","update","delete","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshotcontents/status" ]
+    verbs: [ "patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshots" ]
+    verbs: [ "get","list","watch","update","patch" ]
+  - apiGroups: [ "snapshot.storage.k8s.io" ]
+    resources: [ "volumesnapshots/status" ]
+    verbs: [ "update","patch" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -528,108 +379,11 @@ kind: ClusterRole
 metadata:
   labels:
     provisioner: csi.huawei.com
-  name: huawei-csi-snapshot-controller-runner
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumes
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - persistentvolumeclaims
-    verbs:
-      - get
-      - list
-      - watch
-      - update
-  - apiGroups:
-      - storage.k8s.io
-    resources:
-      - storageclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - events
-    verbs:
-      - list
-      - watch
-      - create
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotclasses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents
-    verbs:
-      - create
-      - get
-      - list
-      - watch
-      - update
-      - delete
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshotcontents/status
-    verbs:
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshots
-    verbs:
-      - get
-      - list
-      - watch
-      - update
-      - patch
-  - apiGroups:
-      - snapshot.storage.k8s.io
-    resources:
-      - volumesnapshots/status
-    verbs:
-      - update
-      - patch
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-    verbs:
-      - get
-      - list
-      - watch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    provisioner: csi.huawei.com
   name: huawei-csi-controller-runner
 rules:
-  - apiGroups:
-      - ""
-    resources:
-      - secrets
-    verbs:
-      - get
+  - apiGroups: [ "" ]
+    resources: [ "secrets" ]
+    verbs: [ "get" ]
   - apiGroups: [ "xuanwu.huawei.io" ]
     resources: [ "resourcetopologies" ]
     verbs: [ "create", "get", "update", "delete" ]
@@ -695,6 +449,7 @@ spec:
             - "--csi-address=$(ADDRESS)"
             - "--timeout=6h"
             - "--volume-name-prefix=pvc"
+            - "--leader-election"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -710,10 +465,10 @@ spec:
             requests:
               cpu: 50m
               memory: 128Mi
-        # When 'isCreate' is true and 'attachRequired' is false, csi-attacher sidecar will not be deployed
         - name: csi-attacher
           args:
             - "--csi-address=$(ADDRESS)"
+            - "--leader-election"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -734,6 +489,7 @@ spec:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
             - "--handle-volume-inuse-error=false"
+            - "--leader-election"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -753,6 +509,7 @@ spec:
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
+            - "--leader-election"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -771,6 +528,7 @@ spec:
         - name: snapshot-controller
           args:
             - "--v=5"
+            - "--leader-election"
           image: k8s.gcr.io/sig-storage/snapshot-controller:v4.2.1
           imagePullPolicy: "IfNotPresent"
           resources:
@@ -781,7 +539,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-controller
-          image: storage-backend-controller:4.3.0
+          image: storage-backend-controller:4.4.0
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CSI_NAMESPACE
@@ -801,7 +559,7 @@ spec:
             - "--max-backups=9"
             - "--web-hook-port=4433"
             - "--web-hook-address=$(POD_IP)"
-            - "--enable-leader-election=false"
+            - "--enable-leader-election=true"
             - "--leader-lease-duration=8s"
             - "--leader-renew-deadline=6s"
             - "--leader-retry-period=2s"
@@ -820,7 +578,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-sidecar
-          image: storage-backend-sidecar:4.3.0
+          image: storage-backend-sidecar:4.4.0
           imagePullPolicy: "IfNotPresent"
           env:
             - name: DRCSI_ENDPOINT
@@ -838,7 +596,7 @@ spec:
             - "--max-backups=9"
             - "--backend-update-interval=60"
             - "--dr-endpoint=$(DRCSI_ENDPOINT)"
-            - "--enable-leader-election=false"
+            - "--enable-leader-election=true"
             - "--leader-lease-duration=8s"
             - "--leader-renew-deadline=6s"
             - "--leader-retry-period=2s"
@@ -857,7 +615,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:4.3.0
+          image: huawei-csi:4.4.0
           imagePullPolicy: "IfNotPresent"
           args:
             - "--endpoint=$(CSI_ENDPOINT)"

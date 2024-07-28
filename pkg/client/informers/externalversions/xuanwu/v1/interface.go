@@ -27,6 +27,10 @@ type Interface interface {
 	StorageBackendClaims() StorageBackendClaimInformer
 	// StorageBackendContents returns a StorageBackendContentInformer.
 	StorageBackendContents() StorageBackendContentInformer
+	// VolumeModifyClaims returns a VolumeModifyClaimInformer.
+	VolumeModifyClaims() VolumeModifyClaimInformer
+	// VolumeModifyContents returns a VolumeModifyContentInformer.
+	VolumeModifyContents() VolumeModifyContentInformer
 }
 
 type version struct {
@@ -53,4 +57,14 @@ func (v *version) StorageBackendClaims() StorageBackendClaimInformer {
 // StorageBackendContents returns a StorageBackendContentInformer.
 func (v *version) StorageBackendContents() StorageBackendContentInformer {
 	return &storageBackendContentInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VolumeModifyClaims returns a VolumeModifyClaimInformer.
+func (v *version) VolumeModifyClaims() VolumeModifyClaimInformer {
+	return &volumeModifyClaimInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VolumeModifyContents returns a VolumeModifyContentInformer.
+func (v *version) VolumeModifyContents() VolumeModifyContentInformer {
+	return &volumeModifyContentInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

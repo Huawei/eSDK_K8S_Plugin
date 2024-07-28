@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -59,10 +59,14 @@ type NodeLogCollector struct {
 	// collect completion status
 	completionStatus Status
 
-	local       *helper.LocalGoroutineLimit
+	// add transaction task
 	transmitter *helper.TaskHandler
 
+	// display collect info
 	display *Display
+
+	// collectedDirMap record collected dir
+	collectedDirMap map[string]bool
 }
 
 // Status Collection status display
@@ -212,17 +216,16 @@ func RegisterIdentifyPodTypeFunc(name PodType, f func(pod *coreV1.Pod) bool) {
 }
 
 // NewNodeLogsCollector initialize a NodeLogsCollector instance
-func NewNodeLogsCollector(podList []coreV1.Pod, local *helper.LocalGoroutineLimit,
-	transmitter *helper.TaskHandler, display *Display) *NodeLogCollector {
+func NewNodeLogsCollector(podList []coreV1.Pod, transmitter *helper.TaskHandler, display *Display) *NodeLogCollector {
 	return &NodeLogCollector{
 		podList: podList,
 		completionStatus: Status{
 			total: len(podList),
 		},
-		local:        local,
-		transmitter:  transmitter,
-		fileLogsOnce: make([]helper.Once, len(podList)),
-		display:      display,
+		transmitter:     transmitter,
+		fileLogsOnce:    make([]helper.Once, len(podList)),
+		display:         display,
+		collectedDirMap: make(map[string]bool),
 	}
 }
 
@@ -232,13 +235,21 @@ func (n *NodeLogCollector) Collect() {
 	for idx := range n.podList {
 		pod := &n.podList[idx]
 		localIdx := idx
-		n.local.Do(func() {
-			n.collectPodLogs(pod, localIdx)
-			atomic.AddInt32(&n.completionStatus.completed, 1)
-			n.wg.Done()
-		})
+		go n.processPod(pod, localIdx)
 	}
 	n.wg.Wait()
+}
+
+func (n *NodeLogCollector) processPod(pod *coreV1.Pod, localIdx int) {
+	defer func() {
+		if e := recover(); e != nil {
+			log.Errorf("an error occurred when executing the sub-goroutine, error: %v", e)
+		}
+
+		atomic.AddInt32(&n.completionStatus.completed, 1)
+		n.wg.Done()
+	}()
+	n.collectPodLogs(pod, localIdx)
 }
 
 func (n *NodeLogCollector) collectPodLogs(pod *coreV1.Pod, onceIdx int) {
@@ -270,7 +281,18 @@ func (n *NodeLogCollector) collectPodLogs(pod *coreV1.Pod, onceIdx int) {
 		getConsoleLogs(ctx, pod.Namespace, container.Name, pod.Name, pod.Spec.NodeName, true)
 		if isRunning {
 			n.fileLogsOnce[onceIdx].Do(func() error {
-				err = fileLogCollector.GetFileLogs(pod.Namespace, pod.Name, container)
+				fileLogPath, err := getContainerFileLogPaths(container)
+				if err != nil {
+					log.Errorf("get container file Log paths failed, error: %v", err)
+					return err
+				}
+				isCollected := n.isCollected(fileLogPath)
+				if isCollected {
+					log.Infof("log path [%v] is already collected, process next", fileLogPath)
+					return nil
+				}
+
+				err = fileLogCollector.GetFileLogs(pod.Namespace, pod.Name, container.Name, fileLogPath)
 				if err == nil {
 					n.transmitter.AddTask(newTransmitTask(pod.Namespace, pod.Spec.NodeName, pod.Name, container.Name,
 						fileLogCollector))
@@ -283,6 +305,15 @@ func (n *NodeLogCollector) collectPodLogs(pod *coreV1.Pod, onceIdx int) {
 			})
 		}
 	}
+}
+
+func (n *NodeLogCollector) isCollected(fileLogPath string) bool {
+	if value, exist := n.collectedDirMap[fileLogPath]; exist && value {
+		return true
+	}
+
+	n.collectedDirMap[fileLogPath] = true
+	return false
 }
 
 func getConsoleLogs(ctx context.Context, namespace, containerName, podName, nodeName string, isHistoryLogs bool) {

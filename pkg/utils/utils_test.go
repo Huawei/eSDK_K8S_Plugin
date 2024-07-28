@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	//"huawei-csi-driver/utils/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
@@ -298,5 +299,33 @@ func TestConvertToMapValueX(t *testing.T) {
 	if !reflect.DeepEqual(poolCapacibilityMap["pool1"], capability) {
 		t.Errorf("ConvertToMapValueX map[string]interface{} from %+v to %+v failed",
 			poolCapabilities["pool1"], capability)
+	}
+}
+
+func TestCombineMap(t *testing.T) {
+	type testCase[K comparable, V any] struct {
+		name string
+		dst  map[K]V
+		src  map[K]V
+		want map[K]V
+	}
+	tests := []testCase[string, string]{
+		{"different",
+			map[string]string{"a": "1"},
+			map[string]string{"b": "2"},
+			map[string]string{"a": "1", "b": "2"},
+		},
+		{"conflict",
+			map[string]string{"a": "1", "b": "3"},
+			map[string]string{"b": "2"},
+			map[string]string{"a": "1", "b": "3"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CombineMap(tt.dst, tt.src); !reflect.DeepEqual(got, tt.want) {
+				require.Equal(t, tt.want, got)
+			}
+		})
 	}
 }

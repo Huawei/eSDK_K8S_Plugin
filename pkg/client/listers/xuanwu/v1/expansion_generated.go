@@ -30,3 +30,11 @@ type StorageBackendClaimNamespaceListerExpansion interface{}
 // StorageBackendContentListerExpansion allows custom methods to be added to
 // StorageBackendContentLister.
 type StorageBackendContentListerExpansion interface{}
+
+// VolumeModifyClaimListerExpansion allows custom methods to be added to
+// VolumeModifyClaimLister.
+type VolumeModifyClaimListerExpansion interface{}
+
+// VolumeModifyContentListerExpansion allows custom methods to be added to
+// VolumeModifyContentLister.
+type VolumeModifyContentListerExpansion interface{}

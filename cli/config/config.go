@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import (
 
 const (
 	// CliVersion oceanctl version
-	CliVersion = "v4.3.0"
+	CliVersion = "v4.4.0"
 
 	// DefaultMaxClientThreads default max client threads
 	DefaultMaxClientThreads = "30"
@@ -57,6 +57,9 @@ const (
 
 	// DefaultLogDir default log dir
 	DefaultLogDir = "/var/log/huawei"
+
+	// DefaultMaxNodeThreads default max Node Threads num
+	DefaultMaxNodeThreads = 50
 )
 
 var (
@@ -103,4 +106,7 @@ var (
 
 	// LogDir the value of log-dir flag, set by options.WithLogDir()
 	LogDir string
+
+	// MaxNodeThreads the value of threads-max flag, set by options.WithMaxThreads()
+	MaxNodeThreads int
 )

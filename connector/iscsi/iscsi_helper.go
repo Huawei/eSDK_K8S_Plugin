@@ -305,8 +305,7 @@ func connectISCSIPortal(ctx context.Context,
 		sessions := getAllISCSISession(ctx)
 		for _, s := range sessions {
 			if s[0] == "tcp:" && strings.ToLower(tgtPortal) == strings.ToLower(s[2]) && targetIQN == s[4] {
-				log.AddContext(ctx).Infof("Login iSCSI session success. Session: %s, manualScan: %s",
-					s[1], manualScan)
+				log.AddContext(ctx).Infof("Login iSCSI session success. manualScan: %v", manualScan)
 				return s[1], manualScan
 			}
 		}

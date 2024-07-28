@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,8 +18,17 @@
 package config
 
 import (
+	"time"
+
 	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
 	"huawei-csi-driver/utils/k8sutils"
+)
+
+const (
+	mockVolumeModifyRetryMaxDelay  = 5 * time.Minute
+	mockVolumeModifyRetryBaseDelay = 5 * time.Second
+	mockVolumeModifyReconcileDelay = 100 * time.Millisecond
+	mockVolumeModifyReSyncPeriod   = 2 * time.Minute
 )
 
 // MockCompletedConfig for unit test
@@ -30,6 +39,7 @@ func MockCompletedConfig() *CompletedConfig {
 			mockServiceConfig(),
 			mockConnectorConfig(),
 			mockK8sConfig(),
+			mockExtenderConfig(),
 		},
 		K8sUtils:     &k8sutils.KubeClient{},
 		BackendUtils: &clientSet.Clientset{},
@@ -84,5 +94,14 @@ func mockConnectorConfig() connectorConfig {
 func mockK8sConfig() k8sConfig {
 	return k8sConfig{
 		Namespace: "mock-namespace",
+	}
+}
+
+func mockExtenderConfig() extenderConfig {
+	return extenderConfig{
+		VolumeModifyRetryBaseDelay: mockVolumeModifyRetryBaseDelay,
+		VolumeModifyRetryMaxDelay:  mockVolumeModifyRetryMaxDelay,
+		VolumeModifyReconcileDelay: mockVolumeModifyReconcileDelay,
+		VolumeModifyReSyncPeriod:   mockVolumeModifyReSyncPeriod,
 	}
 }

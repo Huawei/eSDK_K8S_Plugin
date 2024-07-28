@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,8 +30,10 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -67,6 +69,9 @@ const (
 	// UserUnauthorized defines error code of user unauthorized
 	UserUnauthorized = -401
 
+	// SuccessCode defines error code of success
+	SuccessCode = int64(0)
+
 	// UrlNotFound defines error msg of url not found
 	UrlNotFound = "404_NotFound"
 )
@@ -100,18 +105,23 @@ type BaseClientInterface interface {
 	DTree
 	OceanStorQuota
 	Container
+	LIF
 
 	Call(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
+	SafeCall(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
 	BaseCall(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
+	SafeBaseCall(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
 	Get(ctx context.Context, url string, data map[string]interface{}) (Response, error)
 	Post(ctx context.Context, url string, data map[string]interface{}) (Response, error)
 	Put(ctx context.Context, url string, data map[string]interface{}) (Response, error)
 	Delete(ctx context.Context, url string, data map[string]interface{}) (Response, error)
+	SafeDelete(ctx context.Context, url string, data map[string]interface{}) (Response, error)
 	GetRequest(ctx context.Context, method string, url string, data map[string]interface{}) (*http.Request, error)
 	DuplicateClient() *BaseClient
 	Login(ctx context.Context) error
 	Logout(ctx context.Context)
 	ReLogin(ctx context.Context) error
+	GetBackendID() string
 }
 
 var (
@@ -137,6 +147,7 @@ var (
 			`/vstore_pair\?RETYPE=1`: true,
 			`/vstore?filter=NAME`:    true,
 			`/container_pv`:          true,
+			`/system`:                true,
 		},
 	}
 
@@ -144,6 +155,7 @@ var (
 		"GET": {
 			`/vstore_pair\?RETYPE=1`,
 			`/vstore\?filter=NAME`,
+			`/system`,
 		},
 	}
 
@@ -182,11 +194,16 @@ type BaseClient struct {
 	VStoreID        string
 	StorageVersion  string
 	BackendID       string
+	Storage         string
+	CurrentSiteWwn  string
+	CurrentLifWwn   string
+	LastLif         string
+	Product         string
+	DeviceId        string
+	Token           string
 
-	DeviceId string
-	Token    string
-
-	ReLoginMutex sync.Mutex
+	SystemInfoRefreshing uint32
+	ReLoginMutex         sync.Mutex
 }
 
 // HTTP defines for http request process
@@ -195,31 +212,33 @@ type HTTP interface {
 }
 
 func newHTTPClientByBackendID(ctx context.Context, backendID string) (HTTP, error) {
+	var defaultUseCert bool
+	client := &http.Client{
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: !defaultUseCert}},
+		Timeout:   60 * time.Second,
+	}
+
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		log.AddContext(ctx).Errorf("create jar failed, error: %v", err)
-		return nil, err
+		return client, err
 	}
 
 	useCert, certMeta, err := pkgUtils.GetCertSecretFromBackendID(ctx, backendID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("get cert secret from backend [%v] failed, error: %v", backendID, err)
-		return nil, err
+		return client, err
 	}
 
 	useCert, certPool, err := pkgUtils.GetCertPool(ctx, useCert, certMeta)
 	if err != nil {
 		log.AddContext(ctx).Errorf("get cert pool failed, error: %v", err)
-		return nil, err
+		return client, err
 	}
 
-	return &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool},
-		},
-		Jar:     jar,
-		Timeout: 60 * time.Second,
-	}, nil
+	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool}}
+	client.Jar = jar
+	return client, nil
 }
 
 func newHTTPClientByCertMeta(ctx context.Context, useCert bool, certMeta string) (HTTP, error) {
@@ -249,6 +268,40 @@ type Response struct {
 	Data  interface{}            `json:"data,omitempty"`
 }
 
+// AssertErrorCode asserts if error code represents success
+func (resp *Response) AssertErrorCode() error {
+	val, exists := resp.Error["code"]
+	if !exists {
+		return fmt.Errorf("error code not exists, data: %+v", *resp)
+	}
+
+	code, ok := val.(float64)
+	if !ok {
+		return fmt.Errorf("code is not float64, data: %+v", *resp)
+	}
+
+	if int64(code) != SuccessCode {
+		return fmt.Errorf("error code is not success, data: %+v", *resp)
+	}
+
+	return nil
+}
+
+// GetData converts interface{} type data to specific type
+func (resp *Response) GetData(val any) error {
+	data, err := json.Marshal(resp.Data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal data, error %w", err)
+	}
+
+	err = json.Unmarshal(data, &val)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal data as %T, error: %w", val, err)
+	}
+
+	return nil
+}
+
 // NewClientConfig stores the information needed to create a new OceanStor client
 type NewClientConfig struct {
 	Urls            []string
@@ -260,6 +313,8 @@ type NewClientConfig struct {
 	BackendID       string
 	UseCert         bool
 	CertSecretMeta  string
+	Storage         string
+	Name            string
 }
 
 // NewClient inits a new base client
@@ -290,6 +345,7 @@ func NewClient(ctx context.Context, param *NewClientConfig) (*BaseClient, error)
 	return &BaseClient{
 		Urls:            param.Urls,
 		User:            param.User,
+		Storage:         param.Storage,
 		SecretName:      param.SecretName,
 		SecretNamespace: param.SecretNamespace,
 		VStoreName:      param.VstoreName,
@@ -306,18 +362,54 @@ func (cli *BaseClient) Call(ctx context.Context,
 	var err error
 
 	r, err = cli.BaseCall(ctx, method, url, data)
-	if needReLogin(r, err) {
-		// Current connection fails, try to relogin to other Urls if exist,
-		// if relogin success, resend the request again.
-		log.AddContext(ctx).Infof("Try to relogin and resend request method: %s, Url: %s", method, url)
-
-		err = cli.ReLogin(ctx)
-		if err == nil {
-			r, err = cli.BaseCall(ctx, method, url, data)
-		}
+	if !needReLogin(r, err) {
+		return r, err
 	}
 
-	return r, err
+	// Current connection fails, try to relogin to other Urls if exist,
+	// if relogin success, resend the request again.
+	log.AddContext(ctx).Infof("Try to relogin and resend request method: %s, Url: %s", method, url)
+	err = cli.ReLogin(ctx)
+	if err != nil {
+		return r, err
+	}
+
+	// If the logical port changes from storage A to storage B, the system information must be updated.
+	if err = cli.SetSystemInfo(ctx); err != nil {
+		log.AddContext(ctx).Errorf("after relogin, can't get system info, error: %v", err)
+		return r, err
+	}
+
+	return cli.BaseCall(ctx, method, url, data)
+}
+
+// SafeCall provides call for restful request
+func (cli *BaseClient) SafeCall(ctx context.Context,
+	method string, url string,
+	data map[string]interface{}) (Response, error) {
+	var r Response
+	var err error
+
+	r, err = cli.SafeBaseCall(ctx, method, url, data)
+	if !needReLogin(r, err) {
+		return r, err
+	}
+
+	// Current connection fails, try to relogin to other Urls if exist,
+	// if relogin success, resend the request again.
+	log.AddContext(ctx).Infof("Try to re-login and resend request method: %s, Url: %s", method, url)
+	err = cli.ReLogin(ctx)
+	if err != nil {
+		return r, err
+	}
+
+	// If the logical port changes from storage A to storage B, the system information must be updated.
+	if err = cli.SetSystemInfo(ctx); err != nil {
+		log.AddContext(ctx).Errorf("after re-login, can't get system info, error: %v", err)
+		return r, err
+	}
+
+	return cli.SafeBaseCall(ctx, method, url, data)
 }
 
 // needReLogin determine if it is necessary to log in to the storage again
@@ -417,7 +509,6 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 		log.AddContext(ctx).Errorf("Send request method: %s, Url: %s, error: %v", method, req.URL, err)
 		return r, errors.New("unconnected")
 	}
-
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -433,6 +524,91 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 	if err != nil {
 		log.AddContext(ctx).Errorf("json.Unmarshal data %s error: %v", body, err)
 		return r, err
+	}
+
+	return r, nil
+}
+
+// SafeBaseCall provides base call for request
+func (cli *BaseClient) SafeBaseCall(ctx context.Context,
+	method string,
+	url string,
+	data map[string]interface{}) (Response, error) {
+	var req *http.Request
+	var err error
+
+	if cli.Client == nil {
+		return Response{}, fmt.Errorf("failed to send request method: %s, url: %s,"+
+			" cause by client not init", method, url)
+	}
+
+	reqUrl := cli.Url
+	reqUrl += url
+
+	if url != "/xx/sessions" && url != "/sessions" {
+		cli.ReLoginMutex.Lock()
+		req, err = cli.GetRequest(ctx, method, url, data)
+		cli.ReLoginMutex.Unlock()
+	} else {
+		req, err = cli.GetRequest(ctx, method, url, data)
+	}
+
+	if err != nil || req == nil {
+		return Response{}, fmt.Errorf("get request failed, error: %w", err)
+	}
+
+	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
+		fmt.Sprintf("Request method: %s, Url: %s, body: %v", method, req.URL, data))
+
+	if ClientSemaphore != nil {
+		ClientSemaphore.Acquire()
+		defer ClientSemaphore.Release()
+	}
+
+	return cli.safeDoCall(ctx, method, url, req)
+}
+
+func (cli *BaseClient) safeDoCall(ctx context.Context, method string, url string, req *http.Request) (Response, error) {
+	// check whether the logical port is changed from A to B before invoking.
+	// The possible cause is that other invoking operations are performed for re-login.
+	isNotSessionUrl := url != "/xx/sessions" && url != "/sessions"
+	if isNotSessionUrl && cli.CurrentLifWwn != "" {
+		if cli.systemInfoRefreshing() {
+			return Response{}, fmt.Errorf("querying lif and system information... Please wait")
+		}
+
+		if cli.CurrentLifWwn != cli.CurrentSiteWwn {
+			currentPort := cli.GetCurrentLif(ctx)
+			log.AddContext(ctx).Errorf("current logical port [%s] is not running on own site, "+
+				"currentLifWwn: %s, currentSiteWwn: %s", currentPort, cli.CurrentLifWwn, cli.CurrentSiteWwn)
+			return Response{}, fmt.Errorf("current logical port [%s] is not running on own site", currentPort)
+		}
+	}
+
+	resp, err := cli.Client.Do(req)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Send request method: %s, Url: %s, error: %v", method, req.URL, err)
+		return Response{}, errors.New("unconnected")
+	}
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.AddContext(ctx).Infof("read close resp failed, error %v", err)
+		}
+	}()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Response{}, fmt.Errorf("read response data error: %w", err)
+	}
+
+	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
+		fmt.Sprintf("Response method: %s, Url: %s, body: %s", method, req.URL, body))
+
+	var r Response
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		return Response{}, fmt.Errorf("json.Unmarshal data %s error: %w", body, err)
 	}
 
 	return r, nil
@@ -456,6 +632,11 @@ func (cli *BaseClient) Put(ctx context.Context, url string, data map[string]inte
 // Delete provides http request of DELETE method
 func (cli *BaseClient) Delete(ctx context.Context, url string, data map[string]interface{}) (Response, error) {
 	return cli.Call(ctx, "DELETE", url, data)
+}
+
+// SafeDelete provides http request of DELETE method
+func (cli *BaseClient) SafeDelete(ctx context.Context, url string, data map[string]interface{}) (Response, error) {
+	return cli.SafeCall(ctx, "DELETE", url, data)
 }
 
 // DuplicateClient clone a base client from origin client
@@ -529,17 +710,22 @@ func (cli *BaseClient) ValidateLogin(ctx context.Context) error {
 func (cli *BaseClient) setDeviceIdFromRespData(ctx context.Context, resp Response) {
 	respData, ok := resp.Data.(map[string]interface{})
 	if !ok {
-		log.AddContext(ctx).Warningf("convert response data: %v to map[string]interface{} failed", resp.Data)
+		log.AddContext(ctx).Warningf("convert response data to map[string]interface{} failed, data type: [%T]",
+			resp.Data)
 	}
 
 	cli.DeviceId, ok = respData["deviceid"].(string)
 	if !ok {
-		log.AddContext(ctx).Warningf("not found deviceId, response data is: %v", resp.Data)
+		log.AddContext(ctx).Warningf("not found deviceId, response data is: [%v]", respData["deviceid"])
 	}
 
+	if _, exists := respData["iBaseToken"]; !exists {
+		log.AddContext(ctx).Warningf("not found iBaseToken, response data is: [%v]", resp.Data)
+	}
 	cli.Token, ok = respData["iBaseToken"].(string)
 	if !ok {
-		log.AddContext(ctx).Warningf("not found iBaseToken, response data is: %v", resp.Data)
+		log.AddContext(ctx).Warningf("convert iBaseToken to string error, data type: [%T]",
+			respData["iBaseToken"])
 	}
 }
 
@@ -576,8 +762,7 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 			break
 		}
 
-		log.AddContext(ctx).Warningf("Login %s error due to connection failure, gonna try another Url",
-			cli.Url)
+		log.AddContext(ctx).Warningf("Login %s error due to connection failure, gonna try another Url", cli.Url)
 	}
 
 	if err != nil {
@@ -597,6 +782,7 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 	}
 
 	if err = cli.setDataFromRespData(ctx, resp); err != nil {
+		cli.Logout(ctx)
 		setErr := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.BackendID, false)
 		if setErr != nil {
 			log.AddContext(ctx).Errorf("SetStorageBackendContentOffline [%s] failed. error: %v", cli.BackendID, setErr)
@@ -609,8 +795,8 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 func (cli *BaseClient) setDataFromRespData(ctx context.Context, resp Response) error {
 	respData, ok := resp.Data.(map[string]interface{})
 	if !ok {
-		return pkgUtils.Errorln(ctx, fmt.Sprintf("convert resp.Data: [%v] to map[string]interface{} failed",
-			resp.Data))
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("convert resp.Data to map[string]interface{} failed,"+
+			" data type: [%T]", resp.Data))
 	}
 	cli.DeviceId, ok = respData["deviceid"].(string)
 	if !ok {
@@ -619,7 +805,7 @@ func (cli *BaseClient) setDataFromRespData(ctx context.Context, resp Response) e
 	}
 	cli.Token, ok = respData["iBaseToken"].(string)
 	if !ok {
-		return pkgUtils.Errorln(ctx, fmt.Sprintf("convert respData[\"iBaseToken\"]: [%v] to string failed",
+		return pkgUtils.Errorln(ctx, fmt.Sprintf("convert respData[\"iBaseToken\"]: [%T] to string failed",
 			respData["iBaseToken"]))
 	}
 
@@ -683,6 +869,11 @@ func (cli *BaseClient) ReLogin(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// GetBackendID get backend id of client
+func (cli *BaseClient) GetBackendID() string {
+	return cli.BackendID
 }
 
 func (cli *BaseClient) getResponseDataMap(ctx context.Context, data interface{}) (map[string]interface{}, error) {
@@ -847,4 +1038,80 @@ func (cli *BaseClient) getRequestParams(ctx context.Context, backendID string) (
 	}
 
 	return data, err
+}
+
+// SetSystemInfo set system info
+// the mutex lock is required for re-login. Therefore, the internal query of the login interface cannot be performed.
+func (cli *BaseClient) SetSystemInfo(ctx context.Context) error {
+	log.AddContext(ctx).Infof("set backend [%s] system info is refreshing", cli.BackendID)
+	atomic.StoreUint32(&cli.SystemInfoRefreshing, 1)
+	defer func() {
+		log.AddContext(ctx).Infof("set backend [%s] system info are refreshed", cli.BackendID)
+		atomic.StoreUint32(&cli.SystemInfoRefreshing, 0)
+	}()
+
+	err := cli.setBaseInfo(ctx)
+	if err != nil {
+		return err
+	}
+	cli.setLifInfo(ctx)
+
+	log.AddContext(ctx).Infof("backend type [%s], backend [%s], storage product [%s], storage version [%s], "+
+		"current site wwn [%s], current lif [%s], current lif wwn [%s]", cli.Storage,
+		cli.BackendID, cli.Product, cli.StorageVersion, cli.CurrentSiteWwn, cli.GetCurrentLif(ctx), cli.CurrentLifWwn)
+	return nil
+}
+
+func (cli *BaseClient) setBaseInfo(ctx context.Context) error {
+	system, err := cli.GetSystem(ctx)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get system info failed, error: %v", err)
+		return err
+	}
+
+	cli.Product, err = utils.GetProductVersion(system)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get product version failed, error: %v", err)
+		return err
+	}
+
+	storagePointVersion, ok := system["pointRelease"].(string)
+	if ok {
+		cli.StorageVersion = storagePointVersion
+	}
+
+	currentSiteWwn, ok := system["wwn"].(string)
+	if ok {
+		cli.CurrentSiteWwn = currentSiteWwn
+	}
+
+	return nil
+}
+
+func (cli *BaseClient) setLifInfo(ctx context.Context) {
+	if cli.Product != constants.OceanStorDoradoV6 || cli.Storage != constants.OceanStorNas {
+		log.AddContext(ctx).Infof("backend type [%s], name [%s], version [%s], not need query lif", cli.Storage,
+			cli.BackendID, cli.StorageVersion)
+		return
+	}
+
+	currentLif := cli.GetCurrentLif(ctx)
+	if cli.LastLif == currentLif {
+		log.AddContext(ctx).Infof("backend [%s] last lif [%s], current lif [%s], not change",
+			cli.BackendID, cli.LastLif, currentLif)
+		return
+	}
+
+	port, err := cli.GetLogicPort(ctx, currentLif)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get logic port failed, error: %v", err)
+		return
+	}
+
+	cli.LastLif = currentLif
+	cli.CurrentLifWwn = port.HomeSiteWwn
+}
+
+func (cli *BaseClient) systemInfoRefreshing() bool {
+	return atomic.LoadUint32(&cli.SystemInfoRefreshing) == 1
 }

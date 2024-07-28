@@ -28,6 +28,8 @@ type XuanwuV1Interface interface {
 	ResourceTopologiesGetter
 	StorageBackendClaimsGetter
 	StorageBackendContentsGetter
+	VolumeModifyClaimsGetter
+	VolumeModifyContentsGetter
 }
 
 // XuanwuV1Client is used to interact with features provided by the xuanwu.huawei.io group.
@@ -45,6 +47,14 @@ func (c *XuanwuV1Client) StorageBackendClaims(namespace string) StorageBackendCl
 
 func (c *XuanwuV1Client) StorageBackendContents() StorageBackendContentInterface {
 	return newStorageBackendContents(c)
+}
+
+func (c *XuanwuV1Client) VolumeModifyClaims() VolumeModifyClaimInterface {
+	return newVolumeModifyClaims(c)
+}
+
+func (c *XuanwuV1Client) VolumeModifyContents() VolumeModifyContentInterface {
+	return newVolumeModifyContents(c)
 }
 
 // NewForConfig creates a new XuanwuV1Client for the given config.

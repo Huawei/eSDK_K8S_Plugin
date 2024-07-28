@@ -1,0 +1,153 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.8.0
+  creationTimestamp: null
+  name: volumemodifyclaims.xuanwu.huawei.io
+spec:
+  group: xuanwu.huawei.io
+  names:
+    kind: VolumeModifyClaim
+    listKind: VolumeModifyClaimList
+    plural: volumemodifyclaims
+    shortNames:
+    - vmc
+    singular: volumemodifyclaim
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Status
+      type: string
+    - jsonPath: .status.ready
+      name: Ready
+      type: string
+    - jsonPath: .spec.source.kind
+      name: SourceKind
+      priority: 1
+      type: string
+    - jsonPath: .spec.source.name
+      name: SourceName
+      priority: 1
+      type: string
+    - jsonPath: .status.startedAt
+      name: StartedAt
+      priority: 1
+      type: string
+    - jsonPath: .status.completedAt
+      name: CompletedAt
+      priority: 1
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: VolumeModifyClaim is the Schema for the VolumeModifyClaim API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: VolumeModifyClaimSpec defines the desired spec of VolumeModifyClaim
+            properties:
+              parameters:
+                additionalProperties:
+                  type: string
+                description: Parameters csi driver specific parameters passed in as
+                  opaque key-value pairs. This field is OPTIONAL. The driver is responsible
+                  for parsing and validating these parameters.
+                type: object
+              source:
+                description: Source used to config the source resource.
+                properties:
+                  kind:
+                    default: StorageClass
+                    description: Kind is a string value representing the source kind,
+                      default StorageClass.
+                    type: string
+                  name:
+                    description: Name is the name of the resource
+                    type: string
+                  namespace:
+                    description: NameSpace is the namespace of the resource
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - source
+            type: object
+          status:
+            description: VolumeModifyClaimStatus defines the desired status of VolumeModifyClaim
+            properties:
+              completedAt:
+                description: CompletedAt is a timestamp representing the server time
+                  when this job was completed. It is represented in RFC3339 form and
+                  is in UTC. Populated by the system. Read-only.
+                format: date-time
+                type: string
+              contents:
+                description: Contents used to save the VolumeModifyContent status
+                  detail
+                items:
+                  description: ModifyContents defines the desired VolumeModifyContent
+                    status detail
+                  properties:
+                    modifyContentName:
+                      description: ModifyContentName used to config the VolumeModifyContent
+                        name.
+                      type: string
+                    sourceVolume:
+                      description: SourceVolume used to config the source PersistentVolumeClaim,
+                        format is <namespace>/<name>.
+                      type: string
+                    status:
+                      description: phase represents the current phase of VolumeModifyContent.
+                      type: string
+                  type: object
+                type: array
+              parameters:
+                additionalProperties:
+                  type: string
+                description: Parameters csi driver specific parameters passed in as
+                  opaque key-value pairs. This field is OPTIONAL. The driver is responsible
+                  for parsing and validating these parameters.
+                type: object
+              phase:
+                description: phase represents the current phase of VolumeModifyClaim.
+                type: string
+              ready:
+                description: Progress represents the current progress of VolumeModifyContent.
+                  This field is OPTIONAL.
+                type: string
+              startedAt:
+                description: StartedAt is a timestamp representing the server time
+                  when this job was created. It is represented in RFC3339 form and
+                  is in UTC. Populated by the system. Read-only.
+                format: date-time
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

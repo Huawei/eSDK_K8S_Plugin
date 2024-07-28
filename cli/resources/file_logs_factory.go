@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,8 +25,6 @@ import (
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-
 	"huawei-csi-driver/cli/config"
 	"huawei-csi-driver/cli/helper"
 	"huawei-csi-driver/utils/log"
@@ -34,7 +32,7 @@ import (
 
 // FileLogsCollect is the interface to collect file logs.
 type FileLogsCollect interface {
-	GetFileLogs(namespace, podName string, container *corev1.Container) (err error)
+	GetFileLogs(namespace, podName, nodeName, fileLogPath string) (err error)
 	GetHostInformation(namespace, containerName, nodeName, podName string) error
 	CopyToLocal(namespace, nodeName, podName, containerName string) error
 }
@@ -45,7 +43,6 @@ type BaseFileLogsCollect struct{}
 // FileLogsCollector collect specific file logs.
 type FileLogsCollector struct {
 	BaseFileLogsCollect
-	fileLogPath string
 }
 
 // PodType defines the type of pod.
@@ -163,18 +160,13 @@ func (b *BaseFileLogsCollect) GetHostInformation(namespace, containerName, nodeN
 }
 
 // GetFileLogs get the file log of a specified node.
-func (c *FileLogsCollector) GetFileLogs(namespace, podName string, container *corev1.Container) (err error) {
-	if c.fileLogPath, err = getContainerFileLogPaths(container); err != nil {
-		log.Errorf("get container file Log paths failed, error: %v", err)
-		return
-	}
-
-	if err = c.getContainerFileLogs(namespace, podName, container.Name, c.fileLogPath); err != nil {
+func (c *FileLogsCollector) GetFileLogs(namespace, podName, containerName, fileLogPath string) (err error) {
+	if err = c.getContainerFileLogs(namespace, podName, containerName, fileLogPath); err != nil {
 		log.Errorf("get container file logs failed, error: %v", err)
 		return
 	}
 
-	if err = c.compressLogsInContainer(namespace, podName, container.Name); err != nil {
+	if err = c.compressLogsInContainer(namespace, podName, containerName); err != nil {
 		log.Errorf("compress logs in container failed, error: %v", err)
 	}
 	return

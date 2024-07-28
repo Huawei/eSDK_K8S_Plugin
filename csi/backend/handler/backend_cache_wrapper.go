@@ -19,6 +19,7 @@ package handler
 
 import (
 	"context"
+
 	"huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/csi/backend/cache"
@@ -99,11 +100,13 @@ func (b *CacheWrapper) UpdateCacheBackendStatus(ctx context.Context, name string
 func (b *CacheWrapper) UpdateCacheBackendMetro(ctx context.Context) {
 	backends := b.List(ctx)
 	for _, i := range backends {
+		i := i
 		if (i.MetroDomain == "" && i.MetrovStorePairID == "") || i.MetroBackend != nil {
 			continue
 		}
 
 		for _, j := range backends {
+			j := j
 			if i.Name == j.Name || i.Storage != j.Storage {
 				continue
 			}

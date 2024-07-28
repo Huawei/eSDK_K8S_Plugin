@@ -27,7 +27,6 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"huawei-csi-driver/csi/app"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -39,12 +38,9 @@ type LeaderElectionConf struct {
 	RetryPeriod   time.Duration
 }
 
-// RunWithLeaderElection run the function with leader election
-func RunWithLeaderElection(ctx context.Context, leaderElection LeaderElectionConf,
-	k8sClient *kubernetes.Clientset, storageBackendClient *clientSet.Clientset, recorder record.EventRecorder,
-	runFunc func(ctx context.Context, storageBackendClient *clientSet.Clientset,
-		recorder record.EventRecorder, ch chan os.Signal), ch chan os.Signal) {
-
+// RunWithLeaderElection run with leader election
+func RunWithLeaderElection(ctx context.Context, leaderElection LeaderElectionConf, k8sClient *kubernetes.Clientset,
+	recorder record.EventRecorder, runFunc func(ctx context.Context, ch chan os.Signal), ch chan os.Signal) {
 	if ch == nil {
 		log.Errorln("the channel should not be nil")
 		return
@@ -57,18 +53,13 @@ func RunWithLeaderElection(ctx context.Context, leaderElection LeaderElectionCon
 		return
 	}
 
-	lockConfig := resourcelock.ResourceLockConfig{
-		Identity:      id,
-		EventRecorder: recorder,
-	}
-
 	resourceLock, err := resourcelock.New(
-		resourcelock.ConfigMapsLeasesResourceLock,
+		resourcelock.LeasesResourceLock,
 		app.GetGlobalConfig().Namespace,
 		leaderElection.LeaderName,
 		k8sClient.CoreV1(),
 		k8sClient.CoordinationV1(),
-		lockConfig)
+		resourcelock.ResourceLockConfig{Identity: id, EventRecorder: recorder})
 	if err != nil {
 		log.AddContext(ctx).Errorf("Error creating resource lock: %v", err)
 		ch <- syscall.SIGINT
@@ -82,7 +73,7 @@ func RunWithLeaderElection(ctx context.Context, leaderElection LeaderElectionCon
 		RetryPeriod:   leaderElection.RetryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				go runFunc(ctx, storageBackendClient, recorder, ch)
+				go runFunc(ctx, ch)
 			},
 			OnStoppedLeading: func() {
 				log.AddContext(ctx).Errorf("Controller manager lost master")

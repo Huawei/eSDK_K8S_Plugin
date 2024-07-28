@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -138,5 +138,12 @@ func (b *FlagsOptions) WithNodeName() *FlagsOptions {
 func (b *FlagsOptions) WithLogDir() *FlagsOptions {
 	b.cmd.PersistentFlags().StringVarP(&config.LogDir, "log-dir", "", "/var/log/huawei", "Specify the "+
 		"directory for printing log files.")
+	return b
+}
+
+// WithMaxThreads This function will add max node threads num
+func (b *FlagsOptions) WithMaxThreads() *FlagsOptions {
+	b.cmd.PersistentFlags().IntVarP(&config.MaxNodeThreads, "threads-max", "", config.DefaultMaxNodeThreads,
+		"set maximum number[1~1000] of threads for nodes to be collected.")
 	return b
 }
