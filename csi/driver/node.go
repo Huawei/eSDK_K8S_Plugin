@@ -21,8 +21,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"huawei-csi-driver/connector"
+	"huawei-csi-driver/csi/app"
+
 	// init the nfs connector
 	_ "huawei-csi-driver/connector/nfs"
 	"huawei-csi-driver/csi/backend"
@@ -179,27 +182,34 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 
 	log.AddContext(ctx).Infof("Start to node unpublish volume %s from %s", volumeId, targetPath)
 
-	pathExist, err := utils.PathExist(targetPath)
-	if !pathExist {
-		log.AddContext(ctx).Warningf("TargetPath [%v] doesn't exist", targetPath)
-		return &csi.NodeUnpublishVolumeResponse{}, nil
-	}
-
-	symLink, _ := utils.IsPathSymlink(targetPath)
-	if symLink {
-		log.AddContext(ctx).Infof("Removing the symlink [%s]", targetPath)
-		err = utils.RemoveSymlink(ctx, targetPath)
+	if !strings.Contains(targetPath, app.GetGlobalConfig().KubeletVolumeDevicesDirName) {
+		log.AddContext(ctx).Infof("Unmounting the targetPath [%s]", targetPath)
+		mounted, err := connector.MountPathIsExist(ctx, targetPath)
 		if err != nil {
-			log.AddContext(ctx).Errorf("Failed to remove symlink for target path [%v]", targetPath)
-			return nil, err
+			log.AddContext(ctx).Errorf("Failed to get mount point [%s], error: %v", targetPath, err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if mounted {
+			output, err := utils.ExecShellCmd(ctx, "umount %s", targetPath)
+			if err != nil && !strings.Contains(output, "not mounted") {
+				msg := fmt.Sprintf("umount %s for volume %s error: %s", targetPath, volumeId, output)
+				log.AddContext(ctx).Errorln(msg)
+				return nil, status.Error(codes.Internal, msg)
+			}
 		}
 	} else {
-		log.AddContext(ctx).Infof("Unmounting the targetPath [%s]", targetPath)
-		output, err := utils.ExecShellCmd(ctx, "umount %s", targetPath)
-		if err != nil && !strings.Contains(output, "not mounted") {
-			msg := fmt.Sprintf("umount %s for volume %s error: %s", targetPath, volumeId, output)
-			log.AddContext(ctx).Errorln(msg)
-			return nil, status.Error(codes.Internal, msg)
+		symLink, err := utils.IsPathSymlinkWithTimeout(targetPath, 10*time.Second)
+		if err != nil {
+			log.AddContext(ctx).Errorf("Failed to Access path %s, error: %v", targetPath, err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if symLink {
+			log.AddContext(ctx).Infof("Removing the symlink [%s]", targetPath)
+			err := utils.RemoveSymlink(ctx, targetPath)
+			if err != nil {
+				log.AddContext(ctx).Errorf("Failed to remove symlink for target path [%v]", targetPath)
+				return nil, err
+			}
 		}
 	}
 	log.AddContext(ctx).Infof("Volume %s is node unpublished from %s", volumeId, targetPath)

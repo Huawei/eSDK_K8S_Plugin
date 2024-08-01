@@ -54,7 +54,7 @@ const (
 	nodeLogFile       = "huawei-csi-node"
 	csiLogFile        = "huawei-csi"
 
-	csiVersion        = "3.2.2"
+	csiVersion        = "3.2.3"
 	defaultDriverName = "csi.huawei.com"
 	endpointDirPerm   = 0755
 
@@ -108,6 +108,8 @@ var (
 	allPathOnline = flag.Bool("all-path-online",
 		false,
 		"Whether to check the number of online paths for DM-multipath aggregation, default false")
+	kubeletVolumeDevicesDirName = flag.String("kubelet-volume-devices-dir-name", "/volumeDevices/",
+		"The dir name of volume devices")
 
 	config CSIConfig
 	secret CSISecret
@@ -360,6 +362,7 @@ func doNodeAction() {
 		notify.Stop("Init Lock error for driver %s: %v", *driverName, err)
 	}
 
+	app.Builder().WithKubeletVolumeDevicesDirName(*kubeletVolumeDevicesDirName).Build()
 	checkMultiPathType()
 	checkMultiPathService()
 }

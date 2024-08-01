@@ -18,7 +18,7 @@ snapshot:
 images:
   # The image name and tag for the Huawei CSI Service container
   # Replace the appropriate tag name
-  huaweiCSIService: huawei-csi:3.2.2
+  huaweiCSIService: huawei-csi:3.2.3
 
   # The image name and tag for the sidecars. These must match the appropriate Kubernetes version.
   sidecar:
@@ -63,6 +63,9 @@ csi_driver:
   #   false: the number of paths aggregated by DM-multipath is not checked.
   # Default value: false
   allPathOnline: false
+  # After successful MountVolume for block volume, publish directory structure will be like below
+  # /var/lib/kubelet/plugins/kubernetes.io/csi/{kubeletVolumeDevicesDirName}/publish/{specName}/{podUID}
+  kubeletVolumeDevicesDirName: volumeDevices
   # Interval for updating backend capabilities. support 60~600
   backendUpdateInterval: 60
   # Huawei-csi-controller log configuration

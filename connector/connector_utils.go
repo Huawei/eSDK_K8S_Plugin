@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -44,6 +45,10 @@ const (
 	UseUltraPath
 	// UseUltraPathNVMe means the device use huawei-UltraPath-NVMe service
 	UseUltraPathNVMe
+	// How many times to retry for a consistent read of /proc/mounts.
+	maxListTries = 10
+	// Location of the mount file to use
+	procMountsPath = "/proc/mounts"
 )
 
 var (
@@ -1776,4 +1781,57 @@ func isUpMultiPathAvailable(ctx context.Context, multipathType, dev, lunWWN stri
 	}
 
 	return true, nil
+}
+
+// MountPathIsExist if mount point exist in /proc/mounts file, this function will return true
+func MountPathIsExist(ctx context.Context, mountPoint string) (bool, error) {
+	mountMap, err := ReadMountPoints(ctx)
+	if err != nil {
+		return false, err
+	}
+	_, ok := mountMap[mountPoint]
+	return ok, nil
+}
+
+// ReadMountPoints read mount file
+// mountMap: key means mountPath; value means devicePath.
+func ReadMountPoints(ctx context.Context) (map[string]string, error) {
+	data, err := ConsistentRead(procMountsPath, maxListTries)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Read the mount file error: %v", err)
+		return nil, err
+	}
+
+	mountMap := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) != "" {
+			splitValue := strings.Split(line, " ")
+			if len(splitValue) >= 2 && splitValue[0] != "#" {
+				mountMap[splitValue[1]] = splitValue[0]
+			}
+		}
+	}
+	return mountMap, nil
+}
+
+// ConsistentRead repeatedly reads a file until it gets the same content twice.
+// This is useful when reading files in /proc/mount that are larger than page size
+// and kernel may modify them between individual read() syscalls
+func ConsistentRead(filename string, attempts int) ([]byte, error) {
+	oldContent, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < attempts; i++ {
+		newContent, err := ioutil.ReadFile(filename)
+		if err != nil {
+			return nil, err
+		}
+		if bytes.Equal(oldContent, newContent) {
+			return newContent, nil
+		}
+		// Files are different, continue reading
+		oldContent = newContent
+	}
+	return nil, fmt.Errorf("could not get consistent content of %s after %d attempts", filename, attempts)
 }

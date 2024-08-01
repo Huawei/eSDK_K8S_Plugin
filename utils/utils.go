@@ -814,3 +814,25 @@ func IsDebugLog(method, url string, debugLogMap map[string]map[string]bool) bool
 	ret, exist := debugLogMap[method]
 	return exist && ret[url]
 }
+
+// IsPathSymlinkWithTimeout checks weather this targetPath is symlink
+func IsPathSymlinkWithTimeout(targetPath string, duration time.Duration) (bool, error) {
+	var symlink bool
+	var err error
+	finish := make(chan struct{})
+	go func() {
+		defer close(finish)
+		symlink, err = IsPathSymlink(targetPath)
+		if err != nil {
+			log.Errorf("stat target path failed. error: %v", err)
+		}
+		finish <- struct{}{}
+	}()
+
+	select {
+	case <-finish:
+		return symlink, err
+	case <-time.After(duration):
+		return symlink, errors.New(fmt.Sprintf("Access path %s timeout", targetPath))
+	}
+}

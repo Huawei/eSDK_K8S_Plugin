@@ -89,10 +89,15 @@ func (p *OceanstorPlugin) init(config map[string]interface{}, keepLogin bool) er
 
 	if p.product == utils.OceanStorDoradoV6 {
 		clientV6 := clientv6.NewClientV6(urls, user, password, vstoreName, parallelNum)
-		cli.Logout(context.Background())
+		if keepLogin {
+			cli.Logout(context.Background())
+		}
 		err := p.switchClient(clientV6)
 		if err != nil {
 			return err
+		}
+		if !keepLogin {
+			p.Logout(context.Background())
 		}
 	} else {
 		p.cli = cli

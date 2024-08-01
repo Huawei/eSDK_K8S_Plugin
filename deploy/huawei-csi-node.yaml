@@ -49,6 +49,7 @@ spec:
             - "--scsi-multipath-type=DM-multipath"
             - "--nvme-multipath-type=HW-UltraPath-NVMe"
             - "--scan-volume-timeout=3"
+            - "--kubelet-volume-devices-dir-name=volumeDevices"
           env:
             - name: CSI_NODENAME
               valueFrom:

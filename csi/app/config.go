@@ -24,6 +24,9 @@ type Config struct {
 	ScsiMultiPathType  string
 	NvmeMultiPathType  string
 	AllPathOnline      bool
+
+	// kubeletVolumeDevicesDirName, default is /volumeDevices/
+	KubeletVolumeDevicesDirName string
 }
 
 // GetGlobalConfig used to get global configuration

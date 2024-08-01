@@ -55,3 +55,9 @@ func (c *Config) WithAllPathOnline(allPathOnline bool) *Config {
 func (c *Config) Build() {
 	globalCfg = c
 }
+
+// WithKubeletVolumeDevicesDirName The dir name of volume devices
+func (c *Config) WithKubeletVolumeDevicesDirName(KubeletVolumeDevicesDirName string) *Config {
+	c.KubeletVolumeDevicesDirName = KubeletVolumeDevicesDirName
+	return c
+}

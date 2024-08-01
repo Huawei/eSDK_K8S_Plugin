@@ -181,6 +181,12 @@ func (cli *Client) doCall(ctx context.Context,
 	var reqBody io.Reader
 	var respBody []byte
 
+	if cli.client == nil {
+		errMsg := "http client is nil"
+		log.AddContext(ctx).Errorf("Failed to send request method: %s, url: %s, error: %s", method, url, errMsg)
+		return nil, nil, errors.New(errMsg)
+	}
+
 	if data != nil {
 		reqBytes, err := json.Marshal(data)
 		if err != nil {

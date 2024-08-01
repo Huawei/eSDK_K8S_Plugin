@@ -43,6 +43,8 @@ const (
 	GetInfoWaitInternal      = 10
 
 	description string = "Created from huawei-csi for Kubernetes"
+	// DefaultDeviceID "xx" is a placeholder as the default device id
+	DefaultDeviceID = "xx"
 )
 
 type BaseClientInterface interface {
@@ -205,11 +207,7 @@ func (cli *BaseClient) GetRequest(ctx context.Context,
 	var req *http.Request
 	var err error
 
-	reqUrl := cli.Url
-	if cli.DeviceId != "" {
-		reqUrl += "/" + cli.DeviceId
-	}
-	reqUrl += url
+	reqUrl := cli.Url + "/" + cli.DeviceId + url
 
 	var reqBody io.Reader
 
@@ -246,8 +244,11 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 	var req *http.Request
 	var err error
 
-	reqUrl := cli.Url
-	reqUrl += url
+	if cli.Client == nil {
+		errMsg := "http client is nil"
+		log.AddContext(ctx).Errorf("Failed to send request method: %s, url: %s, error: %s", method, url, errMsg)
+		return r, errors.New(errMsg)
+	}
 
 	if url != "/xx/sessions" && url != "/sessions" {
 		cli.ReLoginMutex.Lock()
@@ -262,14 +263,14 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 	}
 
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
-		fmt.Sprintf("Request method: %s, Url: %s, body: %v", method, reqUrl, data))
+		fmt.Sprintf("Request method: %s, Url: %s, body: %v", method, req.URL, data))
 
 	ClientSemaphore.Acquire()
 	defer ClientSemaphore.Release()
 
 	resp, err := cli.Client.Do(req)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Send request method: %s, Url: %s, error: %v", method, reqUrl, err)
+		log.AddContext(ctx).Errorf("Send request method: %s, Url: %s, error: %v", method, req.URL, err)
 		return r, errors.New("unconnected")
 	}
 
@@ -282,7 +283,7 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 	}
 
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog),
-		fmt.Sprintf("Response method: %s, Url: %s, body: %s", method, reqUrl, body))
+		fmt.Sprintf("Response method: %s, Url: %s, body: %s", method, req.URL, body))
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
@@ -334,13 +335,13 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 		data["vstorename"] = cli.VStoreName
 	}
 
-	cli.DeviceId = ""
+	cli.DeviceId = DefaultDeviceID
 	cli.Token = ""
 	for i, url := range cli.Urls {
 		cli.Url = url + "/deviceManager/rest"
 
 		log.AddContext(ctx).Infof("Try to login %s", cli.Url)
-		resp, err = cli.BaseCall(context.Background(), "POST", "/xx/sessions", data)
+		resp, err = cli.BaseCall(context.Background(), "POST", "/sessions", data)
 		if err == nil {
 			/* Sort the login Url to the last slot of san addresses, so that
 			   if this connection error, next time will try other Url first. */

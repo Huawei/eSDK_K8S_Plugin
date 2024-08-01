@@ -114,6 +114,7 @@ spec:
             {{ end }}
             - "--scan-volume-timeout={{ .Values.csi_driver.scanVolumeTimeout }}"
             - "--all-path-online={{ default false .Values.csi_driver.allPathOnline }}"
+            - "--kubelet-volume-devices-dir-name=/{{ default "volumeDevices" .Values.csi_driver.kubeletVolumeDevicesDirName }}/"
             - --loggingModule={{ .Values.csi_driver.nodeLogging.module }}
             - --logLevel={{ .Values.csi_driver.nodeLogging.level }}
             {{ if eq .Values.csi_driver.nodeLogging.module "file" }}
