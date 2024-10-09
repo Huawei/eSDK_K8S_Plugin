@@ -19,9 +19,9 @@ package resources
 import (
 	"fmt"
 	"os"
+	"path"
 
 	corev1 "k8s.io/api/core/v1"
-	k8string "k8s.io/utils/strings"
 
 	"huawei-csi-driver/cli/client"
 	"huawei-csi-driver/cli/config"
@@ -54,7 +54,7 @@ func (c *Cert) Get() error {
 		return nil
 	}
 
-	_, certSecretName := k8string.SplitQualifiedName(claim.Spec.CertSecret)
+	_, certSecretName := helper.SplitQualifiedName(claim.Spec.CertSecret)
 
 	if certSecretName == "" {
 		helper.PrintNoResourceCert(claim.Name, claim.Namespace)
@@ -85,7 +85,7 @@ func (c *Cert) Delete() error {
 		return nil
 	}
 
-	_, certSecretName := k8string.SplitQualifiedName(oldClaim.Spec.CertSecret)
+	_, certSecretName := helper.SplitQualifiedName(oldClaim.Spec.CertSecret)
 
 	if certSecretName == "" {
 		helper.PrintNoResourceCert(oldClaim.Name, oldClaim.Namespace)
@@ -126,7 +126,7 @@ func (c *Cert) Update() error {
 		return nil
 	}
 
-	_, certSecretName := k8string.SplitQualifiedName(claim.Spec.CertSecret)
+	_, certSecretName := helper.SplitQualifiedName(claim.Spec.CertSecret)
 
 	if certSecretName == "" {
 		helper.PrintNoResourceCert(claim.Name, claim.Namespace)
@@ -187,7 +187,7 @@ func (c *Cert) Create() error {
 
 	newClaim := oldClaim.DeepCopy()
 	newClaim.Spec.UseCert = true
-	newClaim.Spec.CertSecret = k8string.JoinQualifiedName(newClaim.Namespace, certConfig.Name)
+	newClaim.Spec.CertSecret = path.Join(newClaim.Namespace, certConfig.Name)
 
 	if err = storageBackendClaimClient.Update(*newClaim); err != nil {
 		if err := secretClient.DeleteByNames(newClaim.Namespace, certConfig.Name); err != nil {
@@ -221,7 +221,7 @@ func (c *Cert) LoadCertsFromDate(Data []byte) (*CertConfig, error) {
 
 func deleteSecretResources(secret corev1.Secret) error {
 	referenceResources := []string{
-		k8string.JoinQualifiedName(string(client.Secret), secret.Name),
+		path.Join(string(client.Secret), secret.Name),
 	}
 
 	_, err := config.Client.DeleteResourceByQualifiedNames(referenceResources, secret.Namespace)

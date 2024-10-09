@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -53,7 +53,8 @@ const (
 	// IPLock defines error code of ip lock
 	IPLock = 1077949071
 
-	unconnectedError = "unconnected"
+	unconnectedError   = "unconnected"
+	defaultHttpTimeout = 60 * time.Second
 )
 
 var (
@@ -81,8 +82,8 @@ func isFilterLog(method, url string) bool {
 	return exist && filter[url]
 }
 
-// Client defines fusion storage client
-type Client struct {
+// RestClient defines fusion storage client
+type RestClient struct {
 	url             string
 	user            string
 	secretNamespace string
@@ -114,7 +115,7 @@ type NewClientConfig struct {
 }
 
 // NewClient used to init a new fusion storage client
-func NewClient(ctx context.Context, clientConfig *NewClientConfig) *Client {
+func NewClient(ctx context.Context, clientConfig *NewClientConfig) *RestClient {
 	var err error
 	var parallelCount int
 
@@ -131,7 +132,7 @@ func NewClient(ctx context.Context, clientConfig *NewClientConfig) *Client {
 
 	log.AddContext(ctx).Infof("Init parallel count is %d", parallelCount)
 	clientSemaphore = utils.NewSemaphore(parallelCount)
-	return &Client{
+	return &RestClient{
 		url:             clientConfig.Url,
 		user:            clientConfig.User,
 		secretName:      clientConfig.SecretName,
@@ -144,7 +145,7 @@ func NewClient(ctx context.Context, clientConfig *NewClientConfig) *Client {
 }
 
 // DuplicateClient used to duplicate client
-func (cli *Client) DuplicateClient() *Client {
+func (cli *RestClient) DuplicateClient() *RestClient {
 	dup := *cli
 	dup.client = nil
 
@@ -152,7 +153,7 @@ func (cli *Client) DuplicateClient() *Client {
 }
 
 // ValidateLogin try to login fusion storage by secret
-func (cli *Client) ValidateLogin(ctx context.Context) error {
+func (cli *RestClient) ValidateLogin(ctx context.Context) error {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		log.AddContext(ctx).Errorf("create jar failed, error: %v", err)
@@ -169,7 +170,7 @@ func (cli *Client) ValidateLogin(ctx context.Context) error {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool},
 		},
 		Jar:     jar,
-		Timeout: 60 * time.Second,
+		Timeout: defaultHttpTimeout,
 	}
 
 	log.AddContext(ctx).Infof("Try to login %s.", cli.url)
@@ -199,7 +200,7 @@ func (cli *Client) ValidateLogin(ctx context.Context) error {
 }
 
 // Login try to login fusion storage by backend id
-func (cli *Client) Login(ctx context.Context) error {
+func (cli *RestClient) Login(ctx context.Context) error {
 	var err error
 	cli.client, err = newHTTPClientByBackendID(ctx, cli.backendID)
 	if err != nil {
@@ -256,7 +257,7 @@ func (cli *Client) Login(ctx context.Context) error {
 }
 
 // SetAccountId used to set account id of the client
-func (cli *Client) SetAccountId(ctx context.Context) error {
+func (cli *RestClient) SetAccountId(ctx context.Context) error {
 	log.AddContext(ctx).Debugf("setAccountId start. account name: %s", cli.accountName)
 	if cli.accountName == "" {
 		cli.accountName = types.DefaultAccountName
@@ -279,7 +280,7 @@ func (cli *Client) SetAccountId(ctx context.Context) error {
 }
 
 // Logout used to log out
-func (cli *Client) Logout(ctx context.Context) {
+func (cli *RestClient) Logout(ctx context.Context) {
 	defer func() {
 		cli.authToken = ""
 		cli.client = nil
@@ -305,26 +306,26 @@ func (cli *Client) Logout(ctx context.Context) {
 }
 
 // KeepAlive used to keep connection token alive
-func (cli *Client) KeepAlive(ctx context.Context) {
+func (cli *RestClient) KeepAlive(ctx context.Context) {
 	_, err := cli.post(ctx, "/dsware/service/v1.3/sec/keepAlive", nil)
 	if err != nil {
 		log.AddContext(ctx).Warningf("Keep token alive error: %v", err)
 	}
 }
 
-func (cli *Client) reLoginLock(ctx context.Context) {
+func (cli *RestClient) reLoginLock(ctx context.Context) {
 	log.AddContext(ctx).Debugln("Try to reLoginLock.")
 	cli.reloginMutex.Lock()
 	log.AddContext(ctx).Debugln("ReLoginLock success.")
 }
 
-func (cli *Client) reLoginUnlock(ctx context.Context) {
+func (cli *RestClient) reLoginUnlock(ctx context.Context) {
 	log.AddContext(ctx).Debugln("Try to reLoginUnlock.")
 	cli.reloginMutex.Unlock()
 	log.AddContext(ctx).Debugln("ReLoginUnlock success.")
 }
 
-func (cli *Client) doCall(ctx context.Context, method string, url string, data map[string]any) (
+func (cli *RestClient) doCall(ctx context.Context, method string, url string, data map[string]any) (
 	http.Header, []byte, error) {
 	var err error
 	var reqUrl string
@@ -382,7 +383,7 @@ func (cli *Client) doCall(ctx context.Context, method string, url string, data m
 	return resp.Header, respBody, nil
 }
 
-func (cli *Client) setRequestHeader(ctx context.Context, req *http.Request, url string) {
+func (cli *RestClient) setRequestHeader(ctx context.Context, req *http.Request, url string) {
 	req.Header.Set("Referer", cli.url)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -401,7 +402,7 @@ func (cli *Client) setRequestHeader(ctx context.Context, req *http.Request, url 
 	}
 }
 
-func (cli *Client) baseCall(ctx context.Context, method string, url string, data map[string]interface{}) (http.Header,
+func (cli *RestClient) baseCall(ctx context.Context, method string, url string, data map[string]any) (http.Header,
 	map[string]any, error) {
 	var body map[string]any
 	respHeader, respBody, err := cli.doCall(ctx, method, url, data)
@@ -416,7 +417,7 @@ func (cli *Client) baseCall(ctx context.Context, method string, url string, data
 	return respHeader, body, nil
 }
 
-func (cli *Client) retryCall(ctx context.Context, method string, url string, data map[string]any) (
+func (cli *RestClient) retryCall(ctx context.Context, method string, url string, data map[string]any) (
 	http.Header, map[string]any, error) {
 
 	log.AddContext(ctx).Debugf("retry call: method: %s, url: %s, data: %v.", method, url, data)
@@ -444,7 +445,7 @@ func (cli *Client) retryCall(ctx context.Context, method string, url string, dat
 	return respHeader, body, nil
 }
 
-func (cli *Client) call(ctx context.Context, method string, url string, data map[string]any) (
+func (cli *RestClient) call(ctx context.Context, method string, url string, data map[string]any) (
 	http.Header, map[string]any, error) {
 
 	var body map[string]any
@@ -476,7 +477,7 @@ func (cli *Client) call(ctx context.Context, method string, url string, data map
 	return respHeader, body, nil
 }
 
-func (cli *Client) reLogin(ctx context.Context) error {
+func (cli *RestClient) reLogin(ctx context.Context) error {
 	cli.reLoginLock(ctx)
 	defer cli.reLoginUnlock(ctx)
 
@@ -497,7 +498,7 @@ func (cli *Client) reLogin(ctx context.Context) error {
 	return nil
 }
 
-func (cli *Client) get(ctx context.Context,
+func (cli *RestClient) get(ctx context.Context,
 	url string,
 	data map[string]interface{}) (map[string]interface{}, error) {
 	_, body, err := cli.call(ctx, "GET", url, data)
@@ -505,32 +506,32 @@ func (cli *Client) get(ctx context.Context,
 }
 
 // Post used to send post request to storage client
-func (cli *Client) Post(ctx context.Context, url string, data map[string]interface{}) (map[string]interface{}, error) {
+func (cli *RestClient) Post(ctx context.Context, url string, data map[string]any) (map[string]any, error) {
 	return cli.post(ctx, url, data)
 }
 
-func (cli *Client) post(ctx context.Context,
+func (cli *RestClient) post(ctx context.Context,
 	url string,
 	data map[string]interface{}) (map[string]interface{}, error) {
 	_, body, err := cli.call(ctx, "POST", url, data)
 	return body, err
 }
 
-func (cli *Client) put(ctx context.Context,
+func (cli *RestClient) put(ctx context.Context,
 	url string,
 	data map[string]interface{}) (map[string]interface{}, error) {
 	_, body, err := cli.call(ctx, "PUT", url, data)
 	return body, err
 }
 
-func (cli *Client) delete(ctx context.Context,
+func (cli *RestClient) delete(ctx context.Context,
 	url string,
 	data map[string]interface{}) (map[string]interface{}, error) {
 	_, body, err := cli.call(ctx, "DELETE", url, data)
 	return body, err
 }
 
-func (cli *Client) checkErrorCode(ctx context.Context, resp map[string]interface{}, errorCode int64) bool {
+func (cli *RestClient) checkErrorCode(ctx context.Context, resp map[string]interface{}, errorCode int64) bool {
 	details, exist := resp["detail"].([]interface{})
 	if !exist || len(details) == 0 {
 		return false
@@ -590,19 +591,19 @@ func newHTTPClientByBackendID(ctx context.Context, backendID string) (*http.Clie
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		log.AddContext(ctx).Errorf("create jar failed, error: %v", err)
-		return nil, err
+		return defaultHttpClient(), err
 	}
 
 	useCert, certMeta, err := pkgUtils.GetCertSecretFromBackendID(ctx, backendID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("get cert secret from backend [%v] failed, error: %v", backendID, err)
-		return nil, err
+		return defaultHttpClient(), err
 	}
 
 	useCert, certPool, err := pkgUtils.GetCertPool(ctx, useCert, certMeta)
 	if err != nil {
 		log.AddContext(ctx).Errorf("get cert pool failed, error: %v", err)
-		return nil, err
+		return defaultHttpClient(), err
 	}
 
 	return &http.Client{
@@ -610,6 +611,14 @@ func newHTTPClientByBackendID(ctx context.Context, backendID string) (*http.Clie
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool},
 		},
 		Jar:     jar,
-		Timeout: 60 * time.Second,
+		Timeout: defaultHttpTimeout,
 	}, nil
+}
+
+func defaultHttpClient() *http.Client {
+	var defaultUseCert bool
+	return &http.Client{
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: !defaultUseCert}},
+		Timeout:   defaultHttpTimeout,
+	}
 }

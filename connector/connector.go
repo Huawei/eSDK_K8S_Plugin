@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -82,11 +82,11 @@ const (
 
 var (
 	// connectors is the global map
-	connectors = map[string]Connector{}
+	connectors = map[string]VolumeConnector{}
 )
 
-// Connector defines the behavior that the connector should have
-type Connector interface {
+// VolumeConnector defines the behavior that the connector should have
+type VolumeConnector interface {
 	// ConnectVolume to mount the source to target path, the source path can be block or nfs
 	// Example:
 	//    mount /dev/sdb /<target-path>
@@ -98,18 +98,18 @@ type Connector interface {
 
 // DisConnectInfo defines the fields of disconnect volume
 type DisConnectInfo struct {
-	Conn   Connector
+	Conn   VolumeConnector
 	TgtLun string
 }
 
 // ConnectInfo defines the fields of connect volume
 type ConnectInfo struct {
-	Conn        Connector
+	Conn        VolumeConnector
 	MappingInfo map[string]interface{}
 }
 
 // GetConnector can get a connector by its type from the global connector map
-func GetConnector(ctx context.Context, cType string) Connector {
+func GetConnector(ctx context.Context, cType string) VolumeConnector {
 	if cnt, exist := connectors[cType]; exist {
 		return cnt
 	}
@@ -118,8 +118,8 @@ func GetConnector(ctx context.Context, cType string) Connector {
 	return nil
 }
 
-// RegisterConnector is used to register the specific Connector to the global connector map
-func RegisterConnector(cType string, cnt Connector) error {
+// RegisterConnector is used to register the specific VolumeConnector to the global connector map
+func RegisterConnector(cType string, cnt VolumeConnector) error {
 	if _, exist := connectors[cType]; exist {
 		return fmt.Errorf("connector %s already exists", cType)
 	}

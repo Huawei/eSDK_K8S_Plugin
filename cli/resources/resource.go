@@ -68,7 +68,7 @@ func NewResourceBuilder() *ResourceBuilder {
 
 // Build convert ResourceBuilder to Resource
 func (b *ResourceBuilder) Build() *Resource {
-	return &Resource{b}
+	return &Resource{ResourceBuilder: b}
 }
 
 // NamespaceParam accepts the namespace that these resources should be

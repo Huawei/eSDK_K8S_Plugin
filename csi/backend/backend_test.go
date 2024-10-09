@@ -24,6 +24,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
+	"github.com/stretchr/testify/require"
 
 	"huawei-csi-driver/csi/app"
 	cfg "huawei-csi-driver/csi/app/config"
@@ -868,4 +869,21 @@ func TestValidateBackend(t *testing.T) {
 	if err != nil {
 		t.Errorf("test validateBackend error %v", err)
 	}
+}
+
+func TestUpdateSelectPool(t *testing.T) {
+	// arrange
+	var (
+		requestSize = int64(16106127360)
+		parameters  = map[string]any{"allocType": "thick"}
+		selectPool  = &model.StoragePool{Capacities: map[string]string{"FreeCapacity": "1138971639808"}}
+
+		expectedCapacity = "1122865512448" // 1138971639808 - 16106127360
+	)
+
+	// act
+	updateSelectPool(requestSize, parameters, selectPool)
+
+	// assert
+	require.Equal(t, expectedCapacity, selectPool.Capacities["FreeCapacity"])
 }

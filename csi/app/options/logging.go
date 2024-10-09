@@ -73,7 +73,7 @@ func (opt *loggingOptions) AddFlags(ff *flag.FlagSet) {
 }
 
 // ApplyFlags assign the log flags
-func (opt *loggingOptions) ApplyFlags(cfg *config.Config) {
+func (opt *loggingOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.MaxBackups = opt.maxBackups
 	cfg.LoggingModule = opt.loggingModule
 	cfg.LogFileDir = opt.logFileDir

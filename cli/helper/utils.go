@@ -319,3 +319,13 @@ func ConvertInterface(i interface{}) interface{} {
 	}
 	return i
 }
+
+// SplitQualifiedName Splits a fully qualified name and returns its namespace and name.
+// Assumes that the input 'str' has been validated.
+func SplitQualifiedName(str string) (string, string) {
+	parts := strings.Split(str, "/")
+	if len(parts) < 2 {
+		return "", str
+	}
+	return parts[0], parts[1]
+}

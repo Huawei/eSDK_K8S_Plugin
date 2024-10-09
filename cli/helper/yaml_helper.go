@@ -19,7 +19,7 @@ package helper
 import (
 	"encoding/json"
 
-	"github.com/ghodss/yaml"
+	"gopkg.in/yaml.v3"
 )
 
 // StructToYAML convert struct to yaml

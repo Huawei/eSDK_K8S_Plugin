@@ -29,7 +29,7 @@ const (
 )
 
 // GetHostByName used to get host by name
-func (cli *Client) GetHostByName(ctx context.Context, hostName string) (map[string]interface{}, error) {
+func (cli *RestClient) GetHostByName(ctx context.Context, hostName string) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"hostName": hostName,
 	}
@@ -66,7 +66,7 @@ func (cli *Client) GetHostByName(ctx context.Context, hostName string) (map[stri
 }
 
 // CreateHost used to create host
-func (cli *Client) CreateHost(ctx context.Context,
+func (cli *RestClient) CreateHost(ctx context.Context,
 	hostName string,
 	alua map[string]interface{}) error {
 	data := map[string]interface{}{
@@ -97,7 +97,7 @@ func (cli *Client) CreateHost(ctx context.Context,
 }
 
 // UpdateHost used to update host
-func (cli *Client) UpdateHost(ctx context.Context, hostName string, alua map[string]interface{}) error {
+func (cli *RestClient) UpdateHost(ctx context.Context, hostName string, alua map[string]interface{}) error {
 	data := map[string]interface{}{
 		"hostName": hostName,
 	}
@@ -124,7 +124,7 @@ func (cli *Client) UpdateHost(ctx context.Context, hostName string, alua map[str
 }
 
 // QueryHostByPort used query host by port
-func (cli *Client) QueryHostByPort(ctx context.Context, port string) (string, error) {
+func (cli *RestClient) QueryHostByPort(ctx context.Context, port string) (string, error) {
 	data := map[string]interface{}{
 		"portName": []string{port},
 	}
@@ -160,7 +160,7 @@ func (cli *Client) QueryHostByPort(ctx context.Context, port string) (string, er
 }
 
 // AddPortToHost used add port to host
-func (cli *Client) AddPortToHost(ctx context.Context, initiatorName, hostName string) error {
+func (cli *RestClient) AddPortToHost(ctx context.Context, initiatorName, hostName string) error {
 	data := map[string]interface{}{
 		"hostName":  hostName,
 		"portNames": []string{initiatorName},
@@ -182,7 +182,7 @@ func (cli *Client) AddPortToHost(ctx context.Context, initiatorName, hostName st
 }
 
 // AddLunToHost usd to add lun to host
-func (cli *Client) AddLunToHost(ctx context.Context, lunName, hostName string) error {
+func (cli *RestClient) AddLunToHost(ctx context.Context, lunName, hostName string) error {
 	data := map[string]interface{}{
 		"hostName": hostName,
 		"lunNames": []string{lunName},
@@ -202,7 +202,7 @@ func (cli *Client) AddLunToHost(ctx context.Context, lunName, hostName string) e
 }
 
 // DeleteLunFromHost used to delete lun from host
-func (cli *Client) DeleteLunFromHost(ctx context.Context, lunName, hostName string) error {
+func (cli *RestClient) DeleteLunFromHost(ctx context.Context, lunName, hostName string) error {
 	data := map[string]interface{}{
 		"hostName": hostName,
 		"lunNames": []string{lunName},
@@ -222,7 +222,7 @@ func (cli *Client) DeleteLunFromHost(ctx context.Context, lunName, hostName stri
 }
 
 // QueryHostOfVolume used to query host of volume
-func (cli *Client) QueryHostOfVolume(ctx context.Context, lunName string) ([]map[string]interface{}, error) {
+func (cli *RestClient) QueryHostOfVolume(ctx context.Context, lunName string) ([]map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"lunName": lunName,
 	}

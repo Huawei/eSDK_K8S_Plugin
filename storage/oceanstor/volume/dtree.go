@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,15 @@ import (
 
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/flow"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/taskflow"
+)
+
+const (
+	accessKrb5ReadOnly  = 0
+	accessKrb5ReadWrite = 1
+	accessKrb5None      = 5
+	accessKrb5Default   = -1
 )
 
 // DTree provides base DTree client
@@ -98,7 +105,7 @@ func (p *DTree) Create(ctx context.Context, params map[string]interface{}) (util
 		return nil, err
 	}
 
-	taskFlow := taskflow.NewTaskFlow(ctx, "Create-FileSystem-DTree-Volume")
+	taskFlow := flow.NewTaskFlow(ctx, "Create-FileSystem-DTree-Volume")
 	taskFlow.AddTask("Check-FS", p.checkFSExist, nil)
 	taskFlow.AddTask("Create-DTree", p.createDtree, p.revertDtree)
 	taskFlow.AddTask("Create-Share", p.createShare, p.revertShare)
@@ -119,7 +126,7 @@ func (p *DTree) Create(ctx context.Context, params map[string]interface{}) (util
 func (p *DTree) Delete(ctx context.Context, params map[string]interface{}) error {
 	var err error
 
-	taskFlow := taskflow.NewTaskFlow(ctx, "Delete-FileSystem-DTree-Volume")
+	taskFlow := flow.NewTaskFlow(ctx, "Delete-FileSystem-DTree-Volume")
 	taskFlow.AddTask("Check-DTree", p.checkDtreeExist, nil)
 	taskFlow.AddTask("Delete-Quota", p.deleteQuota, nil)
 	taskFlow.AddTask("Delete-Share", p.deleteShare, nil)
@@ -135,8 +142,7 @@ func (p *DTree) Delete(ctx context.Context, params map[string]interface{}) error
 }
 
 // Expand expands volume size
-func (p *DTree) Expand(ctx context.Context, parentName, dTreeName, vstoreID string, spaceSoftQuota,
-	spaceHardQuota int64) error {
+func (p *DTree) Expand(ctx context.Context, parentName, dTreeName, vstoreID string, spaceHardQuota int64) error {
 	dTreeID, err := p.getDtreeID(ctx, parentName, vstoreID, dTreeName)
 	if err != nil {
 		return err
@@ -308,7 +314,7 @@ func (p *DTree) deleteDtree(ctx context.Context, params,
 	return nil, err
 }
 
-func (p *DTree) allowShareAccess(ctx context.Context, params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+func (p *DTree) allowShareAccess(ctx context.Context, params, taskResult map[string]any) (map[string]any, error) {
 	shareID, _ := utils.ToStringWithFlag(taskResult["shareId"])
 	authClient, _ := utils.ToStringWithFlag(params["authclient"])
 	vStoreID, _ := utils.ToStringWithFlag(params["vstoreid"])
@@ -376,8 +382,8 @@ func (p *DTree) getCurrentShareAccess(ctx context.Context, shareID, vStoreID str
 	accesses := make(map[string]interface{})
 
 	var i int64 = 0
-	for ; i < count; i += 100 { // Query per page 100
-		clients, err := cli.GetNfsShareAccessRange(ctx, shareID, vStoreID, i, i+100)
+	for ; i < count; i += queryNfsSharePerPage {
+		clients, err := cli.GetNfsShareAccessRange(ctx, shareID, vStoreID, i, i+queryNfsSharePerPage)
 		if err != nil {
 			return nil, err
 		}
@@ -531,7 +537,7 @@ func (p *DTree) revertQuota(ctx context.Context, taskResult map[string]interface
 	return nil
 }
 
-func (p *DTree) deleteQuota(ctx context.Context, params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+func (p *DTree) deleteQuota(ctx context.Context, params, taskResult map[string]any) (map[string]any, error) {
 	req := map[string]interface{}{
 		"PARENTTYPE":    client.ParentTypeDTree,
 		"PARENTID":      taskResult["dTreeId"],
@@ -672,20 +678,21 @@ func (p *DTree) getDtreeID(ctx context.Context, parentName, vstoreID, dTreeName 
 
 func formatKerberosParam(data interface{}) int {
 	if data == nil {
-		return -1
+		return accessKrb5Default
 	}
 	str, ok := data.(string)
 	if !ok {
-		return -1
+		return accessKrb5Default
 	}
+
 	switch str {
 	case "read_only":
-		return 0
+		return accessKrb5ReadOnly
 	case "read_write":
-		return 1
+		return accessKrb5ReadWrite
 	case "none":
-		return 5
+		return accessKrb5None
 	default:
-		return -1
+		return accessKrb5Default
 	}
 }

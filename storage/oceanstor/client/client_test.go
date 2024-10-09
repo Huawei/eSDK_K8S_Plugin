@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"reflect"
@@ -78,7 +79,7 @@ func TestLogin(t *testing.T) {
 	defer m.Reset()
 
 	for _, s := range cases {
-		g := gomonkey.ApplyMethod(reflect.TypeOf(testClient.Client), "Do", func(_ *http.Client, req *http.Request) (*http.Response, error) {
+		g := gomonkey.ApplyMethod(testClient.Client, "Do", func(_ *http.Client, req *http.Request) (*http.Response, error) {
 			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
 			return &http.Response{
 				StatusCode: 200,
@@ -250,23 +251,25 @@ func TestGetLunByName(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.GetLunByName(context.TODO(), "zfy")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.GetLunByName(context.TODO(), "zfy")
+			assert.Equal(t, s.wantErr, err != nil, "%v", err)
+		})
 	}
 }
 
@@ -346,23 +349,25 @@ func TestGetLunByID(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.GetLunByID(context.TODO(), "0")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.GetLunByID(context.TODO(), "0")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -396,23 +401,25 @@ func TestAddLunToGroup(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		mockClient := NewMockHTTPClient(ctrl)
+		testClient.Client = mockClient
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		err := testClient.AddLunToGroup(context.TODO(), "", "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			err := testClient.AddLunToGroup(context.TODO(), "", "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -441,23 +448,25 @@ func TestRemoveLunFromGroup(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		err := testClient.RemoveLunFromGroup(context.TODO(), "", "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			err := testClient.RemoveLunFromGroup(context.TODO(), "", "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -490,23 +499,25 @@ func TestGetLunGroupByName(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.GetLunGroupByName(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.GetLunGroupByName(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -536,23 +547,25 @@ func TestCreateLunGroup(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.CreateLunGroup(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.CreateLunGroup(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -581,23 +594,25 @@ func TestDeleteLunGroup(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		err := testClient.DeleteLunGroup(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			err := testClient.DeleteLunGroup(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -628,23 +643,25 @@ func TestQueryAssociateLunGroup(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.QueryAssociateLunGroup(context.TODO(), 245, "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.QueryAssociateLunGroup(context.TODO(), 245, "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -673,23 +690,25 @@ func TestDeleteLun(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		err := testClient.DeleteLun(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			err := testClient.DeleteLun(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -737,23 +756,25 @@ func TestGetPoolByName(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.GetPoolByName(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.GetPoolByName(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -801,23 +822,25 @@ func TestGetAllPools(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.GetAllPools(context.TODO())
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.GetAllPools(context.TODO())
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -851,23 +874,25 @@ func TestCreateHost(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.CreateHost(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.CreateHost(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -906,23 +931,25 @@ func TestGetHostByName(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.GetHostByName(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.GetHostByName(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -951,23 +978,25 @@ func TestDeleteHost(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		err := testClient.DeleteHost(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			err := testClient.DeleteHost(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -999,23 +1028,25 @@ func TestCreateHostGroup(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).AnyTimes()
+		t.Run(s.Name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).AnyTimes()
 
-		_, err := testClient.CreateHostGroup(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
+			_, err := testClient.CreateHostGroup(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -1059,23 +1090,25 @@ func TestGetHostGroupByName(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).Times(1)
+		t.Run(s.name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.responseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).Times(1)
 
-		_, err := testClient.GetHostGroupByName(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.name, err)
+			_, err := testClient.GetHostGroupByName(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -1114,23 +1147,25 @@ func TestDeleteHostGroup(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, nil
-		}).Times(1)
+		t.Run(s.name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.responseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, nil
+			}).Times(1)
 
-		err := testClient.DeleteHostGroup(context.TODO(), "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.name, err)
+			err := testClient.DeleteHostGroup(context.TODO(), "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -1343,22 +1378,24 @@ func TestAddHostToGroup(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	mockClient := NewMockHTTPClient(ctrl)
 
 	temp := testClient.Client
 	defer func() { testClient.Client = temp }()
-	testClient.Client = mockClient
 
 	for _, s := range cases {
-		mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
-			return &http.Response{
-				StatusCode: int(successStatus),
-				Body:       r,
-			}, s.err
-		}).Times(1)
-		err := testClient.AddHostToGroup(context.TODO(), "", "")
-		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.name, err)
+		t.Run(s.name, func(t *testing.T) {
+			mockClient := NewMockHTTPClient(ctrl)
+			testClient.Client = mockClient
+			mockClient.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+				r := io.NopCloser(bytes.NewReader([]byte(s.responseBody)))
+				return &http.Response{
+					StatusCode: int(successStatus),
+					Body:       r,
+				}, s.err
+			}).Times(1)
+			err := testClient.AddHostToGroup(context.TODO(), "", "")
+			assert.Equal(t, s.wantErr, err != nil, "err:%v", err)
+		})
 	}
 }
 
@@ -1404,7 +1441,7 @@ func TestRemoveHostFromGroup(t *testing.T) {
 	for _, s := range cases {
 		d := gomonkey.ApplyMethod(reflect.TypeOf(testClient.Client), "Do",
 			func(*http.Client, *http.Request) (*http.Response, error) {
-				r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
+				r := io.NopCloser(bytes.NewReader([]byte(s.responseBody)))
 				return &http.Response{
 					StatusCode: 200,
 					Body:       r,

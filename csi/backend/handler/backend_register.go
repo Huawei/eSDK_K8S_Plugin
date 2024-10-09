@@ -31,6 +31,7 @@ type BackendRegisterInterface interface {
 	FetchAndRegisterAllBackend(ctx context.Context)
 	FetchAndRegisterOneBackend(ctx context.Context, name string, checkOnline bool) (*model.Backend, error)
 	LoadOrRegisterOneBackend(ctx context.Context, name string) (*model.Backend, error)
+	LoadOrRebuildOneBackend(ctx context.Context, name, contentName string) (*model.Backend, error)
 	RemoveRegisteredOneBackend(ctx context.Context, name string)
 	UpdateOrRegisterOneBackend(ctx context.Context, sbct *v1.StorageBackendContent) error
 }
@@ -60,6 +61,24 @@ func (b *BackendRegister) LoadOrRegisterOneBackend(ctx context.Context, name str
 	bk, exists := b.cacheHandler.Load(name)
 	if exists {
 		return &bk, nil
+	}
+
+	return b.FetchAndRegisterOneBackend(ctx, name, true)
+}
+
+// LoadOrRebuildOneBackend if the backend has been already in cache, and doesn't need to rebuild, return it directly.
+// Otherwise, fetch and register the backend again.
+func (b *BackendRegister) LoadOrRebuildOneBackend(ctx context.Context,
+	name, contentName string) (*model.Backend, error) {
+	bk, exists := b.cacheHandler.Load(name)
+	if exists && !bk.NeedRebuild(contentName) {
+		return &bk, nil
+	}
+
+	if bk.NeedRebuild(contentName) {
+		log.AddContext(ctx).Infof("The content name of backend [%s] has changed from [%s] to [%s], need rebuild",
+			bk.Name, bk.ContentName, contentName)
+		b.cacheHandler.Delete(ctx, name)
 	}
 
 	return b.FetchAndRegisterOneBackend(ctx, name, true)

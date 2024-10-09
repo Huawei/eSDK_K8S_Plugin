@@ -43,18 +43,18 @@ func (s *stubConnector) DisConnectVolume(ctx context.Context, tgtLunWWN string) 
 	return nil
 }
 
-var testConnector Connector = &stubConnector{}
+var testConnector VolumeConnector = &stubConnector{}
 
 func TestRegisterConnector(t *testing.T) {
 	defer func() {
-		connectors = map[string]Connector{}
+		connectors = map[string]VolumeConnector{}
 	}()
 
 	connectors["fibreChannel"] = testConnector
 
 	type args struct {
 		cType string
-		cnt   Connector
+		cnt   VolumeConnector
 	}
 	tests := []struct {
 		name    string
@@ -83,7 +83,7 @@ func TestGetConnector(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want Connector
+		want VolumeConnector
 	}{
 		{"NoExist", args{context.Background(), FCDriver}, nil},
 		{"Existed", args{context.Background(), ISCSIDriver}, testConnector},

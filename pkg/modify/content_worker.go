@@ -28,7 +28,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/strings/slices"
 
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/lib/drcsi"
@@ -145,7 +144,7 @@ func (ctrl *VolumeModifyController) setContentFinalizers(ctx context.Context,
 
 	defer log.AddContext(ctx).Infof("content %s added finalizer ", content.Name)
 	contentClone := content.DeepCopy()
-	if slices.Contains(content.Finalizers, ProtectContentFinalizer) {
+	if utils.Contains(content.Finalizers, ProtectContentFinalizer) {
 		return contentClone, nil
 	}
 	contentClone.ObjectMeta.Finalizers = append(contentClone.ObjectMeta.Finalizers, ProtectContentFinalizer)

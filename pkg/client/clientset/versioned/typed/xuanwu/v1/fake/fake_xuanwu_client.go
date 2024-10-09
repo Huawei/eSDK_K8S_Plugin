@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -24,10 +24,6 @@ import (
 
 type FakeXuanwuV1 struct {
 	*testing.Fake
-}
-
-func (c *FakeXuanwuV1) ResourceTopologies() v1.ResourceTopologyInterface {
-	return &FakeResourceTopologies{c}
 }
 
 func (c *FakeXuanwuV1) StorageBackendClaims(namespace string) v1.StorageBackendClaimInterface {

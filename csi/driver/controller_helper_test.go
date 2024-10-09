@@ -22,18 +22,18 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"huawei-csi-driver/csi/backend/model"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/prashantv/gostub"
-	"github.com/smartystreets/goconvey/convey"
 
 	"huawei-csi-driver/csi/app"
 	cfg "huawei-csi-driver/csi/app/config"
 	"huawei-csi-driver/csi/backend/handler"
 	"huawei-csi-driver/csi/backend/plugin"
-	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -53,32 +53,32 @@ func TestMain(m *testing.M) {
 }
 
 func TestCheckReservedSnapshotSpaceRatio(t *testing.T) {
-	convey.Convey("Normal", t, func() {
+	t.Run("Normal", func(t *testing.T) {
 		param := map[string]interface{}{
 			"reservedSnapshotSpaceRatio": "50",
 		}
-		convey.So(checkReservedSnapshotSpaceRatio(context.TODO(), param), convey.ShouldBeNil)
+		require.NoError(t, checkReservedSnapshotSpaceRatio(context.TODO(), param))
 	})
 
-	convey.Convey("Not int", t, func() {
+	t.Run("Not int", func(t *testing.T) {
 		param := map[string]interface{}{
 			"reservedSnapshotSpaceRatio": "20%",
 		}
-		convey.So(checkReservedSnapshotSpaceRatio(context.TODO(), param), convey.ShouldBeError)
+		require.Error(t, checkReservedSnapshotSpaceRatio(context.TODO(), param))
 	})
 
-	convey.Convey("Exceed the upper limit", t, func() {
+	t.Run("Exceed the upper limit", func(t *testing.T) {
 		param := map[string]interface{}{
 			"reservedSnapshotSpaceRatio": "60",
 		}
-		convey.So(checkReservedSnapshotSpaceRatio(context.TODO(), param), convey.ShouldBeError)
+		require.Error(t, checkReservedSnapshotSpaceRatio(context.TODO(), param))
 	})
 
-	convey.Convey("Below the lower limit", t, func() {
+	t.Run("Below the lower limit", func(t *testing.T) {
 		param := map[string]interface{}{
 			"reservedSnapshotSpaceRatio": "-10",
 		}
-		convey.So(checkReservedSnapshotSpaceRatio(context.TODO(), param), convey.ShouldBeError)
+		require.Error(t, checkReservedSnapshotSpaceRatio(context.TODO(), param))
 	})
 
 }
@@ -100,8 +100,8 @@ func mockCreateRequest() *csi.CreateVolumeRequest {
 	}
 }
 
-func initDriver() *Driver {
-	return NewDriver(app.GetGlobalConfig().DriverName,
+func initDriver() *CsiDriver {
+	return NewServer(app.GetGlobalConfig().DriverName,
 		"csiVersion",
 		app.GetGlobalConfig().K8sUtils,
 		app.GetGlobalConfig().NodeName)
@@ -121,9 +121,6 @@ func TestCreateVolumeWithoutBackend(t *testing.T) {
 	driver := initDriver()
 	req := mockCreateRequest()
 
-	s := gostub.StubFunc(&pkgUtils.CreatePVLabel)
-	defer s.Reset()
-
 	m := gomonkey.ApplyMethod(reflect.TypeOf(driver.backendSelector), "SelectPoolPair",
 		func(hander *handler.BackendSelector, ctx context.Context, requestSize int64,
 			parameters map[string]interface{}) (*model.SelectPoolPair, error) {
@@ -139,8 +136,6 @@ func TestCreateVolumeWithoutBackend(t *testing.T) {
 
 func TestCreateVolume(t *testing.T) {
 	driver := initDriver()
-	s := gostub.StubFunc(&pkgUtils.CreatePVLabel)
-	defer s.Reset()
 	m := gomonkey.ApplyMethod(reflect.TypeOf(driver.backendSelector), "SelectPoolPair",
 		func(hander *handler.BackendSelector, ctx context.Context, requestSize int64,
 			parameters map[string]interface{}) (*model.SelectPoolPair, error) {
@@ -180,9 +175,6 @@ func TestImportVolumeWithoutBackend(t *testing.T) {
 		})
 	defer m.Reset()
 
-	s := gostub.StubFunc(&pkgUtils.CreatePVLabel)
-	defer s.Reset()
-
 	_, err := driver.manageVolume(context.TODO(), req, "fake-nfs", "fake-backend")
 	if err == nil {
 		t.Error("test import without backend failed")
@@ -193,8 +185,6 @@ func TestImportVolume(t *testing.T) {
 	plg := plugin.GetPlugin("oceanstor-nas")
 	localPool := initPool("local-pool")
 
-	s := gostub.StubFunc(&pkgUtils.CreatePVLabel)
-	defer s.Reset()
 	driver := initDriver()
 	m := gomonkey.ApplyMethod(reflect.TypeOf(driver.backendSelector), "SelectBackend",
 		func(hander *handler.BackendSelector, ctx context.Context, backendName string) (*model.Backend, error) {

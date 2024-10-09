@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"huawei-csi-driver/csi/app"
@@ -29,18 +28,9 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// Lock is a special lock interface provided for disk management
-type Lock interface {
-	SyncLock(lockName string)
-
-	SyncUnlock(lockName string)
-}
-
 var (
-	curDriverName string
-	lockMutex     sync.Mutex
-	semaphoreMap  map[string]*utils.Semaphore
-	lockDir       = fmt.Sprintf("%s/lock/", lockDirPrefix)
+	semaphoreMap map[string]*utils.Semaphore
+	dir          = fmt.Sprintf("%s/lock/", lockDirPrefix)
 )
 
 const (
@@ -64,7 +54,7 @@ const (
 
 // InitLock provide three semaphores for device connect, disconnect and expand
 func InitLock(driverName string) error {
-	err := checkLockPath(lockDir)
+	err := checkLockPath(dir)
 	if err != nil {
 		return err
 	}
@@ -74,7 +64,6 @@ func InitLock(driverName string) error {
 		disConnectVolume: utils.NewSemaphore(app.GetGlobalConfig().ConnectorThreads),
 		extendVolume:     utils.NewSemaphore(app.GetGlobalConfig().ConnectorThreads),
 	}
-	curDriverName = driverName
 	log.Infoln("Init lock success.")
 	return nil
 }
@@ -83,19 +72,19 @@ func InitLock(driverName string) error {
 func SyncLock(ctx context.Context, lockName, operationType string) error {
 	startTime := time.Now()
 
-	err := createLockDir(filepath.Dir(lockDir))
+	err := createLockDir(filepath.Dir(dir))
 	if err != nil {
 		return fmt.Errorf("create dir failed, reason: %s", err)
 	}
 
-	err = waitGetLock(ctx, lockDir, lockName)
+	err = waitGetLock(ctx, dir, lockName)
 	if err != nil {
 		return err
 	}
 
 	err = waitGetSemaphore(ctx, operationType)
 	if err != nil {
-		newErr := deleteLockFile(ctx, lockDir, lockName)
+		newErr := deleteLockFile(ctx, dir, lockName)
 		if newErr != nil {
 			log.AddContext(ctx).Errorln("new error occurred when delete lock file")
 			return newErr
@@ -112,7 +101,7 @@ func SyncUnlock(ctx context.Context, lockName, operationType string) error {
 	startTime := time.Now()
 	releaseSemaphore(ctx, operationType)
 
-	err := deleteLockFile(ctx, lockDir, lockName)
+	err := deleteLockFile(ctx, dir, lockName)
 	if err != nil {
 		return err
 	}

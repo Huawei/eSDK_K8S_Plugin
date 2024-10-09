@@ -21,10 +21,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
-	k8string "k8s.io/utils/strings"
 
 	"huawei-csi-driver/cli/helper"
 	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
@@ -86,7 +86,7 @@ func (r *CommonCallHandler[T]) DeleteByNames(namespace string, names ...string) 
 		return err
 	}
 	for _, name := range names {
-		qualifiedNames = append(qualifiedNames, k8string.JoinQualifiedName(string(resourceType), name))
+		qualifiedNames = append(qualifiedNames, path.Join(string(resourceType), name))
 	}
 	_, err = r.client.DeleteResourceByQualifiedNames(qualifiedNames, namespace)
 	return err

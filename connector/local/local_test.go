@@ -77,7 +77,8 @@ func TestConnectVolume(t *testing.T) {
 		},
 	}
 
-	stubs := gostub.Stub(&waitDevOnlineTimeInterval, time.Millisecond)
+	var interval = waitDevOnlineTimeInterval
+	stubs := gostub.Stub(&interval, time.Millisecond)
 	defer stubs.Reset()
 
 	stubs.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
@@ -90,7 +91,7 @@ func TestConnectVolume(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &Local{}
+			loc := &Connector{}
 			got, err := loc.ConnectVolume(tt.args.ctx, tt.args.conn)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ConnectVolume() error = %v, wantErr %v", err, tt.wantErr)
@@ -156,7 +157,7 @@ func TestDisConnectVolume(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			loc := &Local{}
+			loc := &Connector{}
 			err := loc.DisConnectVolume(tt.args.ctx, tt.args.tgtLunWWN)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DisConnectVolume() error = %v, wantErr %v", err, tt.wantErr)

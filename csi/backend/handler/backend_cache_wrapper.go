@@ -46,7 +46,7 @@ type CacheWrapper struct {
 
 // NewCacheWrapper init instance of CacheWrapper
 func NewCacheWrapper() *CacheWrapper {
-	return &CacheWrapper{cache.BackendCacheProvider}
+	return &CacheWrapper{BackendCacheInterface: cache.BackendCacheProvider}
 }
 
 // AddBackendToCache init a backend and add to cache

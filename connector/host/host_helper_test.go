@@ -25,7 +25,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
-	"github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -84,23 +84,23 @@ func TestNewNodeHostInfo(t *testing.T) {
 	})
 	defer getRoCEInitiator.Reset()
 
-	convey.Convey("TestNewNodeHostInfoSuccessful", t, func() {
+	t.Run("TestNewNodeHostInfoSuccessful", func(t *testing.T) {
 		execShellCmd := gostub.StubFunc(&utils.ExecShellCmd, want.HostName, nil)
 		defer execShellCmd.Reset()
 		nodeHostInfo, err := NewNodeHostInfo(context.Background())
 		if !reflect.DeepEqual(nodeHostInfo, want) {
 			t.Errorf("NewNodeHostInfo() got = %v, want %v", nodeHostInfo, want)
 		}
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 
-	convey.Convey("TestNewNodeHostInfoWithQueryHostNameFail", t, func() {
+	t.Run("TestNewNodeHostInfoWithQueryHostNameFail", func(t *testing.T) {
 		execShellCmd := gostub.StubFunc(&utils.ExecShellCmd, nil, errors.New("timeout"))
 		defer execShellCmd.Reset()
 
 		nodeHostInfo, err := NewNodeHostInfo(context.Background())
-		convey.So(nodeHostInfo, convey.ShouldBeNil)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
+		require.Nil(t, nodeHostInfo)
 	})
 }
 
@@ -111,9 +111,9 @@ func TestSaveNodeHostInfoToSecretWithGetSecretError(t *testing.T) {
 		})
 	defer getSecret.Reset()
 
-	convey.Convey("TestSaveNodeHostInfoToSecretWithGetSecretError", t, func() {
+	t.Run("TestSaveNodeHostInfoToSecretWithGetSecretError", func(t *testing.T) {
 		err := SaveNodeHostInfoToSecret(context.Background())
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
 	isNotFound := gomonkey.ApplyFunc(apiErrors.IsNotFound, func(err error) bool {
@@ -121,7 +121,7 @@ func TestSaveNodeHostInfoToSecretWithGetSecretError(t *testing.T) {
 	})
 	defer isNotFound.Reset()
 
-	convey.Convey("TestSaveNodeHostInfoToSecretWithIsNotFoundError", t, func() {
+	t.Run("TestSaveNodeHostInfoToSecretWithIsNotFoundError", func(t *testing.T) {
 		createSecretFunc := func(_ *k8sutils.KubeClient, ctx context.Context, secret *corev1.Secret) (*corev1.Secret,
 			error) {
 			return secret, nil
@@ -134,7 +134,7 @@ func TestSaveNodeHostInfoToSecretWithGetSecretError(t *testing.T) {
 		defer newNodeHostInfo.Reset()
 
 		err := SaveNodeHostInfoToSecret(context.Background())
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
 	createSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "CreateSecret",
@@ -148,19 +148,19 @@ func TestSaveNodeHostInfoToSecretWithGetSecretError(t *testing.T) {
 	})
 	defer isAlreadyExists.Reset()
 
-	convey.Convey("TestSaveNodeHostInfoToSecretWithSecretNotExistAndCreateFail", t, func() {
+	t.Run("TestSaveNodeHostInfoToSecretWithSecretNotExistAndCreateFail", func(t *testing.T) {
 		err := SaveNodeHostInfoToSecret(context.Background())
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
-	convey.Convey("TestSaveNodeHostInfoToSecretWithSecretNotExistAndCreateReturnExists", t, func() {
+	t.Run("TestSaveNodeHostInfoToSecretWithSecretNotExistAndCreateReturnExists", func(t *testing.T) {
 		err := SaveNodeHostInfoToSecret(context.Background())
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestSaveNodeHostInfoToSecretWithSecretNotExist(t *testing.T) {
-	convey.Convey("TestSaveNodeHostInfoToSecretWithGetSecretNotExist", t, func() {
+	t.Run("TestSaveNodeHostInfoToSecretWithGetSecretNotExist", func(t *testing.T) {
 		getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
 			func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
 				return &corev1.Secret{}, nil
@@ -190,12 +190,12 @@ func TestSaveNodeHostInfoToSecretWithSecretNotExist(t *testing.T) {
 		defer updateSecret.Reset()
 
 		err := SaveNodeHostInfoToSecret(context.Background())
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 }
 
 func TestSaveNodeHostInfoToSecretWithNewHostInfoError(t *testing.T) {
-	convey.Convey("TestSaveNodeHostInfoToSecretWithNewHostInfoError", t, func() {
+	t.Run("TestSaveNodeHostInfoToSecretWithNewHostInfoError", func(t *testing.T) {
 		getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
 			func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
 				return &corev1.Secret{}, nil
@@ -208,7 +208,7 @@ func TestSaveNodeHostInfoToSecretWithNewHostInfoError(t *testing.T) {
 		defer newNodeHostInfo.Reset()
 
 		err := SaveNodeHostInfoToSecret(context.Background())
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
@@ -224,7 +224,7 @@ func TestSaveNodeHostInfoToSecretWithUpdateSecret(t *testing.T) {
 	})
 	defer newNodeHostInfo.Reset()
 
-	convey.Convey("TestSaveNodeHostInfoToSecretWithMarshalError", t, func() {
+	t.Run("TestSaveNodeHostInfoToSecretWithMarshalError", func(t *testing.T) {
 		errorMsg := "marshal error"
 		marshal := gomonkey.ApplyFunc(json.Marshal, func(v any) ([]byte, error) {
 			return nil, errors.New(errorMsg)
@@ -232,11 +232,11 @@ func TestSaveNodeHostInfoToSecretWithUpdateSecret(t *testing.T) {
 		defer marshal.Reset()
 
 		err := SaveNodeHostInfoToSecret(context.Background())
-		convey.So(err, convey.ShouldBeError)
-		convey.So(err, convey.ShouldEqual, errorMsg)
+		require.Error(t, err)
+		require.ErrorContains(t, err, errorMsg)
 	})
 
-	convey.Convey("TestSaveNodeHostInfoToSecretWithUpdateSecretFail", t, func() {
+	t.Run("TestSaveNodeHostInfoToSecretWithUpdateSecretFail", func(t *testing.T) {
 		updateSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "UpdateSecret",
 			func(_ *k8sutils.KubeClient, ctx context.Context, secret *corev1.Secret) (*corev1.Secret, error) {
 				return nil, errors.New("error")
@@ -244,10 +244,10 @@ func TestSaveNodeHostInfoToSecretWithUpdateSecret(t *testing.T) {
 		defer updateSecret.Reset()
 
 		err := SaveNodeHostInfoToSecret(context.Background())
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
-	convey.Convey("TestSaveNodeHostInfoToSecretWithUpdateSecretSuccess", t, func() {
+	t.Run("TestSaveNodeHostInfoToSecretWithUpdateSecretSuccess", func(t *testing.T) {
 		updateSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "UpdateSecret",
 			func(_ *k8sutils.KubeClient, ctx context.Context, secret *corev1.Secret) (*corev1.Secret, error) {
 				return secret, nil
@@ -255,12 +255,12 @@ func TestSaveNodeHostInfoToSecretWithUpdateSecret(t *testing.T) {
 		defer updateSecret.Reset()
 
 		err := SaveNodeHostInfoToSecret(context.Background())
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 }
 
 func TestGetNodeHostInfosFromSecret(t *testing.T) {
-	convey.Convey("TestGetNodeHostInfosFromSecretAndGetSecretError", t, func() {
+	t.Run("TestGetNodeHostInfosFromSecretAndGetSecretError", func(t *testing.T) {
 		getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
 			func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
 				return nil, errors.New(" get secret error")
@@ -268,10 +268,10 @@ func TestGetNodeHostInfosFromSecret(t *testing.T) {
 		defer getSecret.Reset()
 
 		nodeHostInfos, err := GetNodeHostInfosFromSecret(context.Background(), testNodeInfo.HostName)
-		convey.So(err, convey.ShouldBeError)
-		convey.So(nodeHostInfos, convey.ShouldBeNil)
+		require.Error(t, err)
+		require.Nil(t, nodeHostInfos)
 	})
-	convey.Convey("TestGetNodeHostInfosFromSecretAndDataIsNil", t, func() {
+	t.Run("TestGetNodeHostInfosFromSecretAndDataIsNil", func(t *testing.T) {
 		getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
 			func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
 				return &corev1.Secret{}, nil
@@ -279,11 +279,11 @@ func TestGetNodeHostInfosFromSecret(t *testing.T) {
 		defer getSecret.Reset()
 
 		nodeHostInfos, err := GetNodeHostInfosFromSecret(context.Background(), testNodeInfo.HostName)
-		convey.So(err, convey.ShouldBeError)
-		convey.So(err.Error(), convey.ShouldEqual, "secret data is empty")
-		convey.So(nodeHostInfos, convey.ShouldBeNil)
+		require.Error(t, err)
+		require.EqualError(t, err, "secret data is empty")
+		require.Nil(t, nodeHostInfos)
 	})
-	convey.Convey("TestGetNodeHostInfosFromSecretSuccess", t, func() {
+	t.Run("TestGetNodeHostInfosFromSecretSuccess", func(t *testing.T) {
 		secretData, err := json.Marshal(testNodeInfo)
 		if err != nil {
 			t.Errorf("TestGetNodeHostInfosFromSecretSuccess() json marshal %v", err)
@@ -301,7 +301,7 @@ func TestGetNodeHostInfosFromSecret(t *testing.T) {
 		defer getSecret.Reset()
 
 		testReturnData, err := GetNodeHostInfosFromSecret(context.Background(), testNodeInfo.HostName)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 		if !reflect.DeepEqual(testReturnData, testNodeInfo) {
 			t.Errorf("TestGetNodeHostInfosFromSecretSuccess() got = %v, want %v", testReturnData, testNodeInfo)
 		}

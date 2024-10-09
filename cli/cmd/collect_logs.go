@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package command
+package cmd
 
 import (
 	"github.com/spf13/cobra"
@@ -25,7 +25,7 @@ import (
 	"huawei-csi-driver/cli/resources"
 )
 
-func init() {
+func registerCollectLogsCmd() {
 	options.NewFlagsOptions(collectLogsCmd).
 		WithNameSpace(true).
 		WithAllNodes().

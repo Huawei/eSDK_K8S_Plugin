@@ -147,7 +147,6 @@ func TestStoragePool_UpdatePoolCapabilities(t *testing.T) {
 		"SupportApplicationType": true,
 		"SupportClone":           true,
 		"SupportMetroNAS":        false,
-		"SupportLabel":           true,
 	}
 
 	// act

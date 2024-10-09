@@ -29,8 +29,8 @@ import (
 	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/pkg/finalizers"
 	"huawei-csi-driver/pkg/utils"
+	"huawei-csi-driver/utils/flow"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/taskflow"
 )
 
 // syncClaimByKey processes a StorageBackendClaim request.
@@ -94,7 +94,7 @@ func (ctrl *BackendController) syncClaim(ctx context.Context, storageBackend *xu
 	log.AddContext(ctx).Infof("Start to syncClaim %s.", utils.StorageBackendClaimKey(storageBackend))
 	defer log.AddContext(ctx).Infof("Finished syncClaim %s.", utils.StorageBackendClaimKey(storageBackend))
 
-	syncTask := taskflow.NewTaskFlow(ctx, "Sync-StorageBackendClaim")
+	syncTask := flow.NewTaskFlow(ctx, "Sync-StorageBackendClaim")
 	syncTask.AddTask("Set-Claim-Status-Pending", ctrl.setClaimStatusTask, nil)
 	syncTask.AddTask("Remove-Configmap-Finalizer", ctrl.removeConfigmapFinalizerTask, nil)
 	syncTask.AddTask("Remove-Secret-Finalizer", ctrl.removeSecretFinalizerTask, nil)

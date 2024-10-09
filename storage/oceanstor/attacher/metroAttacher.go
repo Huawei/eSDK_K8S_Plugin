@@ -23,15 +23,15 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// MetroAttacher implements interface AttacherPlugin
+// MetroAttacher implements interface VolumeAttacherPlugin
 type MetroAttacher struct {
-	localAttacher  AttacherPlugin
-	remoteAttacher AttacherPlugin
+	localAttacher  VolumeAttacherPlugin
+	remoteAttacher VolumeAttacherPlugin
 	protocol       string
 }
 
 // NewMetroAttacher inits a new metro attacher
-func NewMetroAttacher(localAttacher, remoteAttacher AttacherPlugin, protocol string) *MetroAttacher {
+func NewMetroAttacher(localAttacher, remoteAttacher VolumeAttacherPlugin, protocol string) *MetroAttacher {
 	return &MetroAttacher{
 		localAttacher:  localAttacher,
 		remoteAttacher: remoteAttacher,

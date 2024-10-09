@@ -43,7 +43,7 @@ type testCaseStructForNewManager struct {
 	name        string
 	protocol    string
 	backendName string
-	want        Manager
+	want        VolumeManager
 	wantErr     bool
 }
 

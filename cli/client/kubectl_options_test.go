@@ -25,7 +25,7 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 	coreV1 "k8s.io/api/core/v1"
 )
 
@@ -69,13 +69,13 @@ func TestKubernetesCLIArgs_Get_failed_without_options(t *testing.T) {
 	patches := mockExecReturnStdOut("kubectl get pod huawei-csi-node-9lxhm -n huawei-csi -o=json")
 	defer patches.Reset()
 
-	convey.Convey("test get object failed without options", t, func() {
+	t.Run("test get object failed without options", func(t *testing.T) {
 		// action
 		err := mockArgs.Get(mockCtx, &mockData)
 
 		//assert
-		convey.So(mockData, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
+		require.Equal(t, except, mockData)
 	})
 }
 
@@ -96,13 +96,13 @@ func TestKubernetesCLIArgs_Get_success(t *testing.T) {
 	patches := mockExecReturnStdOut("kubectl get pod huawei-csi-node-9lxhm -n huawei-csi -o=json")
 	defer patches.Reset()
 
-	convey.Convey("test get object success", t, func() {
+	t.Run("test get object success", func(t *testing.T) {
 		// action
 		err := mockArgs.Get(mockCtx, &mockData)
 
 		//assert
-		convey.So(mockData, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, except, mockData)
 	})
 }
 
@@ -120,13 +120,13 @@ func TestKubernetesCLIArgs_Exec_success(t *testing.T) {
 		"-n huawei-csi -- collect.sh")
 	defer patches.Reset()
 
-	convey.Convey("test exec cmd in container success", t, func() {
+	t.Run("test exec cmd in container success", func(t *testing.T) {
 		// action
 		out, err := mockArgs.Exec(mockCtx, mockCmd)
 
 		// assert
-		convey.So(out, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, except, out)
 	})
 }
 
@@ -145,13 +145,13 @@ func TestKubernetesCLIArgs_Copy_success(t *testing.T) {
 		"/tmp/slave1/a.tar -c huawei-csi-driver")
 	defer patches.Reset()
 
-	convey.Convey("test copy file from container to local success", t, func() {
+	t.Run("test copy file from container to local success", func(t *testing.T) {
 		// action
 		out, err := mockArgs.Copy(mockCtx, mockContainerPath, mockLocalPath, mockCopyType)
 
 		// assert
-		convey.So(out, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, except, out)
 	})
 }
 
@@ -167,12 +167,12 @@ func TestKubernetesCLIArgs_Logs(t *testing.T) {
 	patches := mockExecReturnStdOut("kubectl logs huawei-csi-node-9lxhm -c huawei-csi-driver -n huawei-csi")
 	defer patches.Reset()
 
-	convey.Convey("test get container console logs success", t, func() {
+	t.Run("test get container console logs success", func(t *testing.T) {
 		// action
 		out, err := mockArgs.Logs(mockCtx)
 
 		// assert
-		convey.So(out, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, except, out)
 	})
 }

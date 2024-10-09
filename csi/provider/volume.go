@@ -34,7 +34,7 @@ const (
 )
 
 // ModifyVolume is used to modify volume attribute
-func (p *Provider) ModifyVolume(ctx context.Context, req *drcsi.ModifyVolumeRequest) (
+func (p *StorageProvider) ModifyVolume(ctx context.Context, req *drcsi.ModifyVolumeRequest) (
 	*drcsi.ModifyVolumeResponse, error) {
 
 	defer utils.RecoverPanic(ctx)
@@ -49,7 +49,7 @@ func (p *Provider) ModifyVolume(ctx context.Context, req *drcsi.ModifyVolumeRequ
 	return &drcsi.ModifyVolumeResponse{}, nil
 }
 
-func (p *Provider) modifyHyperMetro(ctx context.Context, req *drcsi.ModifyVolumeRequest) (
+func (p *StorageProvider) modifyHyperMetro(ctx context.Context, req *drcsi.ModifyVolumeRequest) (
 	*drcsi.ModifyVolumeResponse, error) {
 
 	// Determine whether the operation is a conversion between a local volume and a HyperMetro volume.
@@ -84,7 +84,7 @@ func (p *Provider) modifyHyperMetro(ctx context.Context, req *drcsi.ModifyVolume
 		return nil, errors.New(errMsg)
 	}
 
-	params := pkgUtils.CombineMap(req.StorageClassParameters, req.MutableParameters)
+	params := pkgUtils.CombineMap(req.MutableParameters, req.StorageClassParameters)
 	remotePool, err := p.backendSelector.SelectRemotePool(ctx, thinVolumeRequestSize, backendName,
 		pkgUtils.ConvertMapString2MapInterface(params))
 	if err != nil {
@@ -94,9 +94,9 @@ func (p *Provider) modifyHyperMetro(ctx context.Context, req *drcsi.ModifyVolume
 	}
 
 	if remotePool != nil {
-		req.StorageClassParameters["remoteStoragePool"] = remotePool.Name
+		params["remoteStoragePool"] = remotePool.Name
 	}
-	err = bk.Plugin.ModifyVolume(ctx, req.VolumeId, modifyType, req.StorageClassParameters)
+	err = bk.Plugin.ModifyVolume(ctx, req.VolumeId, modifyType, params)
 	if err != nil {
 		errMsg := fmt.Sprintf("modify volume failed, volume name: %s, modify type: %v, error: %v",
 			volumeName, modifyType, err)

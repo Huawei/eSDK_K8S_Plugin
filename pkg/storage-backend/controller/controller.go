@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -39,19 +39,25 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+const (
+	defaultRetryIntervalStart = 5 * time.Second
+	defaultRetryIntervalMax   = 5 * time.Minute
+	defaultProvisionTimeout   = 5 * time.Minute
+)
+
 var (
 	retryIntervalStart = flag.Duration(
 		"retry-interval-start",
-		5*time.Second,
+		defaultRetryIntervalStart,
 		"Initial retry interval of failed storageBackend creation or deletion. "+
 			"It doubles with each failure, up to retry-interval-max.")
 	retryIntervalMax = flag.Duration(
 		"retry-interval-max",
-		5*time.Minute,
+		defaultRetryIntervalMax,
 		"Maximum retry interval of failed storageBackend creation or deletion.")
 	provisionTimeout = flag.Duration(
 		"provision-timeout",
-		5*time.Minute,
+		defaultProvisionTimeout,
 		"The timeout of the provision storage backend.")
 )
 

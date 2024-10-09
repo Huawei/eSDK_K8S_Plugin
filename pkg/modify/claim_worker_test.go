@@ -27,12 +27,12 @@ import (
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/strings/slices"
 
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
 	"huawei-csi-driver/pkg/client/clientset/versioned/fake"
 	backendInformers "huawei-csi-driver/pkg/client/informers/externalversions"
+	"huawei-csi-driver/utils"
 )
 
 func TestModifyClaimController_syncClaimWork_WhenGetClaimFromListerFailed(t *testing.T) {
@@ -92,7 +92,7 @@ func TestModifyClaimController_setClaimFinalizers_WhenStatusIsNil(t *testing.T) 
 			"want nil, but got %v", err)
 	}
 
-	if slices.Contains(claim.Finalizers, ProtectClaimFinalizer) {
+	if utils.Contains(claim.Finalizers, ProtectClaimFinalizer) {
 		t.Errorf("TestModifyClaimController_setClaimFinalizers_WhenStatusIsNil failed, "+
 			"want not finalzer, but got %v", claim.Finalizers)
 	}
@@ -126,7 +126,7 @@ func TestModifyClaimController_setClaimFinalizers_WhenPhaseIsPending(t *testing.
 			"want nil, but got %v", err)
 	}
 
-	if !slices.Contains(claim.Finalizers, ProtectClaimFinalizer) {
+	if !utils.Contains(claim.Finalizers, ProtectClaimFinalizer) {
 		t.Errorf("TestModifyClaimController_setClaimFinalizers_WhenPhaseIsPending failed, "+
 			"want proctect finalzer, but got %v", claim.Finalizers)
 	}

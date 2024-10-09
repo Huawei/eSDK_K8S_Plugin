@@ -24,19 +24,19 @@ import (
 
 	"huawei-csi-driver/connector"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/flow"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/taskflow"
 )
 
-// SanManager implements Manager interface
+// SanManager implements VolumeManager interface
 type SanManager struct {
-	Conn     connector.Connector
+	Conn     connector.VolumeConnector
 	protocol string
 }
 
 // NewSanManager build a san manager instance according to the protocol
-func NewSanManager(ctx context.Context, protocol string) (Manager, error) {
-	var conn connector.Connector
+func NewSanManager(ctx context.Context, protocol string) (VolumeManager, error) {
+	var conn connector.VolumeConnector
 	switch protocol {
 	case "iscsi":
 		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
@@ -74,7 +74,7 @@ func (m *SanManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return err
 	}
 
-	tasks := taskflow.NewTaskFlow(ctx, "StageVolume").
+	tasks := flow.NewTaskFlow(ctx, "StageVolume").
 		AddTaskWithOutRevert(clearResidualPathWithWwn).
 		AddTaskWithOutRevert(clearResidualPathWithLunId).
 		AddTaskWithOutRevert(connectVolume)
@@ -217,7 +217,12 @@ func clearResidualPathWithWwn(ctx context.Context, parameters map[string]interfa
 		return err
 	}
 
-	return connector.ClearResidualPath(ctx, wwn, parameters["volumeMode"])
+	publishInfo, exist := parameters["publishInfo"].(*ControllerPublishInfo)
+	if !exist {
+		return errors.New("build multiPathType failed, caused by publishInfo is not exist")
+	}
+
+	return connector.ClearResidualPath(ctx, wwn, parameters["volumeMode"], publishInfo.MultiPathType)
 }
 
 func connectVolume(ctx context.Context, parameters map[string]interface{}) error {
@@ -228,7 +233,7 @@ func connectVolume(ctx context.Context, parameters map[string]interface{}) error
 	}
 
 	connectionParams := publishInfo.ReflectToMap()
-	conn, exist := parameters["connector"].(connector.Connector)
+	conn, exist := parameters["connector"].(connector.VolumeConnector)
 	if !exist {
 		return errors.New("connector doesn't exist while connect volume")
 	}

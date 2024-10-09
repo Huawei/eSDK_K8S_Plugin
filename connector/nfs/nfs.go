@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// NFS to define a local lock when connect or disconnect, in order to preventing mounting and unmounting confusion
-type NFS struct {
+// Connector to define a local lock when connect or disconnect, in order to preventing mounting and unmounting confusion
+type Connector struct {
 }
 
 const (
@@ -38,20 +38,21 @@ const (
 )
 
 func init() {
-	connector.RegisterConnector(connector.NFSDriver, &NFS{})
+	connector.RegisterConnector(connector.NFSDriver, &Connector{})
 }
 
 // ConnectVolume to mount the source to target path, the source path can be block or nfs
 // Example:
-//    mount /dev/sdb /<target-path>
-//    mount <source-path> /<target-path>
-func (nfs *NFS) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
-	log.AddContext(ctx).Infof("NFS Start to connect volume ==> connect info: %v", conn)
+//
+//	mount /dev/sdb /<target-path>
+//	mount <source-path> /<target-path>
+func (nfs *Connector) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
+	log.AddContext(ctx).Infof("Nfs Start to connect volume ==> connect info: %v", conn)
 	return tryConnectVolume(ctx, conn)
 }
 
 // DisConnectVolume to unmount the target path
-func (nfs *NFS) DisConnectVolume(ctx context.Context, targetPath string) error {
+func (nfs *Connector) DisConnectVolume(ctx context.Context, targetPath string) error {
 	log.AddContext(ctx).Infof("NFS Start to disconnect volume ==> target path is: %v", targetPath)
 	return tryDisConnectVolume(ctx, targetPath)
 }

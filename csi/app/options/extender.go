@@ -65,7 +65,7 @@ func (opt *extenderOptions) AddFlags(ff *flag.FlagSet) {
 }
 
 // ApplyFlags assign the extender flags
-func (opt *extenderOptions) ApplyFlags(cfg *config.Config) {
+func (opt *extenderOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.VolumeModifyRetryBaseDelay = opt.volumeModifyRetryBaseDelay
 	cfg.VolumeModifyRetryMaxDelay = opt.volumeModifyRetryMaxDelay
 	cfg.VolumeModifyReconcileDelay = opt.volumeModifyReconcileDelay

@@ -19,8 +19,8 @@ package provider
 
 import "huawei-csi-driver/csi/backend/handler"
 
-// Provider is for storage provider
-type Provider struct {
+// StorageProvider is for storage provider
+type StorageProvider struct {
 	name            string
 	version         string
 	storageService  handler.StorageServiceInterface
@@ -31,8 +31,8 @@ type Provider struct {
 }
 
 // NewProvider is used to create storage provider
-func NewProvider(name, version string) *Provider {
-	return &Provider{
+func NewProvider(name, version string) *StorageProvider {
+	return &StorageProvider{
 		name:            name,
 		version:         version,
 		storageService:  handler.NewStorageHandler(),

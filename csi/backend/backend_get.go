@@ -23,10 +23,12 @@ import (
 	"errors"
 	"fmt"
 
+	coreV1 "k8s.io/api/core/v1"
+
+	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/csi/app"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
-	coreV1 "k8s.io/api/core/v1"
 )
 
 // GetBackendConfigmap used to get Configmap
@@ -85,34 +87,64 @@ func addSecretInfo(secret *coreV1.Secret, storageConfig map[string]interface{}) 
 	return nil
 }
 
+// GetBackendInfoArgs is the arguments to get backend info.
+type GetBackendInfoArgs struct {
+	contentName   string
+	configmapMeta string
+	secretMeta    string
+	certSecret    string
+	useCert       bool
+}
+
+// NewGetBackendInfoArgsFromClaim used to new get backend info arguments from StorageBackendClaim
+func NewGetBackendInfoArgsFromClaim(claim *xuanwuV1.StorageBackendClaim) GetBackendInfoArgs {
+	return GetBackendInfoArgs{
+		configmapMeta: claim.Spec.ConfigMapMeta,
+		secretMeta:    claim.Spec.SecretMeta,
+		certSecret:    claim.Spec.CertSecret,
+		useCert:       claim.Spec.UseCert,
+	}
+}
+
+// NewGetBackendInfoArgsFromContent used to new get backend info arguments from StorageBackendContent
+func NewGetBackendInfoArgsFromContent(content *xuanwuV1.StorageBackendContent) GetBackendInfoArgs {
+	return GetBackendInfoArgs{
+		contentName:   content.Name,
+		configmapMeta: content.Spec.ConfigmapMeta,
+		secretMeta:    content.Spec.SecretMeta,
+		certSecret:    content.Spec.CertSecret,
+		useCert:       content.Spec.UseCert,
+	}
+}
+
 // GetStorageBackendInfo used to get storage config info
-func GetStorageBackendInfo(ctx context.Context, backendID, configmapMeta, secretMeta, certSecret string,
-	useCert bool) (map[string]interface{}, error) {
+func GetStorageBackendInfo(ctx context.Context, backendID string, args GetBackendInfoArgs) (map[string]any, error) {
 	log.AddContext(ctx).Infof("start GetStorageBackendInfo: %s.", backendID)
-	backendMapData, err := GetBackendConfigmapMap(ctx, configmapMeta)
+	backendMapData, err := GetBackendConfigmapMap(ctx, args.configmapMeta)
 	if err != nil {
-		msg := fmt.Sprintf("get backend %s failed, error %v", configmapMeta, err)
+		msg := fmt.Sprintf("get backend %s failed, error %v", args.configmapMeta, err)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
 
-	secret, err := pkgUtils.GetBackendSecret(ctx, secretMeta)
+	secret, err := pkgUtils.GetBackendSecret(ctx, args.secretMeta)
 	if err != nil {
-		msg := fmt.Sprintf("GetBackendSecret for secret %s failed, error %v", secretMeta, err)
+		msg := fmt.Sprintf("GetBackendSecret for secret %s failed, error %v", args.secretMeta, err)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
 
 	err = addSecretInfo(secret, backendMapData)
 	if err != nil {
-		msg := fmt.Sprintf("addSecretInfo for secret %s failed, error %v", secretMeta, err)
+		msg := fmt.Sprintf("addSecretInfo for secret %s failed, error %v", args.secretMeta, err)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
 
 	backendMapData["backendID"] = backendID
-	backendMapData["useCert"] = useCert
-	backendMapData["certSecret"] = certSecret
+	backendMapData["useCert"] = args.useCert
+	backendMapData["certSecret"] = args.certSecret
+	backendMapData["contentName"] = args.contentName
 
 	return backendMapData, nil
 }

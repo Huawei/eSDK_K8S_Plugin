@@ -21,9 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/utils/strings/slices"
-
 	"huawei-csi-driver/cli/config"
+	"huawei-csi-driver/utils"
 )
 
 // Validator is used to validate a Resource object
@@ -99,7 +98,7 @@ func (b *ValidatorBuilder) ValidateOutputFormat() *ValidatorBuilder {
 	if b.resource.output == "" {
 		return b
 	}
-	if !slices.Contains(config.SupportedFormats, b.resource.output) {
+	if !utils.Contains(config.SupportedFormats, b.resource.output) {
 		b.errs = append(b.errs, fmt.Errorf("unable to match a printer suitable for the output format %s, "+
 			"allowed formats are: %v", b.resource.output, strings.Join(config.SupportedFormats, ", ")))
 	}

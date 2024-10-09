@@ -34,9 +34,10 @@ type StorageBackendTuple struct {
 // Backend for storage
 type Backend struct {
 	Name                string
+	ContentName         string
 	Storage             string
 	Available           bool
-	Plugin              plugin.Plugin
+	Plugin              plugin.StoragePlugin
 	Pools               []*StoragePool
 	Parameters          map[string]interface{}
 	SupportedTopologies []map[string]string
@@ -65,6 +66,11 @@ func (b *Backend) UpdatePools(ctx context.Context, sbct *xuanwuV1.StorageBackend
 	for _, pool := range b.Pools {
 		pool.UpdatePoolBySBCT(ctx, sbct)
 	}
+}
+
+// NeedRebuild checks whether the backend needs rebuild
+func (b *Backend) NeedRebuild(contentName string) bool {
+	return b.ContentName != contentName
 }
 
 // SelectPoolPair for pool pair

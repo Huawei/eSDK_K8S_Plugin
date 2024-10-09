@@ -28,7 +28,7 @@ import (
 )
 
 // GetAccountIdByName gets account id by account name
-func (cli *Client) GetAccountIdByName(ctx context.Context, accountName string) (string, error) {
+func (cli *RestClient) GetAccountIdByName(ctx context.Context, accountName string) (string, error) {
 	url := fmt.Sprintf("/dfv/service/obsPOE/query_accounts?name=%s", accountName)
 	resp, err := cli.get(ctx, url, nil)
 	if err != nil {
@@ -53,7 +53,7 @@ func (cli *Client) GetAccountIdByName(ctx context.Context, accountName string) (
 }
 
 // GetPoolByName gets pool by pool name
-func (cli *Client) GetPoolByName(ctx context.Context, poolName string) (map[string]interface{}, error) {
+func (cli *RestClient) GetPoolByName(ctx context.Context, poolName string) (map[string]interface{}, error) {
 	resp, err := cli.get(ctx, "/dsware/service/v1.3/storagePool", nil)
 	if err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func (cli *Client) GetPoolByName(ctx context.Context, poolName string) (map[stri
 }
 
 // GetPoolById gets pool by pool id
-func (cli *Client) GetPoolById(ctx context.Context, poolId int64) (map[string]interface{}, error) {
+func (cli *RestClient) GetPoolById(ctx context.Context, poolId int64) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/dsware/service/v1.3/storagePool?poolId=%d", poolId)
 	resp, err := cli.get(ctx, url, nil)
 	if err != nil {
@@ -120,7 +120,7 @@ func (cli *Client) GetPoolById(ctx context.Context, poolId int64) (map[string]in
 }
 
 // GetAllAccounts gets all accounts
-func (cli *Client) GetAllAccounts(ctx context.Context) ([]string, error) {
+func (cli *RestClient) GetAllAccounts(ctx context.Context) ([]string, error) {
 	resp, err := cli.get(ctx, "/dfv/service/obsPOE/accounts", nil)
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (cli *Client) GetAllAccounts(ctx context.Context) ([]string, error) {
 }
 
 // GetAllPools gets all pools
-func (cli *Client) GetAllPools(ctx context.Context) (map[string]interface{}, error) {
+func (cli *RestClient) GetAllPools(ctx context.Context) (map[string]interface{}, error) {
 	resp, err := cli.get(ctx, "/dsware/service/v1.3/storagePool", nil)
 	if err != nil {
 		return nil, err
@@ -189,7 +189,7 @@ func (cli *Client) GetAllPools(ctx context.Context) (map[string]interface{}, err
 	return pools, nil
 }
 
-func (cli *Client) getAllPools(ctx context.Context) ([]interface{}, error) {
+func (cli *RestClient) getAllPools(ctx context.Context) ([]interface{}, error) {
 	resp, err := cli.get(ctx, "/dsware/service/v1.3/storagePool", nil)
 	if err != nil {
 		return nil, err
@@ -208,7 +208,7 @@ func (cli *Client) getAllPools(ctx context.Context) ([]interface{}, error) {
 }
 
 // GetNFSServiceSetting gets nfs service settings
-func (cli *Client) GetNFSServiceSetting(ctx context.Context) (map[string]bool, error) {
+func (cli *RestClient) GetNFSServiceSetting(ctx context.Context) (map[string]bool, error) {
 	setting := map[string]bool{"SupportNFS41": false}
 
 	req := make(map[string]interface{})

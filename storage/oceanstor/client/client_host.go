@@ -32,6 +32,19 @@ const (
 	hostGroupNotExist      int64 = 1077937500
 )
 
+const (
+	// AssociateObjTypeMapping mapping type
+	AssociateObjTypeMapping = 245
+	// AssociateObjTypeHost host type
+	AssociateObjTypeHost = 21
+	// AssociateObjTypeHostGroup host group type
+	AssociateObjTypeHostGroup = 14
+	// AssociateObjTypeLUN LUN type
+	AssociateObjTypeLUN = 11
+	// AssociateObjTypeLUNGroup LUN group type
+	AssociateObjTypeLUNGroup = 256
+)
+
 // Host defines interfaces for host operations
 type Host interface {
 	// QueryAssociateHostGroup used for query associate host group

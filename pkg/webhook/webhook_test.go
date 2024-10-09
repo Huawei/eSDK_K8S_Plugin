@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 
 // TestControllerStart test start function in normal scenario
 func TestControllerStart(t *testing.T) {
-	m := gomonkey.ApplyFunc(getNameSpaceFromEnv, func(webHookCfg WebHook) string {
+	m := gomonkey.ApplyFunc(getNameSpaceFromEnv, func(webHookCfg Config) string {
 		return "namespace"
 	})
 	defer m.Reset()
@@ -79,7 +79,7 @@ func TestControllerStart(t *testing.T) {
 		})
 
 	c := Controller{started: false}
-	webHookCfg := WebHook{
+	webHookCfg := Config{
 		WebHookType: AdmissionWebHookValidating,
 		PrivateKey:  "privateKey",
 		PrivateCert: "privateCert",

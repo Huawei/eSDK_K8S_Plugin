@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// FusionStorageNasPlugin implements storage Plugin interface
+// FusionStorageNasPlugin implements storage StoragePlugin interface
 type FusionStorageNasPlugin struct {
 	FusionStoragePlugin
 	portal   string
@@ -39,7 +39,7 @@ func init() {
 }
 
 // NewPlugin used to create new plugin
-func (p *FusionStorageNasPlugin) NewPlugin() Plugin {
+func (p *FusionStorageNasPlugin) NewPlugin() StoragePlugin {
 	return &FusionStorageNasPlugin{}
 }
 
@@ -70,7 +70,8 @@ func (p *FusionStorageNasPlugin) Init(ctx context.Context, config map[string]int
 	return nil
 }
 
-func (p *FusionStorageNasPlugin) updateNasCapacity(ctx context.Context, params, parameters map[string]interface{}) error {
+func (p *FusionStorageNasPlugin) updateNasCapacity(ctx context.Context,
+	params, parameters map[string]interface{}) error {
 	size, exist := parameters["size"].(int64)
 	if !exist {
 		return utils.Errorf(ctx, "the size does not exist in parameters %v", parameters)
@@ -134,7 +135,6 @@ func (p *FusionStorageNasPlugin) UpdateBackendCapabilities(ctx context.Context) 
 		"SupportQoS":   true,
 		"SupportQuota": true,
 		"SupportClone": false,
-		"SupportLabel": false,
 	}
 
 	err := p.updateNFS4Capability(ctx, capabilities)

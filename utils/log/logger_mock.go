@@ -34,7 +34,7 @@ var (
 
 // MockInitLogging mock init the logging service
 func MockInitLogging(logName string) {
-	if err := InitLogging(&LoggingRequest{
+	if err := InitLogging(&Config{
 		LogName:       logName,
 		LogFileSize:   mockLogFileSize,
 		LoggingModule: mockLoggingModule,

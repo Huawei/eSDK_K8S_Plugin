@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@ import (
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
+
+const waitDevOnlineTimeInterval = 2 * time.Second
 
 func waitDevOnline(ctx context.Context, tgtLunWWN string) string {
 	devPath := fmt.Sprintf("/dev/disk/by-id/wwn-0x%s", tgtLunWWN)

@@ -22,9 +22,7 @@ import (
 	"reflect"
 	"testing"
 
-	"bou.ke/monkey"
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/require"
 
 	"huawei-csi-driver/storage/oceanstor/client"
@@ -62,17 +60,17 @@ func TestInit(t *testing.T) {
 	}
 
 	var cli *client.BaseClient
-	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Logout",
-		func(*client.BaseClient, context.Context) {})
-	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "Login",
-		func(*client.BaseClient, context.Context) error {
-			return nil
-		})
-	monkey.PatchInstanceMethod(reflect.TypeOf(cli), "SetSystemInfo",
-		func(*client.BaseClient, context.Context) error {
-			return nil
-		})
-	defer monkey.UnpatchAll()
+	p := gomonkey.ApplyMethod(reflect.TypeOf(cli), "Logout",
+		func(*client.BaseClient, context.Context) {}).
+		ApplyMethod(reflect.TypeOf(cli), "Login",
+			func(*client.BaseClient, context.Context) error {
+				return nil
+			}).
+		ApplyMethod(reflect.TypeOf(cli), "SetSystemInfo",
+			func(*client.BaseClient, context.Context) error {
+				return nil
+			})
+	defer p.Reset()
 
 	for _, tt := range tests {
 		var p = &OceanstorNasPlugin{}
@@ -85,12 +83,12 @@ func TestInit(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-	convey.Convey("Empty", t, func() {
+	t.Run("Empty", func(t *testing.T) {
 		err := mockOceanstorNasPlugin.Validate(ctx, map[string]interface{}{})
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
-	convey.Convey("Normal", t, func() {
+	t.Run("Normal", func(t *testing.T) {
 		portals := []interface{}{"127.0.0.1"}
 		parameters := map[string]interface{}{
 			"protocol": "nfs",
@@ -113,7 +111,7 @@ func TestValidate(t *testing.T) {
 		defer m.Reset()
 
 		err := mockOceanstorNasPlugin.Validate(ctx, config)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 }
 
@@ -272,4 +270,36 @@ func TestGetLocal2HyperMetroParameters_EmptyParam(t *testing.T) {
 
 	// assert
 	require.Equal(t, nil, err)
+}
+
+func TestOceanstorNasPluginUpdateConsistentSnapshotCapability(t *testing.T) {
+	// arrange
+	cases := []struct {
+		version   string
+		supported bool
+	}{
+		{version: "6.0.1", supported: false},
+		{version: "6.1.0", supported: false},
+		{version: "6.1.2", supported: false},
+		{version: "6.1.3", supported: false},
+		{version: "6.1.5", supported: false},
+		{version: "6.1.6", supported: true},
+		{version: "6.1.7", supported: true},
+		{version: "6.1.8", supported: true},
+	}
+	var genNas = func(version string) *OceanstorNasPlugin {
+		return &OceanstorNasPlugin{OceanstorPlugin: OceanstorPlugin{cli: &client.BaseClient{StorageVersion: version}}}
+	}
+
+	for _, c := range cases {
+		capabilities := map[string]any{}
+		specifications := map[string]any{}
+
+		// act
+		err := genNas(c.version).updateConsistentSnapshotCapability(capabilities, specifications)
+
+		// assert
+		require.NoError(t, err)
+		require.Equal(t, c.supported, capabilities["SupportConsistentSnapshot"])
+	}
 }

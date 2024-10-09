@@ -30,7 +30,7 @@ const (
 )
 
 func main() {
-	if err := command.RootCmd.Execute(); err != nil {
+	if err := cmd.Execute(); err != nil {
 		os.Exit(ExitCodeFailure)
 	}
 	os.Exit(ExitCodeSuccess)

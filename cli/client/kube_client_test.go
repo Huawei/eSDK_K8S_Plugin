@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 	coreV1 "k8s.io/api/core/v1"
 )
 
@@ -42,7 +42,7 @@ func TestKubernetesCLI_GetObject_success(t *testing.T) {
 	patches := mockExecReturnStdOut("kubectl get pod huawei-csi-node-9lxhm -n huawei-csi -o=json")
 	defer patches.Reset()
 
-	convey.Convey("test get object success", t, func() {
+	t.Run("test get object success", func(t *testing.T) {
 		// action
 		if mockCli == nil {
 			t.Errorf("mockCLi is nil")
@@ -52,8 +52,8 @@ func TestKubernetesCLI_GetObject_success(t *testing.T) {
 			mockObjectName)
 
 		//assert
-		convey.So(mockData, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, except, mockData)
 	})
 }
 
@@ -69,7 +69,7 @@ func TestKubernetesCLI_GetObject_failed_without_objectType(t *testing.T) {
 	patches := mockExecReturnStdOut("kubectl get pod huawei-csi-node-9lxhm -n huawei-csi -o=json")
 	defer patches.Reset()
 
-	convey.Convey("test get object success", t, func() {
+	t.Run("test get object success", func(t *testing.T) {
 		// action
 		if mockCli == nil {
 			t.Errorf("mockCLi is nil")
@@ -79,8 +79,8 @@ func TestKubernetesCLI_GetObject_failed_without_objectType(t *testing.T) {
 			mockObjectName)
 
 		//assert
-		convey.So(mockData, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
+		require.Equal(t, except, mockData)
 	})
 }
 
@@ -95,7 +95,7 @@ func TestKubernetesCLI_CopyContainerFileToLocal_success(t *testing.T) {
 		"/tmp/slave1/a.tar -c huawei-csi-driver")
 	defer patches.Reset()
 
-	convey.Convey("test copy file from container to local", t, func() {
+	t.Run("test copy file from container to local", func(t *testing.T) {
 		// action
 		if mockCli == nil {
 			t.Errorf("mockCLi is nil")
@@ -105,8 +105,8 @@ func TestKubernetesCLI_CopyContainerFileToLocal_success(t *testing.T) {
 			mockObjectName)
 
 		//assert
-		convey.So(out, convey.ShouldResemble, []byte(returnStr))
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, []byte(returnStr), out)
 	})
 }
 
@@ -120,7 +120,7 @@ func TestKubernetesCLI_GetConsoleLogs_success(t *testing.T) {
 	patches := mockExecReturnStdOut("kubectl logs huawei-csi-node-9lxhm -c huawei-csi-driver -n huawei-csi")
 	defer patches.Reset()
 
-	convey.Convey("test get container console logs", t, func() {
+	t.Run("test get container console logs", func(t *testing.T) {
 		// action
 		if mockCli == nil {
 			t.Errorf("mockCLi is nil")
@@ -129,8 +129,8 @@ func TestKubernetesCLI_GetConsoleLogs_success(t *testing.T) {
 		out, err := mockCli.GetConsoleLogs(mockCtx, mockNamespace, mockContainerName, false, mockObjectName)
 
 		//assert
-		convey.So(out, convey.ShouldResemble, []byte(returnStr))
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, []byte(returnStr), out)
 	})
 }
 
@@ -145,7 +145,7 @@ func TestKubernetesCLI_ExecCmdInSpecifiedContainer_success(t *testing.T) {
 		"-n huawei-csi -- collect.sh")
 	defer patches.Reset()
 
-	convey.Convey("test exec script in container", t, func() {
+	t.Run("test exec script in container", func(t *testing.T) {
 		// action
 		if mockCli == nil {
 			t.Errorf("mockCLi is nil")
@@ -155,7 +155,7 @@ func TestKubernetesCLI_ExecCmdInSpecifiedContainer_success(t *testing.T) {
 			mockObjectName)
 
 		//assert
-		convey.So(out, convey.ShouldResemble, []byte(returnStr))
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, []byte(returnStr), out)
 	})
 }

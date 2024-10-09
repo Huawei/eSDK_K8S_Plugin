@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -27,7 +27,8 @@ import (
 // Connect opens insecure gRPC connection to a CSI driver. Address must be either absolute path to UNIX domain socket
 // file or have format '<protocol>://', following gRPC name resolution mechanism at
 // https://github.com/grpc/grpc/blob/master/doc/naming.md.
-func Connect(ctx context.Context, drCSIAddress string, metricsManager metrics.CSIMetricsManager) (conn *grpc.ClientConn, err error) {
+func Connect(ctx context.Context,
+	drCSIAddress string, metricsManager metrics.CSIMetricsManager) (conn *grpc.ClientConn, err error) {
 	var m sync.Mutex
 	var canceled bool
 	ready := make(chan bool)

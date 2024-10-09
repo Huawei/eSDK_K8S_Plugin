@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,7 +35,6 @@ import (
 	"huawei-csi-driver/csi/backend/model"
 	"huawei-csi-driver/csi/backend/plugin"
 	"huawei-csi-driver/pkg/constants"
-	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -50,9 +49,10 @@ const (
 
 	maxDescriptionLength = 255
 
-	volumeTypeDTree      = "dtree"
-	volumeTypeFileSystem = "fs"
-	volumeTypeLun        = "lun"
+	volumeTypeDTree               = "dtree"
+	volumeTypeFileSystem          = "fs"
+	volumeTypeLun                 = "lun"
+	maxReservedSnapshotSpaceRatio = 50
 )
 
 var (
@@ -361,7 +361,7 @@ func checkReservedSnapshotSpaceRatio(ctx context.Context, parameters map[string]
 		return errors.New(errMsg)
 	}
 
-	if reservedSnapshotSpaceRatio < 0 || reservedSnapshotSpaceRatio > 50 {
+	if reservedSnapshotSpaceRatio < 0 || reservedSnapshotSpaceRatio > maxReservedSnapshotSpaceRatio {
 		errMsg := fmt.Sprintf("reservedSnapshotSpaceRatio: [%v] must in range [0, 50], please check this "+
 			"parameter in storageclass.", reservedSnapshotSpaceRatioString)
 		log.AddContext(ctx).Errorln(errMsg)
@@ -446,7 +446,7 @@ func processCreateVolumeParametersAfterSelect(parameters map[string]interface{},
 }
 
 // createVolume used to create a lun/filesystem in huawei storage
-func (d *Driver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+func (d *CsiDriver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	parameters, err := processCreateVolumeParameters(ctx, req)
 	if err != nil {
 		return nil, err
@@ -470,15 +470,12 @@ func (d *Driver) createVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		Volume: makeCreateVolumeResponse(ctx, req, vol, storagePoolPair.Local),
 	}
 
-	// The topology creation result does not affect current task.
-	go pkgUtils.CreatePVLabel(req.GetName(), res.GetVolume().GetVolumeId())
-
 	return res, nil
 }
 
 // In the volume import scenario, only the fields in the annotation are obtained.
 // Other information are ignored (e.g. the capacity, backend, and QoS ...).
-func (d *Driver) manageVolume(ctx context.Context, req *csi.CreateVolumeRequest, volumeName, backendName string) (
+func (d *CsiDriver) manageVolume(ctx context.Context, req *csi.CreateVolumeRequest, volumeName, backendName string) (
 	*csi.CreateVolumeResponse, error) {
 	log.AddContext(ctx).Infof("Start to manage Volume %s for backend %s.", volumeName, backendName)
 	selectBackend, err := d.backendSelector.SelectBackend(ctx, helper.GetBackendName(backendName))
@@ -526,9 +523,6 @@ func (d *Driver) manageVolume(ctx context.Context, req *csi.CreateVolumeRequest,
 		Volume: getVolumeResponse(accessibleTopologies, attributes, backendName+"."+volumeName,
 			req.GetCapacityRange().GetRequiredBytes()),
 	}
-
-	// The topology creation result does not affect current task.
-	go pkgUtils.CreatePVLabel(req.GetName(), res.GetVolume().GetVolumeId())
 
 	return res, nil
 }

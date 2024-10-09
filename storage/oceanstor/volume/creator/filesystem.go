@@ -59,6 +59,10 @@ func NewFsCreatorFromParams(cli client.BaseClientInterface,
 		creator.fileSystemMode = params.FilesystemMode()
 	}
 
+	if creator.fileSystemMode == client.HyperMetroFilesystemMode {
+		creator.vStoreId = creator.cli.GetvStoreID()
+	}
+
 	for _, opt := range opts {
 		opt(creator)
 	}

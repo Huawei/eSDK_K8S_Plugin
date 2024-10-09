@@ -106,20 +106,19 @@ func getInputString(tips string, isVisible bool) (string, error) {
 }
 
 // GetSelectedNumber get the number entered by the user
-func GetSelectedNumber(tips string, maxValue int) (int, error) {
+func GetSelectedNumber(tips string, maxValue int) (int, bool, error) {
 	input, err := getInputString(tips, true)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
 	if strings.ToLower(input) == exitCommand {
-		os.Exit(0)
-		return 0, nil
+		return 0, true, nil
 	}
 
 	number, err := strconv.Atoi(input)
 	if err == nil && number > 0 && number <= maxValue {
-		return number, nil
+		return number, false, nil
 	}
 
 	fmt.Printf("Input invalid. The valid backend number is [1-%d].\n", maxValue)

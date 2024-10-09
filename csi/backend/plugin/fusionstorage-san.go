@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// FusionStorageSanPlugin implements storage Plugin interface
+// FusionStorageSanPlugin implements storage StoragePlugin interface
 type FusionStorageSanPlugin struct {
 	FusionStoragePlugin
 	hosts    map[string]string
@@ -51,7 +51,7 @@ func init() {
 }
 
 // NewPlugin used to create new plugin
-func (p *FusionStorageSanPlugin) NewPlugin() Plugin {
+func (p *FusionStorageSanPlugin) NewPlugin() StoragePlugin {
 	return &FusionStorageSanPlugin{
 		hosts: make(map[string]string),
 	}
@@ -119,7 +119,7 @@ func (p *FusionStorageSanPlugin) getParams(name string,
 	params := map[string]interface{}{
 		"name":        name,
 		"description": parameters["description"].(string),
-		"capacity":    utils.RoundUpSize(parameters["size"].(int64), CAPACITY_UNIT),
+		"capacity":    utils.RoundUpSize(parameters["size"].(int64), CapacityUnit),
 	}
 
 	paramKeys := []string{
@@ -146,9 +146,9 @@ func (p *FusionStorageSanPlugin) CreateVolume(ctx context.Context, name string, 
 
 	size, ok := parameters["size"].(int64)
 	// for fusionStorage block, the unit is MiB
-	if !ok || !utils.IsCapacityAvailable(size, CAPACITY_UNIT) {
+	if !ok || !utils.IsCapacityAvailable(size, CapacityUnit) {
 		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer or not multiple of %d.",
-			size, CAPACITY_UNIT)
+			size, CapacityUnit)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
@@ -183,12 +183,12 @@ func (p *FusionStorageSanPlugin) DeleteVolume(ctx context.Context, name string) 
 // ExpandVolume used to expand volume
 func (p *FusionStorageSanPlugin) ExpandVolume(ctx context.Context, name string, size int64) (bool, error) {
 	// for fusionStorage block, the unit is MiB
-	if !utils.IsCapacityAvailable(size, CAPACITY_UNIT) {
+	if !utils.IsCapacityAvailable(size, CapacityUnit) {
 		return false, utils.Errorf(ctx, "Expand Volume: the capacity %d is not an integer multiple of %d.",
-			size, CAPACITY_UNIT)
+			size, CapacityUnit)
 	}
 	san := volume.NewSAN(p.cli)
-	newSize := utils.TransVolumeCapacity(size, CAPACITY_UNIT)
+	newSize := utils.TransVolumeCapacity(size, CapacityUnit)
 	isAttach, err := san.Expand(ctx, name, newSize)
 	return isAttach, err
 }
@@ -196,7 +196,14 @@ func (p *FusionStorageSanPlugin) ExpandVolume(ctx context.Context, name string, 
 // AttachVolume attach volume to node and return storage mapping info.
 func (p *FusionStorageSanPlugin) AttachVolume(ctx context.Context, name string,
 	parameters map[string]interface{}) (map[string]interface{}, error) {
-	localAttacher := attacher.NewAttacher(p.cli, p.protocol, "csi", p.portals, p.hosts, p.alua)
+	localAttacher := attacher.NewAttacher(attacher.VolumeAttacherConfig{
+		Cli:      p.cli,
+		Protocol: p.protocol,
+		Invoker:  "csi",
+		Portals:  p.portals,
+		Hosts:    p.hosts,
+		Alua:     p.alua,
+	})
 	mappingInfo, err := localAttacher.ControllerAttach(ctx, name, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("attach volume %s error: %v", name, err)
@@ -210,7 +217,14 @@ func (p *FusionStorageSanPlugin) AttachVolume(ctx context.Context, name string,
 func (p *FusionStorageSanPlugin) DetachVolume(ctx context.Context,
 	name string,
 	parameters map[string]interface{}) error {
-	localAttacher := attacher.NewAttacher(p.cli, p.protocol, "csi", p.portals, p.hosts, p.alua)
+	localAttacher := attacher.NewAttacher(attacher.VolumeAttacherConfig{
+		Cli:      p.cli,
+		Protocol: p.protocol,
+		Invoker:  "csi",
+		Portals:  p.portals,
+		Hosts:    p.hosts,
+		Alua:     p.alua,
+	})
 	_, err := localAttacher.ControllerDetach(ctx, name, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Detach volume %s error: %v", name, err)
@@ -222,7 +236,7 @@ func (p *FusionStorageSanPlugin) DetachVolume(ctx context.Context,
 
 func (p *FusionStorageSanPlugin) mutexReleaseClient(ctx context.Context,
 	plugin *FusionStorageSanPlugin,
-	cli *client.Client) {
+	cli *client.RestClient) {
 	plugin.clientMutex.Lock()
 	defer plugin.clientMutex.Unlock()
 	plugin.clientCount--
@@ -232,7 +246,7 @@ func (p *FusionStorageSanPlugin) mutexReleaseClient(ctx context.Context,
 	}
 }
 
-func (p *FusionStorageSanPlugin) releaseClient(ctx context.Context, cli *client.Client) {
+func (p *FusionStorageSanPlugin) releaseClient(ctx context.Context, cli *client.RestClient) {
 	if p.storageOnline {
 		p.mutexReleaseClient(ctx, p, cli)
 	}
@@ -246,7 +260,6 @@ func (p *FusionStorageSanPlugin) UpdateBackendCapabilities(ctx context.Context) 
 		"SupportThick": false,
 		"SupportQoS":   true,
 		"SupportClone": true,
-		"SupportLabel": false,
 	}
 	return capabilities, nil, nil
 }

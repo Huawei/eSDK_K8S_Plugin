@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,11 +24,13 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"huawei-csi-driver/connector"
 	connutils "huawei-csi-driver/connector/utils"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/concurrent"
 	"huawei-csi-driver/utils/log"
 )
 
@@ -40,16 +42,17 @@ type connectorInfo struct {
 }
 
 type shareData struct {
-	stopConnecting   bool
-	numLogin         int64
-	failedLogin      int64
-	stoppedThreads   int64
-	foundDevices     []string
-	justAddedDevices []string
+	stopConnecting   atomic.Bool
+	numLogin         atomic.Int64
+	failedLogin      atomic.Int64
+	stoppedThreads   atomic.Int64
+	foundDevices     concurrent.Slice[string]
+	justAddedDevices concurrent.Slice[string]
 }
 
 const (
-	connectTimeOut = 15
+	connectTimeOut     = 15
+	subNqnSegmentCount = 2
 )
 
 func parseRoCEInfo(ctx context.Context, connectionProperties map[string]interface{}) (connectorInfo, error) {
@@ -97,8 +100,8 @@ func getTargetNQN(ctx context.Context, tgtPortal string) (string, error) {
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
 		if strings.Contains(line, "subnqn") {
-			splits := strings.SplitN(line, ":", 2)
-			if len(splits) == 2 && splits[0] == "subnqn" {
+			splits := strings.SplitN(line, ":", subNqnSegmentCount)
+			if len(splits) == subNqnSegmentCount && splits[0] == "subnqn" {
 				tgtNqn = strings.Trim(splits[1], " ")
 				break
 			}
@@ -150,20 +153,20 @@ func connectVol(ctx context.Context,
 	targetNQN, err := getTargetNQN(ctx, tgtPortal)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Cannot discover nvme target %s, reason: %v", tgtPortal, err)
-		nvmeShareData.failedLogin += 1
-		nvmeShareData.stoppedThreads += 1
+		nvmeShareData.failedLogin.Add(1)
+		nvmeShareData.stoppedThreads.Add(1)
 		return
 	}
 
 	err = connectRoCEPortal(ctx, existSessions, tgtPortal, targetNQN)
 	if err != nil {
 		log.AddContext(ctx).Errorf("connect roce portal %s error, reason: %v", tgtPortal, err)
-		nvmeShareData.failedLogin += 1
-		nvmeShareData.stoppedThreads += 1
+		nvmeShareData.failedLogin.Add(1)
+		nvmeShareData.stoppedThreads.Add(1)
 		return
 	}
 
-	nvmeShareData.numLogin += 1
+	nvmeShareData.numLogin.Add(1)
 	var device string
 	for i := 1; i < 4; i++ {
 		nvmeConnectInfo, err := connector.GetSubSysInfo(ctx)
@@ -177,7 +180,7 @@ func connectVol(ctx context.Context,
 			log.AddContext(ctx).Errorf("Get device of guid %s error: %v", tgtLunGUID, err)
 			break
 		}
-		if device != "" || nvmeShareData.stopConnecting {
+		if device != "" || nvmeShareData.stopConnecting.Load() {
 			break
 		}
 
@@ -190,17 +193,18 @@ func connectVol(ctx context.Context,
 	}
 
 	if device != "" {
-		nvmeShareData.foundDevices = append(nvmeShareData.foundDevices, device)
-		nvmeShareData.justAddedDevices = append(nvmeShareData.justAddedDevices, device)
+		nvmeShareData.foundDevices.Append(device)
+		nvmeShareData.justAddedDevices.Append(device)
 	}
-	nvmeShareData.stoppedThreads += 1
+
+	nvmeShareData.stoppedThreads.Add(1)
 	return
 }
 
 func scanSingle(ctx context.Context, nvmeShareData *shareData) {
 	log.AddContext(ctx).Infoln("Enter function:scanSingle")
 	for i := 0; i < 15; i++ {
-		if len(nvmeShareData.foundDevices) != 0 {
+		if nvmeShareData.foundDevices.Len() != 0 {
 			break
 		}
 		time.Sleep(time.Second * intNumTwo)
@@ -285,7 +289,7 @@ func tryConnectVolume(ctx context.Context, connMap map[string]interface{}) (stri
 
 	mPath = scanDevice(ctx, conn, nvmeShareData)
 
-	nvmeShareData.stopConnecting = true
+	nvmeShareData.stopConnecting.Store(true)
 	wait.Wait()
 
 	return verifyDevice(ctx, conn, nvmeShareData, mPath)
@@ -310,7 +314,7 @@ func scanUpNVMeMultiPath(ctx context.Context, conn connectorInfo, nvmeShareData 
 	allThread := int64(len(conn.tgtPortals))
 	for isThreadNotStoppedOrFoundDevices(allThread, nvmeShareData) &&
 		isThreadNotFinishedOrDeviceNotObtained(device, allThread, nvmeShareData) {
-		if timeout == 0 && len(nvmeShareData.foundDevices) != 0 && nvmeShareData.stoppedThreads == allThread {
+		if timeout == 0 && nvmeShareData.foundDevices.Len() != 0 && nvmeShareData.stoppedThreads.Load() == allThread {
 			log.AddContext(ctx).Infof("All connection threads finished, "+
 				"giving %d seconds for ultrapath* to appear.", connectTimeOut)
 			timeout = time.Now().Unix() + connectTimeOut
@@ -330,11 +334,11 @@ func scanUpNVMeMultiPath(ctx context.Context, conn connectorInfo, nvmeShareData 
 }
 
 func isThreadNotStoppedOrFoundDevices(allThread int64, nvmeShareData *shareData) bool {
-	return nvmeShareData.stoppedThreads != allThread || len(nvmeShareData.foundDevices) != 0
+	return nvmeShareData.stoppedThreads.Load() != allThread || nvmeShareData.foundDevices.Len() != 0
 }
 
 func isThreadNotFinishedOrDeviceNotObtained(device string, allThread int64, nvmeShareData *shareData) bool {
-	return nvmeShareData.numLogin+nvmeShareData.failedLogin != allThread || device == ""
+	return nvmeShareData.numLogin.Load()+nvmeShareData.failedLogin.Load() != allThread || device == ""
 }
 
 func verifyDevice(ctx context.Context,
@@ -342,12 +346,12 @@ func verifyDevice(ctx context.Context,
 	nvmeShareData *shareData,
 	mPath string) (string, error) {
 	log.AddContext(ctx).Infof("Enter function:verifyDevice, mPath:%s", mPath)
-	if nvmeShareData.foundDevices == nil {
+	if nvmeShareData.foundDevices.Values() == nil {
 		return "", utils.Errorf(ctx, connector.VolumeDeviceNotFound)
 	}
 
 	if !conn.volumeUseMultiPath {
-		device := fmt.Sprintf("/dev/%s", nvmeShareData.foundDevices[0])
+		device := fmt.Sprintf("/dev/%s", nvmeShareData.foundDevices.Get(0))
 		err := connector.VerifySingleDevice(ctx, device, conn.tgtLunGUID,
 			connector.VolumeDeviceNotFound, tryDisConnectVolume)
 		if err != nil {

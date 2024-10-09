@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"time"
 
+	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -37,6 +38,7 @@ const (
 	msgTimeOut            int64 = 1077949001
 	exceedFSCapacityUpper int64 = 1073844377
 	lessFSCapacityLower   int64 = 1073844376
+	queryNfsSharePerPage  int64 = 100
 )
 
 const (
@@ -59,7 +61,7 @@ type Filesystem interface {
 	// GetNfsShareAccessCount used for get nfs share access count by id
 	GetNfsShareAccessCount(ctx context.Context, parentID, vStoreID string) (int64, error)
 	// GetNfsShareAccessRange used for get nfs share access
-	GetNfsShareAccessRange(ctx context.Context, parentID, vStoreID string, startRange, endRange int64) ([]interface{}, error)
+	GetNfsShareAccessRange(ctx context.Context, parentID, vStoreID string, startRange, endRange int64) ([]any, error)
 	// CreateFileSystem used for create file system
 	CreateFileSystem(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error)
 	// UpdateFileSystem used for update file system
@@ -223,8 +225,8 @@ func (cli *BaseClient) GetNfsShareAccess(ctx context.Context,
 	}
 
 	var i int64
-	for i = 0; i < count; i += 100 { // Query per page 100
-		clients, err := cli.GetNfsShareAccessRange(ctx, parentID, vStoreID, i, i+100)
+	for i = 0; i < count; i += queryNfsSharePerPage { // Query per page 100
+		clients, err := cli.GetNfsShareAccessRange(ctx, parentID, vStoreID, i, i+queryNfsSharePerPage)
 		if err != nil {
 			return nil, err
 		}
@@ -273,7 +275,7 @@ func (cli *BaseClient) GetNfsShareAccessCount(ctx context.Context, parentID, vSt
 	if !ok {
 		return 0, errors.New("convert respData[\"COUNT\"] to string failed")
 	}
-	count := utils.ParseIntWithDefault(countStr, 10, 64, 0)
+	count := utils.ParseIntWithDefault(countStr, constants.DefaultIntBase, constants.DefaultIntBitSize, 0)
 	return count, nil
 }
 

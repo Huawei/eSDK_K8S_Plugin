@@ -23,11 +23,12 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"huawei-csi-driver/pkg/constants"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
-	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 
@@ -167,39 +168,39 @@ func mockGetSecret(data map[string][]byte, err error) *gomonkey.Patches {
 }
 
 func TestGetPasswordFromSecret(t *testing.T) {
-	Convey("TestGetPasswordFromSecret secret is nil case", t, func() {
+	t.Run("TestGetPasswordFromSecret secret is nil case", func(t *testing.T) {
 		m := mockGetSecret(nil, nil)
 		defer m.Reset()
 
 		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		So(err, ShouldBeError)
+		require.Error(t, err)
 	})
 
-	Convey("TestGetPasswordFromSecret get secret error case", t, func() {
+	t.Run("TestGetPasswordFromSecret get secret error case", func(t *testing.T) {
 		m := mockGetSecret(nil, errors.New("mock error"))
 		defer m.Reset()
 
 		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		So(err, ShouldBeError)
+		require.Error(t, err)
 	})
 
-	Convey("TestGetPasswordFromSecret secret data is nil case", t, func() {
+	t.Run("TestGetPasswordFromSecret secret data is nil case", func(t *testing.T) {
 		m := mockGetSecret(map[string][]byte{}, nil)
 		defer m.Reset()
 
 		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		So(err, ShouldBeError)
+		require.Error(t, err)
 	})
 
-	Convey("TestGetPasswordFromSecret secret data dose not have password case", t, func() {
+	t.Run("TestGetPasswordFromSecret secret data dose not have password case", func(t *testing.T) {
 		m := mockGetSecret(map[string][]byte{"user": []byte("mock-user")}, nil)
 		defer m.Reset()
 
 		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		So(err, ShouldBeError)
+		require.Error(t, err)
 	})
 
-	Convey("TestGetPasswordFromSecret normal case", t, func() {
+	t.Run("TestGetPasswordFromSecret normal case", func(t *testing.T) {
 		m := mockGetSecret(map[string][]byte{
 			"user":     []byte("mock-user"),
 			"password": []byte("mock-pw"),
@@ -207,47 +208,47 @@ func TestGetPasswordFromSecret(t *testing.T) {
 		defer m.Reset()
 
 		pw, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		So(err, ShouldBeNil)
-		So(pw, ShouldEqual, "mock-pw")
+		require.NoError(t, err)
+		require.Equal(t, "mock-pw", pw)
 	})
 }
 
 func TestGetCertFromSecretFailed(t *testing.T) {
-	Convey("TestGetCertFromSecret secret is nil case", t, func() {
+	t.Run("TestGetCertFromSecret secret is nil case", func(t *testing.T) {
 		m := mockGetSecret(nil, nil)
 		defer m.Reset()
 
 		_, err := GetCertFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		So(err, ShouldBeError)
+		require.Error(t, err)
 	})
 
-	Convey("TestGetCertFromSecret get secret error case", t, func() {
+	t.Run("TestGetCertFromSecret get secret error case", func(t *testing.T) {
 		m := mockGetSecret(nil, errors.New("mock error"))
 		defer m.Reset()
 
 		_, err := GetCertFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		So(err, ShouldBeError)
+		require.Error(t, err)
 	})
 
-	Convey("GetCertFromSecret secret data dose not have cert case", t, func() {
+	t.Run("GetCertFromSecret secret data dose not have cert case", func(t *testing.T) {
 		m := mockGetSecret(map[string][]byte{}, nil)
 		defer m.Reset()
 
 		_, err := GetCertFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		So(err, ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestGetCertFromSecretSuccess(t *testing.T) {
-	Convey("GetCertFromSecret normal case", t, func() {
+	t.Run("GetCertFromSecret normal case", func(t *testing.T) {
 		m := mockGetSecret(map[string][]byte{
 			"tls.crt": []byte("mock-cert"),
 		}, nil)
 		defer m.Reset()
 
 		pw, err := GetCertFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		So(err, ShouldBeNil)
-		So(pw, ShouldResemble, []byte("mock-cert"))
+		require.NoError(t, err)
+		require.Equal(t, pw, []byte("mock-cert"))
 	})
 }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,13 +29,12 @@ import (
 
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend/plugin"
-	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
 // CreateVolume used to create volume
-func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+func (d *CsiDriver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 	log.AddContext(ctx).Infof("Start to create volume %s", req.GetName())
 
@@ -70,7 +69,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 }
 
 // DeleteVolume used to delete volume
-func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+func (d *CsiDriver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 	volumeId := req.GetVolumeId()
 	log.AddContext(ctx).Infof("Start to delete volume %s", volumeId)
@@ -100,15 +99,11 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 
 	log.AddContext(ctx).Infof("Volume %s is deleted", volumeId)
 
-	// Delete the topology after the volume is successfully deleted.
-	// This prevents the DeleteLabel function from being repeatedly invoked when the volume fails to be deleted.
-	go pkgUtils.DeletePVLabel(volumeId)
-
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
 // ControllerExpandVolume used to controller expand volume
-func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (
+func (d *CsiDriver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (
 	*csi.ControllerExpandVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
@@ -155,7 +150,8 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	log.AddContext(ctx).Infof("Volume %s is expanded to %d, nodeExpansionRequired %t", volName, minSize, nodeExpansionRequired)
+	log.AddContext(ctx).Infof("Volume %s is expanded to %d, nodeExpansionRequired %t",
+		volName, minSize, nodeExpansionRequired)
 	return &csi.ControllerExpandVolumeResponse{
 		CapacityBytes:         minSize,
 		NodeExpansionRequired: nodeExpansionRequired,
@@ -163,7 +159,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 }
 
 // ControllerPublishVolume used to controller publish volume
-func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (
+func (d *CsiDriver) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (
 	*csi.ControllerPublishVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
@@ -209,7 +205,7 @@ func (d *Driver) ControllerPublishVolume(ctx context.Context, req *csi.Controlle
 }
 
 // ControllerUnpublishVolume used to controller unpublish volume
-func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (
+func (d *CsiDriver) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (
 	*csi.ControllerUnpublishVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
@@ -245,24 +241,24 @@ func (d *Driver) ControllerUnpublishVolume(ctx context.Context, req *csi.Control
 }
 
 // ValidateVolumeCapabilities used to validate volume capabilities
-func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (
+func (d *CsiDriver) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (
 	*csi.ValidateVolumeCapabilitiesResponse, error) {
 
 	return nil, status.Error(codes.Unimplemented, "Not implemented")
 }
 
 // ListVolumes used to list volumes
-func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
+func (d *CsiDriver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "Not implemented")
 }
 
 // GetCapacity used to get volume capacity
-func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
+func (d *CsiDriver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "Not implemented")
 }
 
 // ControllerGetCapabilities used to controller get capabilities
-func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (
+func (d *CsiDriver) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (
 	*csi.ControllerGetCapabilitiesResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
@@ -308,7 +304,7 @@ func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.Control
 }
 
 // CreateSnapshot used to create snapshot for volume
-func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (
+func (d *CsiDriver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (
 	*csi.CreateSnapshotResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
@@ -350,7 +346,7 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 }
 
 // DeleteSnapshot used to delete snapshot
-func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (
+func (d *CsiDriver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (
 	*csi.DeleteSnapshotResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
@@ -379,12 +375,13 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 }
 
 // ListSnapshots used to list snapshots
-func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+func (d *CsiDriver) ListSnapshots(ctx context.Context,
+	req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
 // ControllerGetVolume is to get volume info, but unimplemented
-func (d *Driver) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (
+func (d *CsiDriver) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (
 	*csi.ControllerGetVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
 }

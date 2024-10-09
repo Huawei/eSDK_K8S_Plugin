@@ -61,8 +61,8 @@ const (
 	ClaimBoundFinalizer string = "storagebackend.xuanwu.huawei.io/storagebackendclaim-bound-protection"
 )
 
-// WebHook uses to start the webhook server
-type WebHook struct {
+// Config uses to start the webhook server
+type Config struct {
 	NamespaceEnv     string
 	DefaultNamespace string
 	ServiceName      string
@@ -221,7 +221,7 @@ func (c *Controller) serve(w http.ResponseWriter, r *http.Request, admit admitHa
 	log.AddContext(ctx).Infoln("return response success")
 }
 
-func (c *Controller) getTlsCert(ctx context.Context, webHookCfg WebHook, ns string) (tls.Certificate, []byte, error) {
+func (c *Controller) getTlsCert(ctx context.Context, webHookCfg Config, ns string) (tls.Certificate, []byte, error) {
 	var tlsCert tls.Certificate
 	var caBytes []byte
 	certSecrets, err := app.GetGlobalConfig().K8sUtils.GetSecret(ctx, webHookCfg.SecretName, ns)
@@ -271,7 +271,7 @@ func (c *Controller) getTlsCert(ctx context.Context, webHookCfg WebHook, ns stri
 }
 
 // Start uses to start the webhook server
-func (c *Controller) Start(ctx context.Context, webHookCfg WebHook, admissionWebhooks []AdmissionWebHookCFG) error {
+func (c *Controller) Start(ctx context.Context, webHookCfg Config, admissionWebhooks []AdmissionWebHookCFG) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -316,7 +316,7 @@ func (c *Controller) Start(ctx context.Context, webHookCfg WebHook, admissionWeb
 }
 
 // Stop uses to stop the webhook server
-func (c *Controller) Stop(ctx context.Context, webHookCfg WebHook,
+func (c *Controller) Stop(ctx context.Context, webHookCfg Config,
 	admissionWebhooks []AdmissionWebHookCFG) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -333,7 +333,7 @@ func (c *Controller) Stop(ctx context.Context, webHookCfg WebHook,
 	return nil
 }
 
-func getNameSpaceFromEnv(webHookCfg WebHook) string {
+func getNameSpaceFromEnv(webHookCfg Config) string {
 	ns := os.Getenv(webHookCfg.NamespaceEnv)
 	if ns == "" {
 		ns = webHookCfg.DefaultNamespace
@@ -446,7 +446,7 @@ func validateCommon(ctx context.Context, claim *xuanwuv1.StorageBackendClaim) er
 	log.AddContext(ctx).Infof("claim name: %s", claim.Name)
 	storageInfo, err := backend.GetStorageBackendInfo(ctx,
 		utils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, claim.Name),
-		claim.Spec.ConfigMapMeta, claim.Spec.SecretMeta, claim.Spec.CertSecret, claim.Spec.UseCert)
+		backend.NewGetBackendInfoArgsFromClaim(claim))
 	if err != nil {
 		return err
 	}

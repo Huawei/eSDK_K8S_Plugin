@@ -19,28 +19,24 @@ package client
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
-	"bou.ke/monkey"
-	"github.com/smartystreets/goconvey/convey"
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAllowNfsShareAccess(t *testing.T) {
-	convey.Convey("Normal", t, func() {
-		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
-			func(_ *BaseClient, _ context.Context, _ string, _ map[string]interface{}) (Response, error) {
-				return Response{
-					Data: map[string]interface{}{
-						"ID": "5",
-					},
-					Error: map[string]interface{}{
-						"code":        float64(0),
-						"description": "0",
-					},
-				}, nil
-			})
-		defer guard.Unpatch()
+	t.Run("Normal", func(t *testing.T) {
+		p := gomonkey.ApplyMethodReturn(testClient, "Post", Response{
+			Data: map[string]interface{}{
+				"ID": "5",
+			},
+			Error: map[string]interface{}{
+				"code":        float64(0),
+				"description": "0",
+			},
+		}, nil)
+		defer p.Reset()
 
 		err := testClient.AllowNfsShareAccess(context.TODO(), &AllowNfsShareAccessRequest{
 			Name:       "test",
@@ -51,11 +47,11 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash: 1,
 			VStoreID:   "0",
 		})
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 
-	convey.Convey("Error code is not zero", t, func() {
-		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
+	t.Run("Error code is not zero", func(t *testing.T) {
+		p := gomonkey.ApplyMethod(testClient, "Post",
 			func(_ *BaseClient, _ context.Context, _ string, _ map[string]interface{}) (Response, error) {
 				return Response{
 					Data: map[string]interface{}{
@@ -67,7 +63,7 @@ func TestAllowNfsShareAccess(t *testing.T) {
 					},
 				}, nil
 			})
-		defer guard.Unpatch()
+		defer p.Reset()
 
 		err := testClient.AllowNfsShareAccess(context.TODO(), &AllowNfsShareAccessRequest{
 			Name:       "test",
@@ -78,15 +74,15 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash: 1,
 			VStoreID:   "0",
 		})
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
-	convey.Convey("Post quest return error", t, func() {
-		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
+	t.Run("Post quest return error", func(t *testing.T) {
+		p := gomonkey.ApplyMethod(testClient, "Post",
 			func(_ *BaseClient, _ context.Context, _ string, _ map[string]interface{}) (Response, error) {
 				return Response{}, errors.New("mock err")
 			})
-		defer guard.Unpatch()
+		defer p.Reset()
 
 		err := testClient.AllowNfsShareAccess(context.TODO(), &AllowNfsShareAccessRequest{
 			Name:       "test",
@@ -97,6 +93,6 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash: 1,
 			VStoreID:   "0",
 		})
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }

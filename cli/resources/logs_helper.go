@@ -41,10 +41,18 @@ const (
 	progressBarLength = 100
 
 	consoleLogDirectory = "console"
+
+	logFilePermission = 0600
+	colorHexCode      = 0x1B
+	displayPeriod     = 10 * time.Millisecond
 )
 
 var (
-	identifyPodTypesFunc    = make(map[PodType]func(pod *coreV1.Pod) bool)
+	identifyPodTypesFunc = map[PodType]func(pod *coreV1.Pod) bool{
+		CSI:    checkCSIPod,
+		CSM:    checkCSMPod,
+		Xuanwu: checkXuanwuPod,
+	}
 	xuanwuPodPrefixNameList = []string{"xuanwu-backup-mngt", "xuanwu-backup-service", "xuanwu-base-mngt",
 		"xuanwu-disaster-service", "xuanwu-disaster-mngt", "xuanwu-metadata-service", "xuanwu-volume-service"}
 )
@@ -91,12 +99,6 @@ type TransmitTask struct {
 	FileLogsCollect
 }
 
-func init() {
-	RegisterIdentifyPodTypeFunc(CSI, checkCSIPod)
-	RegisterIdentifyPodTypeFunc(CSM, checkCSMPod)
-	RegisterIdentifyPodTypeFunc(Xuanwu, checkXuanwuPod)
-}
-
 // Do copy the compressed log file to the local host.
 func (t *TransmitTask) Do() {
 	_ = t.CopyToLocal(t.namespace, t.nodeName, t.podName, t.containerName)
@@ -129,7 +131,9 @@ func (d *Display) Add(prefixDesc string, f func()) {
 
 func (d *Display) show() {
 	for idx, display := range d.displayFunc {
-		fmt.Printf("%s", d.prefixDesc[idx])
+		if idx < len(d.prefixDesc) {
+			fmt.Printf("%s", d.prefixDesc[idx])
+		}
 		display()
 	}
 }
@@ -160,21 +164,23 @@ func (d *Display) Show(ctx context.Context) {
 		default:
 			d.resetCursor()
 			d.show()
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(displayPeriod)
 		}
 	}
 }
 
 func (n *Status) getPercent() int {
-	return int(atomic.LoadInt32(&n.completed)) * 100 / n.total
+	return int(atomic.LoadInt32(&n.completed)) * progressBarLength / n.total
 }
 
 func (n *Status) getCompletedStr() string {
-	return fmt.Sprintf("%c[1;40;32m%s%c[0m", 0x1B, strings.Repeat("+", n.getPercent()*progressBarLength/100), 0x1B)
+	return fmt.Sprintf("%c[1;40;32m%s%c[0m", colorHexCode,
+		strings.Repeat("+", n.getPercent()*progressBarLength/progressBarLength), colorHexCode)
 }
 
 func (n *Status) getRemainedStr() string {
-	return fmt.Sprintf("%s", strings.Repeat("-", progressBarLength-n.getPercent()*progressBarLength/100))
+	return fmt.Sprintf("%s", strings.Repeat("-",
+		progressBarLength-n.getPercent()*progressBarLength/progressBarLength))
 }
 
 // Display displays the pod log collection status of the current node.
@@ -270,16 +276,16 @@ func (n *NodeLogCollector) collectPodLogs(pod *coreV1.Pod, onceIdx int) {
 		msg := fmt.Sprintf("Failed to collect [%s] file logs on node [%s], please collect logs manually,"+
 			" file logs path is [%s]", pod.Name, pod.Spec.NodeName, logPath)
 		n.display.Add("", func() {
-			fmt.Printf("%c[1;40;31m%s%c[0m\n", 0x1B, msg, 0x1B)
+			fmt.Printf("%c[1;40;31m%s%c[0m\n", colorHexCode, msg, colorHexCode)
 		})
 		_ = helper.LogWarningf(ctx, "error: %v", errors.New(msg))
 	}
 
 	for idx := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[idx]
-		getConsoleLogs(ctx, pod.Namespace, container.Name, pod.Name, pod.Spec.NodeName, false)
-		getConsoleLogs(ctx, pod.Namespace, container.Name, pod.Name, pod.Spec.NodeName, true)
-		if isRunning {
+		getConsoleLogs(ctx, getLogArgs(pod.Namespace, container.Name, pod.Name, pod.Spec.NodeName, false))
+		getConsoleLogs(ctx, getLogArgs(pod.Namespace, container.Name, pod.Name, pod.Spec.NodeName, true))
+		if isRunning && onceIdx < len(n.fileLogsOnce) {
 			n.fileLogsOnce[onceIdx].Do(func() error {
 				fileLogPath, err := getContainerFileLogPaths(container)
 				if err != nil {
@@ -316,12 +322,31 @@ func (n *NodeLogCollector) isCollected(fileLogPath string) bool {
 	return false
 }
 
-func getConsoleLogs(ctx context.Context, namespace, containerName, podName, nodeName string, isHistoryLogs bool) {
-	logs, err := config.Client.GetConsoleLogs(ctx, namespace, containerName, isHistoryLogs, podName)
+type consoleLogArgs struct {
+	namespace     string
+	containerName string
+	podName       string
+	nodeName      string
+	isHistoryLogs bool
+}
+
+func getLogArgs(namespace, containerName, podName, nodeName string, isHistoryLogs bool) consoleLogArgs {
+	return consoleLogArgs{
+		namespace:     namespace,
+		containerName: containerName,
+		podName:       podName,
+		nodeName:      nodeName,
+		isHistoryLogs: isHistoryLogs,
+	}
+}
+
+func getConsoleLogs(ctx context.Context, logArgs consoleLogArgs) {
+	logs, err := config.Client.GetConsoleLogs(ctx,
+		logArgs.namespace, logArgs.containerName, logArgs.isHistoryLogs, logArgs.podName)
 	if err != nil {
 		_ = helper.LogWarningf(ctx, "get container console logs failed, error: %v", err)
 	} else {
-		err = saveConsoleLog(logs, namespace, podName, containerName, nodeName, isHistoryLogs)
+		err = saveConsoleLog(logs, logArgs)
 		if err != nil {
 			log.Errorf("save console log failed, error: %v", err)
 		}
@@ -337,19 +362,19 @@ func getPodType(pod *coreV1.Pod) PodType {
 	return UnKnow
 }
 
-func saveConsoleLog(logs []byte, namespace, podName, containerName, nodeName string, isHistoryLogs bool) error {
-	ctx := context.WithValue(context.Background(), "tag", podName)
-	fileName := fmt.Sprintf("%s-%s-%s.log", namespace, podName, containerName)
-	if isHistoryLogs {
+func saveConsoleLog(logs []byte, logArgs consoleLogArgs) error {
+	ctx := context.WithValue(context.Background(), "tag", logArgs.podName)
+	fileName := fmt.Sprintf("%s-%s-%s.log", logArgs.namespace, logArgs.podName, logArgs.containerName)
+	if logArgs.isHistoryLogs {
 		fileName = "last-" + fileName
 	}
-	file, err := os.Create(path.Join(localLogsPrefixPath, nodeName, consoleLogDirectory, fileName))
+	file, err := os.Create(path.Join(localLogsPrefixPath, logArgs.nodeName, consoleLogDirectory, fileName))
 	if err != nil {
 		return helper.LogWarningf(ctx, "create container console log file failed, error: %v", err)
 	}
 	defer file.Close()
 
-	err = file.Chmod(0600)
+	err = file.Chmod(logFilePermission)
 	if err != nil {
 		return helper.LogWarningf(ctx, "set the file permission failed, error: %v", err)
 	}
@@ -378,10 +403,11 @@ func getContainerFileLogPaths(container *coreV1.Container) (string, error) {
 		return "", helper.LogWarningf(context.Background(), "get container file log paths failed, error: %v",
 			errors.New("args is nil"))
 	}
+	const logPathSplitSegment = 2
 	for _, arg := range container.Args {
 		if strings.HasPrefix(arg, "--log-file-dir=") {
 			logPath := strings.Split(arg, "=")
-			if len(logPath) != 2 {
+			if len(logPath) != logPathSplitSegment {
 				return "", helper.LogWarningf(context.Background(), "get container file log paths failed, error: %v",
 					errors.New("log-file-dir is not set correctly"))
 			}

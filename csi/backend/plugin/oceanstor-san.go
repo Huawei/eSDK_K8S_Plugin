@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ const (
 	reflectResultLength               = 2
 )
 
-// OceanstorSanPlugin implements storage Plugin interface
+// OceanstorSanPlugin implements storage StoragePlugin interface
 type OceanstorSanPlugin struct {
 	OceanstorPlugin
 	protocol string
@@ -69,7 +69,7 @@ func init() {
 }
 
 // NewPlugin used to create new plugin
-func (p *OceanstorSanPlugin) NewPlugin() Plugin {
+func (p *OceanstorSanPlugin) NewPlugin() StoragePlugin {
 	return &OceanstorSanPlugin{}
 }
 
@@ -173,7 +173,7 @@ func (p *OceanstorSanPlugin) ExpandVolume(ctx context.Context, name string, size
 		return false, errors.New(msg)
 	}
 	san := p.getSanObj()
-	newSize := utils.TransVolumeCapacity(size, 512)
+	newSize := utils.TransVolumeCapacity(size, constants.AllocationUnitBytes)
 	isAttach, err := san.Expand(ctx, name, newSize)
 	return isAttach, err
 }
@@ -222,9 +222,22 @@ func (p *OceanstorSanPlugin) metroHandler(ctx context.Context, req handlerReques
 		}
 	}
 
-	localAttacher := attacher.NewAttacher(p.product, req.localCli, p.protocol, "csi", p.portals, p.alua)
-	remoteAttacher := attacher.NewAttacher(p.metroRemotePlugin.product, req.metroCli, p.metroRemotePlugin.protocol,
-		"csi", p.metroRemotePlugin.portals, p.metroRemotePlugin.alua)
+	localAttacher := attacher.NewAttacher(attacher.VolumeAttacherConfig{
+		Product:  p.product,
+		Cli:      req.localCli,
+		Protocol: p.protocol,
+		Invoker:  "csi",
+		Portals:  p.portals,
+		Alua:     p.alua,
+	})
+	remoteAttacher := attacher.NewAttacher(attacher.VolumeAttacherConfig{
+		Product:  p.metroRemotePlugin.product,
+		Cli:      req.metroCli,
+		Protocol: p.metroRemotePlugin.protocol,
+		Invoker:  "csi",
+		Portals:  p.metroRemotePlugin.portals,
+		Alua:     p.metroRemotePlugin.alua,
+	})
 
 	metroAttacher := attacher.NewMetroAttacher(localAttacher, remoteAttacher, p.protocol)
 	lunName, ok := req.lun["NAME"].(string)
@@ -237,10 +250,15 @@ func (p *OceanstorSanPlugin) metroHandler(ctx context.Context, req handlerReques
 }
 
 func (p *OceanstorSanPlugin) commonHandler(ctx context.Context,
-	plugin *OceanstorSanPlugin, lun, parameters map[string]interface{},
-	method string) ([]reflect.Value, error) {
-	commonAttacher := attacher.NewAttacher(plugin.product, plugin.cli, plugin.protocol, "csi",
-		plugin.portals, plugin.alua)
+	plugin *OceanstorSanPlugin, lun, parameters map[string]any, method string) ([]reflect.Value, error) {
+	commonAttacher := attacher.NewAttacher(attacher.VolumeAttacherConfig{
+		Product:  plugin.product,
+		Cli:      plugin.cli,
+		Protocol: plugin.protocol,
+		Invoker:  "csi",
+		Portals:  plugin.portals,
+		Alua:     plugin.alua,
+	})
 
 	lunName, ok := lun["NAME"].(string)
 	if !ok {
@@ -408,10 +426,10 @@ func (p *OceanstorSanPlugin) getVstoreCapacity(ctx context.Context) (map[string]
 	var sanCapacityQuota, sanFreeCapacityQuota int64
 
 	if totalStr, ok := vStore["sanCapacityQuota"].(string); ok {
-		sanCapacityQuota, err = strconv.ParseInt(totalStr, 10, 64)
+		sanCapacityQuota, err = strconv.ParseInt(totalStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
 	}
 	if freeStr, ok := vStore["sanFreeCapacityQuota"].(string); ok {
-		sanFreeCapacityQuota, err = strconv.ParseInt(freeStr, 10, 64)
+		sanFreeCapacityQuota, err = strconv.ParseInt(freeStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
 	}
 	if err != nil {
 		log.AddContext(ctx).Warningf("parse vstore quota failed, error: %v", err)
@@ -424,14 +442,14 @@ func (p *OceanstorSanPlugin) getVstoreCapacity(ctx context.Context) (map[string]
 	}
 
 	return map[string]interface{}{
-		string(xuanwuV1.FreeCapacity):  sanFreeCapacityQuota * 512,
-		string(xuanwuV1.TotalCapacity): sanCapacityQuota * 512,
-		string(xuanwuV1.UsedCapacity):  (sanCapacityQuota - sanFreeCapacityQuota) * 512,
+		string(xuanwuV1.FreeCapacity):  sanFreeCapacityQuota * constants.AllocationUnitBytes,
+		string(xuanwuV1.TotalCapacity): sanCapacityQuota * constants.AllocationUnitBytes,
+		string(xuanwuV1.UsedCapacity):  (sanCapacityQuota - sanFreeCapacityQuota) * constants.AllocationUnitBytes,
 	}, nil
 }
 
 // UpdateMetroRemotePlugin used to convert metroRemotePlugin to OceanstorSanPlugin
-func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(ctx context.Context, remote Plugin) {
+func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(ctx context.Context, remote StoragePlugin) {
 	var ok bool
 	p.metroRemotePlugin, ok = remote.(*OceanstorSanPlugin)
 	if !ok {
@@ -484,7 +502,8 @@ func (p *OceanstorSanPlugin) mutexGetClient(ctx context.Context) (client.BaseCli
 	return p.cli, err
 }
 
-func (p *OceanstorSanPlugin) getClient(ctx context.Context) (client.BaseClientInterface, client.BaseClientInterface, error) {
+func (p *OceanstorSanPlugin) getClient(ctx context.Context) (client.BaseClientInterface,
+	client.BaseClientInterface, error) {
 	cli, locErr := p.mutexGetClient(ctx)
 	var metroCli client.BaseClientInterface
 	var rmtErr error

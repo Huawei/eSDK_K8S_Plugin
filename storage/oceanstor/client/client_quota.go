@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -86,7 +86,8 @@ func (cli *BaseClient) UpdateQuota(ctx context.Context, quotaID string, params m
 }
 
 // GetQuota gets quota info by id
-func (cli *BaseClient) GetQuota(ctx context.Context, quotaID, vStoreID string, spaceUnitType uint32) (map[string]interface{}, error) {
+func (cli *BaseClient) GetQuota(ctx context.Context,
+	quotaID, vStoreID string, spaceUnitType uint32) (map[string]interface{}, error) {
 	resp, err := cli.Get(ctx, fmt.Sprintf("/FS_QUOTA/%v", quotaID), map[string]interface{}{
 		"SPACEUNITTYPE": spaceUnitType,
 		"vstoreId":      vStoreID,

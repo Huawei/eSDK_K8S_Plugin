@@ -20,14 +20,13 @@ import (
 	"context"
 	"errors"
 
-	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
-// OceanStorAttacher implements interface AttacherPlugin
+// OceanStorAttacher implements interface VolumeAttacherPlugin
 type OceanStorAttacher struct {
-	Attacher
+	VolumeAttacher
 }
 
 const (
@@ -35,19 +34,14 @@ const (
 	MultiPathTypeDefault = "0"
 )
 
-func newOceanStorAttacher(
-	cli client.BaseClientInterface,
-	protocol,
-	invoker string,
-	portals []string,
-	alua map[string]interface{}) AttacherPlugin {
+func newOceanStorAttacher(config VolumeAttacherConfig) VolumeAttacherPlugin {
 	return &OceanStorAttacher{
-		Attacher: Attacher{
-			cli:      cli,
-			protocol: protocol,
-			invoker:  invoker,
-			portals:  portals,
-			alua:     alua,
+		VolumeAttacher: VolumeAttacher{
+			cli:      config.Cli,
+			protocol: config.Protocol,
+			invoker:  config.Invoker,
+			portals:  config.Portals,
+			alua:     config.Alua,
 		},
 	}
 }
@@ -85,7 +79,7 @@ func (p *OceanStorAttacher) needUpdateInitiatorAlua(initiator map[string]interfa
 
 func (p *OceanStorAttacher) attachISCSI(ctx context.Context, hostID, hostName string,
 	parameters map[string]interface{}) error {
-	iscsiInitiator, err := p.Attacher.attachISCSI(ctx, hostID, parameters)
+	iscsiInitiator, err := p.VolumeAttacher.attachISCSI(ctx, hostID, parameters)
 	if err != nil {
 		return err
 	}
@@ -100,7 +94,7 @@ func (p *OceanStorAttacher) attachISCSI(ctx context.Context, hostID, hostName st
 
 func (p *OceanStorAttacher) attachFC(ctx context.Context, hostID, hostName string,
 	parameters map[string]interface{}) error {
-	fcInitiators, err := p.Attacher.attachFC(ctx, hostID, parameters)
+	fcInitiators, err := p.VolumeAttacher.attachFC(ctx, hostID, parameters)
 	if err != nil {
 		return err
 	}
@@ -123,7 +117,7 @@ func (p *OceanStorAttacher) attachFC(ctx context.Context, hostID, hostName strin
 }
 
 func (p *OceanStorAttacher) attachRoCE(ctx context.Context, hostID string, parameters map[string]interface{}) error {
-	_, err := p.Attacher.attachRoCE(ctx, hostID, parameters)
+	_, err := p.VolumeAttacher.attachRoCE(ctx, hostID, parameters)
 	return err
 }
 

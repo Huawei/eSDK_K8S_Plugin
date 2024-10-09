@@ -23,8 +23,8 @@ import (
 	"huawei-csi-driver/utils/k8sutils"
 )
 
-// Driver defines csi driver
-type Driver struct {
+// CsiDriver defines csi driver
+type CsiDriver struct {
 	name            string
 	version         string
 	k8sUtils        k8sutils.Interface
@@ -32,9 +32,9 @@ type Driver struct {
 	backendSelector handler.BackendSelectInterface
 }
 
-// NewDriver used to inits a new driver
-func NewDriver(name, version string, k8sUtils k8sutils.Interface, nodeName string) *Driver {
-	return &Driver{
+// NewServer used to inits a new driver
+func NewServer(name, version string, k8sUtils k8sutils.Interface, nodeName string) *CsiDriver {
+	return &CsiDriver{
 		name:            name,
 		version:         version,
 		k8sUtils:        k8sUtils,

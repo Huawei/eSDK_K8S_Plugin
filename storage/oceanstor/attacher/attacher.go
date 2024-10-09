@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,20 +32,20 @@ import (
 )
 
 const (
-	hostGroupType = 14
-	lunGroupType  = 256
+	splitIqnLength    = 6
+	maxHostNameLength = 31
 )
 
-// AttacherPlugin defines interfaces of attach operations
-type AttacherPlugin interface {
+// VolumeAttacherPlugin defines interfaces of attach operations
+type VolumeAttacherPlugin interface {
 	ControllerAttach(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
 	ControllerDetach(context.Context, string, map[string]interface{}) (string, error)
 	getTargetRoCEPortals(context.Context) ([]string, error)
 	getLunInfo(context.Context, string) (map[string]interface{}, error)
 }
 
-// Attacher defines attacher to attach volume
-type Attacher struct {
+// VolumeAttacher defines attacher to attach volume
+type VolumeAttacher struct {
 	cli      client.BaseClientInterface
 	protocol string
 	invoker  string
@@ -53,43 +53,48 @@ type Attacher struct {
 	alua     map[string]interface{}
 }
 
+// VolumeAttacherConfig defines the configurations of VolumeAttacher
+type VolumeAttacherConfig struct {
+	Product  string
+	Cli      client.BaseClientInterface
+	Protocol string
+	Invoker  string
+	Portals  []string
+	Alua     map[string]interface{}
+}
+
 // NewAttacher init a new attacher
-func NewAttacher(
-	product string,
-	cli client.BaseClientInterface,
-	protocol, invoker string,
-	portals []string,
-	alua map[string]interface{}) AttacherPlugin {
-	switch product {
+func NewAttacher(config VolumeAttacherConfig) VolumeAttacherPlugin {
+	switch config.Product {
 	case "DoradoV6":
-		return newDoradoV6Attacher(cli, protocol, invoker, portals, alua)
+		return newDoradoV6Attacher(config)
 	default:
-		return newOceanStorAttacher(cli, protocol, invoker, portals, alua)
+		return newOceanStorAttacher(config)
 	}
 }
 
-func (p *Attacher) getHostName(postfix string) string {
+func (p *VolumeAttacher) getHostName(postfix string) string {
 	host := fmt.Sprintf("k8s_%s", postfix)
-	if len(host) <= 31 {
+	if len(host) <= maxHostNameLength {
 		return host
 	}
 
-	return host[:31]
+	return host[:maxHostNameLength]
 }
 
-func (p *Attacher) getHostGroupName(postfix string) string {
+func (p *VolumeAttacher) getHostGroupName(postfix string) string {
 	return fmt.Sprintf("k8s_%s_hostgroup_%s", p.invoker, postfix)
 }
 
-func (p *Attacher) getLunGroupName(postfix string) string {
+func (p *VolumeAttacher) getLunGroupName(postfix string) string {
 	return fmt.Sprintf("k8s_%s_lungroup_%s", p.invoker, postfix)
 }
 
-func (p *Attacher) getMappingName(postfix string) string {
+func (p *VolumeAttacher) getMappingName(postfix string) string {
 	return fmt.Sprintf("k8s_%s_mapping_%s", p.invoker, postfix)
 }
 
-func (p *Attacher) getHost(ctx context.Context,
+func (p *VolumeAttacher) getHost(ctx context.Context,
 	parameters map[string]interface{},
 	toCreate bool) (map[string]interface{}, error) {
 	var err error
@@ -125,7 +130,7 @@ func (p *Attacher) getHost(ctx context.Context,
 	return nil, nil
 }
 
-func (p *Attacher) createMapping(ctx context.Context, hostID string) (string, error) {
+func (p *VolumeAttacher) createMapping(ctx context.Context, hostID string) (string, error) {
 	mappingName := p.getMappingName(hostID)
 	mapping, err := p.cli.GetMappingByName(ctx, mappingName)
 	if err != nil {
@@ -143,12 +148,12 @@ func (p *Attacher) createMapping(ctx context.Context, hostID string) (string, er
 	return mapping["ID"].(string), nil
 }
 
-func (p *Attacher) createHostGroup(ctx context.Context, hostID, mappingID string) error {
+func (p *VolumeAttacher) createHostGroup(ctx context.Context, hostID, mappingID string) error {
 	var err error
 	var hostGroup map[string]interface{}
 	var hostGroupID string
 
-	hostGroupsByHostID, err := p.cli.QueryAssociateHostGroup(ctx, 21, hostID)
+	hostGroupsByHostID, err := p.cli.QueryAssociateHostGroup(ctx, client.AssociateObjTypeHost, hostID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Query associated hostgroups of host %s error: %v",
 			hostID, err)
@@ -201,8 +206,8 @@ func (p *Attacher) createHostGroup(ctx context.Context, hostID, mappingID string
 	return p.addToHostGroupMapping(ctx, hostGroupName, hostGroupID, mappingID)
 }
 
-func (p *Attacher) addToHostGroupMapping(ctx context.Context, groupName, groupID, mappingID string) error {
-	hostGroupsByMappingID, err := p.cli.QueryAssociateHostGroup(ctx, 245, mappingID)
+func (p *VolumeAttacher) addToHostGroupMapping(ctx context.Context, groupName, groupID, mappingID string) error {
+	hostGroupsByMappingID, err := p.cli.QueryAssociateHostGroup(ctx, client.AssociateObjTypeMapping, mappingID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Query associated host groups of mapping %s error: %v", mappingID, err)
 		return err
@@ -218,7 +223,7 @@ func (p *Attacher) addToHostGroupMapping(ctx context.Context, groupName, groupID
 		}
 	}
 
-	err = p.cli.AddGroupToMapping(ctx, hostGroupType, groupID, mappingID)
+	err = p.cli.AddGroupToMapping(ctx, client.AssociateObjTypeHostGroup, groupID, mappingID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Add host group %s to mapping %s error: %v",
 			groupID, mappingID, err)
@@ -228,11 +233,11 @@ func (p *Attacher) addToHostGroupMapping(ctx context.Context, groupName, groupID
 	return nil
 }
 
-func (p *Attacher) createLunGroup(ctx context.Context, lunID, hostID, mappingID string) error {
+func (p *VolumeAttacher) createLunGroup(ctx context.Context, lunID, hostID, mappingID string) error {
 	var err error
 	var lunGroup map[string]interface{}
 
-	lunGroupsByLunID, err := p.cli.QueryAssociateLunGroup(ctx, 11, lunID)
+	lunGroupsByLunID, err := p.cli.QueryAssociateLunGroup(ctx, client.AssociateObjTypeLUN, lunID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Query associated lun groups of lun %s error: %v", lunID, err)
 		return err
@@ -280,8 +285,8 @@ func (p *Attacher) createLunGroup(ctx context.Context, lunID, hostID, mappingID 
 	return p.addToLUNGroupMapping(ctx, lunGroupName, lunGroupID, mappingID)
 }
 
-func (p *Attacher) addToLUNGroupMapping(ctx context.Context, groupName, groupID, mappingID string) error {
-	lunGroupsByMappingID, err := p.cli.QueryAssociateLunGroup(ctx, 245, mappingID)
+func (p *VolumeAttacher) addToLUNGroupMapping(ctx context.Context, groupName, groupID, mappingID string) error {
+	lunGroupsByMappingID, err := p.cli.QueryAssociateLunGroup(ctx, client.AssociateObjTypeMapping, mappingID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Query associated lun groups of mapping %s error: %v", mappingID, err)
 		return err
@@ -297,7 +302,7 @@ func (p *Attacher) addToLUNGroupMapping(ctx context.Context, groupName, groupID,
 		}
 	}
 
-	err = p.cli.AddGroupToMapping(ctx, lunGroupType, groupID, mappingID)
+	err = p.cli.AddGroupToMapping(ctx, client.AssociateObjTypeLUNGroup, groupID, mappingID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Add lun group %s to mapping %s error: %v",
 			groupID, mappingID, err)
@@ -307,7 +312,7 @@ func (p *Attacher) addToLUNGroupMapping(ctx context.Context, groupName, groupID,
 	return nil
 }
 
-func (p *Attacher) needUpdateInitiatorAlua(initiator map[string]interface{}) bool {
+func (p *VolumeAttacher) needUpdateInitiatorAlua(initiator map[string]interface{}) bool {
 	if p.alua == nil {
 		return false
 	}
@@ -341,7 +346,7 @@ func (p *Attacher) needUpdateInitiatorAlua(initiator map[string]interface{}) boo
 	return false
 }
 
-func (p *Attacher) getISCSIProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]interface{}) (
+func (p *VolumeAttacher) getISCSIProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]any) (
 	map[string]interface{}, error) {
 	tgtPortals, tgtIQNs, err := p.getTargetISCSIProperties(ctx)
 	if err != nil {
@@ -362,7 +367,7 @@ func (p *Attacher) getISCSIProperties(ctx context.Context, wwn, hostLunId string
 	}, nil
 }
 
-func (p *Attacher) getFCProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]interface{}) (
+func (p *VolumeAttacher) getFCProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]any) (
 	map[string]interface{}, error) {
 	tgtWWNs, err := p.getTargetFCProperties(ctx, parameters)
 	if err != nil {
@@ -382,7 +387,7 @@ func (p *Attacher) getFCProperties(ctx context.Context, wwn, hostLunId string, p
 	}, nil
 }
 
-func (p *Attacher) getFCNVMeProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]interface{}) (
+func (p *VolumeAttacher) getFCNVMeProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]any) (
 	map[string]interface{}, error) {
 	portWWNList, err := p.getTargetFCNVMeProperties(ctx, parameters)
 	if err != nil {
@@ -395,7 +400,7 @@ func (p *Attacher) getFCNVMeProperties(ctx context.Context, wwn, hostLunId strin
 	}, nil
 }
 
-func (p *Attacher) getRoCEProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]interface{}) (
+func (p *VolumeAttacher) getRoCEProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]any) (
 	map[string]interface{}, error) {
 	tgtPortals, err := p.getTargetRoCEPortals(ctx)
 	if err != nil {
@@ -408,7 +413,7 @@ func (p *Attacher) getRoCEProperties(ctx context.Context, wwn, hostLunId string,
 	}, nil
 }
 
-func (p *Attacher) getMappingProperties(ctx context.Context,
+func (p *VolumeAttacher) getMappingProperties(ctx context.Context,
 	wwn, hostLunId string, parameters map[string]interface{}) (map[string]interface{}, error) {
 	if p.protocol == "iscsi" {
 		return p.getISCSIProperties(ctx, wwn, hostLunId, parameters)
@@ -423,7 +428,7 @@ func (p *Attacher) getMappingProperties(ctx context.Context,
 	return nil, utils.Errorf(ctx, "UnSupport protocol %s", p.protocol)
 }
 
-func (p *Attacher) getTargetISCSIProperties(ctx context.Context) ([]string, []string, error) {
+func (p *VolumeAttacher) getTargetISCSIProperties(ctx context.Context) ([]string, []string, error) {
 	ports, err := p.cli.GetIscsiTgtPort(ctx)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get iSCSI tgt port error: %v", err)
@@ -451,12 +456,12 @@ func (p *Attacher) getTargetISCSIProperties(ctx context.Context) ([]string, []st
 		portIqn := strings.Split(strings.Split(portID, ",")[0], "+")[1]
 		splitIqn := strings.Split(portIqn, ":")
 
-		if len(splitIqn) < 6 {
+		if len(splitIqn) < splitIqnLength {
 			continue
 		}
 
-		validIPs[splitIqn[5]] = true
-		validIQNs[splitIqn[5]] = portIqn
+		validIPs[splitIqn[splitIqnLength-1]] = true
+		validIQNs[splitIqn[splitIqnLength-1]] = portIqn
 	}
 
 	var tgtPortals []string
@@ -482,7 +487,7 @@ func (p *Attacher) getTargetISCSIProperties(ctx context.Context) ([]string, []st
 	return tgtPortals, tgtIQNs, nil
 }
 
-func (p *Attacher) getTargetRoCEPortals(ctx context.Context) ([]string, error) {
+func (p *VolumeAttacher) getTargetRoCEPortals(ctx context.Context) ([]string, error) {
 	var availablePortals []string
 	for _, portal := range p.portals {
 		ip := net.ParseIP(portal).String()
@@ -521,8 +526,8 @@ func (p *Attacher) getTargetRoCEPortals(ctx context.Context) ([]string, error) {
 	return availablePortals, nil
 }
 
-func (p *Attacher) getTargetFCNVMeProperties(ctx context.Context, parameters map[string]interface{}) ([]nvme.PortWWNPair, error) {
-
+func (p *VolumeAttacher) getTargetFCNVMeProperties(ctx context.Context,
+	parameters map[string]interface{}) ([]nvme.PortWWNPair, error) {
 	fcInitiators, err := GetMultipleInitiators(ctx, FC, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get fc initiator error:%v", err)
@@ -545,7 +550,7 @@ func (p *Attacher) getTargetFCNVMeProperties(ctx context.Context, parameters map
 	return ret, nil
 }
 
-func (p *Attacher) getTargetFCProperties(ctx context.Context, parameters map[string]interface{}) ([]string, error) {
+func (p *VolumeAttacher) getTargetFCProperties(ctx context.Context, parameters map[string]any) ([]string, error) {
 	fcInitiators, err := GetMultipleInitiators(ctx, FC, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get fc initiator error: %v", err)
@@ -582,7 +587,8 @@ func (p *Attacher) getTargetFCProperties(ctx context.Context, parameters map[str
 	return tgtWWNs, nil
 }
 
-func (p *Attacher) attachISCSI(ctx context.Context, hostID string, parameters map[string]interface{}) (map[string]interface{}, error) {
+func (p *VolumeAttacher) attachISCSI(ctx context.Context,
+	hostID string, parameters map[string]interface{}) (map[string]interface{}, error) {
 	name, err := GetSingleInitiator(ctx, ISCSI, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get ISCSI initiator name error: %v", err)
@@ -626,7 +632,8 @@ func (p *Attacher) attachISCSI(ctx context.Context, hostID string, parameters ma
 	return initiator, nil
 }
 
-func (p *Attacher) attachFC(ctx context.Context, hostID string, parameters map[string]interface{}) ([]map[string]interface{}, error) {
+func (p *VolumeAttacher) attachFC(ctx context.Context,
+	hostID string, parameters map[string]interface{}) ([]map[string]interface{}, error) {
 	fcInitiators, err := GetMultipleInitiators(ctx, FC, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get fc initiator error: %v", err)
@@ -684,7 +691,8 @@ func (p *Attacher) attachFC(ctx context.Context, hostID string, parameters map[s
 	return hostInitiators, nil
 }
 
-func (p *Attacher) attachRoCE(ctx context.Context, hostID string, parameters map[string]interface{}) (map[string]interface{}, error) {
+func (p *VolumeAttacher) attachRoCE(ctx context.Context,
+	hostID string, parameters map[string]interface{}) (map[string]interface{}, error) {
 	name, err := GetSingleInitiator(ctx, ROCE, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get RoCE initiator name error: %v", err)
@@ -728,7 +736,7 @@ func (p *Attacher) attachRoCE(ctx context.Context, hostID string, parameters map
 	return initiator, nil
 }
 
-func (p *Attacher) doMapping(ctx context.Context, hostID, lunName string) (string, string, error) {
+func (p *VolumeAttacher) doMapping(ctx context.Context, hostID, lunName string) (string, string, error) {
 	lun, err := p.cli.GetLunByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)
@@ -775,7 +783,7 @@ func (p *Attacher) doMapping(ctx context.Context, hostID, lunName string) (strin
 	return lunUniqueId, hostLunId, nil
 }
 
-func (p *Attacher) doUnmapping(ctx context.Context, hostID, lunName string) (string, error) {
+func (p *VolumeAttacher) doUnmapping(ctx context.Context, hostID, lunName string) (string, error) {
 	lun, err := p.cli.GetLunByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun %s info error: %v", lunName, err)
@@ -789,7 +797,7 @@ func (p *Attacher) doUnmapping(ctx context.Context, hostID, lunName string) (str
 	if !ok {
 		return "", pkgUtils.Errorf(ctx, "convert lunID to string failed, data: %v", lun["ID"])
 	}
-	lunGroupsByLunID, err := p.cli.QueryAssociateLunGroup(ctx, 11, lunID)
+	lunGroupsByLunID, err := p.cli.QueryAssociateLunGroup(ctx, client.AssociateObjTypeLUN, lunID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Query associated lungroups of lun %s error: %v", lunID, err)
 		return "", err
@@ -824,7 +832,7 @@ func (p *Attacher) doUnmapping(ctx context.Context, hostID, lunName string) (str
 }
 
 // ControllerDetach detaches volume and unmaps lun from host
-func (p *Attacher) ControllerDetach(ctx context.Context,
+func (p *VolumeAttacher) ControllerDetach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (string, error) {
 	host, err := p.getHost(ctx, parameters, false)
@@ -850,7 +858,7 @@ func (p *Attacher) ControllerDetach(ctx context.Context,
 	return wwn, nil
 }
 
-func (p *Attacher) getLunInfo(ctx context.Context, lunName string) (map[string]interface{}, error) {
+func (p *VolumeAttacher) getLunInfo(ctx context.Context, lunName string) (map[string]interface{}, error) {
 	lun, err := p.cli.GetLunByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun %s info error: %v", lunName, err)

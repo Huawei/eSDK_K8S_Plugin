@@ -24,12 +24,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
+
+var mutex sync.Mutex
 
 func clearLockFile(fileDir string) error {
 	files, err := ioutil.ReadDir(fileDir)
@@ -106,8 +109,8 @@ func createLockFile(ctx context.Context, filePath, lockName string) error {
 
 func deleteLockFile(ctx context.Context, lockDir, lockName string) error {
 	log.AddContext(ctx).Infoln("DeleteLockFile start to get lock")
-	lockMutex.Lock()
-	defer lockMutex.Unlock()
+	mutex.Lock()
+	defer mutex.Unlock()
 	log.AddContext(ctx).Infoln("DeleteLockFile finish to get lock")
 	filePath := fmt.Sprintf("%s%s%s", lockDir, lockNamePrefix, lockName)
 	exist := isFileExist(filePath)
@@ -122,8 +125,8 @@ func waitGetLock(ctx context.Context, lockDir, lockName string) error {
 	filePath := fmt.Sprintf("%s%s%s", lockDir, lockNamePrefix, lockName)
 	log.AddContext(ctx).Infoln("WaitGetLock start to get lock")
 	err := utils.WaitUntil(func() (bool, error) {
-		lockMutex.Lock()
-		defer lockMutex.Unlock()
+		mutex.Lock()
+		defer mutex.Unlock()
 		exist := isFileExist(filePath)
 
 		if !exist {

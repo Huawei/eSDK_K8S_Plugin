@@ -37,7 +37,6 @@ type loggingConfig struct {
 type serviceConfig struct {
 	Controller           bool
 	EnableLeaderElection bool
-	EnableLabel          bool
 
 	Endpoint         string
 	DrEndpoint       string
@@ -93,8 +92,8 @@ type extenderConfig struct {
 	VolumeModifyReconcileDelay time.Duration
 }
 
-// Config contains the configurations from env
-type Config struct {
+// AppConfig contains the configurations from env
+type AppConfig struct {
 	loggingConfig
 	serviceConfig
 	connectorConfig
@@ -104,13 +103,13 @@ type Config struct {
 
 // CompletedConfig contains the env and config
 type CompletedConfig struct {
-	*Config
+	*AppConfig
 	K8sUtils     k8sutils.Interface
 	BackendUtils clientSet.Interface
 }
 
-// Complete the Config and return the CompletedConfig
-func (cfg *Config) Complete() (*CompletedConfig, error) {
+// Complete the AppConfig and return the CompletedConfig
+func (cfg *AppConfig) Complete() (*CompletedConfig, error) {
 	k8sUtils, err := k8sutils.NewK8SUtils(cfg.KubeConfig, cfg.VolumeNamePrefix,
 		map[string]string{"provisioner": cfg.DriverName})
 	if err != nil {
@@ -125,7 +124,7 @@ func (cfg *Config) Complete() (*CompletedConfig, error) {
 	}
 
 	return &CompletedConfig{
-		Config:       cfg,
+		AppConfig:    cfg,
 		K8sUtils:     k8sUtils,
 		BackendUtils: backendUtils,
 	}, nil
@@ -133,5 +132,5 @@ func (cfg *Config) Complete() (*CompletedConfig, error) {
 
 // Print the configuration when before the service
 func (cfg *CompletedConfig) Print() {
-	logrus.Infof("Controller manager config %+v", cfg.Config)
+	logrus.Infof("Controller manager config %+v", cfg.AppConfig)
 }

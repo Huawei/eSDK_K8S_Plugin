@@ -21,8 +21,8 @@ import (
 	"reflect"
 	"testing"
 
-	"bou.ke/monkey"
-	"github.com/smartystreets/goconvey/convey"
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -30,15 +30,15 @@ const (
 )
 
 func TestAllowNfsShareAccess(t *testing.T) {
-	convey.Convey("Normal", t, func() {
-		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
-			func(_ *Client, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
+	t.Run("Normal", func(t *testing.T) {
+		guard := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "Post",
+			func(_ *RestClient, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"data":   map[string]interface{}{},
 					"result": map[string]interface{}{"code": float64(0), "description": ""},
 				}, nil
 			})
-		defer guard.Unpatch()
+		defer guard.Reset()
 
 		err := testClient.AllowNfsShareAccess(context.TODO(), &AllowNfsShareAccessRequest{
 			AccessName:  "test",
@@ -48,17 +48,17 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash:  1,
 			AccountId:   "0",
 		})
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 
-	convey.Convey("Result Code Not Exist", t, func() {
-		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
-			func(_ *Client, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
+	t.Run("Result Code Not Exist", func(t *testing.T) {
+		guard := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "Post",
+			func(_ *RestClient, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"data": map[string]interface{}{},
 				}, nil
 			})
-		defer guard.Unpatch()
+		defer guard.Reset()
 
 		err := testClient.AllowNfsShareAccess(context.TODO(), &AllowNfsShareAccessRequest{
 			AccessName:  "test",
@@ -68,18 +68,18 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash:  1,
 			AccountId:   "0",
 		})
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
-	convey.Convey("Client Already Exist", t, func() {
-		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
-			func(_ *Client, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
+	t.Run("RestClient Already Exist", func(t *testing.T) {
+		guard := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "Post",
+			func(_ *RestClient, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"data":   map[string]interface{}{},
 					"result": map[string]interface{}{"code": float64(clientAlreadyExist), "description": ""},
 				}, nil
 			})
-		defer guard.Unpatch()
+		defer guard.Reset()
 
 		err := testClient.AllowNfsShareAccess(context.TODO(), &AllowNfsShareAccessRequest{
 			AccessName:  "test",
@@ -89,18 +89,18 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash:  1,
 			AccountId:   "0",
 		})
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 
-	convey.Convey("Error code is not zero", t, func() {
-		guard := monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "Post",
-			func(_ *Client, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
+	t.Run("Error code is not zero", func(t *testing.T) {
+		guard := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "Post",
+			func(_ *RestClient, _ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"data":   map[string]interface{}{},
 					"result": map[string]interface{}{"code": float64(100), "description": ""},
 				}, nil
 			})
-		defer guard.Unpatch()
+		defer guard.Reset()
 
 		err := testClient.AllowNfsShareAccess(context.TODO(), &AllowNfsShareAccessRequest{
 			AccessName:  "test",
@@ -110,6 +110,6 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			RootSquash:  1,
 			AccountId:   "0",
 		})
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }

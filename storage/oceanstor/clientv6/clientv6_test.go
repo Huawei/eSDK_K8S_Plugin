@@ -30,7 +30,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-var testClient *ClientV6
+var testClient *V6Client
 
 const (
 	logName = "clientV6_test.log"

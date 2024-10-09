@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,11 +26,20 @@ import (
 	"huawei-csi-driver/pkg/constants"
 )
 
+const (
+	defaultRpcTimeout                   = 1 * time.Minute
+	defaultWorkerThreads                = 10
+	defaultReSyncPeriods                = 2 * time.Minute
+	defaultLeaderRetryPeriod            = 2 * time.Second
+	defaultLeaderRenewDeadline          = 6 * time.Second
+	defaultLeaderLeaseDuration          = 8 * time.Second
+	defaultBackendUpdateIntervalSeconds = 60
+)
+
 // serviceOptions include service's configuration
 type serviceOptions struct {
 	controller           bool
 	enableLeaderElection bool
-	enableLabel          bool
 
 	driverName       string
 	endpoint         string
@@ -72,8 +81,8 @@ func (opt *serviceOptions) AddFlags(ff *flag.FlagSet) {
 	ff.StringVar(&opt.driverName, "driver-name",
 		constants.DefaultDriverName,
 		"CSI driver name")
-	ff.IntVar(&opt.backendUpdateInterval, "backend-update-interval",
-		60, "The interval seconds to update backends status. Default is 60 seconds")
+	ff.IntVar(&opt.backendUpdateInterval, "backend-update-interval", defaultBackendUpdateIntervalSeconds,
+		"The interval seconds to update backends status. Default is 60 seconds")
 	ff.StringVar(&opt.kubeConfig, "kubeconfig", "",
 		"absolute path to the kubeconfig file")
 	ff.StringVar(&opt.nodeName, "nodename",
@@ -89,28 +98,25 @@ func (opt *serviceOptions) AddFlags(ff *flag.FlagSet) {
 		"The port of webhook server")
 	ff.StringVar(&opt.webHookAddress, "web-hook-address", "",
 		"The Address of webhook server")
-	ff.BoolVar(&opt.enableLabel, "enable-label", false,
-		"csi enable label")
 	ff.BoolVar(&opt.enableLeaderElection, "enable-leader-election", false,
 		"backend enable leader election")
-	ff.DurationVar(&opt.leaderLeaseDuration, "leader-lease-duration", 8*time.Second,
+	ff.DurationVar(&opt.leaderLeaseDuration, "leader-lease-duration", defaultLeaderLeaseDuration,
 		"backend leader lease duration")
-	ff.DurationVar(&opt.leaderRenewDeadline, "leader-renew-deadline", 6*time.Second,
+	ff.DurationVar(&opt.leaderRenewDeadline, "leader-renew-deadline", defaultLeaderRenewDeadline,
 		"backend leader renew deadline")
-	ff.DurationVar(&opt.leaderRetryPeriod, "leader-retry-period", 2*time.Second,
+	ff.DurationVar(&opt.leaderRetryPeriod, "leader-retry-period", defaultLeaderRetryPeriod,
 		"backend leader retry period")
-	ff.DurationVar(&opt.reSyncPeriod, "re-sync-period", 2*time.Minute, "reSync interval of the controller")
-	ff.IntVar(&opt.workerThreads, "worker-threads", 10, "number of worker threads.")
-	ff.DurationVar(&opt.timeout, "timeout", 1*time.Minute, "timeout for any RPCs")
+	ff.DurationVar(&opt.reSyncPeriod, "re-sync-period", defaultReSyncPeriods, "reSync interval of the controller")
+	ff.IntVar(&opt.workerThreads, "worker-threads", defaultWorkerThreads, "number of worker threads.")
+	ff.DurationVar(&opt.timeout, "timeout", defaultRpcTimeout, "timeout for any RPCs")
 	ff.StringVar(&opt.kubeletVolumeDevicesDirName, "kubelet-volume-devices-dir-name",
 		constants.DefaultKubeletVolumeDevicesDirName, "The dir name of volume devices")
 }
 
 // ApplyFlags assign the service flags
-func (opt *serviceOptions) ApplyFlags(cfg *config.Config) {
+func (opt *serviceOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.Endpoint = opt.endpoint
 	cfg.DrEndpoint = opt.drEndpoint
-	cfg.EnableLabel = opt.enableLabel
 	cfg.Controller = opt.controller
 	cfg.DriverName = opt.driverName
 	cfg.BackendUpdateInterval = opt.backendUpdateInterval

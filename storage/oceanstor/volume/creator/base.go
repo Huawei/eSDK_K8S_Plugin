@@ -26,8 +26,8 @@ import (
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/smartx"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/flow"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/taskflow"
 )
 
 const (
@@ -38,7 +38,7 @@ const (
 // BaseCreator provides some common methods for volume creation.
 type BaseCreator struct {
 	cli         client.BaseClientInterface
-	transaction *taskflow.Transaction
+	transaction *flow.Transaction
 
 	// common fields of the filesystem
 	vStoreId           string
@@ -67,11 +67,12 @@ type BaseCreator struct {
 	domainId           string
 	isPairOnlineDelete bool
 	isSyncPair         bool
+	metroPairSyncSpeed int
 }
 
 // Init initiates fields of BaseCreator
 func (c *BaseCreator) Init(params *Parameter) {
-	c.transaction = taskflow.NewTransaction()
+	c.transaction = flow.NewTransaction()
 	c.fsName = params.PvcName()
 	c.storagePoolName = params.StoragePool()
 	c.storagePoolId = params.PoolID()
@@ -87,6 +88,7 @@ func (c *BaseCreator) Init(params *Parameter) {
 	c.accessKrb5p = params.AccessKrb5p()
 	c.domainId = params.MetroDomainID()
 	c.vStorePairId = params.VStorePairId()
+	c.metroPairSyncSpeed = params.SyncMetroPairSpeed()
 
 	if !params.IsSkipNfsShareAndQos() {
 		c.isCreateNfsShare = true
@@ -401,11 +403,13 @@ func (c *BaseCreator) createHyperMetroPair(ctx context.Context,
 		"HCRESOURCETYPE": filesystemHCRESourceType,
 		"LOCALOBJID":     activeFsId,
 		"REMOTEOBJID":    standbyFsId,
-		"SPEED":          highestPairSpeed,
 		"VSTOREPAIRID":   c.vStorePairId,
 	}
 	if c.domainId != "" {
 		req["DOMAINID"] = c.domainId
+	}
+	if c.metroPairSyncSpeed != 0 {
+		req["SPEED"] = c.metroPairSyncSpeed
 	}
 	pair, err := c.cli.CreateHyperMetroPair(ctx, req)
 	if err != nil {

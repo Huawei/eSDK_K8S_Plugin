@@ -24,8 +24,8 @@ import (
 	"huawei-csi-driver/connector/nvme"
 )
 
-// Manager defines the operations which storage manager should implement
-type Manager interface {
+// VolumeManager defines the operations which storage manager should implement
+type VolumeManager interface {
 	StageVolume(context.Context, *csi.NodeStageVolumeRequest) error
 	UnStageVolume(context.Context, *csi.NodeUnstageVolumeRequest) error
 	ExpandVolume(context.Context, *csi.NodeExpandVolumeRequest) error

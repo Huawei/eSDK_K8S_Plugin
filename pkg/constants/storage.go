@@ -30,10 +30,19 @@ const (
 	// DoradoV615 is Dorado V6.1.5
 	DoradoV615 = "6.1.5"
 
-	// MinVersionSupportLabel version gte 6.1.7 support label function
-	MinVersionSupportLabel = "6.1.7"
+	// MinVersionSupportNfsPlus version gte 6.1.7 support label function
+	MinVersionSupportNfsPlus = "6.1.7"
 	// OceanStorNas storage type is oceanstor-nas
 	OceanStorNas = "oceanstor-nas"
+
+	// CloneSpeedLevel1 means level1 of the clone speed
+	CloneSpeedLevel1 = 1
+	// CloneSpeedLevel2 means level2 of the clone speed
+	CloneSpeedLevel2 = 2
+	// CloneSpeedLevel3 means level3 of the clone speed
+	CloneSpeedLevel3 = 3
+	// CloneSpeedLevel4 means level4 of the clone speed
+	CloneSpeedLevel4 = 4
 )
 
 // BackendCapability backend capability
@@ -65,6 +74,3 @@ var SupportApplicationType BackendCapability = "SupportApplicationType"
 
 // SupportMetroNAS defines backend capability SupportMetroNAS
 var SupportMetroNAS BackendCapability = "SupportMetroNAS"
-
-// SupportLabel defines backend capability SupportLabel
-var SupportLabel BackendCapability = "SupportLabel"

@@ -63,7 +63,7 @@ func TestConfig(t *testing.T) {
 	}
 }
 
-func compareLogOptions(envCfg *config.Config) error {
+func compareLogOptions(envCfg *config.AppConfig) error {
 	expectLogOptions := NewLoggingOptions()
 	actuallyLogOptions := &loggingOptions{
 		logFileSize:   envCfg.LogFileSize,
@@ -80,7 +80,7 @@ func compareLogOptions(envCfg *config.Config) error {
 	return nil
 }
 
-func compareConnectorOptions(envCfg *config.Config) error {
+func compareConnectorOptions(envCfg *config.AppConfig) error {
 	expectConnectorOptions := NewConnectorOptions()
 	actuallyConnectorOptions := &connectorOptions{
 		volumeUseMultiPath:   true,

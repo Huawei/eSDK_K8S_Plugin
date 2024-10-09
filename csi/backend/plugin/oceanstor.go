@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/oceanstor/client"
@@ -174,11 +173,7 @@ func (p *OceanstorPlugin) updateBackendCapabilities(ctx context.Context) (map[st
 	supportClone := utils.IsSupportFeature(features, "HyperClone") || utils.IsSupportFeature(features, "HyperCopy")
 	supportApplicationType := p.product == "DoradoV6"
 
-	supportLabel := app.GetGlobalConfig().EnableLabel &&
-		p.cli.GetStorageVersion() >= constants.MinVersionSupportLabel &&
-		p.cli.IsSupportContainer(ctx)
-	log.AddContext(ctx).Debugf("enableLabel: %v, storageVersion: %v", app.GetGlobalConfig().EnableLabel,
-		p.cli.GetStorageVersion())
+	log.AddContext(ctx).Debugf("storageVersion: %v", p.cli.GetStorageVersion())
 
 	capabilities := map[string]interface{}{
 		"SupportThin":            supportThin,
@@ -189,7 +184,6 @@ func (p *OceanstorPlugin) updateBackendCapabilities(ctx context.Context) (map[st
 		"SupportApplicationType": supportApplicationType,
 		"SupportClone":           supportClone,
 		"SupportMetroNAS":        supportMetroNAS,
-		"SupportLabel":           supportLabel,
 	}
 
 	return capabilities, nil
@@ -367,6 +361,7 @@ func toLowerParams(source, target map[string]interface{}) {
 		"accesskrb5i",
 		"accesskrb5p",
 		"fileSystemMode",
+		"metroPairSyncSpeed",
 	} {
 		if v, exist := source[key]; exist && v != "" {
 			target[strings.ToLower(key)] = v
@@ -415,17 +410,17 @@ func (p *OceanstorPlugin) analyzePoolsCapacity(ctx context.Context, pools []map[
 		var err error
 		var freeCapacity, totalCapacity int64
 		if freeStr, ok := pool["USERFREECAPACITY"].(string); ok {
-			freeCapacity, err = strconv.ParseInt(freeStr, 10, 64)
+			freeCapacity, err = strconv.ParseInt(freeStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
 		}
 		if totalStr, ok := pool["USERTOTALCAPACITY"].(string); ok {
-			totalCapacity, err = strconv.ParseInt(totalStr, 10, 64)
+			totalCapacity, err = strconv.ParseInt(totalStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
 		}
 		if err != nil {
 			log.AddContext(ctx).Warningf("parse capacity failed, error: %v", err)
 		}
 		poolCapacityMap := map[string]interface{}{
-			string(xuanwuV1.FreeCapacity):  freeCapacity * 512,
-			string(xuanwuV1.TotalCapacity): totalCapacity * 512,
+			string(xuanwuV1.FreeCapacity):  freeCapacity * constants.AllocationUnitBytes,
+			string(xuanwuV1.TotalCapacity): totalCapacity * constants.AllocationUnitBytes,
 			string(xuanwuV1.UsedCapacity):  totalCapacity - freeCapacity,
 		}
 		if len(vStoreQuotaMap) == 0 {
@@ -435,7 +430,7 @@ func (p *OceanstorPlugin) analyzePoolsCapacity(ctx context.Context, pools []map[
 		log.AddContext(ctx).Debugf("analyzePoolsCapacity poolName: %s, poolCapacity: %+v, vstoreQuota: %+v",
 			name, poolCapacityMap, vStoreQuotaMap)
 		free, ok := vStoreQuotaMap[string(xuanwuV1.FreeCapacity)].(int64)
-		if ok && free < freeCapacity*512 {
+		if ok && free < freeCapacity*constants.AllocationUnitBytes {
 			capabilities[name] = vStoreQuotaMap
 		} else {
 			capabilities[name] = poolCapacityMap
@@ -476,7 +471,8 @@ func (p *OceanstorPlugin) switchClient(ctx context.Context, newClient client.Bas
 	return nil
 }
 
-func (p *OceanstorPlugin) getNewClientConfig(ctx context.Context, param map[string]interface{}) (*client.NewClientConfig, error) {
+func (p *OceanstorPlugin) getNewClientConfig(ctx context.Context,
+	param map[string]interface{}) (*client.NewClientConfig, error) {
 	data := &client.NewClientConfig{}
 	configUrls, exist := param["urls"].([]interface{})
 	if !exist || len(configUrls) <= 0 {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,14 +22,14 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8string "k8s.io/utils/strings"
 
 	"huawei-csi-driver/cli/helper"
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
@@ -181,8 +181,8 @@ func (b *BackendConfiguration) ToStorageBackendClaimConfig() StorageBackendClaim
 	return StorageBackendClaimConfig{
 		Name:             b.Name,
 		Namespace:        b.NameSpace,
-		ConfigmapMeta:    k8string.JoinQualifiedName(b.NameSpace, b.Name),
-		SecretMeta:       k8string.JoinQualifiedName(b.NameSpace, b.Name),
+		ConfigmapMeta:    path.Join(b.NameSpace, b.Name),
+		SecretMeta:       path.Join(b.NameSpace, b.Name),
 		MaxClientThreads: b.MaxClientThreads,
 		Provisioner:      b.Provisioner,
 	}
@@ -192,7 +192,7 @@ func (b *BackendConfiguration) ToStorageBackendClaimConfig() StorageBackendClaim
 func (b *BackendConfiguration) ToConfigMapConfig() (ConfigMapConfig, error) {
 	config := struct {
 		Backends BackendConfiguration `json:"backends"`
-	}{*b}
+	}{Backends: *b}
 
 	config.Backends.Parameters.Portals = helper.ConvertInterface(config.Backends.Parameters.Portals)
 

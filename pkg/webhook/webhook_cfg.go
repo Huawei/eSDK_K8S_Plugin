@@ -37,13 +37,13 @@ const (
 )
 
 // GetStorageWebHookCfg used to get storage webhook configuration
-func GetStorageWebHookCfg() (WebHook, []AdmissionWebHookCFG) {
+func GetStorageWebHookCfg() (Config, []AdmissionWebHookCFG) {
 	var handleFuncPair []HandleFuncPair
 	handleFuncPair = append(handleFuncPair,
 		HandleFuncPair{WebhookPath: claimWebhookPath,
 			WebHookFunc: admitStorageBackendClaim})
 
-	webHookCfg := WebHook{
+	webHookCfg := Config{
 		NamespaceEnv:     constants.NamespaceEnv,
 		DefaultNamespace: app.GetGlobalConfig().Namespace,
 		ServiceName:      serviceName,

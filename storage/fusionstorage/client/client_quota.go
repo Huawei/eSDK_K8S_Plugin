@@ -29,7 +29,7 @@ const (
 )
 
 // CreateQuota creates quota by params
-func (cli *Client) CreateQuota(ctx context.Context, params map[string]interface{}) error {
+func (cli *RestClient) CreateQuota(ctx context.Context, params map[string]interface{}) error {
 	resp, err := cli.post(ctx, "/api/v2/file_service/fs_quota", params)
 	if err != nil {
 		return err
@@ -52,7 +52,7 @@ func (cli *Client) CreateQuota(ctx context.Context, params map[string]interface{
 }
 
 // UpdateQuota updates quota by params
-func (cli *Client) UpdateQuota(ctx context.Context, params map[string]interface{}) error {
+func (cli *RestClient) UpdateQuota(ctx context.Context, params map[string]interface{}) error {
 	resp, err := cli.put(ctx, "/api/v2/file_service/fs_quota", params)
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func (cli *Client) UpdateQuota(ctx context.Context, params map[string]interface{
 }
 
 // GetQuotaByFileSystemById query quota info by file system id
-func (cli *Client) GetQuotaByFileSystemById(ctx context.Context, fsID string) (map[string]interface{}, error) {
+func (cli *RestClient) GetQuotaByFileSystemById(ctx context.Context, fsID string) (map[string]interface{}, error) {
 	url := "/api/v2/file_service/fs_quota?parent_type=40&parent_id=" +
 		fsID + "&range=%7B%22offset%22%3A0%2C%22limit%22%3A100%7D"
 	resp, err := cli.get(ctx, url, nil)
@@ -110,7 +110,7 @@ func (cli *Client) GetQuotaByFileSystemById(ctx context.Context, fsID string) (m
 }
 
 // DeleteQuota deletes quota by id
-func (cli *Client) DeleteQuota(ctx context.Context, quotaID string) error {
+func (cli *RestClient) DeleteQuota(ctx context.Context, quotaID string) error {
 	url := fmt.Sprintf("/api/v2/file_service/fs_quota/%s", quotaID)
 	resp, err := cli.delete(ctx, url, nil)
 	if err != nil {

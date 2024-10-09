@@ -25,9 +25,9 @@ import (
 	"huawei-csi-driver/utils"
 )
 
-// Plugin defines storage plugin interfaces
-type Plugin interface {
-	NewPlugin() Plugin
+// StoragePlugin defines storage plugin interfaces
+type StoragePlugin interface {
+	NewPlugin() StoragePlugin
 	Init(context.Context, map[string]interface{}, map[string]interface{}, bool) error
 	CreateVolume(context.Context, string, map[string]interface{}) (utils.Volume, error)
 	QueryVolume(context.Context, string, map[string]interface{}) (utils.Volume, error)
@@ -39,7 +39,7 @@ type Plugin interface {
 
 	UpdateBackendCapabilities(context.Context) (map[string]interface{}, map[string]interface{}, error)
 	UpdatePoolCapabilities(context.Context, []string) (map[string]interface{}, error)
-	UpdateMetroRemotePlugin(context.Context, Plugin)
+	UpdateMetroRemotePlugin(context.Context, StoragePlugin)
 	CreateSnapshot(context.Context, string, string) (map[string]interface{}, error)
 	DeleteSnapshot(context.Context, string, string) error
 	SmartXQoSQuery
@@ -58,12 +58,12 @@ type Plugin interface {
 
 // SmartXQoSQuery provides Quality of Service(QoS) Query operations
 type SmartXQoSQuery interface {
-	// SupportQoSParameters checks requested QoS parameters support by Plugin
+	// SupportQoSParameters checks requested QoS parameters support by StoragePlugin
 	SupportQoSParameters(ctx context.Context, qos string) error
 }
 
 var (
-	plugins = map[string]Plugin{}
+	plugins = map[string]StoragePlugin{}
 )
 
 const (
@@ -72,12 +72,12 @@ const (
 )
 
 // RegPlugin used to register plugin
-func RegPlugin(storageType string, plugin Plugin) {
+func RegPlugin(storageType string, plugin StoragePlugin) {
 	plugins[storageType] = plugin
 }
 
 // GetPlugin used to get plugin by storage type
-func GetPlugin(storageType string) Plugin {
+func GetPlugin(storageType string) StoragePlugin {
 	if plugin, exist := plugins[storageType]; exist {
 		return plugin.NewPlugin()
 	}
@@ -98,7 +98,7 @@ func (p *basePlugin) DetachVolume(context.Context, string, map[string]interface{
 	return nil
 }
 
-func (p *basePlugin) UpdateMetroRemotePlugin(context.Context, Plugin) {
+func (p *basePlugin) UpdateMetroRemotePlugin(context.Context, StoragePlugin) {
 }
 
 // SetOnline sets the online status of plugin

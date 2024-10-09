@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,12 +29,19 @@ const (
 	hwUltraPath     = "HW-UltraPath"
 	hwUltraPathNVMe = "HW-UltraPath-NVMe"
 
-	defaultCleanupTimeout    = 240
-	defaultScanVolumeTimeout = 3
-	defaultConnectorThreads  = 4
+	defaultCleanupTimeout     = 240
+	defaultScanVolumeTimeout  = 3
+	defaultConnectorThreads   = 4
+	defaultExecCommandTimeout = 30
 
 	minThreads = 1
 	maxThreads = 10
+
+	minScanVolumeTimeout = 1
+	maxScanVolumeTimeout = 600
+
+	minExecCommandTimeout = 1
+	maxExecCommandTimeout = 600
 )
 
 type connectorOptions struct {
@@ -73,24 +80,24 @@ func (opt *connectorOptions) AddFlags(ff *flag.FlagSet) {
 		hwUltraPathNVMe,
 		"Multipath software for roce/fc-nvme block volumes")
 	ff.IntVar(&opt.deviceCleanupTimeout, "deviceCleanupTimeout",
-		240,
+		defaultCleanupTimeout,
 		"Timeout interval in seconds for stale device cleanup")
 	ff.IntVar(&opt.scanVolumeTimeout, "scan-volume-timeout",
-		3,
+		defaultScanVolumeTimeout,
 		"The timeout for waiting for multipath aggregation when DM-multipath is used on the host")
 	ff.IntVar(&opt.connectorThreads, "connector-threads",
-		4,
+		defaultConnectorThreads,
 		"The concurrency supported during disk operations.")
 	ff.BoolVar(&opt.allPathOnline, "all-path-online",
 		false,
 		"Whether to check the number of online paths for DM-multipath aggregation, default false")
 	ff.IntVar(&opt.execCommandTimeout, "exec-command-timeout",
-		30,
+		defaultExecCommandTimeout,
 		"The timeout for running command on host")
 }
 
 // ApplyFlags assign the connector flags
-func (opt *connectorOptions) ApplyFlags(cfg *config.Config) {
+func (opt *connectorOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.VolumeUseMultiPath = opt.volumeUseMultiPath
 	cfg.ScsiMultiPathType = opt.scsiMultiPathType
 	cfg.NvmeMultiPathType = opt.nvmeMultiPathType
@@ -141,7 +148,7 @@ func (opt *connectorOptions) validateNvmeMultiPathType() error {
 }
 
 func (opt *connectorOptions) validateScanVolumeTimeout() error {
-	if opt.scanVolumeTimeout < 1 || opt.scanVolumeTimeout > 600 {
+	if opt.scanVolumeTimeout < minScanVolumeTimeout || opt.scanVolumeTimeout > maxScanVolumeTimeout {
 		return fmt.Errorf("the value of scanVolumeTimeout ranges from 1 to 600, current is: %d",
 			opt.scanVolumeTimeout)
 	}
@@ -156,7 +163,7 @@ func (opt *connectorOptions) validateConnectorThreads() error {
 	return nil
 }
 func (opt *connectorOptions) validateExecCommandTimeout() error {
-	if opt.execCommandTimeout < 1 || opt.execCommandTimeout > 600 {
+	if opt.execCommandTimeout < minExecCommandTimeout || opt.execCommandTimeout > maxExecCommandTimeout {
 		return fmt.Errorf("the value of execCommandTimeout ranges from 1 to 600, current is: %d",
 			opt.scanVolumeTimeout)
 	}

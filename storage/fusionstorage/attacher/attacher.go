@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,9 +33,9 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// Attacher defines attacher client
-type Attacher struct {
-	cli      *client.Client
+// VolumeAttacher defines attacher client
+type VolumeAttacher struct {
+	cli      *client.RestClient
 	protocol string
 	invoker  string
 	portals  []string
@@ -43,25 +43,36 @@ type Attacher struct {
 	alua     map[string]interface{}
 }
 
+// VolumeAttacherConfig defines configurations of VolumeAttacher
+type VolumeAttacherConfig struct {
+	Cli      *client.RestClient
+	Protocol string
+	Invoker  string
+	Portals  []string
+	Hosts    map[string]string
+	Alua     map[string]interface{}
+}
+
 const (
 	// DisableAlua defines switchover mode disable alua
 	DisableAlua = "Disable_alua"
+
+	iscsiPortalFieldsLength = 2
 )
 
 // NewAttacher used to init a new attacher
-func NewAttacher(cli *client.Client, protocol, invoker string, portals []string,
-	hosts map[string]string, alua map[string]interface{}) *Attacher {
-	return &Attacher{
-		cli:      cli,
-		protocol: protocol,
-		invoker:  invoker,
-		portals:  portals,
-		hosts:    hosts,
-		alua:     alua,
+func NewAttacher(config VolumeAttacherConfig) *VolumeAttacher {
+	return &VolumeAttacher{
+		cli:      config.Cli,
+		protocol: config.Protocol,
+		invoker:  config.Invoker,
+		portals:  config.Portals,
+		hosts:    config.Hosts,
+		alua:     config.Alua,
 	}
 }
 
-func (p *Attacher) getHostName(ctx context.Context, parameters map[string]interface{}) (string, error) {
+func (p *VolumeAttacher) getHostName(ctx context.Context, parameters map[string]interface{}) (string, error) {
 	hostName, ok := parameters["HostName"].(string)
 	if !ok {
 		return "", fmt.Errorf("can not find host name,parameters:%v", parameters)
@@ -70,7 +81,7 @@ func (p *Attacher) getHostName(ctx context.Context, parameters map[string]interf
 	return hostName, nil
 }
 
-func (p *Attacher) parseISCSIPortal(ctx context.Context, iscsiPortal map[string]interface{}) string {
+func (p *VolumeAttacher) parseISCSIPortal(ctx context.Context, iscsiPortal map[string]interface{}) string {
 	if iscsiPortal["iscsiStatus"] != "active" {
 		log.AddContext(ctx).Errorf("ISCSI portal %v is not active", iscsiPortal)
 		return ""
@@ -83,7 +94,7 @@ func (p *Attacher) parseISCSIPortal(ctx context.Context, iscsiPortal map[string]
 	}
 
 	portalSplit := strings.Split(portal, ":")
-	if len(portalSplit) < 2 {
+	if len(portalSplit) < iscsiPortalFieldsLength {
 		log.AddContext(ctx).Errorf("ISCSI portal %s is invalid", portal)
 		return ""
 	}
@@ -98,7 +109,7 @@ func (p *Attacher) parseISCSIPortal(ctx context.Context, iscsiPortal map[string]
 	return ip.String()
 }
 
-func (p *Attacher) needUpdateIscsiHost(host map[string]interface{}, hostAlua map[string]interface{}) bool {
+func (p *VolumeAttacher) needUpdateIscsiHost(host map[string]interface{}, hostAlua map[string]interface{}) bool {
 	switchoverMode, ok := hostAlua["switchoverMode"]
 	if !ok {
 		return false
@@ -118,7 +129,7 @@ func (p *Attacher) needUpdateIscsiHost(host map[string]interface{}, hostAlua map
 	return false
 }
 
-func (p *Attacher) createIscsiHost(ctx context.Context, hostName string) error {
+func (p *VolumeAttacher) createIscsiHost(ctx context.Context, hostName string) error {
 	host, err := p.cli.GetHostByName(ctx, hostName)
 	if err != nil {
 		return err
@@ -135,7 +146,7 @@ func (p *Attacher) createIscsiHost(ctx context.Context, hostName string) error {
 	return err
 }
 
-func (p *Attacher) getTargetPortals(ctx context.Context) ([]string, []string, error) {
+func (p *VolumeAttacher) getTargetPortals(ctx context.Context) ([]string, []string, error) {
 	nodeResultList, err := p.cli.QueryIscsiPortal(ctx)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get ISCSI portals error: %v", err)
@@ -184,7 +195,7 @@ func (p *Attacher) getTargetPortals(ctx context.Context) ([]string, []string, er
 	return tgtPortals, tgtIQNs, nil
 }
 
-func (p *Attacher) parseiSCSIPortalList(ctx context.Context,
+func (p *VolumeAttacher) parseiSCSIPortalList(ctx context.Context,
 	iscsiPortalList []interface{}, validIPs map[string]bool, validIQNs map[string]string) error {
 	for _, portal := range iscsiPortalList {
 		iscsiPortal, exist := portal.(map[string]interface{})
@@ -203,7 +214,7 @@ func (p *Attacher) parseiSCSIPortalList(ctx context.Context,
 	return nil
 }
 
-func (p *Attacher) attachIscsiInitiatorToHost(ctx context.Context, hostName string) error {
+func (p *VolumeAttacher) attachIscsiInitiatorToHost(ctx context.Context, hostName string) error {
 	parameters := map[string]interface{}{
 		"HostName": hostName,
 	}
@@ -236,7 +247,7 @@ func (p *Attacher) attachIscsiInitiatorToHost(ctx context.Context, hostName stri
 		if len(host) == 0 {
 			addInitiator = true
 		} else if host != hostName {
-			return fmt.Errorf("ISCSI initiator %s is already associated to another host %s", initiatorName, host)
+			return fmt.Errorf("Connector initiator %s is already associated to another host %s", initiatorName, host)
 		}
 	}
 
@@ -250,7 +261,7 @@ func (p *Attacher) attachIscsiInitiatorToHost(ctx context.Context, hostName stri
 	return nil
 }
 
-func (p *Attacher) isVolumeAddToHost(ctx context.Context, lunName, hostName string) (bool, error) {
+func (p *VolumeAttacher) isVolumeAddToHost(ctx context.Context, lunName, hostName string) (bool, error) {
 	hosts, err := p.cli.QueryHostOfVolume(ctx, lunName)
 	if err != nil {
 		return false, err
@@ -265,7 +276,7 @@ func (p *Attacher) isVolumeAddToHost(ctx context.Context, lunName, hostName stri
 	return false, nil
 }
 
-func (p *Attacher) doMapping(ctx context.Context, lunName, hostName string) (string, error) {
+func (p *VolumeAttacher) doMapping(ctx context.Context, lunName, hostName string) (string, error) {
 	lun, err := p.cli.GetVolumeByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)
@@ -304,7 +315,7 @@ func (p *Attacher) doMapping(ctx context.Context, lunName, hostName string) (str
 	return lun["wwn"].(string), nil
 }
 
-func (p *Attacher) doUnmapping(ctx context.Context, lunName, hostName string) (string, error) {
+func (p *VolumeAttacher) doUnmapping(ctx context.Context, lunName, hostName string) (string, error) {
 	lun, err := p.getLunInfo(ctx, lunName)
 	if lun == nil {
 		return "", err
@@ -337,7 +348,7 @@ func (p *Attacher) doUnmapping(ctx context.Context, lunName, hostName string) (s
 	return lun["wwn"].(string), nil
 }
 
-func (p *Attacher) getMappingProperties(ctx context.Context,
+func (p *VolumeAttacher) getMappingProperties(ctx context.Context,
 	wwn, hostLunId string, parameters map[string]interface{}) (map[string]interface{}, error) {
 	tgtPortals, tgtIQNs, err := p.getTargetPortals(ctx)
 	if err != nil {
@@ -359,7 +370,7 @@ func (p *Attacher) getMappingProperties(ctx context.Context,
 	return connectInfo, nil
 }
 
-func (p *Attacher) iSCSIControllerAttach(ctx context.Context, lunInfo utils.Volume,
+func (p *VolumeAttacher) iSCSIControllerAttach(ctx context.Context, lunInfo utils.Volume,
 	parameters map[string]interface{}) (
 	map[string]interface{}, error) {
 	hostName, err := p.getHostName(ctx, parameters)
@@ -404,7 +415,7 @@ func (p *Attacher) iSCSIControllerAttach(ctx context.Context, lunInfo utils.Volu
 }
 
 // SCSIControllerAttach used to attach volume to host
-func (p *Attacher) SCSIControllerAttach(ctx context.Context,
+func (p *VolumeAttacher) SCSIControllerAttach(ctx context.Context,
 	lunInfo utils.Volume,
 	parameters map[string]interface{}) (string, error) {
 	hostName, err := p.getHostName(ctx, parameters)
@@ -432,7 +443,7 @@ func (p *Attacher) SCSIControllerAttach(ctx context.Context,
 }
 
 // ControllerDetach used to detach volume from host
-func (p *Attacher) ControllerDetach(ctx context.Context,
+func (p *VolumeAttacher) ControllerDetach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (string, error) {
 	hostName, err := p.getHostName(ctx, parameters)
@@ -455,7 +466,7 @@ func (p *Attacher) ControllerDetach(ctx context.Context,
 }
 
 // ControllerAttach used to attach volume and return mapping info
-func (p *Attacher) ControllerAttach(ctx context.Context,
+func (p *VolumeAttacher) ControllerAttach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (map[string]interface{}, error) {
 
@@ -484,10 +495,10 @@ func (p *Attacher) ControllerAttach(ctx context.Context,
 }
 
 // NodeStage used to stage node
-func (p *Attacher) NodeStage(ctx context.Context,
+func (p *VolumeAttacher) NodeStage(ctx context.Context,
 	lunInfo utils.Volume,
 	parameters map[string]interface{}) (*connector.ConnectInfo, error) {
-	var conn connector.Connector
+	var conn connector.VolumeConnector
 	var mappingInfo map[string]interface{}
 	var err error
 	if p.protocol == "iscsi" {
@@ -514,7 +525,7 @@ func (p *Attacher) NodeStage(ctx context.Context,
 }
 
 // NodeUnstage used to unstage node
-func (p *Attacher) NodeUnstage(ctx context.Context,
+func (p *VolumeAttacher) NodeUnstage(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (*connector.DisConnectInfo, error) {
 	lun, err := p.getLunInfo(ctx, lunName)
@@ -522,7 +533,7 @@ func (p *Attacher) NodeUnstage(ctx context.Context,
 		return nil, err
 	}
 
-	var conn connector.Connector
+	var conn connector.VolumeConnector
 	if p.protocol == "iscsi" {
 		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
 	} else {
@@ -540,7 +551,7 @@ func (p *Attacher) NodeUnstage(ctx context.Context,
 	}, nil
 }
 
-func (p *Attacher) getLunInfo(ctx context.Context, lunName string) (map[string]interface{}, error) {
+func (p *VolumeAttacher) getLunInfo(ctx context.Context, lunName string) (map[string]interface{}, error) {
 	lun, err := p.cli.GetVolumeByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)

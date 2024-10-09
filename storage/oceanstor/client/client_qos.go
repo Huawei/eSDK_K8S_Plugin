@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ type Qos interface {
 	// DeleteQos used for delete qos
 	DeleteQos(ctx context.Context, qosID, vStoreID string) error
 	// CreateQos used for create qos
-	CreateQos(ctx context.Context, name, objID, objType, vStoreID string, params map[string]int) (map[string]interface{}, error)
+	CreateQos(ctx context.Context, args CreateQoSArgs) (map[string]any, error)
 	// UpdateQos used for update qos
 	UpdateQos(ctx context.Context, qosID, vStoreID string, params map[string]interface{}) error
 	// ActivateQos used for active qos
@@ -47,9 +47,17 @@ type Qos interface {
 	DeactivateQos(ctx context.Context, qosID, vStoreID string) error
 }
 
+// CreateQoSArgs is the arguments to create QoS
+type CreateQoSArgs struct {
+	Name     string
+	ObjID    string
+	ObjType  string
+	VStoreID string
+	Params   map[string]int
+}
+
 // CreateQos used for create qos
-func (cli *BaseClient) CreateQos(ctx context.Context, name, objID, objType, vStoreID string, params map[string]int) (
-	map[string]interface{}, error) {
+func (cli *BaseClient) CreateQos(ctx context.Context, args CreateQoSArgs) (map[string]any, error) {
 
 	utcTime, err := cli.getSystemUTCTime(ctx)
 	if err != nil {
@@ -63,24 +71,24 @@ func (cli *BaseClient) CreateQos(ctx context.Context, name, objID, objType, vSto
 	}
 
 	data := map[string]interface{}{
-		"NAME":              name,
+		"NAME":              args.Name,
 		"SCHEDULEPOLICY":    1,
 		"SCHEDULESTARTTIME": utcZeroTime.Unix(),
 		"STARTTIME":         "00:00",
 		"DURATION":          86400,
 	}
 
-	if objType == "fs" {
-		data["FSLIST"] = []string{objID}
+	if args.ObjType == "fs" {
+		data["FSLIST"] = []string{args.ObjID}
 	} else {
-		data["LUNLIST"] = []string{objID}
+		data["LUNLIST"] = []string{args.ObjID}
 	}
 
-	if vStoreID != "" {
-		data["vstoreId"] = vStoreID
+	if args.VStoreID != "" {
+		data["vstoreId"] = args.VStoreID
 	}
 
-	for k, v := range params {
+	for k, v := range args.Params {
 		data[k] = v
 	}
 
@@ -91,8 +99,8 @@ func (cli *BaseClient) CreateQos(ctx context.Context, name, objID, objType, vSto
 
 	code := int64(resp.Error["code"].(float64))
 	if code == smartQosAlreadyExist {
-		log.AddContext(ctx).Warningf("The QoS %s is already exist.", name)
-		return cli.GetQosByName(ctx, name, vStoreID)
+		log.AddContext(ctx).Warningf("The QoS %s is already exist.", args.Name)
+		return cli.GetQosByName(ctx, args.Name, args.VStoreID)
 	} else if code != 0 {
 		return nil, fmt.Errorf("Create qos %v error: %d", data, code)
 	}

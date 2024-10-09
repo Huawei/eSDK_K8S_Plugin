@@ -28,18 +28,18 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// NasManager implements Manager interface
+// NasManager implements VolumeManager interface
 type NasManager struct {
 	protocol        string
 	portals         []string
 	metroPortals    []string
 	dTreeParentName string
-	Conn            connector.Connector
+	Conn            connector.VolumeConnector
 }
 
 // NewNasManager build a nas manager instance according to the protocol
-func NewNasManager(ctx context.Context, protocol, dTreeParentName string, portals, metroPortals []string) (Manager,
-	error) {
+func NewNasManager(ctx context.Context,
+	protocol, dTreeParentName string, portals, metroPortals []string) (VolumeManager, error) {
 	return &NasManager{
 		protocol:        protocol,
 		portals:         portals,
@@ -73,7 +73,7 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 	var sourcePath string
 	switch m.protocol {
-	case plugin.PROTOCOL_DPC:
+	case plugin.ProtocolDpc:
 		sourcePath = "/" + volumeName
 	case plugin.ProtocolNfs, plugin.ProtocolNfsPlus:
 		sourcePath = m.portals[0] + ":/" + volumeName

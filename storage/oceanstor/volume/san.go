@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,12 +24,18 @@ import (
 	"strconv"
 	"time"
 
+	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/smartx"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/flow"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/taskflow"
+)
+
+const (
+	waitUntilTimeout  = 6 * time.Hour
+	waitUntilInterval = 5 * time.Second
 )
 
 // SAN provides base san client
@@ -84,7 +90,7 @@ func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.
 		return nil, err
 	}
 
-	taskflow := taskflow.NewTaskFlow(ctx, "Create-LUN-Volume")
+	taskflow := flow.NewTaskFlow(ctx, "Create-LUN-Volume")
 
 	hyperMetro, hyperMetroOK := params["hypermetro"].(bool)
 	if hyperMetroOK && hyperMetro {
@@ -127,8 +133,9 @@ func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
 		volObj.SetLunWWN(lunWWN)
 	}
 	// set the size, need to trans Sectors to Bytes
-	if capacity, err := strconv.ParseInt(lun["CAPACITY"].(string), 10, 64); err == nil {
-		volObj.SetSize(utils.TransK8SCapacity(capacity, 512))
+	if capacity, err := strconv.ParseInt(lun["CAPACITY"].(string),
+		constants.DefaultIntBase, constants.DefaultIntBitSize); err == nil {
+		volObj.SetSize(utils.TransK8SCapacity(capacity, constants.AllocationUnitBytes))
 	}
 
 	return volObj, nil
@@ -156,7 +163,7 @@ func (p *SAN) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return pkgUtils.Errorf(ctx, "Unmarshal san HASRSSOBJECT failed, data: %v, err: %v", rssStr, err)
 	}
-	taskflow := taskflow.NewTaskFlow(ctx, "Delete-LUN-Volume")
+	taskflow := flow.NewTaskFlow(ctx, "Delete-LUN-Volume")
 	if hyperMetro, ok := rss["HyperMetro"]; ok && hyperMetro == "TRUE" {
 		taskflow.AddTask("Delete-HyperMetro", p.deleteHyperMetro, nil)
 		taskflow.AddTask("Delete-HyperMetro-Remote-LUN", p.deleteHyperMetroRemoteLun, nil)
@@ -213,7 +220,7 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 	if err != nil {
 		return false, pkgUtils.Errorf(ctx, "Unmarshal HASHSSOBJECT failed, error: %v", err)
 	}
-	expandTask := taskflow.NewTaskFlow(ctx, "Expand-LUN-Volume")
+	expandTask := flow.NewTaskFlow(ctx, "Expand-LUN-Volume")
 	expandTask.AddTask("Expand-PreCheck-Capacity", p.preExpandCheckCapacity, nil)
 
 	if hyperMetro, ok := rss["HyperMetro"]; ok && hyperMetro == "TRUE" {
@@ -843,7 +850,7 @@ func (p *SAN) waitLunCopyFinish(ctx context.Context, lunCopyName string) error {
 		} else {
 			return true, nil
 		}
-	}, time.Hour*6, time.Second*5)
+	}, waitUntilTimeout, waitUntilInterval)
 
 	if err != nil {
 		return err
@@ -883,7 +890,7 @@ func (p *SAN) waitClonePairFinish(ctx context.Context, clonePairID string) error
 		} else {
 			return false, fmt.Errorf("ClonePair %s running status is abnormal", clonePairID)
 		}
-	}, time.Hour*6, time.Second*5)
+	}, waitUntilTimeout, waitUntilInterval)
 
 	if err != nil {
 		return err
@@ -930,7 +937,8 @@ func (p *SAN) createRemoteLun(ctx context.Context,
 	}
 	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
 	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
+		return nil, pkgUtils.Errorf(ctx,
+			"remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
 
 	}
 	lun, err := remoteCli.GetLunByName(ctx, lunName)
@@ -965,7 +973,8 @@ func (p *SAN) revertRemoteLun(ctx context.Context, taskResult map[string]interfa
 	}
 	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
 	if !ok {
-		return pkgUtils.Errorf(ctx, "remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
+		return pkgUtils.Errorf(ctx,
+			"remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
 	}
 	return remoteCli.DeleteLun(ctx, lunID)
 }
@@ -984,7 +993,8 @@ func (p *SAN) createRemoteQoS(ctx context.Context,
 
 	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
 	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
+		return nil, pkgUtils.Errorf(ctx,
+			"remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
 	}
 	lun, err := remoteCli.GetLunByID(ctx, lunID)
 	if err != nil {
@@ -1014,7 +1024,8 @@ func (p *SAN) revertRemoteQoS(ctx context.Context, taskResult map[string]interfa
 	}
 	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
 	if !ok {
-		return pkgUtils.Errorf(ctx, "remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
+		return pkgUtils.Errorf(ctx,
+			"remoteCli convert to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
 	}
 	smartX := smartx.NewSmartX(remoteCli)
 	return smartX.DeleteQos(ctx, qosID, lunID, "lun", "")
@@ -1129,7 +1140,7 @@ func (p *SAN) waitHyperMetroSyncFinish(ctx context.Context, pairID string) error
 		} else {
 			return true, nil
 		}
-	}, time.Hour*6, time.Second*5)
+	}, waitUntilTimeout, waitUntilInterval)
 
 	if err != nil {
 		p.cli.StopHyperMetroPair(ctx, pairID)
@@ -1501,7 +1512,7 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 		}
 	}
 
-	taskflow := taskflow.NewTaskFlow(ctx, "Create-LUN-Snapshot")
+	taskflow := flow.NewTaskFlow(ctx, "Create-LUN-Snapshot")
 	taskflow.AddTask("Create-Snapshot", p.createSnapshot, p.revertSnapshot)
 	taskflow.AddTask("Active-Snapshot", p.activateSnapshot, nil)
 
@@ -1539,7 +1550,7 @@ func (p *SAN) DeleteSnapshot(ctx context.Context, snapshotName string) error {
 		return nil
 	}
 
-	taskflow := taskflow.NewTaskFlow(ctx, "Delete-LUN-Snapshot")
+	taskflow := flow.NewTaskFlow(ctx, "Delete-LUN-Snapshot")
 	taskflow.AddTask("Deactivate-Snapshot", p.deactivateSnapshot, nil)
 	taskflow.AddTask("Delete-Snapshot", p.deleteSnapshot, nil)
 
@@ -1608,7 +1619,7 @@ func (p *SAN) waitSnapshotReady(ctx context.Context, snapshotName string) error 
 		} else {
 			return false, nil
 		}
-	}, time.Hour*6, time.Second*5)
+	}, waitUntilTimeout, waitUntilInterval)
 
 	if err != nil {
 		return err

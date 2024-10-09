@@ -34,7 +34,7 @@ const (
 // MockCompletedConfig for unit test
 func MockCompletedConfig() *CompletedConfig {
 	return &CompletedConfig{
-		Config: &Config{
+		AppConfig: &AppConfig{
 			mockLoggingConfig(),
 			mockServiceConfig(),
 			mockConnectorConfig(),
@@ -60,7 +60,6 @@ func mockServiceConfig() serviceConfig {
 	return serviceConfig{
 		Controller:           false,
 		EnableLeaderElection: false,
-		EnableLabel:          false,
 
 		Endpoint:         "",
 		DrEndpoint:       "",

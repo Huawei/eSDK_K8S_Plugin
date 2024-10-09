@@ -65,8 +65,7 @@ func (cdr *drCSIHandler) DeleteStorageBackend(ctx context.Context, backendName s
 
 // UpdateStorageBackend update the storageBackend
 func (cdr *drCSIHandler) UpdateStorageBackend(ctx context.Context, content *xuanwuv1.StorageBackendContent) error {
-	return cdr.backend.UpdateStorageBackend(ctx, content.Name, content.Spec.BackendClaim,
-		content.Spec.ConfigmapMeta, content.Spec.SecretMeta, content.Spec.Parameters)
+	return cdr.backend.UpdateStorageBackend(ctx, content)
 }
 
 // GetStorageBackendStats get all backend info from the provider

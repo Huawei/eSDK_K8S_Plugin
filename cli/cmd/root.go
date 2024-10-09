@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,8 +14,8 @@
  *  limitations under the License.
  */
 
-// Package command defines commands of oceanctl.
-package command
+// cmd defines commands of oceanctl.
+package cmd
 
 import (
 	"path"
@@ -44,9 +44,30 @@ var RootCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	options.NewFlagsOptions(RootCmd).
-		WithLogDir()
+// Execute runs the root command
+func Execute() error {
+	registerRootCmd()
+	registerCollectCmd()
+	registerCollectLogsCmd()
+	registerCreateCmd()
+	registerCreateBackendCmd()
+	registerCreateCertCmd()
+	registerDeleteCmd()
+	registerDeleteBackendCmd()
+	registerDeleteCertCmd()
+	registerGetCmd()
+	registerGetBackendCmd()
+	registerGetCertCmd()
+	registerUpdateCmd()
+	registerUpdateBackendCmd()
+	registerUpdateCertCmd()
+	registerVersionCmd()
+
+	return RootCmd.Execute()
+}
+
+func registerRootCmd() {
+	options.NewFlagsOptions(RootCmd).WithLogDir()
 }
 
 func discoverOperating() error {
@@ -75,7 +96,7 @@ func startLogging() error {
 	if config.LogDir == "" {
 		config.LogDir = config.DefaultLogDir
 	}
-	logRequest := &log.LoggingRequest{
+	logRequest := &log.Config{
 		LogName:       config.DefaultLogName,
 		LogFileSize:   config.DefaultLogSize,
 		LoggingModule: config.DefaultLogModule,

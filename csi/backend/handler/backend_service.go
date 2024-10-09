@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"huawei-csi-driver/lib/drcsi"
+	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -34,7 +35,7 @@ type StorageBackendDetails struct {
 
 // StorageServiceInterface query backend operation set
 type StorageServiceInterface interface {
-	GetBackendDetails(ctx context.Context, name string) (StorageBackendDetails, error)
+	GetBackendDetails(ctx context.Context, name, contentName string) (StorageBackendDetails, error)
 }
 
 // StorageHandler backend query handler
@@ -54,8 +55,9 @@ func NewStorageHandler() *StorageHandler {
 }
 
 // GetBackendDetails query backend details
-func (s *StorageHandler) GetBackendDetails(ctx context.Context, name string) (StorageBackendDetails, error) {
-	bk, err := s.register.LoadOrRegisterOneBackend(ctx, name)
+func (s *StorageHandler) GetBackendDetails(ctx context.Context,
+	name, contentName string) (StorageBackendDetails, error) {
+	bk, err := s.register.LoadOrRebuildOneBackend(ctx, name, contentName)
 	if err != nil {
 		log.AddContext(ctx).Warningf("load cache backend %s failed, error: %v", name, err)
 		return StorageBackendDetails{}, err
@@ -84,7 +86,7 @@ func (s *StorageHandler) GetBackendDetails(ctx context.Context, name string) (St
 		capacities := make(map[string]string)
 		poolCapabilityInt64Map := pkgUtils.ConvertToMapValueX[int64](ctx, poolCapabilityMap[pool.GetName()])
 		for k, v := range poolCapabilityInt64Map {
-			capacities[k] = strconv.FormatInt(v, 10)
+			capacities[k] = strconv.FormatInt(v, constants.DefaultIntBase)
 		}
 		poolCapacities = append(poolCapacities, &drcsi.Pool{
 			Name:       pool.Name,

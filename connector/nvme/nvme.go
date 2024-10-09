@@ -25,7 +25,7 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// FCNVMe implements the Connector interface for FCNVMe protocol
+// FCNVMe implements the connector.VolumeConnector for FCNVMe protocol
 type FCNVMe struct {
 	mutex sync.Mutex
 }
@@ -36,8 +36,9 @@ func init() {
 
 // ConnectVolume to mount the source to target path, the source path can be block or nfs
 // Example:
-//    mount /dev/sdb /<target-path>
-//    mount <source-path> /<target-path>
+//
+//	mount /dev/sdb /<target-path>
+//	mount <source-path> /<target-path>
 func (fc *FCNVMe) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
 	log.AddContext(ctx).Infof("FC-NVMe Start to connect volume ==> connect info: %v", conn)
 	tgtLunGuid, exist := conn["tgtLunGuid"].(string)

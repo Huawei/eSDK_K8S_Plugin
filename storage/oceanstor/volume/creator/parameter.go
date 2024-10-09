@@ -88,6 +88,8 @@ const (
 	SnapshotParentIdKey = "snapshotparentid"
 	// HyperMetroKey is the string of HyperMetro's key
 	HyperMetroKey = "hypermetro"
+	// MetroPairSyncSpeedKey is the string of MetroPairSyncSpeed's key
+	MetroPairSyncSpeedKey = "metropairsyncspeed"
 	// RemoteStoragePoolKey is the string of RemoteStoragePool's key
 	RemoteStoragePoolKey = "remotestoragepool"
 	// RemotePoolIdKey is the string of RemotePoolId's key
@@ -213,6 +215,11 @@ func (p *Parameter) VStorePairId() string { return getValueOrFallback(p.params, 
 
 // IsHyperMetro gets the HyperMetro value of the params map.
 func (p *Parameter) IsHyperMetro() bool { return getValueOrFallback(p.params, HyperMetroKey, false) }
+
+// SyncMetroPairSpeed gets the SyncMetroPairSpeed value of the params map.
+func (p *Parameter) SyncMetroPairSpeed() int {
+	return getValueOrFallback(p.params, MetroPairSyncSpeedKey, 0)
+}
 
 // IsReplication gets the Replication value of the params map.
 func (p *Parameter) IsReplication() bool { return getValueOrFallback(p.params, ReplicationKey, false) }

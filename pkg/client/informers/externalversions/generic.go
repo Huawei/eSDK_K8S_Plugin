@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -50,8 +50,6 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=xuanwu.huawei.io, Version=v1
-	case v1.SchemeGroupVersion.WithResource("resourcetopologies"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Xuanwu().V1().ResourceTopologies().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("storagebackendclaims"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Xuanwu().V1().StorageBackendClaims().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("storagebackendcontents"):

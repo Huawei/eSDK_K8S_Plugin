@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/storage/oceanstor/smartx"
@@ -42,6 +43,7 @@ func (p *Base) commonPreModify(ctx context.Context, params map[string]interface{
 		p.getAllocType,
 		p.getQoS,
 		p.getFileMode,
+		p.getMetroPairSyncSpeed,
 	}
 
 	for _, analyzer := range analyzers {
@@ -61,6 +63,7 @@ func (p *Base) commonPreCreate(ctx context.Context, params map[string]interface{
 		p.getPoolID,
 		p.getQoS,
 		p.getFileMode,
+		p.getMetroPairSyncSpeed,
 	}
 
 	for _, analyzer := range analyzers {
@@ -93,16 +96,17 @@ func (p *Base) getCloneSpeed(_ context.Context, params map[string]interface{}) e
 
 	if v, exist := params["clonespeed"].(string); exist && v != "" {
 		speed, err := strconv.Atoi(v)
-		if err != nil || speed < 1 || speed > 4 {
+		if err != nil || speed < constants.CloneSpeedLevel1 || speed > constants.CloneSpeedLevel4 {
 			return fmt.Errorf("error config %s for clonespeed", v)
 		}
 		params["clonespeed"] = speed
 	} else {
-		params["clonespeed"] = 3
+		params["clonespeed"] = constants.CloneSpeedLevel3
 	}
 
 	return nil
 }
+
 func (p *Base) getFileMode(_ context.Context, params map[string]interface{}) error {
 	if params == nil || len(params) == 0 {
 		return nil
@@ -196,8 +200,9 @@ func (p *Base) preExpandCheckCapacity(ctx context.Context,
 }
 
 func (p *Base) getSnapshotReturnInfo(snapshot map[string]interface{}, snapshotSize int64) map[string]interface{} {
-	snapshotCreated := utils.ParseIntWithDefault(snapshot["TIMESTAMP"].(string), 10, 64, 0)
-	snapshotSizeBytes := snapshotSize * 512
+	snapshotCreated := utils.ParseIntWithDefault(snapshot["TIMESTAMP"].(string),
+		constants.DefaultIntBase, constants.DefaultIntBitSize, 0)
+	snapshotSizeBytes := snapshotSize * constants.AllocationUnitBytes
 	return map[string]interface{}{
 		"CreationTime": snapshotCreated,
 		"SizeBytes":    snapshotSizeBytes,
@@ -267,4 +272,25 @@ func (p *Base) prepareVolObj(ctx context.Context, params, res map[string]interfa
 		}
 	}
 	return volObj
+}
+
+func (p *Base) getMetroPairSyncSpeed(_ context.Context, params map[string]interface{}) error {
+	if params == nil {
+		return nil
+	}
+
+	hyper, exist := params["hypermetro"].(bool)
+	if !exist || !hyper {
+		return nil
+	}
+
+	if v, exist := params["metropairsyncspeed"].(string); exist && v != "" {
+		speed, err := strconv.Atoi(v)
+		if err != nil || speed < client.MetroPairSyncSpeedLow || speed > client.MetroPairSyncSpeedHighest {
+			return fmt.Errorf("error config %s for metroPairSyncSpeed", v)
+		}
+		params["metropairsyncspeed"] = speed
+	}
+
+	return nil
 }

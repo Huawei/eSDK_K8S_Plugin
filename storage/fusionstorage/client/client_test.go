@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/prashantv/gostub"
-	"github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 
 	"huawei-csi-driver/csi/app"
 	cfg "huawei-csi-driver/csi/app/config"
@@ -29,7 +29,7 @@ import (
 )
 
 var (
-	testClient *Client
+	testClient *RestClient
 )
 
 func TestMain(m *testing.M) {
@@ -56,27 +56,27 @@ func TestMain(m *testing.M) {
 }
 
 func TestGetErrorCode(t *testing.T) {
-	convey.Convey("Normal case", t, func() {
+	t.Run("Normal case", func(t *testing.T) {
 		errCode, err := getErrorCode(map[string]any{
 			"name":       "mock-name",
 			"errorCode":  12345.0,
 			"suggestion": "mock-suggestion",
 		})
-		convey.So(errCode, convey.ShouldEqual, 12345)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, 12345, errCode)
 	})
 
-	convey.Convey("Error code is string ", t, func() {
+	t.Run("Error code is string ", func(t *testing.T) {
 		errCode, err := getErrorCode(map[string]any{
 			"name":       "mock-name",
 			"errorCode":  "12345",
 			"suggestion": "mock-suggestion",
 		})
-		convey.So(errCode, convey.ShouldEqual, 12345)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, 12345, errCode)
 	})
 
-	convey.Convey("Error code in result", t, func() {
+	t.Run("Error code in result", func(t *testing.T) {
 		errCode, err := getErrorCode(map[string]any{
 			"result": map[string]any{
 				"code": 12345.0,
@@ -85,11 +85,11 @@ func TestGetErrorCode(t *testing.T) {
 				"name": "mock-name",
 			},
 		})
-		convey.So(errCode, convey.ShouldEqual, 12345)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, 12345, errCode)
 	})
 
-	convey.Convey("Can not convert to int", t, func() {
+	t.Run("Can not convert to int", func(t *testing.T) {
 		_, err := getErrorCode(map[string]any{
 			"result": map[string]any{
 				"code": "a12345",
@@ -98,6 +98,6 @@ func TestGetErrorCode(t *testing.T) {
 				"name": "mock-name",
 			},
 		})
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,6 +31,18 @@ import (
 	connutils "huawei-csi-driver/connector/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
+)
+
+const (
+	channelTargetLunLength      = 2
+	hostDeviceLength            = 4
+	waitDeviceDiscoveryTimeout  = 60 * time.Second
+	waitDeviceDiscoveryInterval = 2 * time.Second
+	lunIdHighBits               = 16
+	lunIdAndOperationBits       = 0xffff
+	wholeLunIdLength            = 256
+	devPathLength               = 3
+	attrWwnIndex                = 2
 )
 
 type target struct {
@@ -106,7 +118,11 @@ func constructFCInfo(conn *connectorInfo) {
 		if index >= len(conn.tgtHostLUNs) {
 			continue
 		}
-		conn.tgtTargets = append(conn.tgtTargets, target{conn.tgtWWNs[index], conn.tgtHostLUNs[index]})
+		tgt := target{
+			tgtWWN:     conn.tgtWWNs[index],
+			tgtHostLun: conn.tgtHostLUNs[index],
+		}
+		conn.tgtTargets = append(conn.tgtTargets, tgt)
 	}
 }
 
@@ -134,7 +150,7 @@ func tryConnectVolume(ctx context.Context, connMap map[string]interface{}) (stri
 	}
 
 	if devInfo.realDeviceName == "" {
-		log.AddContext(ctx).Warningln("No FibreChannel volume device found")
+		log.AddContext(ctx).Warningln("No Connector volume device found")
 		return "", errors.New(connector.VolumeNotFound)
 	}
 
@@ -168,7 +184,8 @@ func checkPathAvailable(ctx context.Context, conn connectorInfo, devInfo deviceI
 
 	switch conn.multiPathType {
 	case connector.DMMultiPath:
-		return connector.VerifyDeviceAvailableOfDM(ctx, conn.tgtLunWWN, conn.pathCount, []string{devInfo.realDeviceName}, tryDisConnectVolume)
+		return connector.VerifyDeviceAvailableOfDM(ctx,
+			conn.tgtLunWWN, conn.pathCount, []string{devInfo.realDeviceName}, tryDisConnectVolume)
 	case connector.HWUltraPath:
 		return connector.GetDiskPathAndCheckStatus(ctx, connector.UltraPathCommand, conn.tgtLunWWN)
 	case connector.HWUltraPathNVMe:
@@ -210,7 +227,7 @@ func getHostAttrName(ctx context.Context, host, portAttr string) (string, error)
 		if !strings.HasPrefix(line, "0x") {
 			continue
 		}
-		attrWwn := line[2:]
+		attrWwn := line[attrWwnIndex:]
 		return attrWwn, nil
 	}
 
@@ -350,7 +367,12 @@ func getPossibleDeices(hbas []map[string]string, targets []target) []rawDevice {
 		if pciNum != "" {
 			for _, target := range targets {
 				targetWWN := fmt.Sprintf("0x%s", strings.ToLower(target.tgtWWN))
-				rawDev := rawDevice{platform, pciNum, targetWWN, target.tgtHostLun}
+				rawDev := rawDevice{
+					platform: platform,
+					pciNum:   pciNum,
+					wwn:      targetWWN,
+					lun:      target.tgtHostLun,
+				}
 				rawDevices = append(rawDevices, rawDev)
 			}
 		}
@@ -361,7 +383,7 @@ func getPossibleDeices(hbas []map[string]string, targets []target) []rawDevice {
 
 func getPci(devPath []string) (string, string) {
 	var platform string
-	if len(devPath) <= 3 {
+	if len(devPath) <= devPathLength {
 		return "", ""
 	}
 	platformSupport := devPath[3] == "platform"
@@ -398,10 +420,11 @@ func formatLunId(lunId string) string {
 		log.Warningf("formatLunId failed, lunId: %v, err: %v", lunId, err)
 	}
 
-	if intLunId < 256 {
+	if intLunId < wholeLunIdLength {
 		return lunId
 	} else {
-		return fmt.Sprintf("0x%04x%04x00000000", intLunId&0xffff, intLunId>>16&0xffff)
+		return fmt.Sprintf("0x%04x%04x00000000",
+			intLunId&lunIdAndOperationBits, intLunId>>lunIdHighBits&lunIdAndOperationBits)
 	}
 }
 
@@ -415,7 +438,8 @@ func getHostDevices(ctx context.Context, possibleDevices []rawDevice) []string {
 			platform = ""
 		}
 
-		hostDevice := fmt.Sprintf("/dev/disk/by-path/%spci-%s-fc-%s-lun-%s", platform, value.pciNum, value.wwn, formatLunId(value.lun))
+		hostDevice := fmt.Sprintf("/dev/disk/by-path/%spci-%s-fc-%s-lun-%s",
+			platform, value.pciNum, value.wwn, formatLunId(value.lun))
 		hostDevices = append(hostDevices, hostDevice)
 	}
 	log.AddContext(ctx).Infof("Get host devices are %v", hostDevices)
@@ -456,14 +480,14 @@ func waitDeviceDiscovery(ctx context.Context,
 
 		info.tries += 1
 		return false, nil
-	}, time.Second*60, time.Second*2)
+	}, waitDeviceDiscoveryTimeout, waitDeviceDiscoveryInterval)
 	return info, err
 }
 
 func getHBAChannelSCSITargetLun(ctx context.Context, hba map[string]string, targets []target) ([][]string, []string) {
 	hostDevice := hba["host_device"]
-	if hostDevice != "" && len(hostDevice) > 4 {
-		hostDevice = hostDevice[4:]
+	if hostDevice != "" && len(hostDevice) > hostDeviceLength {
+		hostDevice = hostDevice[hostDeviceLength:]
 	}
 
 	path := fmt.Sprintf("/sys/class/fc_transport/target%s:", hostDevice)
@@ -483,10 +507,10 @@ func getHBAChannelSCSITargetLun(ctx context.Context, hba map[string]string, targ
 		for _, line := range lines {
 			if strings.HasPrefix(line, path) {
 				lineList := strings.Split(line, "/")
-				if len(lineList) <= 4 {
+				if len(lineList) <= hostDeviceLength {
 					continue
 				}
-				ctlStr := lineList[4]
+				ctlStr := lineList[hostDeviceLength]
 				ctlList := strings.Split(ctlStr, ":")
 				if len(ctlList) <= 1 {
 					continue
@@ -503,8 +527,7 @@ func getHBAChannelSCSITargetLun(ctx context.Context, hba map[string]string, targ
 }
 
 func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorInfo) {
-	var process []interface{}
-	var skipped []interface{}
+	var process, skipped []interface{}
 	for _, hba := range hbas {
 		ctls, lunWildCards := getHBAChannelSCSITargetLun(ctx, hba, conn.tgtTargets)
 		if ctls != nil {
@@ -522,10 +545,6 @@ func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorI
 		process = skipped
 	}
 
-	var pathCount int
-	defer func() {
-		conn.pathCount = pathCount
-	}()
 	for _, p := range process {
 		pro, ok := p.([]interface{})
 		if !ok {
@@ -552,7 +571,7 @@ func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorI
 
 		for _, c := range ctls {
 			scanFC(ctx, c, hba["host_device"])
-			pathCount++
+			conn.pathCount++
 			if !conn.volumeUseMultiPath {
 				break
 			}
@@ -564,7 +583,7 @@ func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorI
 }
 
 func scanFC(ctx context.Context, channelTargetLun []string, hostDevice string) {
-	if len(channelTargetLun) <= 2 {
+	if len(channelTargetLun) <= channelTargetLunLength {
 		return
 	}
 	scanCommand := fmt.Sprintf("echo \"%s %s %s\" > /sys/class/scsi_host/%s/scan",

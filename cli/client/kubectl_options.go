@@ -22,7 +22,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ghodss/yaml"
+	"gopkg.in/yaml.v3"
 
 	"huawei-csi-driver/cli/helper"
 )

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,6 +33,12 @@ import (
 	"huawei-csi-driver/connector"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
+)
+
+const (
+	fsInfoSegment             = 2
+	targetMountPathPermission = 0750
+	unformattedFsCode         = 2
 )
 
 type connectorInfo struct {
@@ -109,7 +115,7 @@ func tryConnectVolume(ctx context.Context, connMap map[string]interface{}) (stri
 			return "", err
 		}
 
-		err = mountDisk(ctx, conn.sourcePath, conn.targetPath, conn.fsType, conn.mntFlags, conn.accessMode)
+		err = mountDisk(ctx, conn)
 		if err != nil {
 			return "", err
 		}
@@ -132,7 +138,7 @@ func preMount(sourcePath, targetPath string, checkSourcePath bool) error {
 	}
 
 	if _, err := os.Stat(targetPath); err != nil && os.IsNotExist(err) {
-		if err := os.MkdirAll(targetPath, 0750); err != nil {
+		if err := os.MkdirAll(targetPath, targetMountPathPermission); err != nil {
 			return errors.New("can not create a target path")
 		}
 	}
@@ -278,7 +284,7 @@ func getFSType(ctx context.Context, sourcePath string) (string, error) {
 
 	output, err := utils.ExecShellCmd(ctx, "blkid -o udev %s", sourcePath)
 	if err != nil {
-		if errCode, ok := err.(*exec.ExitError); ok && errCode.ExitCode() == 2 {
+		if errCode, ok := err.(*exec.ExitError); ok && errCode.ExitCode() == unformattedFsCode {
 			log.AddContext(ctx).Infof("Query fs of %s, output: %s, error: %s", sourcePath, output, err)
 			if formatted, err := connector.IsDeviceFormatted(ctx, sourcePath); err != nil {
 				return "", fmt.Errorf("check device %s formatted failed, error: %v", sourcePath, err)
@@ -294,7 +300,7 @@ func getFSType(ctx context.Context, sourcePath string) (string, error) {
 
 	for _, out := range strings.Split(output, "\n") {
 		fsInfo := strings.Split(out, "=")
-		if len(fsInfo) == 2 && fsInfo[0] == "ID_FS_TYPE" {
+		if len(fsInfo) == fsInfoSegment && fsInfo[0] == "ID_FS_TYPE" {
 			return fsInfo[1], nil
 		}
 	}
@@ -361,60 +367,59 @@ func getDiskSizeType(ctx context.Context, sourcePath string) (string, error) {
 	return "", errors.New("the disk size does not support")
 }
 
-func mountDisk(ctx context.Context, sourcePath, targetPath, fsType string, flags mountParam,
-	accessMode csi.VolumeCapability_AccessMode_Mode) error {
+func mountDisk(ctx context.Context, conn *connectorInfo) error {
 	var err error
-	existFsType, err := getFSType(ctx, sourcePath)
+	existFsType, err := getFSType(ctx, conn.sourcePath)
 	if err != nil {
 		return err
 	}
 
 	if existFsType == "" {
 		// check this disk is in formatting
-		inFormatting, err := connector.IsInFormatting(ctx, sourcePath, fsType)
+		inFormatting, err := connector.IsInFormatting(ctx, conn.sourcePath, conn.fsType)
 		if err != nil {
 			return err
 		}
 
 		if inFormatting {
-			log.AddContext(ctx).Infof("Device %s is in formatting, no need format again. Wait 10 seconds", sourcePath)
+			log.AddContext(ctx).Infof("Device %s is in formatting, no need format again. Wait 10 seconds", conn.sourcePath)
 			time.Sleep(time.Second * formatWaitInternal)
 			return errors.New("the disk is in formatting, please wait")
 		}
 
-		diskSizeType, err := getDiskSizeType(ctx, sourcePath)
+		diskSizeType, err := getDiskSizeType(ctx, conn.sourcePath)
 		if err != nil {
 			return err
 		}
 
-		err = formatDisk(ctx, sourcePath, fsType, diskSizeType)
+		err = formatDisk(ctx, conn.sourcePath, conn.fsType, diskSizeType)
 		if err != nil {
 			return err
 		}
 
-		err = mountUnix(ctx, sourcePath, targetPath, flags, true)
+		err = mountUnix(ctx, conn.sourcePath, conn.targetPath, conn.mntFlags, true)
 		if err != nil {
 			return err
 		}
 	} else {
-		err = mountUnix(ctx, sourcePath, targetPath, flags, true)
+		err = mountUnix(ctx, conn.sourcePath, conn.targetPath, conn.mntFlags, true)
 		if err != nil {
 			return err
 		}
 
-		if accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+		if conn.accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
 			log.AddContext(ctx).Infoln("PVC accessMode is ReadWriteMany, not support to expend filesystem")
 			return nil
 		}
 
-		if accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
+		if conn.accessMode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
 			log.AddContext(ctx).Infoln("PVC accessMode is ReadOnlyMany, no need to expend filesystem")
 			return nil
 		}
 
-		err = connector.ResizeMountPath(ctx, targetPath)
+		err = connector.ResizeMountPath(ctx, conn.targetPath)
 		if err != nil {
-			log.AddContext(ctx).Errorf("Resize mount path %s err %s", targetPath, err)
+			log.AddContext(ctx).Errorf("Resize mount path %s err %s", conn.targetPath, err)
 			return err
 		}
 	}

@@ -31,7 +31,7 @@ import (
 )
 
 // AddStorageBackend used to add storage backend, and return the backend ID
-func (p *Provider) AddStorageBackend(ctx context.Context, req *drcsi.AddStorageBackendRequest) (
+func (p *StorageProvider) AddStorageBackend(ctx context.Context, req *drcsi.AddStorageBackendRequest) (
 	*drcsi.AddStorageBackendResponse, error) {
 
 	log.AddContext(ctx).Infof("Start to add storage backend %s.", req.Name)
@@ -49,7 +49,7 @@ func (p *Provider) AddStorageBackend(ctx context.Context, req *drcsi.AddStorageB
 }
 
 // RemoveStorageBackend remove the backend id in current provider
-func (p *Provider) RemoveStorageBackend(ctx context.Context, req *drcsi.RemoveStorageBackendRequest) (
+func (p *StorageProvider) RemoveStorageBackend(ctx context.Context, req *drcsi.RemoveStorageBackendRequest) (
 	*drcsi.RemoveStorageBackendResponse, error) {
 
 	log.AddContext(ctx).Infof("Start to remove storage backend %s.", req.BackendId)
@@ -68,7 +68,7 @@ func (p *Provider) RemoveStorageBackend(ctx context.Context, req *drcsi.RemoveSt
 }
 
 // UpdateStorageBackend update the backend within backend id
-func (p *Provider) UpdateStorageBackend(ctx context.Context, req *drcsi.UpdateStorageBackendRequest) (
+func (p *StorageProvider) UpdateStorageBackend(ctx context.Context, req *drcsi.UpdateStorageBackendRequest) (
 	*drcsi.UpdateStorageBackendResponse, error) {
 
 	// In the current version, the CSI supports only password change, which is verified through webhook.
@@ -100,7 +100,7 @@ func (p *Provider) UpdateStorageBackend(ctx context.Context, req *drcsi.UpdateSt
 }
 
 // GetBackendStats used to update the storage backend status
-func (p *Provider) GetBackendStats(ctx context.Context, req *drcsi.GetBackendStatsRequest) (
+func (p *StorageProvider) GetBackendStats(ctx context.Context, req *drcsi.GetBackendStatsRequest) (
 	*drcsi.GetBackendStatsResponse, error) {
 
 	log.AddContext(ctx).Debugf("Start to get storage backend %s status.", req.BackendId)
@@ -120,7 +120,7 @@ func (p *Provider) GetBackendStats(ctx context.Context, req *drcsi.GetBackendSta
 		return nil, errors.New(msg)
 	}
 
-	details, err := p.storageService.GetBackendDetails(ctx, backendName)
+	details, err := p.storageService.GetBackendDetails(ctx, backendName, req.Name)
 	if err != nil {
 		log.AddContext(ctx).Errorf("get backend details failed, error: %v", err)
 		return nil, err
@@ -140,7 +140,7 @@ func (p *Provider) GetBackendStats(ctx context.Context, req *drcsi.GetBackendSta
 	return response, nil
 }
 
-func (p *Provider) registerOrUpdateOneBackend(ctx context.Context, name, backendId string,
+func (p *StorageProvider) registerOrUpdateOneBackend(ctx context.Context, name, backendId string,
 	response *drcsi.GetBackendStatsResponse) {
 	var err error
 	var sbct *v1.StorageBackendContent

@@ -30,7 +30,7 @@ const (
 )
 
 // GetInitiatorByName used to get initiator by name
-func (cli *Client) GetInitiatorByName(ctx context.Context, name string) (map[string]interface{}, error) {
+func (cli *RestClient) GetInitiatorByName(ctx context.Context, name string) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"portName": name,
 	}
@@ -60,7 +60,7 @@ func (cli *Client) GetInitiatorByName(ctx context.Context, name string) (map[str
 }
 
 // CreateInitiator used to create initiator by name
-func (cli *Client) CreateInitiator(ctx context.Context, name string) error {
+func (cli *RestClient) CreateInitiator(ctx context.Context, name string) error {
 	data := map[string]interface{}{
 		"portName": name,
 	}
@@ -81,7 +81,7 @@ func (cli *Client) CreateInitiator(ctx context.Context, name string) error {
 }
 
 // QueryIscsiPortal used to query iscsi portal
-func (cli *Client) QueryIscsiPortal(ctx context.Context) ([]map[string]interface{}, error) {
+func (cli *RestClient) QueryIscsiPortal(ctx context.Context) ([]map[string]interface{}, error) {
 	data := make(map[string]interface{})
 	resp, err := cli.post(ctx, "/dsware/service/cluster/dswareclient/queryIscsiPortal", data)
 	if err != nil {

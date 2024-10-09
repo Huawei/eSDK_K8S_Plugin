@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,17 +23,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"sync"
 
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
-var (
-	logger         LoggingInterface
-	testInitLogger sync.Once
-)
+var logger LoggingInterface
 
 type key string
 
@@ -121,8 +117,8 @@ func parseLogLevel(logLevel string) (logrus.Level, error) {
 	}
 }
 
-// LoggingRequest use to init the logging service
-type LoggingRequest struct {
+// Config use to init the logging service
+type Config struct {
 	LogName       string
 	LogFileSize   string
 	LoggingModule string
@@ -135,7 +131,7 @@ var maxBackups uint
 
 // InitLogging configures logging. Logs are written to a log file or stdout/stderr.
 // Since logrus doesn't support multiple writers, each log stream is implemented as a hook.
-func InitLogging(req *LoggingRequest) error {
+func InitLogging(req *Config) error {
 	var tmpLogger loggerImpl
 
 	// initialize logrus in wrapper

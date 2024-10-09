@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
  limitations under the License.
 */
 
-// Package controller used deal with the backend backend content resources
+// Package controller used deal with the backend content resources
 package controller
 
 import (
@@ -31,30 +31,35 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	"huawei-csi-driver/pkg/utils"
-
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
 	backendInformers "huawei-csi-driver/pkg/client/informers/externalversions/xuanwu/v1"
 	backendListers "huawei-csi-driver/pkg/client/listers/xuanwu/v1"
 	storageBackend "huawei-csi-driver/pkg/storage-backend/handle"
+	"huawei-csi-driver/pkg/utils"
+	"huawei-csi-driver/utils/flow"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/taskflow"
+)
+
+const (
+	defaultRetryIntervalStart = 5 * time.Second
+	defaultRetryIntervalMax   = 5 * time.Minute
+	defaultProvisionTimeout   = 5 * time.Minute
 )
 
 var (
 	retryIntervalStart = flag.Duration(
 		"retry-interval-start",
-		5*time.Second,
+		defaultRetryIntervalStart,
 		"Initial retry interval of failed storageBackend creation or deletion. "+
 			"It doubles with each failure, up to retry-interval-max.")
 	retryIntervalMax = flag.Duration(
 		"retry-interval-max",
-		5*time.Minute,
+		defaultRetryIntervalMax,
 		"Maximum retry interval of failed storageBackend creation or deletion.")
 	provisionTimeout = flag.Duration(
 		"provision-timeout",
-		5*time.Minute,
+		defaultProvisionTimeout,
 		"The timeout of the provision storage backend.")
 )
 
@@ -258,10 +263,13 @@ func (ctrl *backendController) syncContentByKey(ctx context.Context, objKey stri
 
 	content, err := ctrl.contentLister.Get(name)
 	if err == nil {
-		if ctrl.isMatchProvider(content) {
-			// the content exists in informer cache, the handle event must be one of "create/update/sync"
-			return ctrl.updateContent(ctx, content)
+		if !ctrl.isMatchProvider(content) {
+			return fmt.Errorf("backend provider [%s] does not match driver provider [%s]",
+				content.Spec.Provider, ctrl.providerName)
 		}
+
+		// the content exists in informer cache, the handle event must be one of "create/update/sync"
+		return ctrl.updateContent(ctx, content)
 	}
 
 	if !apiErrors.IsNotFound(err) {
@@ -325,7 +333,7 @@ func (ctrl *backendController) syncContent(ctx context.Context, content *xuanwuv
 	log.AddContext(ctx).Debugf("Start to sync content %s.", content.Name)
 	defer log.AddContext(ctx).Debugf("Finished sync content %s.", content.Name)
 
-	syncTask := taskflow.NewTaskFlow(ctx, "Sync-StorageBackendContent")
+	syncTask := flow.NewTaskFlow(ctx, "Sync-StorageBackendContent")
 	syncTask.AddTask("Init-Content-Status", ctrl.initContentStatusTask, nil)
 	syncTask.AddTask("Delete-Content", ctrl.deleteContentTask, nil)
 	syncTask.AddTask("Create-Content", ctrl.createContentTask, nil)

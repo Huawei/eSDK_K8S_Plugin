@@ -22,7 +22,7 @@ import (
 	"path"
 	"testing"
 
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 
 	"huawei-csi-driver/utils/log"
 )
@@ -57,47 +57,39 @@ func TestChmodFsPermission(t *testing.T) {
 		}
 	}()
 
-	Convey("Change target directory to 777 permission", t, func() {
+	t.Run("Change target directory to 777 permission", func(t *testing.T) {
 		ChmodFsPermission(context.TODO(), targetPath, "777")
 		fileInfo, err := os.Stat(targetPath)
-		if err != nil {
-			log.Errorf("Get file/directory [%s] info failed.", targetPath)
-			So(err, ShouldBeNil)
-		}
+		require.NoError(t, err)
+
 		filePerm := fileInfo.Mode().Perm()
-		So(filePerm, ShouldEqual, os.FileMode(0777))
+		require.Equal(t, os.FileMode(0777), filePerm)
 	})
 
-	Convey("Change target directory to 555 permission", t, func() {
+	t.Run("Change target directory to 555 permission", func(t *testing.T) {
 		ChmodFsPermission(context.TODO(), targetPath, "555")
 		fileInfo, err := os.Stat(targetPath)
-		if err != nil {
-			log.Errorf("Get file/directory [%s] info failed.", targetPath)
-			So(err, ShouldBeNil)
-		}
+		require.NoError(t, err)
+
 		filePerm := fileInfo.Mode().Perm()
-		So(filePerm, ShouldEqual, os.FileMode(0555))
+		require.Equal(t, os.FileMode(0555), filePerm)
 	})
 
-	Convey("Change target directory to 000 permission", t, func() {
+	t.Run("Change target directory to 000 permission", func(t *testing.T) {
 		ChmodFsPermission(context.TODO(), targetPath, "000")
 		fileInfo, err := os.Stat(targetPath)
-		if err != nil {
-			log.Errorf("Get file/directory [%s] info failed.", targetPath)
-			So(err, ShouldBeNil)
-		}
+		require.NoError(t, err)
+
 		filePerm := fileInfo.Mode().Perm()
-		So(filePerm, ShouldEqual, os.FileMode(0000))
+		require.Equal(t, os.FileMode(0000), filePerm)
 	})
 
-	Convey("Change target directory to 456 permission", t, func() {
+	t.Run("Change target directory to 456 permission", func(t *testing.T) {
 		ChmodFsPermission(context.TODO(), targetPath, "456")
 		fileInfo, err := os.Stat(targetPath)
-		if err != nil {
-			log.Errorf("Get file/directory [%s] info failed.", targetPath)
-			So(err, ShouldBeNil)
-		}
+		require.NoError(t, err)
+
 		filePerm := fileInfo.Mode().Perm()
-		So(filePerm, ShouldEqual, os.FileMode(0456))
+		require.Equal(t, os.FileMode(0456), filePerm)
 	})
 }

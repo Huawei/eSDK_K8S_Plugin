@@ -28,7 +28,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"huawei-csi-driver/connector"
-	_ "huawei-csi-driver/connector/nfs_plus"
+	_ "huawei-csi-driver/connector/nfsplus"
 	"huawei-csi-driver/csi/app"
 	"huawei-csi-driver/csi/backend"
 	"huawei-csi-driver/csi/backend/plugin"
@@ -116,7 +116,7 @@ func WithPortals(publishContext map[string]string, protocol string, portals, met
 }
 
 // WithConnector build connector for the request parameters
-func WithConnector(conn connector.Connector) BuildParameterOption {
+func WithConnector(conn connector.VolumeConnector) BuildParameterOption {
 	return func(parameters map[string]interface{}) error {
 		parameters["connector"] = conn
 		return nil
@@ -231,7 +231,7 @@ func Unmount(ctx context.Context, targetPath string) error {
 }
 
 // NewManager build a manager instance, such as NasManager, SanManager
-func NewManager(ctx context.Context, backendName string) (Manager, error) {
+func NewManager(ctx context.Context, backendName string) (VolumeManager, error) {
 	backend, err := GetBackendConfig(ctx, backendName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("nas manager get backend failed, backendName: %s err: %v", backendName, err)
@@ -249,7 +249,7 @@ func NewManager(ctx context.Context, backendName string) (Manager, error) {
 			return nil, utils.Errorf(ctx, "portals can not be blank when protocol is %s", plugin.ProtocolNfsPlus)
 		}
 		return NewNasManager(ctx, backend.protocol, backend.dTreeParentName, backend.portals, backend.metroPortals)
-	case plugin.PROTOCOL_DPC:
+	case plugin.ProtocolDpc:
 		return NewNasManager(ctx, backend.protocol, backend.dTreeParentName, []string{}, []string{})
 	default:
 		return NewSanManager(ctx, backend.protocol)
@@ -401,10 +401,10 @@ func PublishFilesystem(ctx context.Context, req *csi.NodePublishVolumeRequest) e
 	return nil
 }
 
-func getConnectorByProtocol(ctx context.Context, protocol string) connector.Connector {
-	return map[string]connector.Connector{
+func getConnectorByProtocol(ctx context.Context, protocol string) connector.VolumeConnector {
+	return map[string]connector.VolumeConnector{
 		plugin.ProtocolNfs:     connector.GetConnector(ctx, connector.NFSDriver),
-		plugin.PROTOCOL_DPC:    connector.GetConnector(ctx, connector.NFSDriver),
+		plugin.ProtocolDpc:     connector.GetConnector(ctx, connector.NFSDriver),
 		plugin.ProtocolNfsPlus: connector.GetConnector(ctx, connector.NFSPlusDriver),
 	}[protocol]
 }

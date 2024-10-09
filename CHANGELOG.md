@@ -2,7 +2,12 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
-## Changes since v4.3.0
+## v4.5.0
+
+- The default synchronization speed of hyper metro pair is changed from the highest speed to the default speed determined by the storage.
+- Fixed the semaphore timeout issue when a large number of PVs fail to be mounted.
+
+## v4.4.0
 
 - Support Kubernetes 1.30
 - Support OceanStor 6.1.8
@@ -12,7 +17,7 @@
 - The new feature Modify Volume allows a normal PV to be changed to a HyperMetro PV
 - Create VolumeSnapshot and Clone Persistent Volume support HyperMetro PV
 
-## Changes since v4.2.0
+## v4.3.0
 
 - Support UltraPath 31.2.1/NVMe over RoCE on Rocky Linux 8.6 X86_64
 - Support OpenShift 4.14
@@ -32,7 +37,7 @@
 - Support configuring requests and limits of container
 - The log directory of the oceanctl tool can be configured
 
-## Changes since v4.1.0
+## v4.2.0
 
 - Support OpenShift 4.13
 - Support Centos 8.4 X86_64
@@ -42,7 +47,7 @@
 - Support configuring the timeout for executing commands
 - Support create volume snapshot for Hyper-Metro
 
-## Changes since v4.0.0
+## v4.1.0
 
 **Enhancements**
 
@@ -52,7 +57,7 @@
 - Support Kylin 7.6 x86_64
 - The number of path groups aggregated by DM-multipath can be configured
 
-## Changes since v3.2.x
+## v4.0.0
 
 **Enhancements**
 
@@ -66,7 +71,7 @@
 - Support k8s 1.26
 - Upgrade using go 1.18
 
-## Changes since v3.1.0
+## v3.2.0
 
 **Enhancements**
 
@@ -79,7 +84,7 @@
 - Support Ubuntu 22.04, SUSE 15 SP3
 - Support EulerOS V2R10
 
-## Changes since v3.0.0
+## v3.1.0
 
 **Enhancements**
 
@@ -90,7 +95,7 @@
 - Support k8s 1.19 and 1.20
 - Support Debian 11
 
-## Changes since v2.2.16
+## v3.0.0
 
 **Enhancements**
 
@@ -105,7 +110,7 @@
 - Support OceanStor V6 6.1.5
 - Support OceanStor Pacific 8.1.3
 
-## Changes since v2.2.15
+## v2.2.16
 
 **Enhancements**
 

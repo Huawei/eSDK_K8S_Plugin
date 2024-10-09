@@ -384,9 +384,6 @@ rules:
   - apiGroups: [ "" ]
     resources: [ "secrets" ]
     verbs: [ "get" ]
-  - apiGroups: [ "xuanwu.huawei.io" ]
-    resources: [ "resourcetopologies" ]
-    verbs: [ "create", "get", "update", "delete" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -539,7 +536,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-controller
-          image: storage-backend-controller:4.4.0
+          image: storage-backend-controller:4.5.0
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CSI_NAMESPACE
@@ -578,7 +575,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-sidecar
-          image: storage-backend-sidecar:4.4.0
+          image: storage-backend-sidecar:4.5.0
           imagePullPolicy: "IfNotPresent"
           env:
             - name: DRCSI_ENDPOINT
@@ -615,7 +612,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:4.4.0
+          image: huawei-csi:4.5.0
           imagePullPolicy: "IfNotPresent"
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
@@ -626,7 +623,6 @@ spec:
             - "--logging-module=file"
             - "--log-level=info"
             - "--volume-name-prefix=pvc"
-            - "--enable-label=false"
             - "--log-file-dir=/var/log/huawei"
             - "--log-file-size=20M"
             - "--max-backups=9"

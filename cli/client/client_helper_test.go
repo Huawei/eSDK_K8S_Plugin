@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,11 +32,11 @@ func TestGetObjectType_get_namespace_type(t *testing.T) {
 	// arrange
 	var mockObject corev1.Namespace
 	var except = Namespace
-	convey.Convey("test get_namespace_type", t, func() {
+	t.Run("test get_namespace_type", func(t *testing.T) {
 		// action
 		objectType := getObjectType(&mockObject)
 		// assert
-		convey.So(objectType, convey.ShouldResemble, except)
+		require.Equal(t, except, objectType)
 	})
 }
 
@@ -44,11 +44,11 @@ func TestGetObjectType_get_node_type(t *testing.T) {
 	// arrange
 	var mockObject corev1.NodeList
 	var except = Node
-	convey.Convey("test get_node_type", t, func() {
+	t.Run("test get_node_type", func(t *testing.T) {
 		// action
 		objectType := getObjectType(&mockObject)
 		// assert
-		convey.So(objectType, convey.ShouldResemble, except)
+		require.Equal(t, except, objectType)
 	})
 }
 
@@ -56,11 +56,11 @@ func TestGetObjectType_get_pod_type(t *testing.T) {
 	// arrange
 	var mockObject corev1.Pod
 	var except = Pod
-	convey.Convey("test get_pod_type", t, func() {
+	t.Run("test get_pod_type", func(t *testing.T) {
 		// action
 		objectType := getObjectType(&mockObject)
 		// assert
-		convey.So(objectType, convey.ShouldResemble, except)
+		require.Equal(t, except, objectType)
 	})
 }
 
@@ -68,11 +68,11 @@ func TestGetObjectType_get_unknown_type(t *testing.T) {
 	// arrange
 	var mockObject interface{}
 	var except = Unknown
-	convey.Convey("test get_unknown_type", t, func() {
+	t.Run("test get_unknown_type", func(t *testing.T) {
 		// action
 		objectType := getObjectType(&mockObject)
 		// assert
-		convey.So(objectType, convey.ShouldResemble, except)
+		require.Equal(t, except, objectType)
 	})
 }
 
@@ -97,12 +97,12 @@ func TestCommonCallHandler_CheckObjectExist_check_exist_namespace(t *testing.T) 
 		})
 	defer patches.Reset()
 
-	convey.Convey("test check_exist_namespace", t, func() {
+	t.Run("test check_exist_namespace", func(t *testing.T) {
 		// action
 		exist, err := mockCli.CheckObjectExist(context.Background(), mockNamespace, mockNodeName, mockObjectName)
 		// assert
-		convey.So(exist, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, except, exist)
 	})
 }
 
@@ -123,12 +123,12 @@ func TestCommonCallHandler_CheckObjectExist_check_not_exist_node(t *testing.T) {
 		})
 	defer patches.Reset()
 
-	convey.Convey("test check_not_exist_node", t, func() {
+	t.Run("test check_not_exist_node", func(t *testing.T) {
 		// action
 		exist, err := mockCli.CheckObjectExist(context.Background(), mockNamespace, mockNodeName, mockObjectName)
 		// assert
-		convey.So(exist, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, except, exist)
 	})
 }
 
@@ -165,11 +165,11 @@ func TestCommonCallHandler_GetObject_get_podList(t *testing.T) {
 		})
 	defer patches.Reset()
 
-	convey.Convey("test get pod list", t, func() {
+	t.Run("test get pod list", func(t *testing.T) {
 		// action
 		object, err := mockCli.GetObject(context.Background(), mockNamespace, mockNodeName)
 		// assert
-		convey.So(object, convey.ShouldResemble, except)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
+		require.Equal(t, except, object)
 	})
 }

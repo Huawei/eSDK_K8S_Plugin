@@ -22,9 +22,8 @@ import (
 	"reflect"
 	"testing"
 
-	"bou.ke/monkey"
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/smartystreets/goconvey/convey"
+	"github.com/stretchr/testify/require"
 
 	"huawei-csi-driver/storage/fusionstorage/client"
 	"huawei-csi-driver/storage/fusionstorage/types"
@@ -35,7 +34,7 @@ const (
 	logName = "expandTest.log"
 )
 
-var testClient *client.Client
+var testClient *client.RestClient
 var ctx context.Context
 
 func TestMain(m *testing.M) {
@@ -48,10 +47,10 @@ func TestMain(m *testing.M) {
 }
 
 func TestPreCreate(t *testing.T) {
-	convey.Convey("Normal", t, func() {
+	t.Run("Normal", func(t *testing.T) {
 		m := gomonkey.ApplyMethod(reflect.TypeOf(testClient),
 			"GetPoolByName",
-			func(_ *client.Client, ctx context.Context, poolName string) (map[string]interface{}, error) {
+			func(_ *client.RestClient, ctx context.Context, poolName string) (map[string]interface{}, error) {
 				return map[string]interface{}{"mock": "mock"}, nil
 			})
 		defer m.Reset()
@@ -61,21 +60,21 @@ func TestPreCreate(t *testing.T) {
 			"authclient": "*",
 			"name":       "mock-name",
 		})
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 
-	convey.Convey("Auth client empty", t, func() {
+	t.Run("Auth client empty", func(t *testing.T) {
 		nas := NewNAS(testClient)
 		err := nas.preCreate(context.TODO(), map[string]interface{}{
 			"name": "mock-name",
 		})
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
-	convey.Convey("Name is empty", t, func() {
+	t.Run("Name is empty", func(t *testing.T) {
 		m := gomonkey.ApplyMethod(reflect.TypeOf(testClient),
 			"GetPoolByName",
-			func(_ *client.Client, ctx context.Context, poolName string) (map[string]interface{}, error) {
+			func(_ *client.RestClient, ctx context.Context, poolName string) (map[string]interface{}, error) {
 				return map[string]interface{}{"mock": "mock"}, nil
 			})
 		defer m.Reset()
@@ -84,28 +83,26 @@ func TestPreCreate(t *testing.T) {
 		err := nas.preCreate(context.TODO(), map[string]interface{}{
 			"authclient": "*",
 		})
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestExpandWithNormal(t *testing.T) {
-	convey.Convey("Normal", t, func() {
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+	t.Run("Normal", func(t *testing.T) {
+		p := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id":               "522@2",
 					"space_hard_quota": float64(2147483648),
 					"space_soft_quota": float64(18446744073709551615),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.Client, _ context.Context, param map[string]interface{}) error {
+			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
 				_, exitId := param["id"]
 				_, exitHardQuota := param["space_hard_quota"]
 				_, exitSoftQuota := param["space_soft_quota"]
@@ -114,28 +111,28 @@ func TestExpandWithNormal(t *testing.T) {
 				}
 				return errors.New("fail")
 			})
+		defer p.Reset()
+
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 }
 
 func TestExpandWithFileSystemNotExit(t *testing.T) {
-	convey.Convey("File System Not Exist", t, func() {
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+	t.Run("File System Not Exist", func(t *testing.T) {
+		p := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return nil, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id":               "522@2",
 					"space_hard_quota": float64(2147483648),
 					"space_soft_quota": float64(18446744073709551615),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.Client, _ context.Context, param map[string]interface{}) error {
+			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
 				_, exitId := param["id"]
 				_, exitHardQuota := param["space_hard_quota"]
 				_, exitSoftQuota := param["space_soft_quota"]
@@ -144,29 +141,29 @@ func TestExpandWithFileSystemNotExit(t *testing.T) {
 				}
 				return errors.New("fail")
 			})
+		defer p.Reset()
+
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestExpandWithQuotaIdNotExist(t *testing.T) {
-	convey.Convey("Quota Id Not Exist", t, func() {
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+	t.Run("Quota Id Not Exist", func(t *testing.T) {
+		p := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"space_hard_quota": float64(2147483648),
 					"space_soft_quota": float64(18446744073709551615),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.Client, _ context.Context, param map[string]interface{}) error {
+			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
 				_, exitId := param["id"]
 				_, exitHardQuota := param["space_hard_quota"]
 				_, exitSoftQuota := param["space_soft_quota"]
@@ -175,28 +172,28 @@ func TestExpandWithQuotaIdNotExist(t *testing.T) {
 				}
 				return errors.New("fail")
 			})
+		defer p.Reset()
+
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestExpandWhenHardQuotaOrSoftQuotaNotExist(t *testing.T) {
-	convey.Convey("space_hard_quota or space_soft_quota Not Exist", t, func() {
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+	t.Run("space_hard_quota or space_soft_quota Not Exist", func(t *testing.T) {
+		p := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id": "522@2",
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.Client, _ context.Context, param map[string]interface{}) error {
+			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
 				_, exitId := param["id"]
 				_, exitHardQuota := param["space_hard_quota"]
 				_, exitSoftQuota := param["space_soft_quota"]
@@ -205,30 +202,29 @@ func TestExpandWhenHardQuotaOrSoftQuotaNotExist(t *testing.T) {
 				}
 				return errors.New("fail")
 			})
+		defer p.Reset()
+
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestExpandWhenHardQuotaNotExist(t *testing.T) {
-	convey.Convey("Hard Quota Not Exist", t, func() {
-
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+	t.Run("Hard Quota Not Exist", func(t *testing.T) {
+		p := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id":               "522@2",
 					"space_hard_quota": float64(18446744073709551615),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.Client, _ context.Context, param map[string]interface{}) error {
+			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
 				_, exitId := param["id"]
 				_, exitHardQuota := param["space_hard_quota"]
 				_, exitSoftQuota := param["space_soft_quota"]
@@ -237,30 +233,29 @@ func TestExpandWhenHardQuotaNotExist(t *testing.T) {
 				}
 				return errors.New("fail")
 			})
+		defer p.Reset()
+
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestExpandWithSoftQuotaNotExist(t *testing.T) {
-	convey.Convey("Soft Quota Not Exist", t, func() {
-
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+	t.Run("Soft Quota Not Exist", func(t *testing.T) {
+		p := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id":               "522@2",
 					"space_soft_quota": float64(18446744073709551615),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.Client, _ context.Context, param map[string]interface{}) error {
+			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
 				_, exitId := param["id"]
 				_, exitHardQuota := param["space_hard_quota"]
 				_, exitSoftQuota := param["space_soft_quota"]
@@ -269,108 +264,111 @@ func TestExpandWithSoftQuotaNotExist(t *testing.T) {
 				}
 				return errors.New("fail")
 			})
+		defer p.Reset()
+
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestExpandWithUpdateQuotaFail(t *testing.T) {
-
-	convey.Convey("Update Quota Fail", t, func() {
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+	t.Run("Update Quota Fail", func(t *testing.T) {
+		p := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.Client, _ context.Context, _ string) (map[string]interface{}, error) {
+			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
+			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return map[string]interface{}{
 					"id":               "522@2",
 					"space_hard_quota": float64(2147483648),
 					"space_soft_quota": float64(18446744073709551615),
 				}, nil
-			})
-		_ = monkey.PatchInstanceMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.Client, _ context.Context, _ map[string]interface{}) error {
+			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			func(_ *client.RestClient, _ context.Context, _ map[string]interface{}) error {
 				return errors.New("fail")
 			})
+		defer p.Reset()
+
 		nas := NewNAS(testClient)
 		err := nas.Expand(context.TODO(), "123", 3221225472)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestCreateConvergedQoS(t *testing.T) {
-	convey.Convey("Empty", t, func() {
+	t.Run("Empty", func(t *testing.T) {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{}
 		taskResult := map[string]interface{}{}
 		_, err := nas.createConvergedQoS(ctx, param, taskResult)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 
-	convey.Convey("No fsName", t, func() {
+	t.Run("No fsName", func(t *testing.T) {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{
 			"qos": map[string]int{"maxIOPS": 999, "maxMBPS": 999},
 		}
 		taskResult := map[string]interface{}{}
 		_, err := nas.createConvergedQoS(ctx, param, taskResult)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 }
 
 func TestPreProcessConvergedQoS(t *testing.T) {
-	convey.Convey("Empty", t, func() {
+	t.Run("Empty", func(t *testing.T) {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{}
 		err := nas.preProcessConvergedQoS(ctx, param)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 
-	convey.Convey("not json", t, func() {
+	t.Run("not json", func(t *testing.T) {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{
 			"qos": "not json",
 		}
 		err := nas.preProcessConvergedQoS(ctx, param)
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
-	convey.Convey("normal", t, func() {
+	t.Run("normal", func(t *testing.T) {
 		nas := NewNAS(testClient)
 		param := map[string]interface{}{
 			"qos": "{\"maxMBPS\":999,\"maxIOPS\":999}",
 		}
 		err := nas.preProcessConvergedQoS(ctx, param)
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 }
 
 func TestDeleteConvergedQoSByFsName(t *testing.T) {
-	convey.Convey("GetQoSPolicyIdByFsName failed", t, func() {
-		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.Client{}),
+	t.Run("GetQoSPolicyIdByFsName failed", func(t *testing.T) {
+		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.RestClient{}),
 			"GetQoSPolicyIdByFsName",
-			func(_ *client.Client, _ context.Context, _ string) (int, error) { return 0, errors.New("mock-error") },
+			func(_ *client.RestClient, _ context.Context, _ string) (int, error) {
+				return 0, errors.New("mock-error")
+			},
 		)
 		defer m.Reset()
 
 		nas := NewNAS(testClient)
 		err := nas.deleteConvergedQoSByFsName(ctx, "mock-fs-name")
-		convey.So(err, convey.ShouldBeError)
+		require.Error(t, err)
 	})
 
-	convey.Convey("GetQoSPolicyIdByFsName empty", t, func() {
-		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.Client{}),
+	t.Run("GetQoSPolicyIdByFsName empty", func(t *testing.T) {
+		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.RestClient{}),
 			"GetQoSPolicyIdByFsName",
-			func(_ *client.Client, _ context.Context, _ string) (int, error) { return types.NoQoSPolicyId, nil },
+			func(_ *client.RestClient, _ context.Context, _ string) (int, error) { return types.NoQoSPolicyId, nil },
 		)
 		defer m.Reset()
 
 		nas := NewNAS(testClient)
 		err := nas.deleteConvergedQoSByFsName(ctx, "mock-fs-name")
-		convey.So(err, convey.ShouldBeNil)
+		require.NoError(t, err)
 	})
 }

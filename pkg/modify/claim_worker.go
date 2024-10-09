@@ -31,10 +31,10 @@ import (
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/utils/strings/slices"
 
 	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	pkgutils "huawei-csi-driver/pkg/utils"
+	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -48,6 +48,9 @@ const (
 
 	// HyperMetroFeatures hyperMetro features
 	HyperMetroFeatures = "hyperMetro"
+
+	// MetroPairSyncSpeed creates hyper metro pair synchronization speed
+	MetroPairSyncSpeed = "metroPairSyncSpeed"
 
 	// CreateFailedReason reason of created claim failed
 	CreateFailedReason = "CreatingFailed"
@@ -69,12 +72,15 @@ const (
 )
 
 var (
-	supportFeatures        = []string{HyperMetroFeatures}
+	supportFeatures        = []string{HyperMetroFeatures, MetroPairSyncSpeed}
 	syncFuncList           []func(context.Context, *xuanwuv1.VolumeModifyClaim) (*xuanwuv1.VolumeModifyClaim, error)
 	onceInitSyncFuncList   sync.Once
 	deleteFuncList         []func(context.Context, *xuanwuv1.VolumeModifyClaim) (*xuanwuv1.VolumeModifyClaim, error)
 	onceInitDeleteFuncList sync.Once
-	featureValueCheckFunc  = map[string]func(string) error{HyperMetroFeatures: checkHyperMetro}
+	featureCheckFunc       = map[string]func(string, map[string]string) error{
+		HyperMetroFeatures: checkHyperMetro,
+		MetroPairSyncSpeed: checkMetroPairSyncSpeed,
+	}
 )
 
 func (ctrl *VolumeModifyController) syncClaimWork(ctx context.Context, name string) error {
@@ -157,7 +163,7 @@ func (ctrl *VolumeModifyController) setClaimFinalizers(ctx context.Context,
 		return claim, nil
 	}
 
-	if slices.Contains(claim.Finalizers, ProtectClaimFinalizer) {
+	if utils.Contains(claim.Finalizers, ProtectClaimFinalizer) {
 		return claim, nil
 	}
 
@@ -446,7 +452,7 @@ func (ctrl *VolumeModifyController) findNoSupportFeatures(params map[string]stri
 	var notSupports []string
 	supports := make(map[string]string)
 	for key, value := range params {
-		if !slices.Contains(supportFeatures, key) {
+		if !utils.Contains(supportFeatures, key) {
 			notSupports = append(notSupports, key)
 			continue
 		}
@@ -645,12 +651,12 @@ func checkParameters(params map[string]string) error {
 	var notSupports []string
 	supports := make(map[string]string)
 	for key, value := range params {
-		if !slices.Contains(supportFeatures, key) {
+		if !utils.Contains(supportFeatures, key) {
 			notSupports = append(notSupports, key)
 			continue
 		}
-		if check, ok := featureValueCheckFunc[key]; ok {
-			if err := check(value); err != nil {
+		if check, ok := featureCheckFunc[key]; ok {
+			if err := check(value, params); err != nil {
 				return err
 			}
 		}
@@ -665,11 +671,31 @@ func checkParameters(params map[string]string) error {
 		strings.Join(notSupports, ","), strings.Join(supportFeatures, ","))
 }
 
-func checkHyperMetro(value string) error {
+func checkHyperMetro(value string, _ map[string]string) error {
 	if value == "true" {
 		return nil
 	}
 	return fmt.Errorf("check spec failed: paramter hyperMetro can only be set to 'true'")
+}
+
+func checkMetroPairSyncSpeed(value string, params map[string]string) error {
+	if hyperMetro, exist := params[HyperMetroFeatures]; !exist || hyperMetro != "true" {
+		return fmt.Errorf("check spec failed: " +
+			"parameter metroPairSyncSpeed can be configured only when hyperMetro is set to true")
+	}
+
+	speed, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("check spec failed: paramter metroPairSyncSpeed can only be an integer")
+	}
+
+	if speed < client.MetroPairSyncSpeedLow || speed > client.MetroPairSyncSpeedHighest {
+		return fmt.Errorf(
+			"check spec failed: paramter metroPairSyncSpeed must be between %d and %d, but got [%d]",
+			client.MetroPairSyncSpeedLow, client.MetroPairSyncSpeedHighest, speed)
+	}
+
+	return nil
 }
 
 func (ctrl *VolumeModifyController) updateClaimStatusWithRetry(ctx context.Context, claim *xuanwuv1.VolumeModifyClaim,

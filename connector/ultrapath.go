@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,6 +34,15 @@ const (
 	nxupLunMapFile            = "/proc/nxup_lun_map_a"
 	nxupLunMapFileWithUpgrade = "/proc/nxup_lun_map_b"
 	deviceDelete              = "deleted"
+	waitingDeletePeriod       = 5 * time.Second
+
+	splitSegment      = 5
+	hctlIndex         = 3
+	hctlLength        = 4
+	lunIdKeyIndex     = 2
+	lunIdIndex        = 3
+	devTupleKeyIndex  = 2
+	devTupleNameIndex = 4
 )
 
 type ultrapathDeviceInfo struct {
@@ -101,7 +110,7 @@ func CleanDeviceByLunId(ctx context.Context, lunId string, targets []string) err
 
 	if needCleanDevice.deviceName == deviceDelete {
 		log.AddContext(ctx).Infoln("device name deleted, waiting 5s")
-		time.Sleep(5 * time.Second)
+		time.Sleep(waitingDeletePeriod)
 	}
 
 	return nil
@@ -178,12 +187,14 @@ func parseDevice(line string, lunId string, deviceHctlMap map[string][]string,
 	if deviceTupleMap == nil {
 		return
 	}
+
 	splitValue := strings.Split(line, "=")
-	if len(splitValue) > 5 {
-		hctl := strings.Split(splitValue[3], ":")
-		if len(hctl) == 4 && hctl[3] == lunId {
-			addToMap(deviceHctlMap, splitValue[2], splitValue[3])
-			deviceTupleMap[splitValue[2]] = ultrapathDeviceTuple{name: splitValue[4], id: splitValue[1]}
+	if len(splitValue) > splitSegment {
+		hctl := strings.Split(splitValue[hctlIndex], ":")
+		if len(hctl) == hctlLength && hctl[lunIdIndex] == lunId {
+			addToMap(deviceHctlMap, splitValue[lunIdKeyIndex], splitValue[lunIdIndex])
+			deviceTupleMap[splitValue[devTupleKeyIndex]] = ultrapathDeviceTuple{
+				name: splitValue[devTupleNameIndex], id: splitValue[1]}
 		}
 	}
 }

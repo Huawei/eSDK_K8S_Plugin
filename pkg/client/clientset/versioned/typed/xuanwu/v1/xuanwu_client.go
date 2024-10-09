@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import (
 
 type XuanwuV1Interface interface {
 	RESTClient() rest.Interface
-	ResourceTopologiesGetter
 	StorageBackendClaimsGetter
 	StorageBackendContentsGetter
 	VolumeModifyClaimsGetter
@@ -35,10 +34,6 @@ type XuanwuV1Interface interface {
 // XuanwuV1Client is used to interact with features provided by the xuanwu.huawei.io group.
 type XuanwuV1Client struct {
 	restClient rest.Interface
-}
-
-func (c *XuanwuV1Client) ResourceTopologies() ResourceTopologyInterface {
-	return newResourceTopologies(c)
 }
 
 func (c *XuanwuV1Client) StorageBackendClaims(namespace string) StorageBackendClaimInterface {

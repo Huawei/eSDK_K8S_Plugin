@@ -71,11 +71,11 @@ func VerifyQos(ctx context.Context, qosConfig string) (map[string]int, error) {
 
 // QoS provides qos client
 type QoS struct {
-	cli *client.Client
+	cli *client.RestClient
 }
 
 // NewQoS inits a new qos client
-func NewQoS(cli *client.Client) *QoS {
+func NewQoS(cli *client.RestClient) *QoS {
 	return &QoS{
 		cli: cli,
 	}

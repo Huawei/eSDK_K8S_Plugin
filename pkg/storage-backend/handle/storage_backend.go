@@ -21,6 +21,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 	"huawei-csi-driver/lib/drcsi"
 	"huawei-csi-driver/lib/drcsi/rpc"
 	"huawei-csi-driver/utils/log"
@@ -34,8 +35,7 @@ type BackendInterfaces interface {
 	// RemoveStorageBackend remove the storageBackend from provider
 	RemoveStorageBackend(ctx context.Context, backendName string) (err error)
 	// UpdateStorageBackend update the storageBackend
-	UpdateStorageBackend(ctx context.Context, contentName, backendName, configmapMeta, secretMeta string,
-		parameters map[string]string) error
+	UpdateStorageBackend(ctx context.Context, content *xuanwuv1.StorageBackendContent) error
 	// GetStorageBackendStats get all backend info from the provider
 	GetStorageBackendStats(ctx context.Context, contentName, backendName string) (*drcsi.GetBackendStatsResponse, error)
 }
@@ -94,15 +94,14 @@ func updateStorageBackend(ctx context.Context, conn *grpc.ClientConn, req *drcsi
 }
 
 // UpdateStorageBackend update the storageBackend
-func (b *backend) UpdateStorageBackend(ctx context.Context, contentName, backendName, configmapMeta, secretMeta string,
-	parameters map[string]string) error {
-	log.AddContext(ctx).Infof("UpdateStorageBackend of backend %s", backendName)
+func (b *backend) UpdateStorageBackend(ctx context.Context, content *xuanwuv1.StorageBackendContent) error {
+	log.AddContext(ctx).Infof("UpdateStorageBackend of backend %s", content.Name)
 	req := drcsi.UpdateStorageBackendRequest{
-		Name:          contentName,
-		BackendId:     backendName,
-		ConfigmapMeta: configmapMeta,
-		SecretMeta:    secretMeta,
-		Parameters:    parameters,
+		Name:          content.Name,
+		BackendId:     content.Spec.BackendClaim,
+		ConfigmapMeta: content.Spec.ConfigmapMeta,
+		SecretMeta:    content.Spec.SecretMeta,
+		Parameters:    content.Spec.Parameters,
 	}
 
 	_, err := updateStorageBackend(ctx, b.conn, &req)

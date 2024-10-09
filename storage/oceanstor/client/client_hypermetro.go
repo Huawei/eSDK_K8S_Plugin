@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,17 @@ import (
 
 const (
 	hyperMetroNotExist int64 = 1077674242
+)
+
+const (
+	// MetroPairSyncSpeedLow is low synchronization rate of the HyperMetro pair.
+	MetroPairSyncSpeedLow = iota + 1
+	// MetroPairSyncSpeedMedium is medium synchronization rate of the HyperMetro pair.
+	MetroPairSyncSpeedMedium
+	// MetroPairSyncSpeedHigh is high synchronization rate of the HyperMetro pair.
+	MetroPairSyncSpeedHigh
+	// MetroPairSyncSpeedHighest is the highest synchronization rate of the HyperMetro pair.
+	MetroPairSyncSpeedHighest
 )
 
 // HyperMetro defines interfaces for hyper metro operations
@@ -176,7 +187,7 @@ func (cli *BaseClient) GetHyperMetroPair(ctx context.Context, pairID string) (ma
 }
 
 // GetHyperMetroPairByLocalObjID used for get hyper metro pair by local object id
-func (cli *BaseClient) GetHyperMetroPairByLocalObjID(ctx context.Context, objID string) (map[string]interface{}, error) {
+func (cli *BaseClient) GetHyperMetroPairByLocalObjID(ctx context.Context, objID string) (map[string]any, error) {
 	url := fmt.Sprintf("/HyperMetroPair?filter=LOCALOBJID::%s", objID)
 
 	resp, err := cli.Get(ctx, url, nil)

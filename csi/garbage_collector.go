@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,7 +42,8 @@ const (
 	// deviceDirPath is a relative path inside kubelet root directory
 	relativeDevicePath = "/kubelet/plugins/kubernetes.io/csi/volumeDevices/*/data/vol_data.json"
 	// in case of block,the index of the last occurrence of the specified pv name
-	// For example,the path is "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-123/data/vol_data.json", we get pvc-123
+	// For example,the path is
+	// "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-123/data/vol_data.json", we get pvc-123
 	deviceLastIndex = 3
 )
 

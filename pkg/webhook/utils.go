@@ -1,5 +1,5 @@
 /*
-Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,6 +35,8 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+const certUntilYears = 99
+
 // GenerateCertificate Self Signed certificate using given CN, returns x509 cert
 // and priv key in PEM format
 func GenerateCertificate(ctx context.Context, cn string, dnsName string) ([]byte, []byte, error) {
@@ -55,7 +57,7 @@ func GenerateCertificate(ctx context.Context, cn string, dnsName string) ([]byte
 			CommonName: cn,
 		},
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(99, 0, 0),
+		NotAfter:              time.Now().AddDate(certUntilYears, 0, 0),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
@@ -94,7 +96,7 @@ func GetTLSCertificate(cert, priv []byte) (tls.Certificate, error) {
 }
 
 // CreateCertSecrets creates k8s secret to store signed cert data
-func CreateCertSecrets(ctx context.Context, webHookCfg WebHook, cert, key []byte, ns string) (*v1.Secret, error) {
+func CreateCertSecrets(ctx context.Context, webHookCfg Config, cert, key []byte, ns string) (*v1.Secret, error) {
 	secretData := make(map[string][]byte)
 	secretData[webHookCfg.PrivateKey] = key
 	secretData[webHookCfg.PrivateCert] = cert

@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-// Package roce provide the way to connect/disconnect volume within NVMe over RoCE protocol
+// Package roce provide the way to connect/disconnect volume within NVMe over Connector protocol
 package roce
 
 import (
@@ -69,7 +69,7 @@ func disconnectSessions(ctx context.Context, sessionPorts []string) error {
 			"'{if($1>1) print 1; else print 0}'", nvmePort)
 		output, err := utils.ExecShellCmd(ctx, cmd)
 		if err != nil {
-			return utils.Errorf(ctx, "Disconnect RoCE target path %s failed, err: %v", nvmePort, err)
+			return utils.Errorf(ctx, "Disconnect Connector target path %s failed, err: %v", nvmePort, err)
 		}
 
 		outputSplit := strings.Split(output, "\n")

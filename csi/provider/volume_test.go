@@ -85,6 +85,7 @@ func TestModifyVolume_HyperMetroTrue(t *testing.T) {
 		func(*handler.BackendSelector, context.Context, int64, string, map[string]interface{}) (*model.StoragePool, error) {
 			return &model.StoragePool{Name: "remotePoolName"}, nil
 		})
+	m.ApplyPrivateMethod(nasPlugin, "canModify", func() error { return nil })
 	m.ApplyMethod(reflect.TypeOf(nasPlugin), "GetLocal2HyperMetroParameters",
 		func(p *plugin.OceanstorNasPlugin, ctx context.Context, VolumeId string, parameters map[string]string) (
 			map[string]interface{}, error) {

@@ -72,7 +72,7 @@ type VolumeModifyContentStatus struct {
 type VolumeModifyContentPhase string
 
 const (
-	// VolumeModifyContentPending means the VolumeModifyContent has been accepted.
+	// VolumeModifyContentPending means the VolumeModifyContent has been accepted,
 	// but modify didn't start.
 	VolumeModifyContentPending VolumeModifyContentPhase = "Pending"
 

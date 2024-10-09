@@ -25,7 +25,7 @@ import (
 )
 
 // GetProviderInfo is used to get provider info
-func (p *Provider) GetProviderInfo(ctx context.Context, req *drcsi.GetProviderInfoRequest) (
+func (p *StorageProvider) GetProviderInfo(ctx context.Context, req *drcsi.GetProviderInfoRequest) (
 	*drcsi.GetProviderInfoResponse, error) {
 
 	log.AddContext(ctx).Infof("Get provider info %v", *p)
@@ -36,7 +36,7 @@ func (p *Provider) GetProviderInfo(ctx context.Context, req *drcsi.GetProviderIn
 }
 
 // GetProviderCapabilities is used to get provider capabilities
-func (p *Provider) GetProviderCapabilities(ctx context.Context, req *drcsi.GetProviderCapabilitiesRequest) (
+func (p *StorageProvider) GetProviderCapabilities(ctx context.Context, req *drcsi.GetProviderCapabilitiesRequest) (
 	*drcsi.GetProviderCapabilitiesResponse, error) {
 
 	log.AddContext(ctx).Infof("Get plugin capabilities of %v", *p)
@@ -54,7 +54,7 @@ func (p *Provider) GetProviderCapabilities(ctx context.Context, req *drcsi.GetPr
 }
 
 // Probe is used to probe provider
-func (p *Provider) Probe(ctx context.Context, in *drcsi.ProbeRequest) (*drcsi.ProbeResponse, error) {
+func (p *StorageProvider) Probe(ctx context.Context, in *drcsi.ProbeRequest) (*drcsi.ProbeResponse, error) {
 	log.AddContext(ctx).Infof("Probe invoked of %v, request: %v", *p, in)
 	return &drcsi.ProbeResponse{}, nil
 }

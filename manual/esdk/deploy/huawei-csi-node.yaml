@@ -89,9 +89,6 @@ rules:
       - storagebackendcontents
     verbs:
       - get
-  - apiGroups: [ "xuanwu.huawei.io" ]
-    resources: [ "resourcetopologies" ]
-    verbs: [ "create", "get", "update", "delete" ]
   - apiGroups:
       - ""
     resources:
@@ -169,7 +166,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:4.4.0
+          image: huawei-csi:4.5.0
           imagePullPolicy: "IfNotPresent"
           args:
             - "--endpoint=/csi/csi.sock"

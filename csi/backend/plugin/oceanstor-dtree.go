@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ const (
 	DTreeStorage = "oceanstor-dtree"
 )
 
-// OceanstorDTreePlugin implements storage Plugin interface
+// OceanstorDTreePlugin implements storage StoragePlugin interface
 type OceanstorDTreePlugin struct {
 	OceanstorPlugin
 
@@ -49,7 +49,7 @@ func init() {
 }
 
 // NewPlugin used to create new plugin
-func (p *OceanstorDTreePlugin) NewPlugin() Plugin {
+func (p *OceanstorDTreePlugin) NewPlugin() StoragePlugin {
 	return &OceanstorDTreePlugin{}
 }
 
@@ -153,7 +153,7 @@ func (p *OceanstorDTreePlugin) ExpandDTreeVolume(ctx context.Context, params map
 	}
 
 	parentName, _ := utils.ToStringWithFlag(params["parentname"])
-	err := dTree.Expand(ctx, parentName, dTreeName, p.vStoreId, 0, spaceHardQuota)
+	err := dTree.Expand(ctx, parentName, dTreeName, p.vStoreId, spaceHardQuota)
 	if err != nil {
 		log.AddContext(ctx).Errorf("expand dTree volume failed, ")
 		return false, err
@@ -258,7 +258,6 @@ func (p *OceanstorDTreePlugin) UpdateBackendCapabilities(ctx context.Context) (m
 	}
 
 	// close dTree pvc label switch
-	capabilities[string(constants.SupportLabel)] = false
 	capabilities[string(constants.SupportMetro)] = false
 	capabilities[string(constants.SupportMetroNAS)] = false
 	capabilities[string(constants.SupportReplication)] = false

@@ -31,8 +31,8 @@ import (
 	"huawei-csi-driver/storage/oceanstor/smartx"
 	"huawei-csi-driver/storage/oceanstor/volume/creator"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/flow"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/taskflow"
 )
 
 const (
@@ -47,6 +47,8 @@ const (
 	noAllSquash  = 1
 	rootSquash   = 0
 	noRootSquash = 1
+
+	queryNfsSharePerPage int64 = 100
 )
 
 // ErrLogicPortFailOver indicates an error that logic port is fail over.
@@ -65,14 +67,6 @@ type NAS struct {
 	NASHyperMetro
 
 	isRunningOnOwnSite bool
-}
-
-type allowNfsShareAccessParam struct {
-	shareID      string
-	authClient   string
-	vStoreID     string
-	activeClient client.BaseClientInterface
-	accesses     map[string]interface{}
 }
 
 // NewNAS inits a new nas client
@@ -380,600 +374,6 @@ func (p *NAS) validateManageWorkLoadType(ctx context.Context, params, fs map[str
 	return nil
 }
 
-func (p *NAS) createLocalFS(ctx context.Context, params, taskResult map[string]interface{}) (
-	map[string]interface{}, error) {
-
-	fsName, ok := params["name"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert fsName to string failed, data: %v", params["name"])
-	}
-	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", fsName, err)
-		return nil, err
-	}
-
-	var isClone bool
-	if fs == nil {
-		params["parentid"] = params["poolID"]
-		params["vstoreId"] = params["localVStoreID"]
-
-		if _, exist := params["clonefrom"]; exist {
-			fs, err = p.clone(ctx, params)
-			if err != nil {
-				log.AddContext(ctx).Warningf("p.clone() failed, param:%+v", params)
-			}
-			isClone = true
-		} else if _, exist := params["fromSnapshot"]; exist {
-			fs, err = p.createFromSnapshot(ctx, params)
-			if err != nil {
-				log.AddContext(ctx).Warningf("p.createFromSnapshot() failed, param:%+v", params)
-			}
-			isClone = true
-		} else {
-			fs, err = p.cli.CreateFileSystem(ctx, params)
-			if err != nil {
-				log.AddContext(ctx).Warningf("CreateFileSystem() failed, param:%+v", params)
-			}
-		}
-	} else {
-		if fs["ISCLONEFS"].(string) != "false" {
-			fsID, ok := fs["ID"].(string)
-			if !ok {
-				log.AddContext(ctx).Warningf("convert fsID to string failed, data: %v", fs["ID"])
-			}
-			err = p.waitFSSplitDone(ctx, fsID)
-		}
-	}
-
-	if err != nil {
-		log.AddContext(ctx).Errorf("Create filesystem %s error: %v", fsName, err)
-		return nil, err
-	}
-
-	localFSID, ok := fs["ID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert localFSID to string failed, data: %v", fs["ID"])
-	}
-	if err = p.updateFileSystem(ctx, isClone, localFSID, params); err != nil {
-		log.AddContext(ctx).Errorf("Update filesystem %s error: %v", fsName, err)
-		return nil, err
-	}
-
-	return map[string]interface{}{
-		"localFSID": localFSID,
-	}, nil
-}
-
-func (p *NAS) updateFileSystem(ctx context.Context, isClone bool, objID string, params map[string]interface{}) error {
-	if !isClone {
-		return nil
-	}
-
-	log.AddContext(ctx).Infof("The fileSystem %s is cloned, now to update some fields.",
-		params["name"].(string))
-	data := make(map[string]interface{})
-	if val, exist := params["reservedsnapshotspaceratio"].(int); exist {
-		data["SNAPSHOTRESERVEPER"] = val
-	}
-
-	if val, exist := params["isshowsnapdir"].(bool); exist {
-		data["ISSHOWSNAPDIR"] = val
-	}
-
-	if val, exist := params["description"].(string); exist {
-		data["DESCRIPTION"] = val
-	}
-
-	if data == nil {
-		log.AddContext(ctx).Infof("The fileSystem %s is cloned, but no field need to update.",
-			params["name"].(string))
-		return nil
-	}
-
-	// Only update the local FS, the remote FS is created separately, no need to update
-	err := p.cli.UpdateFileSystem(ctx, objID, data)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Update FileSystem %s field [%v], error: %v", objID, data, err)
-		return err
-	}
-	return nil
-}
-
-func (p *NAS) clone(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error) {
-	clonefrom, ok := params["clonefrom"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert clonefrom to string failed, data: %v", params["clonefrom"])
-	}
-	cloneFromFS, err := p.cli.GetFileSystemByName(ctx, clonefrom)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get clone src filesystem %s error: %v", clonefrom, err)
-		return nil, err
-	}
-	if cloneFromFS == nil {
-		msg := fmt.Errorf("Filesystem %s does not exist", clonefrom)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, msg
-	}
-
-	srcFSCapacity, err := strconv.ParseInt(cloneFromFS["CAPACITY"].(string), 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	cloneFSCapacity, ok := params["capacity"].(int64)
-	if !ok {
-		log.AddContext(ctx).Warningf("convert cloneFSCapacity to int64 failed, data: %v", params["capacity"])
-	}
-	if cloneFSCapacity < srcFSCapacity {
-		msg := fmt.Sprintf("Clone filesystem capacity must be >= src %s", clonefrom)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
-	cloneFilesystemReq := &CloneFilesystemRequest{
-		FsName:               params["name"].(string),
-		ParentID:             cloneFromFS["ID"].(string),
-		ParentSnapshotID:     "",
-		AllocType:            params["alloctype"].(int),
-		CloneSpeed:           params["clonespeed"].(int),
-		CloneFsCapacity:      cloneFSCapacity,
-		SrcCapacity:          srcFSCapacity,
-		DeleteParentSnapshot: true,
-		VStoreId:             systemVStore,
-	}
-	cloneFS, err := p.cloneFilesystem(ctx, cloneFilesystemReq)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Clone filesystem %s from source filesystem %s error: %s",
-			cloneFilesystemReq.FsName, cloneFilesystemReq.ParentID, err)
-		return nil, err
-	}
-
-	return cloneFS, nil
-}
-
-func (p *NAS) createFromSnapshot(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error) {
-	srcSnapshotName, ok := params["fromSnapshot"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert srcSnapshotName to string failed, data: %v", params["fromSnapshot"])
-	}
-	snapshotParentId, ok := params["snapshotparentid"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert snapshotParentId to string failed, data: %v", params["snapshotparentid"])
-	}
-	srcSnapshot, err := p.cli.GetFSSnapshotByName(ctx, snapshotParentId, srcSnapshotName)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get src filesystem snapshot %s error: %v", srcSnapshotName, err)
-		return nil, err
-	}
-	if srcSnapshot == nil {
-		msg := fmt.Errorf("src snapshot %s does not exist", srcSnapshotName)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, msg
-	}
-
-	parentName, ok := srcSnapshot["PARENTNAME"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert parentName to string failed, data: %v", srcSnapshot["PARENTNAME"])
-	}
-	parentFS, err := p.cli.GetFileSystemByName(ctx, parentName)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get clone src filesystem %s error: %v", parentName, err)
-		return nil, err
-	}
-	if parentFS == nil {
-		msg := fmt.Errorf("Filesystem %s does not exist", parentName)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, msg
-	}
-
-	srcSnapshotCapacity, err := strconv.ParseInt(parentFS["CAPACITY"].(string), 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	cloneFilesystemReq := &CloneFilesystemRequest{
-		FsName:               params["name"].(string),
-		ParentID:             srcSnapshot["PARENTID"].(string),
-		ParentSnapshotID:     srcSnapshot["ID"].(string),
-		AllocType:            params["alloctype"].(int),
-		CloneSpeed:           params["clonespeed"].(int),
-		CloneFsCapacity:      params["capacity"].(int64),
-		SrcCapacity:          srcSnapshotCapacity,
-		DeleteParentSnapshot: false,
-		VStoreId:             systemVStore,
-	}
-	cloneFS, err := p.cloneFilesystem(ctx, cloneFilesystemReq)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Clone filesystem %s from source snapshot %s error: %s",
-			cloneFilesystemReq.FsName, cloneFilesystemReq.ParentSnapshotID, err)
-		return nil, err
-	}
-
-	return cloneFS, nil
-}
-
-func (p *NAS) cloneFilesystem(ctx context.Context, req *CloneFilesystemRequest) (map[string]interface{}, error) {
-	cloneFS, err := p.cli.CloneFileSystem(ctx, req.FsName, req.AllocType, req.ParentID, req.ParentSnapshotID)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Create cloneFilesystem failed. source filesystem ID [%s], error: [%v]",
-			req.ParentID, err)
-		return nil, err
-	}
-
-	cloneFSID, ok := cloneFS["ID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert cloneFSID to string failed, data: %v", cloneFS["ID"])
-	}
-	if req.CloneFsCapacity > req.SrcCapacity {
-		err := p.cli.ExtendFileSystem(ctx, cloneFSID, req.CloneFsCapacity)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Extend filesystem %s to capacity %d error: %v",
-				cloneFSID, req.CloneFsCapacity, err)
-			_ = p.cli.DeleteFileSystem(ctx, map[string]interface{}{"ID": cloneFSID})
-			return nil, err
-		}
-	}
-
-	vStoreId, ok := cloneFS["vstoreId"].(string)
-	if ok {
-		req.VStoreId = vStoreId
-	}
-
-	err = p.splitClone(ctx, cloneFSID, req)
-	if err != nil {
-		log.AddContext(ctx).Errorf("split clone failed. err: %v", err)
-	}
-
-	return cloneFS, nil
-}
-
-func (p *NAS) splitClone(ctx context.Context, cloneFSID string, req *CloneFilesystemRequest) error {
-	err := p.cli.SplitCloneFS(ctx, cloneFSID, req.VStoreId, req.CloneSpeed, req.DeleteParentSnapshot)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Split filesystem [%s] error: %v", req.FsName, err)
-		delErr := p.cli.DeleteFileSystem(ctx, map[string]interface{}{"ID": cloneFSID})
-		if delErr != nil {
-			log.AddContext(ctx).Errorf("Delete filesystem [%s] error: %v", cloneFSID, err)
-		}
-		return err
-	}
-
-	return p.waitFSSplitDone(ctx, cloneFSID)
-}
-
-func (p *NAS) waitFSSplitDone(ctx context.Context, fsID string) error {
-	return utils.WaitUntil(func() (bool, error) {
-		fs, err := p.cli.GetFileSystemByID(ctx, fsID)
-		if err != nil {
-			return false, err
-		}
-
-		if fs["ISCLONEFS"] == "false" {
-			return true, nil
-		}
-
-		if fs["HEALTHSTATUS"].(string) != filesystemHealthStatusNormal {
-			return false, fmt.Errorf("filesystem %s has the bad healthStatus code %s", fs["NAME"], fs["HEALTHSTATUS"].(string))
-		}
-
-		splitStatus, ok := fs["SPLITSTATUS"].(string)
-		if !ok {
-			return false, pkgUtils.Errorf(ctx, "convert splitStatus to string failed, data: %v", fs["SPLITSTATUS"])
-		}
-		if splitStatus == filesystemSplitStatusQueuing ||
-			splitStatus == filesystemSplitStatusSplitting ||
-			splitStatus == filesystemSplitStatusNotStart {
-			return false, nil
-		} else if splitStatus == filesystemSplitStatusAbnormal {
-			return false, fmt.Errorf("filesystem clone [%s] split status is interrupted, SPLITSTATUS: [%s]",
-				fs["NAME"], splitStatus)
-		} else {
-			return true, nil
-		}
-	}, time.Hour*6, time.Second*5)
-}
-
-func (p *NAS) revertLocalFS(ctx context.Context, taskResult map[string]interface{}) error {
-	fsID, exist := taskResult["localFSID"].(string)
-	if !exist || fsID == "" {
-		return nil
-	}
-	deleteParams := map[string]interface{}{
-		"ID": fsID,
-	}
-	if vStoreID, _ := taskResult["localVStoreID"].(string); vStoreID != "" {
-		deleteParams["vstoreId"] = vStoreID
-	}
-	return p.cli.DeleteFileSystem(ctx, deleteParams)
-}
-
-func (p *NAS) createLocalQoS(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	qos, exist := params["qos"].(map[string]int)
-	if !exist {
-		return nil, nil
-	}
-
-	activeClient := p.getActiveClient(taskResult)
-	smartX := smartx.NewSmartX(activeClient)
-	vStoreID := p.getVStoreID(taskResult)
-	fsID := p.getActiveFsID(taskResult)
-	qosID, err := smartX.CreateQos(ctx, fsID, "fs", vStoreID, qos)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Create qos %v for fs %s error: %v", qos, fsID, err)
-		return nil, err
-	}
-
-	return map[string]interface{}{
-		"localQoSID": qosID,
-	}, nil
-}
-
-func (p *NAS) revertLocalQoS(ctx context.Context, taskResult map[string]interface{}) error {
-	fsID, fsIDExist := taskResult["localFSID"].(string)
-	qosID, qosIDExist := taskResult["localQoSID"].(string)
-	if !fsIDExist || !qosIDExist {
-		return nil
-	}
-
-	activeClient := p.getActiveClient(taskResult)
-	smartX := smartx.NewSmartX(activeClient)
-	vStoreID := p.getVStoreID(taskResult)
-	fsID = p.getActiveFsID(taskResult)
-	return smartX.DeleteQos(ctx, qosID, fsID, "fs", vStoreID)
-}
-
-func (p *NAS) createRemoteQoS(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	if p.product == "DoradoV6" {
-		return nil, nil
-	}
-
-	qos, exist := params["qos"].(map[string]int)
-	if !exist {
-		return nil, nil
-	}
-
-	fsID, ok := taskResult["remoteFSID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert fsID to string failed, data: %v", taskResult["remoteFSID"])
-	}
-	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert remoteCli to BaseClientInterface failed, data: %v", taskResult["remoteCli"])
-	}
-
-	smartX := smartx.NewSmartX(remoteCli)
-	qosID, err := smartX.CreateQos(ctx, fsID, "fs", "", qos)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Create qos %v for fs %s error: %v", qos, fsID, err)
-		return nil, err
-	}
-
-	return map[string]interface{}{
-		"remoteQoSID": qosID,
-	}, nil
-}
-
-func (p *NAS) revertRemoteQoS(ctx context.Context, taskResult map[string]interface{}) error {
-	if p.product == "DoradoV6" {
-		return nil
-	}
-
-	fsID, fsIDExist := taskResult["remoteFSID"].(string)
-	qosID, qosIDExist := taskResult["remoteQoSID"].(string)
-	if !fsIDExist || !qosIDExist {
-		return nil
-	}
-	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
-	if !ok {
-		return pkgUtils.Errorf(ctx, "convert remoteCli to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
-	}
-	smartX := smartx.NewSmartX(remoteCli)
-	return smartX.DeleteQos(ctx, qosID, fsID, "fs", "")
-}
-
-func (p *NAS) createShare(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	fsName, ok := params["name"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert fsName to string failed, data: %v", params["name"])
-	}
-	sharePath := utils.GetSharePath(fsName)
-	activeClient := p.getActiveClient(taskResult)
-	vStoreID := p.getVStoreID(taskResult)
-	share, err := activeClient.GetNfsShareByPath(ctx, sharePath, vStoreID)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get nfs share by path %s error: %v", sharePath, err)
-		return nil, err
-	}
-
-	if share == nil {
-		fsID := p.getActiveFsID(taskResult)
-		shareParams := map[string]interface{}{
-			"sharepath":   sharePath,
-			"fsid":        fsID,
-			"description": params["description"].(string),
-			"vStoreID":    vStoreID,
-		}
-
-		share, err = activeClient.CreateNfsShare(ctx, shareParams)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Create nfs share %v error: %v", shareParams, err)
-			return nil, err
-		}
-	}
-
-	return map[string]interface{}{
-		"shareID": share["ID"].(string),
-	}, nil
-}
-
-func (p *NAS) revertShare(ctx context.Context, taskResult map[string]interface{}) error {
-	shareID, exist := taskResult["shareID"].(string)
-	if !exist || len(shareID) == 0 {
-		return nil
-	}
-	activeClient := p.getActiveClient(taskResult)
-	vStoreID := p.getVStoreID(taskResult)
-	return activeClient.DeleteNfsShare(ctx, shareID, vStoreID)
-}
-
-func (p *NAS) getCurrentShareAccess(ctx context.Context, shareID, vStoreID string, cli client.BaseClientInterface) (map[string]interface{}, error) {
-	count, err := cli.GetNfsShareAccessCount(ctx, shareID, vStoreID)
-	if err != nil {
-		return nil, err
-	}
-
-	accesses := make(map[string]interface{})
-
-	var i int64 = 0
-	for ; i < count; i += 100 { // Query per page 100
-		clients, err := cli.GetNfsShareAccessRange(ctx, shareID, vStoreID, i, i+100)
-		if err != nil {
-			return nil, err
-		}
-		if clients == nil {
-			break
-		}
-
-		for _, c := range clients {
-			client, ok := c.(map[string]interface{})
-			if !ok {
-				log.AddContext(ctx).Warningf("convert client to map failed, data: %v", c)
-				continue
-			}
-			name, ok := client["NAME"].(string)
-			if !ok {
-				log.AddContext(ctx).Warningf("convert client name to string failed, data: %v", client["NAME"])
-				continue
-			}
-			accesses[name] = c
-		}
-	}
-
-	return accesses, nil
-}
-
-func (p *NAS) allowShareAccess(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	allowShareAccessParam, err := p.preShareAccessParam(ctx, params, taskResult)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, i := range strings.Split(allowShareAccessParam.authClient, ";") {
-		if _, exist := allowShareAccessParam.accesses[i]; exist {
-			delete(allowShareAccessParam.accesses, i)
-			continue
-		}
-
-		req := &client.AllowNfsShareAccessRequest{
-			Name:        i,
-			ParentID:    allowShareAccessParam.shareID,
-			AccessVal:   1,
-			Sync:        0,
-			AllSquash:   params["allsquash"].(int),
-			RootSquash:  params["rootsquash"].(int),
-			VStoreID:    allowShareAccessParam.vStoreID,
-			AccessKrb5:  formatKerberosParam(params["accesskrb5"]),
-			AccessKrb5i: formatKerberosParam(params["accesskrb5i"]),
-			AccessKrb5p: formatKerberosParam(params["accesskrb5p"]),
-		}
-		if err = allowShareAccessParam.activeClient.AllowNfsShareAccess(ctx, req); err != nil {
-			log.AddContext(ctx).Errorf("Allow nfs share access %v failed. error: %v", req, err)
-			return nil, err
-		}
-	}
-
-	// Remove all other extra access
-	for _, i := range allowShareAccessParam.accesses {
-		access, ok := i.(map[string]interface{})
-		if !ok {
-			log.AddContext(ctx).Warningf("convert access to map failed, data: %v", i)
-			continue
-		}
-		accessID, ok := access["ID"].(string)
-		if !ok {
-			log.AddContext(ctx).Warningf("convert accessID to string failed, data: %v", access["ID"])
-			continue
-		}
-		if err = allowShareAccessParam.activeClient.DeleteNfsShareAccess(ctx, accessID,
-			allowShareAccessParam.vStoreID); err != nil {
-			log.AddContext(ctx).Warningf("Delete extra nfs share access %s error: %v", accessID, err)
-		}
-	}
-
-	return map[string]interface{}{
-		"authClient": allowShareAccessParam.authClient,
-	}, nil
-}
-
-func (p *NAS) preShareAccessParam(ctx context.Context, params,
-	taskResult map[string]interface{}) (*allowNfsShareAccessParam, error) {
-	var res allowNfsShareAccessParam
-	var err error
-	var b bool
-	res.shareID, b = taskResult["shareID"].(string)
-	if !b {
-		return nil, pkgUtils.Errorf(ctx, "convert shareID to string failed, data: %v",
-			taskResult["shareID"])
-	}
-	res.authClient, b = params["authclient"].(string)
-	if !b {
-		return nil, pkgUtils.Errorf(ctx, "convert authClient to string failed, data: %v",
-			params["authclient"])
-	}
-	res.activeClient = p.getActiveClient(taskResult)
-	res.vStoreID = p.getVStoreID(taskResult)
-	res.accesses, err = p.getCurrentShareAccess(ctx, res.shareID, res.vStoreID, res.activeClient)
-	if err != nil {
-		return nil, pkgUtils.Errorf(ctx, "Get current access of share %s error: %v", res.shareID, err)
-	}
-	return &res, nil
-}
-
-func (p *NAS) revertShareAccess(ctx context.Context, taskResult map[string]interface{}) error {
-	shareID, ok := taskResult["shareID"].(string)
-	if !ok {
-		return pkgUtils.Errorf(ctx, "convert shareID to string failed, data: %v", taskResult["shareID"])
-	}
-	authClient, exist := taskResult["authClient"].(string)
-	if !exist {
-		return nil
-	}
-
-	activeClient := p.getActiveClient(taskResult)
-	vStoreID := p.getVStoreID(taskResult)
-	accesses, err := p.getCurrentShareAccess(ctx, shareID, vStoreID, activeClient)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get current access of share %s error: %v", shareID, err)
-		return err
-	}
-
-	for _, i := range strings.Split(authClient, ";") {
-		if _, exist := accesses[i]; !exist {
-			continue
-		}
-		access, ok := accesses[i].(map[string]interface{})
-		if !ok {
-			log.AddContext(ctx).Warningf("convert access to map failed, data: %v", accesses[i])
-			continue
-		}
-		accessID, ok := access["ID"].(string)
-		if !ok {
-			log.AddContext(ctx).Warningf("convert accessID to string failed, data: %v", access["ID"])
-			continue
-		}
-		err := p.cli.DeleteNfsShareAccess(ctx, accessID, vStoreID)
-		if err != nil {
-			log.AddContext(ctx).Warningf("Delete extra nfs share access %s error: %v", accessID, err)
-		}
-	}
-	return nil
-}
-
 // Query queries volume by name
 func (p *NAS) Query(ctx context.Context, fsName string, params map[string]interface{}) (utils.Volume, error) {
 	fs, err := p.cli.GetFileSystemByName(ctx, fsName)
@@ -993,8 +393,9 @@ func (p *NAS) Query(ctx context.Context, fsName string, params map[string]interf
 	volObj := utils.NewVolume(fsName)
 
 	// set the size, need to trans Sectors to Bytes
-	if capacity, err := strconv.ParseInt(fs["CAPACITY"].(string), 10, 64); err == nil {
-		volObj.SetSize(utils.TransK8SCapacity(capacity, 512))
+	if capacity, err := strconv.ParseInt(fs["CAPACITY"].(string),
+		constants.DefaultIntBase, constants.DefaultIntBitSize); err == nil {
+		volObj.SetSize(utils.TransK8SCapacity(capacity, constants.AllocationUnitBytes))
 	}
 	if fileSystemMode, ok := fs["fileSystemMode"].(string); ok {
 		volObj.SetFilesystemMode(fileSystemMode)
@@ -1032,7 +433,7 @@ func (p *NAS) Delete(ctx context.Context, fsName string) error {
 	if err != nil {
 		return err
 	}
-	taskflow := taskflow.NewTaskFlow(ctx, "Delete-FileSystem-Volume")
+	taskflow := flow.NewTaskFlow(ctx, "Delete-FileSystem-Volume")
 	if len(hyperMetroIDs) > 0 {
 		if p.metroRemoteCli == nil {
 			return errors.New("hyper metro backend is not configured")
@@ -1086,7 +487,7 @@ func (p *NAS) Expand(ctx context.Context, fsName string, newSize int64) error {
 	if err != nil {
 		return err
 	}
-	expandTask := taskflow.NewTaskFlow(ctx, "Expand-FileSystem-Volume")
+	expandTask := flow.NewTaskFlow(ctx, "Expand-FileSystem-Volume")
 	expandTask.AddTask("Expand-PreCheck-Capacity", p.preExpandCheckCapacity, nil)
 
 	if len(hyperMetroIDs) > 0 {
@@ -1135,15 +536,15 @@ func (p *NAS) preExpandCheckCapacity(ctx context.Context,
 	}, nil
 }
 
-func (p *NAS) createRemoteFS(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+func (p *NAS) createRemoteFS(ctx context.Context, params, taskResult map[string]any) (map[string]any, error) {
 	fsName, ok := params["name"].(string)
 	if !ok {
 		return nil, pkgUtils.Errorf(ctx, "convert fsName to string failed, data: %v", params["name"])
 	}
 	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
 	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert remoteCli to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
+		return nil, pkgUtils.Errorf(ctx,
+			"convert remoteCli to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
 	}
 
 	fs, err := remoteCli.GetFileSystemByName(ctx, fsName)
@@ -1167,7 +568,7 @@ func (p *NAS) createRemoteFS(ctx context.Context,
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"remoteFSID": fs["ID"].(string),
 	}, nil
 }
@@ -1179,7 +580,8 @@ func (p *NAS) revertRemoteFS(ctx context.Context, taskResult map[string]interfac
 	}
 	remoteCli, ok := taskResult["remoteCli"].(client.BaseClientInterface)
 	if !ok {
-		return pkgUtils.Errorf(ctx, "convert remoteCli to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
+		return pkgUtils.Errorf(ctx,
+			"convert remoteCli to client.BaseClientInterface failed, data: %v", taskResult["remoteCli"])
 	}
 	deleteParams := map[string]interface{}{
 		"ID": fsID,
@@ -1362,74 +764,6 @@ func (p *NAS) getHyperMetroParams(ctx context.Context,
 	}, nil
 }
 
-func (p *NAS) createHyperMetro(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	vStorePairID, ok := params["vstorepairid"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert vStorePairID to string failed, data: %v", params["vstorepairid"])
-	}
-	localFSID, ok := taskResult["localFSID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert localFSID to string failed, data: %v", taskResult["localFSID"])
-	}
-	remoteFSID, ok := taskResult["remoteFSID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert remoteFSID to string failed, data: %v", taskResult["remoteFSID"])
-	}
-	activeClient := p.getActiveClient(taskResult)
-	if activeClient != p.cli {
-		localFSID, ok = taskResult["remoteFSID"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "convert localFSID to string failed, data: %v", taskResult["remoteFSID"])
-		}
-
-		remoteFSID, ok = taskResult["localFSID"].(string)
-		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "convert remoteFSID to string failed, data: %v", taskResult["localFSID"])
-		}
-	}
-
-	data := map[string]interface{}{
-		"HCRESOURCETYPE": 2, // 2: file system
-		"LOCALOBJID":     localFSID,
-		"REMOTEOBJID":    remoteFSID,
-		"SPEED":          4, // 4: highest speed
-		"VSTOREPAIRID":   vStorePairID,
-	}
-
-	metroDomainID, exist := params["metroDomainID"].(string)
-	if exist && metroDomainID != "" {
-		data["DOMAINID"] = metroDomainID
-	}
-
-	pair, err := activeClient.CreateHyperMetroPair(ctx, data)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Create nas hypermetro pair error: %v", err)
-		return nil, err
-	}
-
-	pairID, ok := pair["ID"].(string)
-	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert pairID to string failed, data: %v", pair["ID"])
-	}
-	// There is no need to synchronize when use NAS Dorado V6 or OceanStor V6 HyperMetro Volume
-	if p.product != constants.OceanStorDoradoV6 {
-		err = activeClient.SyncHyperMetroPair(ctx, pairID)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Sync nas hypermetro pair %s error: %v", pairID, err)
-			delErr := activeClient.DeleteHyperMetroPair(ctx, pairID, true)
-			if delErr != nil {
-				log.AddContext(ctx).Errorf("delete hypermetro pair %s error: %v", pairID, err)
-			}
-			return nil, err
-		}
-	}
-
-	return map[string]interface{}{
-		"hyperMetroPairID": pairID,
-	}, nil
-}
-
 func (p *NAS) revertHyperMetro(ctx context.Context, taskResult map[string]interface{}) error {
 	pairID, exist := taskResult["hyperMetroPairID"].(string)
 	if !exist {
@@ -1503,7 +837,8 @@ func (p *NAS) DeleteHyperMetro(ctx context.Context,
 	return nil, nil
 }
 
-func (p *NAS) waitHyperMetroPairDeleted(ctx context.Context, pairID string, activeClient client.BaseClientInterface) error {
+func (p *NAS) waitHyperMetroPairDeleted(ctx context.Context,
+	pairID string, activeClient client.BaseClientInterface) error {
 	var err error
 	if p.product == "DoradoV6" {
 		err = activeClient.DeleteHyperMetroPair(ctx, pairID, false)
@@ -1669,9 +1004,7 @@ func (p *NAS) CreateSnapshot(ctx context.Context, fsName, snapshotName string) (
 		return nil, err
 	}
 
-	const capacityBase = 10
-	const capacityBitSize = 64
-	snapshotSize, err := strconv.ParseInt(fs.CAPACITY, capacityBase, capacityBitSize)
+	snapshotSize, err := strconv.ParseInt(fs.CAPACITY, constants.DefaultIntBase, constants.DefaultIntBitSize)
 	if err != nil {
 		log.AddContext(ctx).Errorf("parse filesystem failed. err:%v, CAPACITY: %v", err, fs.CAPACITY)
 		return nil, err

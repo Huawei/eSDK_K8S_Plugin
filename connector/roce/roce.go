@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// RoCE implements the Connector interface for RoCE protocol
-type RoCE struct {
+// Connector implements the connector.VolumeConnector for Connector protocol
+type Connector struct {
 }
 
 const (
@@ -34,14 +34,15 @@ const (
 )
 
 func init() {
-	connector.RegisterConnector(connector.RoCEDriver, &RoCE{})
+	connector.RegisterConnector(connector.RoCEDriver, &Connector{})
 }
 
 // ConnectVolume to mount the source to target path, the source path can be block or nfs
 // Example:
-//    mount /dev/sdb /<target-path>
-//    mount <source-path> /<target-path>
-func (roce *RoCE) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
+//
+//	mount /dev/sdb /<target-path>
+//	mount <source-path> /<target-path>
+func (roce *Connector) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
 	log.AddContext(ctx).Infof("RoCE Start to connect volume ==> connect info: %v", conn)
 	tgtLunGUID, exist := conn["tgtLunGuid"].(string)
 	if !exist {
@@ -51,7 +52,7 @@ func (roce *RoCE) ConnectVolume(ctx context.Context, conn map[string]interface{}
 }
 
 // DisConnectVolume to unmount the target path
-func (roce *RoCE) DisConnectVolume(ctx context.Context, tgtLunGuid string) error {
+func (roce *Connector) DisConnectVolume(ctx context.Context, tgtLunGuid string) error {
 	log.AddContext(ctx).Infof("RoCE Start to disconnect volume ==> Volume Guid info: %v", tgtLunGuid)
 	return connector.DisConnectVolumeCommon(ctx, tgtLunGuid, connector.RoCEDriver, tryDisConnectVolume)
 }

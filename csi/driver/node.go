@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,8 +36,11 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+const checkSymlinkPathTimeout = 10 * time.Second
+
 // NodeStageVolume used to stage volume
-func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+func (d *CsiDriver) NodeStageVolume(ctx context.Context,
+	req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
 	volumeId := req.GetVolumeId()
@@ -61,7 +64,8 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 }
 
 // NodeUnstageVolume used to unstage volume
-func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+func (d *CsiDriver) NodeUnstageVolume(ctx context.Context,
+	req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 	volumeId := req.GetVolumeId()
 	targetPath := req.GetStagingTargetPath()
@@ -86,7 +90,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 }
 
 // NodePublishVolume used to node publish volume
-func (d *Driver) NodePublishVolume(ctx context.Context,
+func (d *CsiDriver) NodePublishVolume(ctx context.Context,
 	req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 	volumeId := req.GetVolumeId()
@@ -105,14 +109,12 @@ func (d *Driver) NodePublishVolume(ctx context.Context,
 		}
 	}
 
-	go nodeAddLabel(utils.NewContextWithRequestID(), volumeId, targetPath)
-
 	log.AddContext(ctx).Infof("Volume %s is node published from %s", volumeId, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
 // NodeUnpublishVolume used to node unpublish volume
-func (d *Driver) NodeUnpublishVolume(ctx context.Context,
+func (d *CsiDriver) NodeUnpublishVolume(ctx context.Context,
 	req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
@@ -137,7 +139,7 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context,
 			}
 		}
 	} else {
-		symLink, err := utils.IsPathSymlinkWithTimeout(targetPath, 10*time.Second)
+		symLink, err := utils.IsPathSymlinkWithTimeout(targetPath, checkSymlinkPathTimeout)
 		if err != nil {
 			log.AddContext(ctx).Errorf("Failed to Access path %s, error: %v", targetPath, err)
 			return nil, status.Error(codes.Internal, err.Error())
@@ -152,14 +154,12 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context,
 		}
 	}
 
-	go nodeDeleteLabel(utils.NewContextWithRequestID(), volumeId, targetPath)
-
 	log.AddContext(ctx).Infof("Volume %s is node unpublished from %s", volumeId, targetPath)
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
 // NodeGetInfo used to get node info
-func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+func (d *CsiDriver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	defer utils.RecoverPanic(ctx)
 	hostname, err := utils.GetHostName(ctx)
 	if err != nil {
@@ -202,7 +202,8 @@ func (d *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (
 }
 
 // NodeGetCapabilities used to get node capabilities
-func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
+func (d *CsiDriver) NodeGetCapabilities(ctx context.Context,
+	req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
 	defer utils.RecoverPanic(ctx)
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: []*csi.NodeServiceCapability{
@@ -232,7 +233,8 @@ func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabi
 }
 
 // NodeGetVolumeStats used to get node volume status
-func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+func (d *CsiDriver) NodeGetVolumeStats(ctx context.Context,
+	req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	defer utils.RecoverPanic(ctx)
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -317,7 +319,7 @@ func (d *Driver) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeS
 }
 
 // NodeExpandVolume used to node expand volume
-func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (
+func (d *CsiDriver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (
 	*csi.NodeExpandVolumeResponse, error) {
 	defer utils.RecoverPanic(ctx)
 

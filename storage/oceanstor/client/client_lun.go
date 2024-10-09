@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"huawei-csi-driver/pkg/constants"
 	pkgUtils "huawei-csi-driver/pkg/utils"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
@@ -34,6 +35,8 @@ const (
 	lunAlreadyInGroup  int64 = 1077936862
 	lunNotExist        int64 = 1077936859
 	parameterIncorrect int64 = 50331651
+
+	maxLunNameLength = 31
 )
 
 // Lun defines interfaces for lun operations
@@ -130,10 +133,10 @@ func (cli *BaseClient) GetLunByName(ctx context.Context, name string) (map[strin
 
 // MakeLunName v3/v5 storage support 1 to 31 characters
 func (cli *BaseClient) MakeLunName(name string) string {
-	if len(name) <= 31 {
+	if len(name) <= maxLunNameLength {
 		return name
 	}
-	return name[:31]
+	return name[:maxLunNameLength]
 }
 
 // GetLunByID used for get lun by id
@@ -394,7 +397,7 @@ func (cli *BaseClient) GetLunCountOfMapping(ctx context.Context, mappingID strin
 		return 0, pkgUtils.Errorf(ctx, "convert countStr to string failed, data: %v", respData["COUNT"])
 	}
 
-	count := utils.ParseIntWithDefault(countStr, 10, 64, 0)
+	count := utils.ParseIntWithDefault(countStr, constants.DefaultIntBase, constants.DefaultIntBitSize, 0)
 	return count, nil
 }
 
@@ -421,7 +424,7 @@ func (cli *BaseClient) GetLunCountOfHost(ctx context.Context, hostID string) (in
 	if !ok {
 		return 0, pkgUtils.Errorf(ctx, "convert countStr to string failed, data: %v", respData["COUNT"])
 	}
-	count := utils.ParseIntWithDefault(countStr, 10, 64, 0)
+	count := utils.ParseIntWithDefault(countStr, constants.DefaultIntBase, constants.DefaultIntBitSize, 0)
 	return count, nil
 }
 
@@ -460,7 +463,7 @@ func (cli *BaseClient) GetHostLunId(ctx context.Context, hostID, lunID string) (
 			}
 			hostLunIdFloat, ok := associateData["HostLUNID"].(float64)
 			if ok {
-				hostLunId = strconv.FormatInt(int64(hostLunIdFloat), 10)
+				hostLunId = strconv.FormatInt(int64(hostLunIdFloat), constants.DefaultIntBase)
 				break
 			}
 		}

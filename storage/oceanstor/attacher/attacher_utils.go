@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,7 +42,8 @@ const (
 )
 
 // GetMultipleInitiators use this method when the initiator is an array e.g. fc
-func GetMultipleInitiators(ctx context.Context, protocol InitiatorType, parameters map[string]interface{}) ([]string, error) {
+func GetMultipleInitiators(ctx context.Context,
+	protocol InitiatorType, parameters map[string]interface{}) ([]string, error) {
 	initiatorData, err := getInitiatorByProtocol(ctx, protocol, parameters)
 	if err != nil {
 		return nil, err
@@ -56,7 +57,8 @@ func GetMultipleInitiators(ctx context.Context, protocol InitiatorType, paramete
 }
 
 // GetSingleInitiator use this method when the initiator is single e.g. iscsi
-func GetSingleInitiator(ctx context.Context, protocol InitiatorType, parameters map[string]interface{}) (string, error) {
+func GetSingleInitiator(ctx context.Context,
+	protocol InitiatorType, parameters map[string]interface{}) (string, error) {
 	initiatorData, err := getInitiatorByProtocol(ctx, protocol, parameters)
 	if err != nil {
 		return "", err
@@ -69,7 +71,8 @@ func GetSingleInitiator(ctx context.Context, protocol InitiatorType, parameters 
 	return "", utils.Errorf(ctx, "convert %v initiator to string error:%v", protocol, initiatorData)
 }
 
-func getInitiatorByProtocol(ctx context.Context, protocol InitiatorType, parameters map[string]interface{}) (interface{}, error) {
+func getInitiatorByProtocol(ctx context.Context,
+	protocol InitiatorType, parameters map[string]interface{}) (interface{}, error) {
 	hostName, ok := parameters["HostName"].(string)
 	if !ok {
 		return nil, utils.Errorf(ctx, "Get node host name error,parameters:%v ", parameters)

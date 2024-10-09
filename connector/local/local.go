@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,26 +19,23 @@ package local
 
 import (
 	"context"
-	"time"
 
 	"huawei-csi-driver/connector"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
-// Local to define a local lock when connect or disconnect, in order to preventing connect and disconnect confusion
-type Local struct {
+// Connector to define a local lock when connect or disconnect, in order to preventing connect and disconnect confusion
+type Connector struct {
 }
 
-var waitDevOnlineTimeInterval = 2 * time.Second
-
 func init() {
-	connector.RegisterConnector(connector.LocalDriver, &Local{})
+	connector.RegisterConnector(connector.LocalDriver, &Connector{})
 }
 
 // ConnectVolume to connect local volume, such as /dev/disk/by-id/wwn-0x*
-func (loc *Local) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
-	log.AddContext(ctx).Infof("Local Start to connect volume ==> connect info: %v", conn)
+func (loc *Connector) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
+	log.AddContext(ctx).Infof("Local connector Start to connect volume ==> connect info: %v", conn)
 	tgtLunWWN, exist := conn["tgtLunWWN"].(string)
 	if !exist {
 		return "", utils.Errorln(ctx, "key tgtLunWWN does not exist in connection properties")
@@ -47,7 +44,7 @@ func (loc *Local) ConnectVolume(ctx context.Context, conn map[string]interface{}
 }
 
 // DisConnectVolume to remove the local lun path
-func (loc *Local) DisConnectVolume(ctx context.Context, tgtLunWWN string) error {
-	log.AddContext(ctx).Infof("Local Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
+func (loc *Connector) DisConnectVolume(ctx context.Context, tgtLunWWN string) error {
+	log.AddContext(ctx).Infof("Local Connector Start to disconnect volume ==> volume wwn is: %v", tgtLunWWN)
 	return connector.DisConnectVolumeCommon(ctx, tgtLunWWN, connector.LocalDriver, tryDisConnectVolume)
 }

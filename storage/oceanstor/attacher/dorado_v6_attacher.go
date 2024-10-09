@@ -20,14 +20,13 @@ import (
 	"context"
 	"errors"
 
-	"huawei-csi-driver/storage/oceanstor/client"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
 
-// DoradoV6Attacher implements interface AttacherPlugin
+// DoradoV6Attacher implements interface VolumeAttacherPlugin
 type DoradoV6Attacher struct {
-	Attacher
+	VolumeAttacher
 }
 
 const (
@@ -35,18 +34,14 @@ const (
 	AccessModeBalanced = "0"
 )
 
-func newDoradoV6Attacher(
-	cli client.BaseClientInterface,
-	protocol, invoker string,
-	portals []string,
-	alua map[string]interface{}) AttacherPlugin {
+func newDoradoV6Attacher(config VolumeAttacherConfig) VolumeAttacherPlugin {
 	return &DoradoV6Attacher{
-		Attacher: Attacher{
-			cli:      cli,
-			protocol: protocol,
-			invoker:  invoker,
-			portals:  portals,
-			alua:     alua,
+		VolumeAttacher: VolumeAttacher{
+			cli:      config.Cli,
+			protocol: config.Protocol,
+			invoker:  config.Invoker,
+			portals:  config.Portals,
+			alua:     config.Alua,
 		},
 	}
 }
@@ -96,11 +91,11 @@ func (p *DoradoV6Attacher) ControllerAttach(ctx context.Context,
 	}
 
 	if p.protocol == "iscsi" {
-		_, err = p.Attacher.attachISCSI(ctx, hostID, parameters)
+		_, err = p.VolumeAttacher.attachISCSI(ctx, hostID, parameters)
 	} else if p.protocol == "fc" || p.protocol == "fc-nvme" {
-		_, err = p.Attacher.attachFC(ctx, hostID, parameters)
+		_, err = p.VolumeAttacher.attachFC(ctx, hostID, parameters)
 	} else if p.protocol == "roce" {
-		_, err = p.Attacher.attachRoCE(ctx, hostID, parameters)
+		_, err = p.VolumeAttacher.attachRoCE(ctx, hostID, parameters)
 	}
 
 	if err != nil {

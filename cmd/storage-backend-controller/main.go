@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -45,13 +45,17 @@ const (
 	containerName        = "storage-backend-controller"
 	eventComponentName   = "XuanWu-StorageBackend-Mngt"
 	leaderLockObjectName = "storage-backend-controller"
+
+	backoffDuration = 100 * time.Millisecond
+	backoffFactor   = 1.5
+	backoffSteps    = 10
 )
 
 func main() {
 	if err := app.NewCommand().Execute(); err != nil {
 		logrus.Fatalf("Execute app command failed. error: %v", err)
 	}
-	err := log.InitLogging(&log.LoggingRequest{
+	err := log.InitLogging(&log.Config{
 		LogName:       containerName,
 		LogFileSize:   app.GetGlobalConfig().LogFileSize,
 		LoggingModule: app.GetGlobalConfig().LoggingModule,
@@ -169,9 +173,9 @@ func ensureCRDExist(ctx context.Context, client *clientSet.Clientset) error {
 	}
 
 	backoff := wait.Backoff{
-		Duration: 100 * time.Millisecond,
-		Factor:   1.5,
-		Steps:    10,
+		Duration: backoffDuration,
+		Factor:   backoffFactor,
+		Steps:    backoffSteps,
 	}
 	if err := wait.ExponentialBackoff(backoff, exist); err != nil {
 		return err

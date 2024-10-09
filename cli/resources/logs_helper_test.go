@@ -49,7 +49,7 @@ func Test_saveConsoleLog_Success(t *testing.T) {
 	})
 
 	// act
-	gotErr := saveConsoleLog(logs, namespace, podName, containerName, nodeName, true)
+	gotErr := saveConsoleLog(logs, getLogArgs(namespace, containerName, podName, nodeName, true))
 
 	// assert
 	if gotErr != nil {
@@ -79,7 +79,7 @@ func Test_saveConsoleLog_CreateFileFail(t *testing.T) {
 	})
 
 	// act
-	gotErr := saveConsoleLog(logs, namespace, podName, containerName, nodeName, true)
+	gotErr := saveConsoleLog(logs, getLogArgs(namespace, containerName, podName, nodeName, true))
 
 	// assert
 	if !reflect.DeepEqual(gotErr, wantErr) {
@@ -114,7 +114,7 @@ func Test_saveConsoleLog_ChmodFileFail(t *testing.T) {
 	})
 
 	// act
-	gotErr := saveConsoleLog(logs, namespace, podName, containerName, nodeName, true)
+	gotErr := saveConsoleLog(logs, getLogArgs(namespace, containerName, podName, nodeName, true))
 
 	// assert
 	if !reflect.DeepEqual(gotErr, wantErr) {
@@ -151,7 +151,7 @@ func Test_saveConsoleLog_WriteFileFail(t *testing.T) {
 	})
 
 	// act
-	gotErr := saveConsoleLog(logs, namespace, podName, containerName, nodeName, true)
+	gotErr := saveConsoleLog(logs, getLogArgs(namespace, containerName, podName, nodeName, true))
 
 	// assert
 	if !reflect.DeepEqual(gotErr, wantErr) {

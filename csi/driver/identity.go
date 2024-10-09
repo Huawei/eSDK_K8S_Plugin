@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,13 +19,14 @@ package driver
 import (
 	"context"
 
-	"huawei-csi-driver/utils/log"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
+
+	"huawei-csi-driver/utils/log"
 )
 
 // GetPluginInfo used to get plugin info
-func (d *Driver) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
+func (d *CsiDriver) GetPluginInfo(ctx context.Context,
+	req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
 	log.AddContext(ctx).Infof("Get plugin info %v", *d)
 	return &csi.GetPluginInfoResponse{
 		Name:          d.name,
@@ -34,7 +35,8 @@ func (d *Driver) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoReques
 }
 
 // GetPluginCapabilities used to get plugin capabilities
-func (d *Driver) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
+func (d *CsiDriver) GetPluginCapabilities(ctx context.Context,
+	req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
 	log.AddContext(ctx).Infof("Get plugin capabilities of %v", *d)
 
 	return &csi.GetPluginCapabilitiesResponse{
@@ -58,7 +60,7 @@ func (d *Driver) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCa
 }
 
 // Probe used to health check
-func (d *Driver) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
+func (d *CsiDriver) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
 	log.AddContext(ctx).Debugf("Probe plugin %v", *d)
 	return &csi.ProbeResponse{}, nil
 }

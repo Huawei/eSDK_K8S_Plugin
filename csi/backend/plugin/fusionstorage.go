@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,12 +31,12 @@ import (
 )
 
 const (
-	// CAPACITY_UNIT unit of capacity
-	CAPACITY_UNIT    int64 = 1024 * 1024
+	// CapacityUnit unit of capacity
+	CapacityUnit     int64 = 1024 * 1024
 	fileCapacityUnit int64 = 1024
 
-	// PROTOCOL_DPC protocol DPC string
-	PROTOCOL_DPC = "dpc"
+	// ProtocolDpc protocol DPC string
+	ProtocolDpc = "dpc"
 )
 
 const (
@@ -49,7 +49,7 @@ const (
 // FusionStoragePlugin defines the plugin for Fusion storage
 type FusionStoragePlugin struct {
 	basePlugin
-	cli *client.Client
+	cli *client.RestClient
 }
 
 func (p *FusionStoragePlugin) init(ctx context.Context, config map[string]interface{}, keepLogin bool) error {
@@ -88,7 +88,7 @@ func (p *FusionStoragePlugin) getParams(name string,
 	params := map[string]interface{}{
 		"name":        name,
 		"description": parameters["description"].(string),
-		"capacity":    utils.RoundUpSize(parameters["size"].(int64), CAPACITY_UNIT),
+		"capacity":    utils.RoundUpSize(parameters["size"].(int64), CapacityUnit),
 	}
 
 	paramKeys := []string{
@@ -147,9 +147,9 @@ func (p *FusionStoragePlugin) updatePoolCapabilities(ctx context.Context, poolNa
 			totalCapacity := int64(pool["totalCapacity"].(float64))
 			usedCapacity := int64(pool["usedCapacity"].(float64))
 			capability := map[string]interface{}{
-				string(xuanwuv1.FreeCapacity):  (totalCapacity - usedCapacity) * CAPACITY_UNIT,
-				string(xuanwuv1.TotalCapacity): totalCapacity * CAPACITY_UNIT,
-				string(xuanwuv1.UsedCapacity):  usedCapacity * CAPACITY_UNIT,
+				string(xuanwuv1.FreeCapacity):  (totalCapacity - usedCapacity) * CapacityUnit,
+				string(xuanwuv1.TotalCapacity): totalCapacity * CapacityUnit,
+				string(xuanwuv1.UsedCapacity):  usedCapacity * CapacityUnit,
 			}
 			capabilities[name] = capability
 		}
@@ -171,7 +171,8 @@ func (p *FusionStoragePlugin) Logout(ctx context.Context) {
 	}
 }
 
-func (p *FusionStoragePlugin) getNewClientConfig(ctx context.Context, config map[string]interface{}) (*client.NewClientConfig, error) {
+func (p *FusionStoragePlugin) getNewClientConfig(ctx context.Context,
+	config map[string]interface{}) (*client.NewClientConfig, error) {
 	newClientConfig := &client.NewClientConfig{}
 	configUrls, exist := config["urls"].([]interface{})
 	if !exist || len(configUrls) <= 0 {

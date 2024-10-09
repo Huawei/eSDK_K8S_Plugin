@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,16 +14,17 @@
  *  limitations under the License.
  */
 
-package command
+package cmd
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"huawei-csi-driver/cli/config"
 )
 
-func init() {
+func registerVersionCmd() {
 	RootCmd.AddCommand(versionCmd)
 }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ import (
 	"huawei-csi-driver/storage/fusionstorage/client"
 	"huawei-csi-driver/storage/fusionstorage/smartx"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/flow"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/taskflow"
 )
 
 const (
@@ -36,15 +36,17 @@ const (
 
 	// ISCSITYPE defines iscsi type
 	ISCSITYPE = 1
+
+	snapshotRandBase = 10000000000
 )
 
 // SAN provides san storage client
 type SAN struct {
-	cli *client.Client
+	cli *client.RestClient
 }
 
 // NewSAN inits a new san client
-func NewSAN(cli *client.Client) *SAN {
+func NewSAN(cli *client.RestClient) *SAN {
 	return &SAN{
 		cli: cli,
 	}
@@ -105,7 +107,7 @@ func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.
 		return nil, err
 	}
 
-	taskflow := taskflow.NewTaskFlow(ctx, "Create-FusionStorage-LUN-Volume")
+	taskflow := flow.NewTaskFlow(ctx, "Create-FusionStorage-LUN-Volume")
 	taskflow.AddTask("Create-LUN", p.createLun, p.revertLun)
 	taskflow.AddTask("Create-QoS", p.createQoS, nil)
 
@@ -189,7 +191,7 @@ func (p *SAN) clone(ctx context.Context, params map[string]interface{}) error {
 		return errors.New(msg)
 	}
 
-	snapshotName := fmt.Sprintf("k8s_vol_%s_snap_%d", cloneFrom, utils.RandomInt(10000000000))
+	snapshotName := fmt.Sprintf("k8s_vol_%s_snap_%d", cloneFrom, utils.RandomInt(snapshotRandBase))
 
 	err = p.cli.CreateSnapshot(ctx, snapshotName, cloneFrom)
 	if err != nil {
@@ -364,7 +366,7 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 		return false, errors.New(msg)
 	}
 
-	expandTask := taskflow.NewTaskFlow(ctx, "Expand-LUN-Volume")
+	expandTask := flow.NewTaskFlow(ctx, "Expand-LUN-Volume")
 	expandTask.AddTask("Expand-PreCheck-Capacity", p.preExpandCheckCapacity, nil)
 	expandTask.AddTask("Expand-Local-Lun", p.expandLocalLun, nil)
 
@@ -449,7 +451,7 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 		}
 	}
 
-	taskflow := taskflow.NewTaskFlow(ctx, "Create-LUN-Snapshot")
+	taskflow := flow.NewTaskFlow(ctx, "Create-LUN-Snapshot")
 	taskflow.AddTask("Create-Snapshot", p.createSnapshot, nil)
 
 	_, err = taskflow.Run(map[string]interface{}{

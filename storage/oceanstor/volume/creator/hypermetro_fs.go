@@ -27,7 +27,6 @@ import (
 
 const (
 	filesystemHCRESourceType = 2
-	highestPairSpeed         = 4
 
 	// hyper metro pair running status
 	hyperMetroPairRunningStatusNormal  = "1"

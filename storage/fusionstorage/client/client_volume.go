@@ -32,7 +32,7 @@ const (
 )
 
 // CreateVolume creates volume by params
-func (cli *Client) CreateVolume(ctx context.Context, params map[string]interface{}) error {
+func (cli *RestClient) CreateVolume(ctx context.Context, params map[string]interface{}) error {
 	data := map[string]interface{}{
 		"volName": params["name"].(string),
 		"volSize": params["capacity"].(int64),
@@ -54,7 +54,7 @@ func (cli *Client) CreateVolume(ctx context.Context, params map[string]interface
 }
 
 // GetVolumeByName gets volume info by name
-func (cli *Client) GetVolumeByName(ctx context.Context, name string) (map[string]interface{}, error) {
+func (cli *RestClient) GetVolumeByName(ctx context.Context, name string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/dsware/service/v1.3/volume/queryByName?volName=%s", name)
 	resp, err := cli.get(ctx, url, nil)
 	if err != nil {
@@ -87,7 +87,7 @@ func (cli *Client) GetVolumeByName(ctx context.Context, name string) (map[string
 }
 
 // DeleteVolume deletes volume by name
-func (cli *Client) DeleteVolume(ctx context.Context, name string) error {
+func (cli *RestClient) DeleteVolume(ctx context.Context, name string) error {
 	data := map[string]interface{}{
 		"volNames": []string{name},
 	}
@@ -139,7 +139,7 @@ func (cli *Client) DeleteVolume(ctx context.Context, name string) error {
 }
 
 // AttachVolume attaches volume target ip
-func (cli *Client) AttachVolume(ctx context.Context, name, ip string) error {
+func (cli *RestClient) AttachVolume(ctx context.Context, name, ip string) error {
 	data := map[string]interface{}{
 		"volName": []string{name},
 		"ipList":  []string{ip},
@@ -169,7 +169,7 @@ func (cli *Client) AttachVolume(ctx context.Context, name, ip string) error {
 }
 
 // DetachVolume detaches volume from target ip
-func (cli *Client) DetachVolume(ctx context.Context, name, ip string) error {
+func (cli *RestClient) DetachVolume(ctx context.Context, name, ip string) error {
 	data := map[string]interface{}{
 		"volName": []string{name},
 		"ipList":  []string{ip},
@@ -199,7 +199,7 @@ func (cli *Client) DetachVolume(ctx context.Context, name, ip string) error {
 }
 
 // ExtendVolume extends volume capacity
-func (cli *Client) ExtendVolume(ctx context.Context, lunName string, newCapacity int64) error {
+func (cli *RestClient) ExtendVolume(ctx context.Context, lunName string, newCapacity int64) error {
 	data := map[string]interface{}{
 		"volName":    lunName,
 		"newVolSize": newCapacity,
@@ -219,7 +219,7 @@ func (cli *Client) ExtendVolume(ctx context.Context, lunName string, newCapacity
 }
 
 // GetHostLunId gets host lun id of hostName
-func (cli *Client) GetHostLunId(ctx context.Context, hostName, lunName string) (string, error) {
+func (cli *RestClient) GetHostLunId(ctx context.Context, hostName, lunName string) (string, error) {
 	data := map[string]interface{}{
 		"hostName": hostName,
 	}

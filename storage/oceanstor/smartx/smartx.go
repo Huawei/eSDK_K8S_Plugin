@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,6 +32,17 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
+const (
+	kilo                       = 1000
+	minLatency, maxLatency     = 500, 1500
+	minIops, maxIops           = 99, 999999999
+	minBandwidth, maxBandwidth = 0, 999999999
+	validIOType0               = 0
+	validIOType1               = 1
+	validIOType2               = 2
+	ioType                     = 2
+)
+
 type qosParameterValidators map[string]func(int) bool
 type qosParameterList map[string]struct{}
 
@@ -45,19 +56,19 @@ var (
 
 	doradoParameterValidators = map[string]func(int) bool{
 		"IOTYPE": func(value int) bool {
-			return value == 2
+			return value == validIOType2
 		},
 		"MAXBANDWIDTH": func(value int) bool {
 			return value > 0
 		},
 		"MAXIOPS": func(value int) bool {
-			return value > 99
+			return value > minIops
 		},
 	}
 
 	oceanStorV3V5ParameterValidators = map[string]func(int) bool{
 		"IOTYPE": func(value int) bool {
-			return value == 0 || value == 1 || value == 2
+			return value == validIOType0 || value == validIOType1 || value == validIOType2
 		},
 		"MAXBANDWIDTH": func(value int) bool {
 			return value > 0
@@ -78,28 +89,28 @@ var (
 
 	doradoV6ParameterValidators = map[string]func(int) bool{
 		"IOTYPE": func(value int) bool {
-			return value == 2
+			return value == ioType
 		},
 		"MAXBANDWIDTH": func(value int) bool {
-			return value > 0 && value <= 999999999
+			return value > minBandwidth && value <= maxBandwidth
 
 		},
 		"MINBANDWIDTH": func(value int) bool {
-			return value > 0 && value <= 999999999
+			return value > minBandwidth && value <= maxBandwidth
 
 		},
 		"MAXIOPS": func(value int) bool {
-			return value > 99 && value <= 999999999
+			return value > minIops && value <= maxIops
 
 		},
 		"MINIOPS": func(value int) bool {
-			return value > 99 && value <= 999999999
+			return value > minIops && value <= maxIops
 
 		},
 		"LATENCY": func(value int) bool {
 			// User request Latency values in millisecond but during extraction values are converted in microsecond
 			// as required in OceanStor DoradoV6 QoS create interface
-			return value == 500 || value == 1500
+			return value == minLatency || value == maxLatency
 		},
 	}
 
@@ -194,7 +205,7 @@ func ExtractQoSParameters(ctx context.Context, product string, qosConfig string)
 
 		if product == constants.OceanStorDoradoV6 && key == "LATENCY" {
 			// convert OceanStoreDoradoV6 Latency from millisecond to microsecond
-			params[key] = value * 1000
+			params[key] = value * kilo
 			continue
 		}
 
@@ -237,25 +248,25 @@ func ValidateQoSParameters(product string, qosParam map[string]float64) (map[str
 	return validatedParameters, nil
 }
 
-// SmartX provides smartx client
-type SmartX struct {
+// Client provides smartx client
+type Client struct {
 	cli client.BaseClientInterface
 }
 
 // NewSmartX inits a new smartx client
-func NewSmartX(cli client.BaseClientInterface) *SmartX {
-	return &SmartX{
+func NewSmartX(cli client.BaseClientInterface) *Client {
+	return &Client{
 		cli: cli,
 	}
 }
 
-func (p *SmartX) getQosName(objID, objType string) string {
+func (p *Client) getQosName(objID, objType string) string {
 	now := time.Now().Format("20060102150405")
 	return fmt.Sprintf("k8s_%s%s_%s", objType, objID, now)
 }
 
 // CreateQos creates qos and return its id
-func (p *SmartX) CreateQos(ctx context.Context,
+func (p *Client) CreateQos(ctx context.Context,
 	objID, objType, vStoreID string,
 	params map[string]int) (string, error) {
 	var err error
@@ -285,7 +296,7 @@ func (p *SmartX) CreateQos(ctx context.Context,
 	}
 
 	name := p.getQosName(objID, objType)
-	qos, err := p.cli.CreateQos(ctx, name, objID, objType, vStoreID, params)
+	qos, err := p.cli.CreateQos(ctx, p.getCreateQosArgs(name, objID, objType, vStoreID, params))
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create qos %v for obj %s of type %s error: %v",
 			params, objID, objType, err)
@@ -314,7 +325,7 @@ func (p *SmartX) CreateQos(ctx context.Context,
 }
 
 // DeleteQos deletes qos by id
-func (p *SmartX) DeleteQos(ctx context.Context, qosID, objID, objType, vStoreID string) error {
+func (p *Client) DeleteQos(ctx context.Context, qosID, objID, objType, vStoreID string) error {
 	qos, err := p.cli.GetQosByID(ctx, qosID, vStoreID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get qos by ID %s error: %v", qosID, err)
@@ -377,7 +388,7 @@ func (p *SmartX) DeleteQos(ctx context.Context, qosID, objID, objType, vStoreID 
 }
 
 // CreateLunSnapshot creates lun snapshot
-func (p *SmartX) CreateLunSnapshot(ctx context.Context, name, srcLunID string) (map[string]interface{}, error) {
+func (p *Client) CreateLunSnapshot(ctx context.Context, name, srcLunID string) (map[string]interface{}, error) {
 	snapshot, err := p.cli.CreateLunSnapshot(ctx, name, srcLunID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create snapshot %s for lun %s error: %v", name, srcLunID, err)
@@ -399,7 +410,7 @@ func (p *SmartX) CreateLunSnapshot(ctx context.Context, name, srcLunID string) (
 }
 
 // DeleteLunSnapshot deletes lun snapshot by id
-func (p *SmartX) DeleteLunSnapshot(ctx context.Context, snapshotID string) error {
+func (p *Client) DeleteLunSnapshot(ctx context.Context, snapshotID string) error {
 	err := p.cli.DeactivateLunSnapshot(ctx, snapshotID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Deactivate snapshot %s error: %v", snapshotID, err)
@@ -416,7 +427,7 @@ func (p *SmartX) DeleteLunSnapshot(ctx context.Context, snapshotID string) error
 }
 
 // CreateFSSnapshot creates fs snapshot
-func (p *SmartX) CreateFSSnapshot(ctx context.Context, name, srcFSID string) (string, error) {
+func (p *Client) CreateFSSnapshot(ctx context.Context, name, srcFSID string) (string, error) {
 	snapshot, err := p.cli.CreateFSSnapshot(ctx, name, srcFSID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create snapshot %s for FS %s error: %v", name, srcFSID, err)
@@ -431,7 +442,7 @@ func (p *SmartX) CreateFSSnapshot(ctx context.Context, name, srcFSID string) (st
 }
 
 // DeleteFSSnapshot deletes fs snapshot by id
-func (p *SmartX) DeleteFSSnapshot(ctx context.Context, snapshotID string) error {
+func (p *Client) DeleteFSSnapshot(ctx context.Context, snapshotID string) error {
 	err := p.cli.DeleteFSSnapshot(ctx, snapshotID)
 	if err != nil {
 
@@ -440,4 +451,14 @@ func (p *SmartX) DeleteFSSnapshot(ctx context.Context, snapshotID string) error 
 	}
 
 	return nil
+}
+
+func (p *Client) getCreateQosArgs(name, objID, objType, vStoreID string, params map[string]int) client.CreateQoSArgs {
+	return client.CreateQoSArgs{
+		Name:     name,
+		ObjID:    objID,
+		ObjType:  objType,
+		VStoreID: vStoreID,
+		Params:   params,
+	}
 }

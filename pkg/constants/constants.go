@@ -22,7 +22,7 @@ type FileType string
 
 const (
 	// ProviderVersion defines provider version
-	ProviderVersion = "4.4.0"
+	ProviderVersion = "4.5.0"
 	// ProviderVendorName defines provider vendor name
 	ProviderVendorName = "Huawei"
 	// EndpointDirPermission defines permission of endpoint dir
@@ -62,8 +62,6 @@ const (
 	PVKind = "PersistentVolume"
 	// PodKind is defined by k8s
 	PodKind = "Pod"
-	// TopologyKind is topology resource kind
-	TopologyKind = "ResourceTopology"
 
 	// KubernetesV1 is kubernetes v1 api version
 	KubernetesV1 = "v1"
@@ -78,6 +76,11 @@ const (
 
 	// AllocationUnitBytes default is 512
 	AllocationUnitBytes = 512
+
+	// DefaultIntBase is the default value of int base
+	DefaultIntBase = 10
+	// DefaultIntBitSize is the default value of bit size
+	DefaultIntBitSize = 64
 )
 
 var (

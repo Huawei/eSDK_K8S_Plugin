@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"regexp"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -55,11 +56,6 @@ const (
 	// QueryCountPerBatch defines query count for each circle of batch operation
 	QueryCountPerBatch int = 100
 
-	description string = "Created from huawei-csi for Kubernetes"
-
-	defaultVStore   string = "System_vStore"
-	defaultVStoreID string = "0"
-
 	// IPLockErrorCode defines error code of ip lock
 	IPLockErrorCode = 1077949071
 
@@ -74,6 +70,13 @@ const (
 
 	// UrlNotFound defines error msg of url not found
 	UrlNotFound = "404_NotFound"
+)
+
+const (
+	description        string = "Created from huawei-csi for Kubernetes"
+	defaultVStore      string = "System_vStore"
+	defaultVStoreID    string = "0"
+	defaultHttpTimeout        = 60 * time.Second
 )
 
 var (
@@ -104,7 +107,6 @@ type BaseClientInterface interface {
 	VStore
 	DTree
 	OceanStorQuota
-	Container
 	LIF
 
 	Call(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
@@ -159,8 +161,8 @@ var (
 		},
 	}
 
-	// ClientSemaphore provides semaphore of client
-	ClientSemaphore *utils.Semaphore
+	// RequestSemaphore provides semaphore of client
+	RequestSemaphore *utils.Semaphore
 )
 
 func isFilterLog(method, url string) bool {
@@ -215,7 +217,7 @@ func newHTTPClientByBackendID(ctx context.Context, backendID string) (HTTP, erro
 	var defaultUseCert bool
 	client := &http.Client{
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: !defaultUseCert}},
-		Timeout:   60 * time.Second,
+		Timeout:   defaultHttpTimeout,
 	}
 
 	jar, err := cookiejar.New(nil)
@@ -258,7 +260,7 @@ func newHTTPClientByCertMeta(ctx context.Context, useCert bool, certMeta string)
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool},
 		},
 		Jar:     jar,
-		Timeout: 60 * time.Second,
+		Timeout: defaultHttpTimeout,
 	}, nil
 }
 
@@ -334,7 +336,7 @@ func NewClient(ctx context.Context, param *NewClientConfig) (*BaseClient, error)
 	}
 
 	log.AddContext(ctx).Infof("Init parallel count is %d", parallelCount)
-	ClientSemaphore = utils.NewSemaphore(parallelCount)
+	RequestSemaphore = utils.NewSemaphore(parallelCount)
 
 	httpClient, err := newHTTPClientByCertMeta(ctx, param.UseCert, param.CertSecretMeta)
 	if err != nil {
@@ -446,7 +448,7 @@ func (cli *BaseClient) GetRequest(ctx context.Context,
 	if data != nil {
 		reqBytes, err := json.Marshal(data)
 		if err != nil {
-			log.AddContext(ctx).Errorf("json.Marshal data %v error: %v", data, err)
+			log.AddContext(ctx).Errorf("json.Marshal data %v error: %v", maskRequestData(data), err)
 			return req, err
 		}
 		reqBody = bytes.NewReader(reqBytes)
@@ -501,8 +503,12 @@ func (cli *BaseClient) BaseCall(ctx context.Context,
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
 		fmt.Sprintf("Request method: %s, Url: %s, body: %v", method, req.URL, data))
 
-	ClientSemaphore.Acquire()
-	defer ClientSemaphore.Release()
+	if RequestSemaphore == nil {
+		return r, errors.New("request semaphore is nil")
+	}
+
+	RequestSemaphore.Acquire()
+	defer RequestSemaphore.Release()
 
 	resp, err := cli.Client.Do(req)
 	if err != nil {
@@ -560,9 +566,9 @@ func (cli *BaseClient) SafeBaseCall(ctx context.Context,
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
 		fmt.Sprintf("Request method: %s, Url: %s, body: %v", method, req.URL, data))
 
-	if ClientSemaphore != nil {
-		ClientSemaphore.Acquire()
-		defer ClientSemaphore.Release()
+	if RequestSemaphore != nil {
+		RequestSemaphore.Acquire()
+		defer RequestSemaphore.Release()
 	}
 
 	return cli.safeDoCall(ctx, method, url, req)
@@ -901,7 +907,7 @@ func (cli *BaseClient) getCountFromResponse(ctx context.Context, data interface{
 	if !ok {
 		return 0, utils.Errorf(ctx, "The COUNT is not in respData %v", respData)
 	}
-	count, err := strconv.ParseInt(countStr, 10, 64)
+	count, err := strconv.ParseInt(countStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
 	if err != nil {
 		return 0, err
 	}
@@ -933,7 +939,7 @@ func (cli *BaseClient) getSystemUTCTime(ctx context.Context) (int64, error) {
 		return 0, utils.Errorf(ctx, "The CMO_SYS_UTC_TIME is not in respData %v", respData)
 	}
 
-	time, err := strconv.ParseInt(utcTime, 10, 64)
+	time, err := strconv.ParseInt(utcTime, constants.DefaultIntBase, constants.DefaultIntBitSize)
 	if err != nil {
 		return 0, err
 	}
@@ -1114,4 +1120,19 @@ func (cli *BaseClient) setLifInfo(ctx context.Context) {
 
 func (cli *BaseClient) systemInfoRefreshing() bool {
 	return atomic.LoadUint32(&cli.SystemInfoRefreshing) == 1
+}
+
+func maskRequestData(data map[string]any) map[string]any {
+	sensitiveKey := []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
+
+	maskedData := make(map[string]any)
+	for k, v := range data {
+		if slices.Contains(sensitiveKey, k) {
+			maskedData[k] = "***"
+		} else {
+			maskedData[k] = v
+		}
+	}
+
+	return maskedData
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,8 +33,8 @@ import (
 	"huawei-csi-driver/storage/fusionstorage/types"
 	fsUtils "huawei-csi-driver/storage/fusionstorage/utils"
 	"huawei-csi-driver/utils"
+	"huawei-csi-driver/utils/flow"
 	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/taskflow"
 )
 
 const (
@@ -44,6 +44,8 @@ const (
 	quotaParentFileSystem   = "40"
 	directoryQuotaType      = "1"
 	quotaInvalidValue       = 18446744073709552000
+	waitUntilTimeout        = 6 * time.Hour
+	waitUntilInterval       = 5 * time.Second
 )
 
 const (
@@ -61,11 +63,11 @@ const (
 
 // NAS provides nas storage client
 type NAS struct {
-	cli *client.Client
+	cli *client.RestClient
 }
 
 // NewNAS inits a new nas client
-func NewNAS(cli *client.Client) *NAS {
+func NewNAS(cli *client.RestClient) *NAS {
 	return &NAS{
 		cli: cli,
 	}
@@ -289,7 +291,7 @@ func (p *NAS) Create(ctx context.Context, params map[string]interface{}) (utils.
 		return nil, err
 	}
 
-	createTask := taskflow.NewTaskFlow(ctx, "Create-FileSystem-Volume")
+	createTask := flow.NewTaskFlow(ctx, "Create-FileSystem-Volume")
 	createTask.AddTask("Create-FS", p.createFS, p.revertFS)
 	createTask.AddTask("Create-Quota", p.createQuota, p.revertQuota)
 	createTask.AddTask("Create-Converged-QoS", p.createConvergedQoS, p.revertConvergedQoS)
@@ -611,7 +613,7 @@ func (p *NAS) waitFilesystemCreated(ctx context.Context, fsName string) error {
 		} else {
 			return false, nil
 		}
-	}, time.Hour*6, time.Second*5)
+	}, waitUntilTimeout, waitUntilInterval)
 	return err
 }
 

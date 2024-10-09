@@ -49,6 +49,7 @@ const (
 	maxTransmissionsNum     = 10
 
 	maxNodeGoroutineLimit = 1000
+	zipFilePermission     = 0600
 )
 
 var (
@@ -252,7 +253,7 @@ func zipMultiFiles(zipPath string, filePaths ...string) error {
 	if err := os.MkdirAll(filepath.Dir(zipPath), os.ModePerm); err != nil {
 		return helper.LogErrorf("create compressed logs directory failed, error: %v", err)
 	}
-	archive, err := os.OpenFile(zipPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	archive, err := os.OpenFile(zipPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, zipFilePermission)
 	if err != nil {
 		return helper.LogErrorf("create compressed logs file failed, error: %v", err)
 	}

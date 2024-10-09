@@ -50,9 +50,9 @@ const (
 	ConsistentSnapshotsSpecification = "128"
 )
 
-var supportConsistentSnapshotsVersions = []string{"6.1.6"}
+var supportConsistentSnapshotsMinVersion = "6.1.6"
 
-// OceanstorNasPlugin implements storage Plugin interface
+// OceanstorNasPlugin implements storage StoragePlugin interface
 type OceanstorNasPlugin struct {
 	OceanstorPlugin
 	portals       []string
@@ -69,7 +69,7 @@ func init() {
 }
 
 // NewPlugin used to create new plugin
-func (p *OceanstorNasPlugin) NewPlugin() Plugin {
+func (p *OceanstorNasPlugin) NewPlugin() StoragePlugin {
 	return &OceanstorNasPlugin{}
 }
 
@@ -97,10 +97,10 @@ func (p *OceanstorNasPlugin) Init(ctx context.Context, config map[string]interfa
 		return err
 	}
 
-	if protocol == ProtocolNfsPlus && p.cli.GetStorageVersion() < constants.MinVersionSupportLabel {
+	if protocol == ProtocolNfsPlus && p.cli.GetStorageVersion() < constants.MinVersionSupportNfsPlus {
 		p.Logout(ctx)
 
-		return errors.New("only oceanstor nas version gte 6.1.7 support nfs_plus")
+		return errors.New("only oceanstor nas version gte 6.1.7 support nfs plus")
 	}
 
 	return nil
@@ -236,10 +236,10 @@ func (p *OceanstorNasPlugin) getVstoreCapacity(ctx context.Context) (map[string]
 	var nasCapacityQuota, nasFreeCapacityQuota int64
 
 	if totalStr, ok := vStore["nasCapacityQuota"].(string); ok {
-		nasCapacityQuota, err = strconv.ParseInt(totalStr, 10, 64)
+		nasCapacityQuota, err = strconv.ParseInt(totalStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
 	}
 	if freeStr, ok := vStore["nasFreeCapacityQuota"].(string); ok {
-		nasFreeCapacityQuota, err = strconv.ParseInt(freeStr, 10, 64)
+		nasFreeCapacityQuota, err = strconv.ParseInt(freeStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
 	}
 	if err != nil {
 		log.AddContext(ctx).Warningf("parse vstore quota failed, error: %v", err)
@@ -254,14 +254,14 @@ func (p *OceanstorNasPlugin) getVstoreCapacity(ctx context.Context) (map[string]
 	}
 
 	return map[string]interface{}{
-		string(xuanwuV1.FreeCapacity):  nasFreeCapacityQuota * 512,
-		string(xuanwuV1.TotalCapacity): nasCapacityQuota * 512,
-		string(xuanwuV1.UsedCapacity):  (nasCapacityQuota - nasFreeCapacityQuota) * 512,
+		string(xuanwuV1.FreeCapacity):  nasFreeCapacityQuota * constants.AllocationUnitBytes,
+		string(xuanwuV1.TotalCapacity): nasCapacityQuota * constants.AllocationUnitBytes,
+		string(xuanwuV1.UsedCapacity):  (nasCapacityQuota - nasFreeCapacityQuota) * constants.AllocationUnitBytes,
 	}, nil
 }
 
 // UpdateMetroRemotePlugin used to convert metroRemotePlugin to OceanstorSanPlugin
-func (p *OceanstorNasPlugin) UpdateMetroRemotePlugin(ctx context.Context, remote Plugin) {
+func (p *OceanstorNasPlugin) UpdateMetroRemotePlugin(ctx context.Context, remote StoragePlugin) {
 	var ok bool
 	p.metroRemotePlugin, ok = remote.(*OceanstorNasPlugin)
 	if !ok {
@@ -401,14 +401,14 @@ func (p *OceanstorNasPlugin) updateHyperMetroCapability(ctx context.Context,
 	return nil
 }
 
-func (p *OceanstorNasPlugin) updateConsistentSnapshotCapability(
-	capabilities, specifications map[string]interface{}) error {
-	var supportConsistentSnapshot bool
-	if utils.StringContain(p.cli.GetStorageVersion(), supportConsistentSnapshotsVersions) {
-		supportConsistentSnapshot = true
-		specifications["ConsistentSnapshotLimits"] = ConsistentSnapshotsSpecification
+func (p *OceanstorNasPlugin) updateConsistentSnapshotCapability(capabilities, specifications map[string]any) error {
+	if p.cli.GetStorageVersion() < supportConsistentSnapshotsMinVersion {
+		capabilities["SupportConsistentSnapshot"] = false
+		return nil
 	}
-	capabilities["SupportConsistentSnapshot"] = supportConsistentSnapshot
+
+	capabilities["SupportConsistentSnapshot"] = true
+	specifications["ConsistentSnapshotLimits"] = ConsistentSnapshotsSpecification
 	return nil
 }
 

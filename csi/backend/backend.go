@@ -146,8 +146,7 @@ func BuildBackend(ctx context.Context, content v1.StorageBackendContent) (*model
 
 	config, err := GetStorageBackendInfo(ctx,
 		pkgUtils.MakeMetaWithNamespace(ns, name),
-		content.Spec.ConfigmapMeta, content.Spec.SecretMeta,
-		content.Spec.CertSecret, content.Spec.UseCert)
+		NewGetBackendInfoArgsFromContent(&content))
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +207,7 @@ func NewBackend(backendName string, config map[string]interface{}) (*model.Backe
 	replicaBackend, _ := config["replicaBackend"].(string)
 	metroBackend, _ := config["metroBackend"].(string)
 	accountName, _ := config["accountName"].(string)
+	contentName, _ := config["contentName"].(string)
 
 	// while config hyperMetro, the metroBackend must config, hyperMetroDomain or metrovStorePairID should be config
 	if ((metroDomain != "" || metrovStorePairID != "") && metroBackend == "") ||
@@ -217,6 +217,7 @@ func NewBackend(backendName string, config map[string]interface{}) (*model.Backe
 
 	return &model.Backend{
 		Name:                backendName,
+		ContentName:         contentName,
 		Storage:             storage,
 		Available:           false,
 		SupportedTopologies: supportedTopologies,
@@ -449,7 +450,7 @@ func updateSelectPool(requestSize int64, parameters map[string]interface{}, sele
 	// when the allocType is thin, do not change the FreeCapacity.
 	if allocType == "thick" {
 		freeCapacity := utils.ParseIntWithDefault(selectPool.Capacities["FreeCapacity"], 10, 64, 0)
-		selectPool.Capacities["FreeCapacity"] = strconv.FormatInt(int64(rune(freeCapacity-requestSize)), 10)
+		selectPool.Capacities["FreeCapacity"] = strconv.FormatInt(freeCapacity-requestSize, 10)
 	}
 }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,11 +28,15 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+
+	"huawei-csi-driver/pkg/constants"
 )
 
 const (
-	logFilePermission = 0640
-	backupTimeFormat  = "20060102-150405"
+	logFilePermission        = 0640
+	logFileRootDirPermission = 0750
+	rotatedLogFilePermission = 0440
+	backupTimeFormat         = "20060102-150405"
 )
 
 // FileHook sends log entries to a file.
@@ -52,7 +56,7 @@ func newFileHook(logFilePath, logFileSize string, logFormat logrus.Formatter) (*
 	logFileRootDir := filepath.Dir(logFilePath)
 	dir, err := os.Lstat(logFileRootDir)
 	if os.IsNotExist(err) {
-		if err := os.MkdirAll(logFileRootDir, 0750); err != nil {
+		if err := os.MkdirAll(logFileRootDir, logFileRootDirPermission); err != nil {
 			return nil, fmt.Errorf("could not create log directory %v. %v", logFileRootDir, err)
 		}
 	}
@@ -110,8 +114,8 @@ func (hook *FileHook) Fire(entry *logrus.Entry) error {
 	return nil
 }
 
-// logfileNeedsRotation checks to see if a file has grown too large
-func (hook *FileHook) logfileNeedsRotation() bool {
+// needsRotation checks to see if a file has grown too large
+func (hook *FileHook) needsRotation() bool {
 	fileInfo, err := hook.logFileHandle.stat()
 	if err != nil {
 		return false
@@ -122,11 +126,11 @@ func (hook *FileHook) logfileNeedsRotation() bool {
 
 // maybeDoLogfileRotation check and perform log rotation
 func (hook *FileHook) maybeDoLogfileRotation() error {
-	if hook.logfileNeedsRotation() {
+	if hook.needsRotation() {
 		hook.logRotateMutex.Lock()
 		defer hook.logRotateMutex.Unlock()
 
-		if hook.logfileNeedsRotation() {
+		if hook.needsRotation() {
 			// Do the rotation.
 			err := hook.logFileHandle.rotate()
 			if err != nil {
@@ -168,7 +172,7 @@ func (f *fileHandler) rotate() error {
 	if err := os.Rename(f.filePath, rotatedLogFileLocation); err != nil {
 		return fmt.Errorf("failed to create backup file. %s", err)
 	}
-	if err := os.Chmod(rotatedLogFileLocation, 0440); err != nil {
+	if err := os.Chmod(rotatedLogFileLocation, rotatedLogFilePermission); err != nil {
 		return fmt.Errorf("failed to chmod backup file. %s", err)
 	}
 
@@ -222,7 +226,7 @@ func (f *fileHandler) sortedBackupLogFiles() ([]logFileInfo, error) {
 			continue
 		}
 
-		logFiles = append(logFiles, logFileInfo{timestamp, f})
+		logFiles = append(logFiles, logFileInfo{timestamp: timestamp, FileInfo: f})
 	}
 
 	sort.Sort(byTimeFormat(logFiles))
@@ -258,12 +262,12 @@ func getNumInByte(logFileSize string) (int64, error) {
 	// 3.最后一位是数字或者B
 	// 3.1 若最后一位是数字，则直接返回 若最后一位是B，则获取前面的数字返回
 	if lastLetter >= "0" && lastLetter <= "9" {
-		sum, err = strconv.ParseInt(maxDataNum, 10, 64)
+		sum, err = strconv.ParseInt(maxDataNum, constants.DefaultIntBase, constants.DefaultIntBitSize)
 		if err != nil {
 			return 0, err
 		}
 	} else {
-		sum, err = strconv.ParseInt(maxDataNum[:len(maxDataNum)-1], 10, 64)
+		sum, err = strconv.ParseInt(maxDataNum[:len(maxDataNum)-1], constants.DefaultIntBase, constants.DefaultIntBitSize)
 		if err != nil {
 			return 0, err
 		}

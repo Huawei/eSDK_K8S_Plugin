@@ -49,7 +49,7 @@ func main() {
 	if err := app.NewCommand().Execute(); err != nil {
 		logrus.Fatalf("Execute app command failed. error: %v", err)
 	}
-	err := log.InitLogging(&log.LoggingRequest{
+	err := log.InitLogging(&log.Config{
 		LogName:       containerName,
 		LogFileSize:   app.GetGlobalConfig().LogFileSize,
 		LoggingModule: app.GetGlobalConfig().LoggingModule,

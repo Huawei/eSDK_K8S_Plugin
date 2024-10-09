@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -21,8 +21,6 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// ResourceTopologies returns a ResourceTopologyInformer.
-	ResourceTopologies() ResourceTopologyInformer
 	// StorageBackendClaims returns a StorageBackendClaimInformer.
 	StorageBackendClaims() StorageBackendClaimInformer
 	// StorageBackendContents returns a StorageBackendContentInformer.
@@ -42,11 +40,6 @@ type version struct {
 // New returns a new Interface.
 func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
-}
-
-// ResourceTopologies returns a ResourceTopologyInformer.
-func (v *version) ResourceTopologies() ResourceTopologyInformer {
-	return &resourceTopologyInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // StorageBackendClaims returns a StorageBackendClaimInformer.

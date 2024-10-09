@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"huawei-csi-driver/csi/app"
+	"huawei-csi-driver/pkg/constants"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 )
@@ -50,6 +51,12 @@ const (
 	maxListTries = 10
 	// Location of the mount file to use
 	procMountsPath = "/proc/mounts"
+
+	extendDMBlockWaitTime   = 2 * time.Second
+	watchDeviceInterval     = 100 * time.Millisecond
+	volumeRemovalRetryTimes = 30
+
+	devLineSplitSegment = 2
 )
 
 var (
@@ -93,7 +100,7 @@ func getDevice(findDeviceMap map[string]string, deviceLink string) string {
 	devLines := strings.Split(deviceLink, "\n")
 	for _, line := range devLines {
 		splits := strings.Split(line, "../../")
-		if len(splits) >= 2 {
+		if len(splits) >= devLineSplitSegment {
 			name := splits[1]
 
 			if strings.HasPrefix(name, "dm") {
@@ -121,7 +128,7 @@ func getDevices(deviceLink string) []string {
 	devLines := strings.Split(deviceLink, "\n")
 	for _, line := range devLines {
 		splits := strings.Split(line, "../../")
-		if len(splits) < 2 || utils.IsContain(splits[1], devices) {
+		if len(splits) < devLineSplitSegment || utils.IsContain(splits[1], devices) {
 			continue
 		}
 
@@ -371,7 +378,7 @@ func removeSCSIDevice(ctx context.Context, sd string) error {
 
 func waitVolumeRemoval(ctx context.Context, devPaths []string) {
 	existPath := devPaths
-	for index := 0; index <= 30; index++ {
+	for index := 0; index <= volumeRemovalRetryTimes; index++ {
 		var exist []string
 		for _, dev := range existPath {
 			_, err := os.Stat(dev)
@@ -387,7 +394,7 @@ func waitVolumeRemoval(ctx context.Context, devPaths []string) {
 			return
 		}
 
-		if index < 30 {
+		if index < volumeRemovalRetryTimes {
 			time.Sleep(time.Second)
 		}
 	}
@@ -458,7 +465,7 @@ func WatchDMDevice(ctx context.Context, lunWWN string, expectPathNumber int) (DM
 		case <-timeout:
 			return dm, err
 		default:
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(watchDeviceInterval)
 		}
 
 		dm, err = findDMDeviceByWWN(ctx, lunWWN)
@@ -767,7 +774,7 @@ func ResizeBlock(ctx context.Context, tgtLunWWN string, requiredBytes int64) err
 
 	return utils.WaitUntil(func() (bool, error) {
 		curSize := showDeviceSize(ctx, virtualDevice)
-		if curSize != "" && strconv.FormatInt(requiredBytes, 10) == curSize {
+		if curSize != "" && strconv.FormatInt(requiredBytes, constants.DefaultIntBase) == curSize {
 			return true, nil
 		}
 		return false, nil
@@ -1028,7 +1035,7 @@ func extendDMBlock(ctx context.Context, device string) error {
 	}
 	log.AddContext(ctx).Infof("Original size of block %s is %s", device, oldSize)
 
-	time.Sleep(time.Second * 2)
+	time.Sleep(extendDMBlockWaitTime)
 	result, err := multiPathResizeMap(ctx, device)
 	if err != nil || strings.Contains(result, "fail") {
 		msg := fmt.Sprintf("Resize device %s err, output: %s, err: %v", device, result, err)
@@ -1145,9 +1152,10 @@ func findMultiPathWWN(ctx context.Context, mPath string) (string, error) {
 		return "", err
 	}
 
+	const pathMapsLen = 3
 	for _, out := range strings.Split(output, "\n") {
 		pathMaps := strings.Fields(out)
-		if len(pathMaps) == 3 && pathMaps[1] == mPath {
+		if len(pathMaps) == pathMapsLen && pathMaps[1] == mPath {
 			return pathMaps[2], nil
 		}
 	}
@@ -1412,7 +1420,7 @@ var GetDeviceSize = func(ctx context.Context, hostDevice string) (int64, error) 
 		if line == "" {
 			continue
 		}
-		size, err := strconv.ParseInt(line, 10, 64)
+		size, err := strconv.ParseInt(line, constants.DefaultIntBase, constants.DefaultIntBitSize)
 		if err != nil {
 			log.AddContext(ctx).Errorf("Failed to get device size %s, err is %v", line, err)
 			return 0, err
@@ -1576,13 +1584,17 @@ var RemoveAllDevice = func(ctx context.Context,
 }
 
 // ClearResidualPath used to clear residual path
-func ClearResidualPath(ctx context.Context, lunWWN string, volumeMode interface{}) error {
+func ClearResidualPath(ctx context.Context, lunWWN string, volumeMode any, multiPathType string) error {
 	log.AddContext(ctx).Infof("Enter func: ClearResidualPath. lunWWN:[%s]. volumeMode:[%v]", lunWWN, volumeMode)
 
 	v, ok := volumeMode.(string)
 	if ok && v == "Block" {
 		log.AddContext(ctx).Infof("volumeMode is Block, skip residual device check.")
 		return nil
+	}
+
+	if err := clearUltraPathResidualPathByWwn(ctx, multiPathType, lunWWN); err != nil {
+		return err
 	}
 
 	devInfos, err := getDevicesInfosByGUID(ctx, lunWWN)
@@ -1596,6 +1608,25 @@ func ClearResidualPath(ctx context.Context, lunWWN string, volumeMode interface{
 	}
 
 	return clearResidualPath(ctx, devInfos)
+}
+
+func clearUltraPathResidualPathByWwn(ctx context.Context, multiPathType, lunWWN string) error {
+	if multiPathType != HWUltraPath {
+		return nil
+	}
+
+	log.AddContext(ctx).Infoln("start to clear ultrapath specific residual paths by device WWN.")
+	vLun, err := GetUltrapathVLunByWWN(ctx, UltraPathCommand, lunWWN)
+	if err != nil {
+		return err
+	}
+
+	if vLun == nil {
+		log.AddContext(ctx).Infoln("no ultrapath specific residual path to clear.")
+		return nil
+	}
+
+	return vLun.CleanResidualPath(ctx)
 }
 
 func isPartitionDevice(ctx context.Context, dev string) (bool, error) {
@@ -1873,11 +1904,12 @@ func ReadMountPoints(ctx context.Context) (map[string]string, error) {
 		return nil, err
 	}
 
+	const splitLength = 2
 	mountMap := make(map[string]string)
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.TrimSpace(line) != "" {
 			splitValue := strings.Split(line, " ")
-			if len(splitValue) >= 2 && splitValue[0] != "#" {
+			if len(splitValue) >= splitLength && splitValue[0] != "#" {
 				mountMap[splitValue[1]] = splitValue[0]
 			}
 		}

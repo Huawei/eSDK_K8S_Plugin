@@ -54,7 +54,7 @@ func (opt *optionsManager) AddFlags(ff *flag.FlagSet) {
 }
 
 // ApplyFlags assign the flags
-func (opt *optionsManager) ApplyFlags(cfg *config.Config) {
+func (opt *optionsManager) ApplyFlags(cfg *config.AppConfig) {
 	opt.logOption.ApplyFlags(cfg)
 	opt.connectorOption.ApplyFlags(cfg)
 	opt.serviceOption.ApplyFlags(cfg)
@@ -81,12 +81,12 @@ func (opt *optionsManager) ValidateFlags() error {
 }
 
 // Config set all configuration
-func (opt *optionsManager) Config() (*config.Config, error) {
+func (opt *optionsManager) Config() (*config.AppConfig, error) {
 	if err := opt.ValidateFlags(); err != nil {
 		return nil, err
 	}
 
-	cfg := config.Config{}
+	cfg := config.AppConfig{}
 	opt.ApplyFlags(&cfg)
 	return &cfg, nil
 }

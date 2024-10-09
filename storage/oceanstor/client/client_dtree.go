@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -62,7 +62,8 @@ func (cli *BaseClient) CreateDTree(ctx context.Context, params map[string]interf
 }
 
 // GetDTreeByName use for get dTree information
-func (cli *BaseClient) GetDTreeByName(ctx context.Context, parentID, parentName, vStoreID, name string) (map[string]interface{}, error) {
+func (cli *BaseClient) GetDTreeByName(ctx context.Context,
+	parentID, parentName, vStoreID, name string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/QUOTATREE?PARENTNAME=%s&NAME=%s&vstoreId=%s", parentName, name, vStoreID)
 
 	resp, err := cli.Get(ctx, url, nil)

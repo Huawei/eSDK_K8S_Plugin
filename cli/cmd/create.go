@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,8 +14,7 @@
  *  limitations under the License.
  */
 
-// Package command is used to creating a resource to Ocean Storage in Kubernetes.
-package command
+package cmd
 
 import (
 	"github.com/spf13/cobra"
@@ -23,7 +22,7 @@ import (
 	"huawei-csi-driver/cli/cmd/options"
 )
 
-func init() {
+func registerCreateCmd() {
 	options.NewFlagsOptions(CreateCmd).WithParent(RootCmd)
 }
 

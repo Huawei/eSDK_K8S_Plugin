@@ -29,7 +29,7 @@ import (
 )
 
 // GetConvergedQoSNameByID used to get qos name by id
-func (cli *Client) GetConvergedQoSNameByID(ctx context.Context, qosId int) (string, error) {
+func (cli *RestClient) GetConvergedQoSNameByID(ctx context.Context, qosId int) (string, error) {
 	url := fmt.Sprintf("/api/v2/dros_service/converged_qos_policy?qos_scale=%d&id=%d",
 		types.QosScaleNamespace, qosId)
 	resp, err := cli.get(ctx, url, nil)
@@ -55,7 +55,7 @@ func (cli *Client) GetConvergedQoSNameByID(ctx context.Context, qosId int) (stri
 }
 
 // CreateConvergedQoS used to create converged QoS
-func (cli *Client) CreateConvergedQoS(ctx context.Context, req *types.CreateConvergedQoSReq) (int, error) {
+func (cli *RestClient) CreateConvergedQoS(ctx context.Context, req *types.CreateConvergedQoSReq) (int, error) {
 	data := map[string]interface{}{
 		"account_id": cli.accountId,
 		"qos_scale":  req.QosScale,
@@ -88,7 +88,7 @@ func (cli *Client) CreateConvergedQoS(ctx context.Context, req *types.CreateConv
 }
 
 // DeleteConvergedQoS used to delete converged QoS by name
-func (cli *Client) DeleteConvergedQoS(ctx context.Context, qosName string) error {
+func (cli *RestClient) DeleteConvergedQoS(ctx context.Context, qosName string) error {
 	url := fmt.Sprintf("/api/v2/dros_service/converged_qos_policy?qos_scale=%d&name=%s",
 		types.QosScaleNamespace, qosName)
 	resp, err := cli.delete(ctx, url, nil)
@@ -100,7 +100,7 @@ func (cli *Client) DeleteConvergedQoS(ctx context.Context, qosName string) error
 }
 
 // CreateQoS used to create QoS
-func (cli *Client) CreateQoS(ctx context.Context, qosName string, qosData map[string]int) error {
+func (cli *RestClient) CreateQoS(ctx context.Context, qosName string, qosData map[string]int) error {
 	data := map[string]interface{}{
 		"qosName":     qosName,
 		"qosSpecInfo": qosData,
@@ -121,7 +121,7 @@ func (cli *Client) CreateQoS(ctx context.Context, qosName string, qosData map[st
 }
 
 // DeleteQoS used to delete QoS by name
-func (cli *Client) DeleteQoS(ctx context.Context, qosName string) error {
+func (cli *RestClient) DeleteQoS(ctx context.Context, qosName string) error {
 	data := map[string]interface{}{
 		"qosNames": []string{qosName},
 	}
@@ -141,7 +141,7 @@ func (cli *Client) DeleteQoS(ctx context.Context, qosName string) error {
 }
 
 // DisassociateConvergedQoSWithVolume used to delete a converged QoS policy association
-func (cli *Client) DisassociateConvergedQoSWithVolume(ctx context.Context, objectName string) error {
+func (cli *RestClient) DisassociateConvergedQoSWithVolume(ctx context.Context, objectName string) error {
 	url := fmt.Sprintf("/api/v2/dros_service/converged_qos_association?qos_scale=%d&object_name=%s",
 		types.QosScaleNamespace, objectName)
 	resp, err := cli.delete(ctx, url, nil)
@@ -153,7 +153,7 @@ func (cli *Client) DisassociateConvergedQoSWithVolume(ctx context.Context, objec
 }
 
 // AssociateConvergedQoSWithVolume used to add a converged QoS policy association
-func (cli *Client) AssociateConvergedQoSWithVolume(ctx context.Context,
+func (cli *RestClient) AssociateConvergedQoSWithVolume(ctx context.Context,
 	req *types.AssociateConvergedQoSWithVolumeReq) error {
 
 	data := map[string]interface{}{
@@ -172,7 +172,7 @@ func (cli *Client) AssociateConvergedQoSWithVolume(ctx context.Context,
 }
 
 // AssociateQoSWithVolume used to associate QoS with volume
-func (cli *Client) AssociateQoSWithVolume(ctx context.Context, volName, qosName string) error {
+func (cli *RestClient) AssociateQoSWithVolume(ctx context.Context, volName, qosName string) error {
 	data := map[string]interface{}{
 		"keyNames": []string{volName},
 		"qosName":  qosName,
@@ -193,7 +193,7 @@ func (cli *Client) AssociateQoSWithVolume(ctx context.Context, volName, qosName 
 }
 
 // DisassociateQoSWithVolume used to disassociate QoS with volume
-func (cli *Client) DisassociateQoSWithVolume(ctx context.Context, volName, qosName string) error {
+func (cli *RestClient) DisassociateQoSWithVolume(ctx context.Context, volName, qosName string) error {
 	data := map[string]interface{}{
 		"keyNames": []string{volName},
 		"qosName":  qosName,
@@ -214,7 +214,7 @@ func (cli *Client) DisassociateQoSWithVolume(ctx context.Context, volName, qosNa
 }
 
 // GetQoSPolicyAssociationCount used to get count of qos association
-func (cli *Client) GetQoSPolicyAssociationCount(ctx context.Context, qosPolicyId int) (int, error) {
+func (cli *RestClient) GetQoSPolicyAssociationCount(ctx context.Context, qosPolicyId int) (int, error) {
 	filterRaw := fmt.Sprintf("{\"qos_policy_id\":\"%d\",\"qos_scale\":\"%d\",\"account_id\":\"%d\"}",
 		qosPolicyId, types.QosScaleNamespace, cli.accountId)
 	url := fmt.Sprintf("/api/v2/dros_service/converged_qos_association_count?filter=%s",
@@ -245,7 +245,7 @@ func (cli *Client) GetQoSPolicyAssociationCount(ctx context.Context, qosPolicyId
 }
 
 // GetQoSPolicyIdByFsName used to get qos id by fs name
-func (cli *Client) GetQoSPolicyIdByFsName(ctx context.Context, namespaceName string) (int, error) {
+func (cli *RestClient) GetQoSPolicyIdByFsName(ctx context.Context, namespaceName string) (int, error) {
 	rangeRaw := "{\"offset\":0,\"limit\":100}"
 	filterRaw := fmt.Sprintf("{\"object_name\":\"%s\",\"qos_scale\":\"0\",\"account_id\":\"%d\"}",
 		namespaceName, cli.accountId)
@@ -285,7 +285,7 @@ func (cli *Client) GetQoSPolicyIdByFsName(ctx context.Context, namespaceName str
 }
 
 // GetQoSNameByVolume used to get QoS name by volume name
-func (cli *Client) GetQoSNameByVolume(ctx context.Context, volName string) (string, error) {
+func (cli *RestClient) GetQoSNameByVolume(ctx context.Context, volName string) (string, error) {
 	url := fmt.Sprintf("/dsware/service/v1.3/volume/qos?volName=%s", volName)
 	resp, err := cli.get(ctx, url, nil)
 	if err != nil {
@@ -307,7 +307,7 @@ func (cli *Client) GetQoSNameByVolume(ctx context.Context, volName string) (stri
 }
 
 // GetAssociateCountOfQoS used to get associate count of QoS
-func (cli *Client) GetAssociateCountOfQoS(ctx context.Context, qosName string) (int, error) {
+func (cli *RestClient) GetAssociateCountOfQoS(ctx context.Context, qosName string) (int, error) {
 	storagePools, err := cli.getAllPools(ctx)
 	if err != nil {
 		return 0, err
@@ -360,7 +360,7 @@ func (cli *Client) GetAssociateCountOfQoS(ctx context.Context, qosName string) (
 	return 0, nil
 }
 
-func (cli *Client) getAssociateObjOfQoS(ctx context.Context,
+func (cli *RestClient) getAssociateObjOfQoS(ctx context.Context,
 	qosName, objType string,
 	poolId int64) (map[string]interface{}, error) {
 	data := map[string]interface{}{
@@ -382,7 +382,7 @@ func (cli *Client) getAssociateObjOfQoS(ctx context.Context,
 	return resp, nil
 }
 
-func (cli *Client) getAssociatePoolOfQoS(ctx context.Context, qosName string) (map[string]interface{}, error) {
+func (cli *RestClient) getAssociatePoolOfQoS(ctx context.Context, qosName string) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"qosName": qosName,
 	}

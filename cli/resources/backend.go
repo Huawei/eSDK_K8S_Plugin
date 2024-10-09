@@ -19,12 +19,12 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	k8string "k8s.io/utils/strings"
 
 	"huawei-csi-driver/cli/client"
 	"huawei-csi-driver/cli/config"
@@ -142,7 +142,7 @@ func (b *Backend) Update() error {
 
 	secretClient := client.NewCommonCallHandler[corev1.Secret](config.Client)
 	newClaim := oldClaim.DeepCopy()
-	newClaim.Spec.SecretMeta = k8string.JoinQualifiedName(newClaim.Namespace, nameWithUUid)
+	newClaim.Spec.SecretMeta = path.Join(newClaim.Namespace, nameWithUUid)
 
 	if err = storageBackendClaimClient.Update(*newClaim); err != nil {
 		if err := storageBackendClaimClient.Update(oldClaim); err != nil {
@@ -155,7 +155,7 @@ func (b *Backend) Update() error {
 		return err
 	}
 
-	_, oldSecretName := k8string.SplitQualifiedName(oldClaim.Spec.SecretMeta)
+	_, oldSecretName := helper.SplitQualifiedName(oldClaim.Spec.SecretMeta)
 	if err := secretClient.DeleteByNames(newClaim.Namespace, oldSecretName); err != nil {
 		log.Errorf("delete old created secret failed, error: %v", err)
 	}
@@ -201,7 +201,7 @@ func fetchBackendShows(claims []xuanwuV1.StorageBackendClaim, namespace string) 
 		if claim.Status != nil {
 			contentNames = append(contentNames, claim.Status.BoundContentName)
 		}
-		_, configName := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
+		_, configName := helper.SplitQualifiedName(claim.Spec.ConfigMapMeta)
 		configmapNames = append(configmapNames, configName)
 	}
 
@@ -236,7 +236,7 @@ func buildBackendShow(claims []xuanwuV1.StorageBackendClaim, contentList []xuanw
 			}
 		}
 
-		_, name := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
+		_, name := helper.SplitQualifiedName(claim.Spec.ConfigMapMeta)
 		if configuration, ok := config[name]; ok {
 			item.ShowWithConfigOption(*configuration)
 		}
@@ -248,11 +248,11 @@ func buildBackendShow(claims []xuanwuV1.StorageBackendClaim, contentList []xuanw
 }
 
 func deleteSbcReferenceResources(claim xuanwuV1.StorageBackendClaim) error {
-	_, secretName := k8string.SplitQualifiedName(claim.Spec.SecretMeta)
-	_, configmapName := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
-	_, certSecretName := k8string.SplitQualifiedName(claim.Spec.CertSecret)
+	_, secretName := helper.SplitQualifiedName(claim.Spec.SecretMeta)
+	_, configmapName := helper.SplitQualifiedName(claim.Spec.ConfigMapMeta)
+	_, certSecretName := helper.SplitQualifiedName(claim.Spec.CertSecret)
 	needDeleteFinalizersResources := []string{
-		k8string.JoinQualifiedName(string(client.ConfigMap), configmapName),
+		path.Join(string(client.ConfigMap), configmapName),
 	}
 
 	err := config.Client.DeleteFinalizersInResourceByQualifiedNames(needDeleteFinalizersResources, claim.Namespace)
@@ -261,12 +261,12 @@ func deleteSbcReferenceResources(claim xuanwuV1.StorageBackendClaim) error {
 	}
 
 	referenceResources := append(needDeleteFinalizersResources,
-		k8string.JoinQualifiedName(string(client.Secret), secretName),
-		k8string.JoinQualifiedName(string(client.Storagebackendclaim), claim.Name))
+		path.Join(string(client.Secret), secretName),
+		path.Join(string(client.Storagebackendclaim), claim.Name))
 
 	if certSecretName != "" {
 		referenceResources = append(referenceResources,
-			k8string.JoinQualifiedName(string(client.Secret), certSecretName))
+			path.Join(string(client.Secret), certSecretName))
 	}
 
 	_, err = config.Client.DeleteResourceByQualifiedNames(referenceResources, claim.Namespace)
@@ -329,6 +329,10 @@ func (b *Backend) Create() error {
 			break
 		}
 
+		if selectedBackend == nil {
+			return nil
+		}
+
 		if selectedBackend.Configured {
 			fmt.Printf("backend [%s] has been Configured, please select another\n", selectedBackend.Name)
 			continue
@@ -353,7 +357,7 @@ func FetchConfiguredBackends(namespace string) (map[string]*BackendConfiguration
 	}
 
 	configuredBackend := helper.MapTo(sbcList, func(claim xuanwuV1.StorageBackendClaim) string {
-		_, name := k8string.SplitQualifiedName(claim.Spec.ConfigMapMeta)
+		_, name := helper.SplitQualifiedName(claim.Spec.ConfigMapMeta)
 		return name
 	})
 
@@ -433,11 +437,15 @@ func ConfigOneBackend(backendConfig *BackendConfiguration) error {
 
 func selectOneBackend(backendList []*BackendConfiguration) (*BackendConfiguration, error) {
 	printBackendsStatusTable(backendList)
-	number, err := helper.GetSelectedNumber("Please enter the backend number to configure "+
+	number, isExit, err := helper.GetSelectedNumber("Please enter the backend number to configure "+
 		"(Enter 'exit' to exit):", len(backendList))
 	if err != nil {
 		log.Errorf("failed to get backend number entered by user. %v", err)
 		return nil, err
+	}
+
+	if isExit {
+		return nil, nil
 	}
 
 	if number > len(backendList) {

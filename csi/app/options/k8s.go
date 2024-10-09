@@ -44,7 +44,7 @@ func (opt *k8sOptions) AddFlags(ff *flag.FlagSet) {
 }
 
 // ApplyFlags assign the connector flags
-func (opt *k8sOptions) ApplyFlags(cfg *config.Config) {
+func (opt *k8sOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.Namespace = opt.namespace
 }
 

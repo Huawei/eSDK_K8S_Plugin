@@ -38,7 +38,6 @@ import (
 	"huawei-csi-driver/csi/driver"
 	"huawei-csi-driver/csi/provider"
 	"huawei-csi-driver/lib/drcsi"
-	labelLock "huawei-csi-driver/pkg/utils/label_lock"
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/log"
 	"huawei-csi-driver/utils/notify"
@@ -50,7 +49,7 @@ const (
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 
-	csiVersion      = "4.4.0"
+	csiVersion      = "4.5.0"
 	endpointDirPerm = 0755
 )
 
@@ -102,9 +101,6 @@ func runCSIController(ctx context.Context) {
 	// register the kahu community DRCSI service
 	go registerDRCSIServer()
 
-	// create and refresh lock for rt
-	go labelLock.InitCmLock(ctx, labelLock.RTLockConfigMap)
-
 	// register the K8S community CSI service
 	registerCSIServer()
 }
@@ -147,7 +143,7 @@ func main() {
 	}
 
 	// Init logger
-	err := log.InitLogging(&log.LoggingRequest{
+	err := log.InitLogging(&log.Config{
 		LogName:       getLogFileName(),
 		LogFileSize:   app.GetGlobalConfig().LogFileSize,
 		LoggingModule: app.GetGlobalConfig().LoggingModule,
@@ -184,7 +180,7 @@ func registerDRCSIServer() {
 }
 
 func registerCSIServer() {
-	d := driver.NewDriver(app.GetGlobalConfig().DriverName,
+	d := driver.NewServer(app.GetGlobalConfig().DriverName,
 		csiVersion,
 		app.GetGlobalConfig().K8sUtils,
 		app.GetGlobalConfig().NodeName)
@@ -217,7 +213,7 @@ func listenEndpoint(endpoint string) net.Listener {
 	return listener
 }
 
-func registerServer(listener net.Listener, d *driver.Driver) {
+func registerServer(listener net.Listener, d *driver.CsiDriver) {
 	opts := []grpc.ServerOption{
 		grpc.UnaryInterceptor(log.EnsureGRPCContext),
 	}

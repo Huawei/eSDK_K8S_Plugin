@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,13 +26,13 @@ import (
 	"huawei-csi-driver/utils/log"
 )
 
-// ClientV6 provides base client of clientv6
-type ClientV6 struct {
+// V6Client provides base client of clientv6
+type V6Client struct {
 	client.BaseClient
 }
 
 // NewClientV6 inits a new client of clientv6
-func NewClientV6(ctx context.Context, param *client.NewClientConfig) (*ClientV6, error) {
+func NewClientV6(ctx context.Context, param *client.NewClientConfig) (*V6Client, error) {
 	var err error
 	var parallelCount int
 
@@ -48,20 +48,19 @@ func NewClientV6(ctx context.Context, param *client.NewClientConfig) (*ClientV6,
 	}
 
 	log.AddContext(ctx).Infof("Init parallel count is %d", parallelCount)
-	client.ClientSemaphore = utils.NewSemaphore(parallelCount)
+	client.RequestSemaphore = utils.NewSemaphore(parallelCount)
 
 	cli, err := client.NewClient(ctx, param)
 	if err != nil {
 		return nil, err
 	}
 
-	return &ClientV6{
-		*cli,
-	}, nil
+	return &V6Client{BaseClient: *cli}, nil
 }
 
 // SplitCloneFS used to split clone for dorado or oceantor v6
-func (cli *ClientV6) SplitCloneFS(ctx context.Context, fsID, vStoreId string, splitSpeed int, deleteParentSnapshot bool) error {
+func (cli *V6Client) SplitCloneFS(ctx context.Context,
+	fsID, vStoreId string, splitSpeed int, deleteParentSnapshot bool) error {
 	data := map[string]interface{}{
 		"ID":                   fsID,
 		"SPLITSPEED":           splitSpeed,
@@ -84,6 +83,6 @@ func (cli *ClientV6) SplitCloneFS(ctx context.Context, fsID, vStoreId string, sp
 }
 
 // MakeLunName  v6 storage lun name support 1 to 255 characters
-func (cli *ClientV6) MakeLunName(name string) string {
+func (cli *V6Client) MakeLunName(name string) string {
 	return name
 }

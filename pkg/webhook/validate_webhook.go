@@ -17,6 +17,7 @@ package webhook
 
 import (
 	"context"
+	"reflect"
 
 	admissionV1 "k8s.io/api/admissionregistration/v1"
 	apisErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -44,28 +45,66 @@ type AdmissionRule struct {
 }
 
 // CreateValidateWebhook create new webhook config if not exist already
-func CreateValidateWebhook(ctx context.Context, admissionWebhook AdmissionWebHookCFG,
-	caBundle []byte, ns string) error {
+func CreateValidateWebhook(ctx context.Context, webHookCfg AdmissionWebHookCFG, caBundle []byte, ns string) error {
+	webhook := newValidateWebhook(webHookCfg, caBundle, ns)
+	req := &admissionV1.ValidatingWebhookConfiguration{
+		ObjectMeta: metaV1.ObjectMeta{Name: webHookCfg.WebhookName},
+		Webhooks:   []admissionV1.ValidatingWebhook{webhook},
+	}
+
+	foundWebhookCfg, err := admission.Instance().GetValidatingWebhookCfg(req.Name)
+	if err != nil {
+		if !apisErrors.IsNotFound(err) {
+			log.AddContext(ctx).Errorf("get webhook configuration [%s] failed: %v", req.Name, err)
+			return err
+		}
+
+		// no webhook configuration in k8s cluster, we need to create a new one.
+		if _, err := admission.Instance().CreateValidatingWebhookCfg(req); err != nil {
+			log.AddContext(ctx).Errorf("create webhook configuration [%s] failed: %v", req.Name, err)
+			return err
+		}
+		log.AddContext(ctx).Infof("webhook configuration [%s] has been created", req.Name)
+		return nil
+	}
+
+	if reflect.DeepEqual(foundWebhookCfg.Webhooks, req.Webhooks) {
+		return nil
+	}
+
+	// webhook configuration has changed, we need to update it.
+	foundWebhookCfg.Webhooks = req.Webhooks
+	if _, err := admission.Instance().UpdateValidatingWebhookCfg(foundWebhookCfg); err != nil {
+		log.AddContext(ctx).Errorf("update webhook configuration failed: %v", err)
+		return err
+	}
+
+	log.AddContext(ctx).Infof("webhook [%s] has been updated", req.Name)
+
+	return nil
+}
+
+func newValidateWebhook(webhookCfg AdmissionWebHookCFG, caBundle []byte, ns string) admissionV1.ValidatingWebhook {
 	sideEffect := admissionV1.SideEffectClassNoneOnDryRun
 	failurePolicy := admissionV1.Fail
 	matchPolicy := admissionV1.Exact
-	webhook := admissionV1.ValidatingWebhook{
-		Name: admissionWebhook.WebhookName,
+	return admissionV1.ValidatingWebhook{
+		Name: webhookCfg.WebhookName,
 		ClientConfig: admissionV1.WebhookClientConfig{
 			Service: &admissionV1.ServiceReference{
-				Name:      admissionWebhook.ServiceName,
+				Name:      webhookCfg.ServiceName,
 				Namespace: ns,
-				Path:      &admissionWebhook.WebhookPath,
-				Port:      &admissionWebhook.WebhookPort,
+				Path:      &webhookCfg.WebhookPath,
+				Port:      &webhookCfg.WebhookPort,
 			},
 			CABundle: caBundle,
 		},
 		Rules: []admissionV1.RuleWithOperations{{
-			Operations: admissionWebhook.AdmissionOps,
+			Operations: webhookCfg.AdmissionOps,
 			Rule: admissionV1.Rule{
-				APIGroups:   admissionWebhook.AdmissionRule.APIGroups,
-				APIVersions: admissionWebhook.AdmissionRule.APIVersions,
-				Resources:   admissionWebhook.AdmissionRule.Resources,
+				APIGroups:   webhookCfg.AdmissionRule.APIGroups,
+				APIVersions: webhookCfg.AdmissionRule.APIVersions,
+				Resources:   webhookCfg.AdmissionRule.Resources,
 			},
 		}},
 		SideEffects:             &sideEffect,
@@ -73,19 +112,4 @@ func CreateValidateWebhook(ctx context.Context, admissionWebhook AdmissionWebHoo
 		AdmissionReviewVersions: []string{"v1", "v1beta1"},
 		MatchPolicy:             &matchPolicy,
 	}
-
-	req := &admissionV1.ValidatingWebhookConfiguration{
-		ObjectMeta: metaV1.ObjectMeta{
-			Name: admissionWebhook.WebhookName,
-		},
-		Webhooks: []admissionV1.ValidatingWebhook{webhook},
-	}
-
-	_, err := admission.Instance().CreateValidatingWebhookCfg(req)
-	if err != nil && !apisErrors.IsAlreadyExists(err) {
-		log.AddContext(ctx).Errorf("unable to create webhook configuration: %v", err)
-		return err
-	}
-	log.AddContext(ctx).Infof("%v webhook v1 configured", admissionWebhook.WebhookName)
-	return nil
 }

@@ -41,7 +41,7 @@ func TestSanManagerStageFileSystemVolume(t *testing.T) {
 	tests := []struct {
 		name              string
 		manager           *SanManager
-		connectVolumeFunc func(patch *gomonkey.Patches, conn connector.Connector)
+		connectVolumeFunc func(patch *gomonkey.Patches, conn connector.VolumeConnector)
 		wantErr           bool
 	}{
 		{
@@ -139,9 +139,9 @@ func mockClearResidualPath(patch *gomonkey.Patches, protocol string) {
 	})
 }
 
-func mockConnectIscsiVolume(patch *gomonkey.Patches, conn connector.Connector) {
+func mockConnectIscsiVolume(patch *gomonkey.Patches, conn connector.VolumeConnector) {
 	patch.ApplyMethod(reflect.TypeOf(conn), "ConnectVolume",
-		func(_ *iscsi.ISCSI, ctx context.Context, params map[string]interface{}) (string, error) {
+		func(_ *iscsi.Connector, ctx context.Context, params map[string]interface{}) (string, error) {
 			want := map[string]interface{}{
 				"tgtPortals":         []string{"mock_tgt_portal_1"},
 				"tgtIQNs":            []string{"mock_tgt_iqn_1"},
@@ -160,9 +160,9 @@ func mockConnectIscsiVolume(patch *gomonkey.Patches, conn connector.Connector) {
 		})
 }
 
-func mockConnectFcVolume(patch *gomonkey.Patches, conn connector.Connector) {
+func mockConnectFcVolume(patch *gomonkey.Patches, conn connector.VolumeConnector) {
 	patch.ApplyMethod(reflect.TypeOf(conn), "ConnectVolume",
-		func(_ *fibrechannel.FibreChannel, ctx context.Context, params map[string]interface{}) (string, error) {
+		func(_ *fibrechannel.Connector, ctx context.Context, params map[string]interface{}) (string, error) {
 			want := map[string]interface{}{
 				"tgtWWNs":            []string{"mock_wwn_1"},
 				"tgtHostLUNs":        []string{"mock_host_lun_1"},
@@ -180,9 +180,9 @@ func mockConnectFcVolume(patch *gomonkey.Patches, conn connector.Connector) {
 		})
 }
 
-func mockConnectRoceVolume(patch *gomonkey.Patches, conn connector.Connector) {
+func mockConnectRoceVolume(patch *gomonkey.Patches, conn connector.VolumeConnector) {
 	patch.ApplyMethod(reflect.TypeOf(conn), "ConnectVolume",
-		func(_ *roce.RoCE, ctx context.Context, params map[string]interface{}) (string, error) {
+		func(_ *roce.Connector, ctx context.Context, params map[string]interface{}) (string, error) {
 			want := map[string]interface{}{
 				"tgtPortals":         []string{"mock_tgt_portal_1"},
 				"tgtLunGuid":         "mock_lun_guid_1",
@@ -199,7 +199,7 @@ func mockConnectRoceVolume(patch *gomonkey.Patches, conn connector.Connector) {
 		})
 }
 
-func mockConnectFcNvmeVolume(patch *gomonkey.Patches, conn connector.Connector) {
+func mockConnectFcNvmeVolume(patch *gomonkey.Patches, conn connector.VolumeConnector) {
 	patch.ApplyMethod(reflect.TypeOf(conn), "ConnectVolume",
 		func(_ *nvme.FCNVMe, ctx context.Context, params map[string]interface{}) (string, error) {
 			want := map[string]interface{}{

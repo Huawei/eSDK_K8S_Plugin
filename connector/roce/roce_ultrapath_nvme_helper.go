@@ -14,5 +14,5 @@
  *  limitations under the License.
  */
 
-// Package roce provide the way to connect/disconnect volume within NVMe over RoCE protocol
+// Package roce provide the way to connect/disconnect volume within NVMe over Connector protocol
 package roce

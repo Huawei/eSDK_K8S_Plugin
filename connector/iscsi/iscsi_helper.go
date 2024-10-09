@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,13 +20,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math"
+	"os"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"huawei-csi-driver/connector"
@@ -35,6 +36,24 @@ import (
 	"huawei-csi-driver/utils"
 	"huawei-csi-driver/utils/concurrent"
 	"huawei-csi-driver/utils/log"
+)
+
+const (
+	timeForDMAppear            = 15
+	wwnTypeIndex               = 4
+	wwidIndex                  = 6
+	scanSingleTimes            = 15
+	scanExponent               = 2.0
+	scanStep                   = 2
+	hostChannelTargetLunLength = 4
+	splitPathSegment           = 2
+	hostIndexOfTargetPath      = 26
+	splitInfoSegment           = 4
+	targetInfoSegment          = 2
+
+	scanSingleInterval        = 2 * time.Second
+	iscsiSessionLoginInterval = 2 * time.Second
+	iscsiSessionLoginTimes    = 60
 )
 
 var singleGroup = concurrent.NewSingleGroup[connectResult]()
@@ -68,12 +87,12 @@ type singleConnectorInfo struct {
 }
 
 type shareData struct {
-	stopConnecting   bool
-	numLogin         int64
-	failedLogin      int64
-	stoppedThreads   int64
-	foundDevices     []string
-	justAddedDevices []string
+	stopConnecting   atomic.Bool
+	numLogin         atomic.Int64
+	failedLogin      atomic.Int64
+	stoppedThreads   atomic.Int64
+	foundDevices     concurrent.Slice[string]
+	justAddedDevices concurrent.Slice[string]
 }
 
 type scanRequest struct {
@@ -184,7 +203,7 @@ func updateISCSIAdminWithExitCode(ctx context.Context,
 	return runISCSIAdmin(ctx, tgtPortal, targetIQN, iscsiCMD, checkExitCode)
 }
 
-func iscsiCMD(propertyKey, propertyValue string) string {
+func genIscsiOpArgs(propertyKey, propertyValue string) string {
 	return fmt.Sprintf("--op update -n %s -v %s", propertyKey, propertyValue)
 }
 
@@ -236,14 +255,14 @@ func getAllISCSISession(ctx context.Context) [][]string {
 	for _, iscsi := range strings.Split(allSessions, "\n") {
 		if iscsi != "" {
 			splitInfo := strings.Split(iscsi, " ")
-			if len(splitInfo) < 4 {
+			if len(splitInfo) < splitInfoSegment {
 				log.AddContext(ctx).Warningf("iscsi session %s error", splitInfo)
 				continue
 			}
 
 			sid := splitInfo[1][1 : len(splitInfo[1])-1]
 			tgtInfo := strings.Split(splitInfo[2], ",")
-			if len(tgtInfo) < 2 {
+			if len(tgtInfo) < targetInfoSegment {
 				continue
 			}
 			portal, tpgt := tgtInfo[0], tgtInfo[1]
@@ -289,8 +308,7 @@ func connectISCSIPortal(ctx context.Context,
 	var manualScan bool
 	err = updateISCSIAdmin(ctx, tgtPortal, targetIQN, "node.session.scan", "manual")
 	if err != nil {
-		log.AddContext(ctx).Warningf("Update node session scan mode to manual error, reason: %v",
-			tgtPortal, err)
+		log.AddContext(ctx).Warningf("Update node session scan mode to manual error, reason: %v", err)
 	}
 	manualScan = err == nil
 
@@ -301,7 +319,7 @@ func connectISCSIPortal(ctx context.Context,
 		return "", false
 	}
 
-	for i := 0; i < 60; i++ {
+	for i := 0; i < iscsiSessionLoginTimes; i++ {
 		sessions := getAllISCSISession(ctx)
 		for _, s := range sessions {
 			if s[0] == "tcp:" && strings.ToLower(tgtPortal) == strings.ToLower(s[2]) && targetIQN == s[4] {
@@ -323,7 +341,7 @@ func connectISCSIPortal(ctx context.Context,
 			return "", false
 		}
 
-		time.Sleep(time.Second * 2)
+		time.Sleep(iscsiSessionLoginInterval)
 	}
 	return "", false
 }
@@ -340,7 +358,7 @@ func getHostChannelTargetLun(session, tgtLun string) []string {
 	if paths != nil {
 		_, file := filepath.Split(paths[0])
 		splitPath := strings.Split(file, ":")
-		if len(splitPath) <= 2 {
+		if len(splitPath) <= splitPathSegment {
 			return nil
 		}
 		channel = splitPath[1]
@@ -354,14 +372,14 @@ func getHostChannelTargetLun(session, tgtLun string) []string {
 		}
 	}
 
-	index := strings.Index(paths[0][26:], "/")
-	host = paths[0][26:][:index]
+	index := strings.Index(paths[0][hostIndexOfTargetPath:], "/")
+	host = paths[0][hostIndexOfTargetPath:][:index]
 	hostChannelTargetLun = append(hostChannelTargetLun, host, channel, target, tgtLun)
 	return hostChannelTargetLun
 }
 
 func scanISCSI(ctx context.Context, hostChannelTargetLun []string) {
-	if len(hostChannelTargetLun) <= 3 {
+	if len(hostChannelTargetLun) < hostChannelTargetLunLength {
 		return
 	}
 	channelTargetLun := fmt.Sprintf("%s %s %s", hostChannelTargetLun[1], hostChannelTargetLun[2],
@@ -419,7 +437,7 @@ func (s *deviceScan) scan(ctx context.Context,
 			if s.secondNextScan <= 0 {
 				s.numRescans++
 				scanISCSI(ctx, req.hostChannelTargetLun)
-				s.secondNextScan = int(math.Pow(float64(s.numRescans+2), 2.0))
+				s.secondNextScan = int(math.Pow(float64(s.numRescans+scanStep), scanExponent))
 			}
 
 			device = getDeviceByHCTL(req.sessionId, req.hostChannelTargetLun)
@@ -429,7 +447,8 @@ func (s *deviceScan) scan(ctx context.Context,
 			device = connector.ClearUnavailableDevice(ctx, device, req.tgtLunWWN)
 		}
 
-		doScans = s.numRescans <= deviceScanAttemptsDefault && !(device != "" || req.iSCSIShareData.stopConnecting)
+		doScans = s.numRescans <= deviceScanAttemptsDefault &&
+			!(device != "" || req.iSCSIShareData.stopConnecting.Load())
 		if doScans {
 			time.Sleep(time.Second)
 			s.secondNextScan--
@@ -456,7 +475,7 @@ func connectVol(ctx context.Context,
 			secondNextScan = 4
 		}
 
-		iSCSIShareData.numLogin += 1
+		iSCSIShareData.numLogin.Add(1)
 		dScan := deviceScan{
 			numRescans:     numRescans,
 			secondNextScan: secondNextScan,
@@ -469,15 +488,15 @@ func connectVol(ctx context.Context,
 			log.AddContext(ctx).Debugf("LUN %s on iSCSI portal %s not found on sysfs after logging in.",
 				tgt.tgtHostLun, tgt.tgtPortal)
 		} else {
-			iSCSIShareData.foundDevices = append(iSCSIShareData.foundDevices, device)
-			iSCSIShareData.justAddedDevices = append(iSCSIShareData.justAddedDevices, device)
+			iSCSIShareData.foundDevices.Append(device)
+			iSCSIShareData.justAddedDevices.Append(device)
 		}
 	} else {
 		log.AddContext(ctx).Warningf("build iSCSI session %s error", tgt.tgtPortal)
-		iSCSIShareData.failedLogin += 1
+		iSCSIShareData.failedLogin.Add(1)
 	}
 
-	iSCSIShareData.stoppedThreads += 1
+	iSCSIShareData.stoppedThreads.Add(1)
 	return
 }
 
@@ -524,10 +543,10 @@ func tryConnectVolume(ctx context.Context, connMap map[string]interface{}) (stri
 	if err != nil {
 		log.AddContext(ctx).Errorf("failed to find a disk. %v", err)
 	}
-	iSCSIShareData.stopConnecting = true
+	iSCSIShareData.stopConnecting.Store(true)
 	wait.Wait()
 
-	return checkDeviceAvailable(ctx, conn, iSCSIShareData, diskName, int(iSCSIShareData.numLogin))
+	return checkDeviceAvailable(ctx, conn, iSCSIShareData, diskName, int(iSCSIShareData.numLogin.Load()))
 }
 
 func catchConnectError(ctx context.Context) {
@@ -588,10 +607,10 @@ func checkDeviceAvailable(ctx context.Context,
 	}
 
 	if diskName == "" {
-		err := connector.RemoveDevices(ctx, iSCSIShareData.foundDevices)
+		err := connector.RemoveDevices(ctx, iSCSIShareData.foundDevices.Values())
 		if err != nil {
 			log.AddContext(ctx).Warningf("Remove devices %v error: %v",
-				iSCSIShareData.foundDevices, err)
+				iSCSIShareData.foundDevices.Values(), err)
 		}
 		return "", utils.Errorln(ctx, connector.VolumeNotFound)
 	}
@@ -599,7 +618,7 @@ func checkDeviceAvailable(ctx context.Context,
 	switch conn.multiPathType {
 	case connector.DMMultiPath:
 		return connector.VerifyDeviceAvailableOfDM(ctx, conn.tgtLunWWN,
-			expectPathNumber, iSCSIShareData.foundDevices, tryDisConnectVolume)
+			expectPathNumber, iSCSIShareData.foundDevices.Values(), tryDisConnectVolume)
 	case connector.HWUltraPath:
 		return connector.VerifyDeviceAvailableOfUltraPath(ctx, connector.UltraPathCommand, diskName)
 	case connector.HWUltraPathNVMe:
@@ -610,11 +629,11 @@ func checkDeviceAvailable(ctx context.Context,
 }
 
 func checkSinglePathAvailable(ctx context.Context, iSCSIShareData *shareData, tgtLunWWN string) (string, error) {
-	if len(iSCSIShareData.foundDevices) == 0 {
+	if iSCSIShareData.foundDevices.Len() == 0 {
 		return "", errors.New(connector.VolumeNotFound)
 	}
 
-	device := fmt.Sprintf("/dev/%s", iSCSIShareData.foundDevices[0])
+	device := fmt.Sprintf("/dev/%s", iSCSIShareData.foundDevices.Get(0))
 	err := connector.VerifySingleDevice(ctx, device, tgtLunWWN,
 		connector.VolumeNotFound, tryDisConnectVolume)
 	if err != nil {
@@ -624,25 +643,25 @@ func checkSinglePathAvailable(ctx context.Context, iSCSIShareData *shareData, tg
 }
 
 func scanSingle(iSCSIShareData *shareData) {
-	for i := 0; i < 15; i++ {
-		if len(iSCSIShareData.foundDevices) != 0 {
+	for i := 0; i < scanSingleTimes; i++ {
+		if iSCSIShareData.foundDevices.Len() != 0 {
 			break
 		}
-		time.Sleep(time.Second * 2)
+		time.Sleep(scanSingleInterval)
 	}
 }
 
 func getSYSfsWwn(ctx context.Context, foundDevices []string, mPath string) (string, error) {
 	if mPath != "" {
 		dmFile := fmt.Sprintf("/sys/block/%s/dm/uuid", mPath)
-		data, err := ioutil.ReadFile(dmFile)
+		data, err := os.ReadFile(dmFile)
 		if err != nil {
 			msg := fmt.Sprintf("Read dm file %s error: %v", dmFile, err)
 			log.AddContext(ctx).Errorln(msg)
 			return "", errors.New(msg)
 		}
 
-		if wwid := data[6:]; wwid != nil {
+		if wwid := data[wwidIndex:]; wwid != nil {
 			return string(wwid), nil
 		}
 	}
@@ -652,19 +671,19 @@ func getSYSfsWwn(ctx context.Context, foundDevices []string, mPath string) (stri
 	}
 	for _, device := range foundDevices {
 		deviceFile := fmt.Sprintf("/sys/block/%s/device/wwid", device)
-		data, err := ioutil.ReadFile(deviceFile)
+		data, err := os.ReadFile(deviceFile)
 		if err != nil {
 			msg := fmt.Sprintf("Read device file %s error: %v", deviceFile, err)
 			log.AddContext(ctx).Errorln(msg)
 			continue
 		}
 
-		wwnType, exist := wwnTypes[string(data[:4])]
+		wwnType, exist := wwnTypes[string(data[:wwnTypeIndex])]
 		if !exist {
 			wwnType = "8"
 		}
 
-		wwid := wwnType + string(data[4:])
+		wwid := wwnType + string(data[wwnTypeIndex:])
 		return wwid, nil
 	}
 
@@ -703,19 +722,21 @@ func addMultiPath(ctx context.Context, devPath string) error {
 }
 
 func tryScanMultiDevice(ctx context.Context, mPath string, iSCSIShareData *shareData) string {
-	for mPath == "" && len(iSCSIShareData.justAddedDevices) != 0 {
-		devicePath := "/dev/" + iSCSIShareData.justAddedDevices[0]
-		iSCSIShareData.justAddedDevices = iSCSIShareData.justAddedDevices[1:]
+	for mPath == "" && iSCSIShareData.justAddedDevices.Len() != 0 {
+		devicePath := "/dev/" + iSCSIShareData.justAddedDevices.Get(0)
+		if err := iSCSIShareData.justAddedDevices.Cut(1, iSCSIShareData.justAddedDevices.Len()); err != nil {
+			log.AddContext(ctx).Warningln(err)
+		}
 		err := addMultiPath(ctx, devicePath)
 		if err != nil {
 			log.AddContext(ctx).Warningf("Add multiPath path failed, error: %s", err)
 		}
 
 		var isClear bool
-		mPath, isClear = connector.FindAvailableMultiPath(ctx, iSCSIShareData.foundDevices)
+		mPath, isClear = connector.FindAvailableMultiPath(ctx, iSCSIShareData.foundDevices.Values())
 		if isClear {
-			iSCSIShareData.foundDevices = nil
-			iSCSIShareData.justAddedDevices = nil
+			iSCSIShareData.foundDevices.Reset()
+			iSCSIShareData.justAddedDevices.Reset()
 		}
 	}
 	return mPath
@@ -726,12 +747,12 @@ func scanMultiDevice(ctx context.Context,
 	iSCSIShareData *shareData,
 	wwnAdded bool) (string, bool) {
 	var err error
-	if mPath == "" && len(iSCSIShareData.foundDevices) != 0 {
+	if mPath == "" && iSCSIShareData.foundDevices.Len() != 0 {
 		var isClear bool
-		mPath, isClear = connector.FindAvailableMultiPath(ctx, iSCSIShareData.foundDevices)
+		mPath, isClear = connector.FindAvailableMultiPath(ctx, iSCSIShareData.foundDevices.Values())
 		if isClear {
-			iSCSIShareData.foundDevices = nil
-			iSCSIShareData.justAddedDevices = nil
+			iSCSIShareData.foundDevices.Reset()
+			iSCSIShareData.justAddedDevices.Reset()
 		}
 
 		if wwn != "" && !(mPath != "" || wwnAdded) {
@@ -750,8 +771,8 @@ func scanMultiDevice(ctx context.Context,
 func findDiskOfUltraPath(ctx context.Context, lenIndex int, iSCSIShareData *shareData, upType, lunWWN string) string {
 	var diskName string
 	var err error
-	for !((int64(lenIndex) == iSCSIShareData.stoppedThreads && len(iSCSIShareData.foundDevices) == 0) ||
-		(diskName != "" && int64(lenIndex) == iSCSIShareData.numLogin+iSCSIShareData.failedLogin)) {
+	for !((int64(lenIndex) == iSCSIShareData.stoppedThreads.Load() && iSCSIShareData.foundDevices.Len() == 0) ||
+		(diskName != "" && int64(lenIndex) == iSCSIShareData.numLogin.Load()+iSCSIShareData.failedLogin.Load())) {
 
 		diskName, err = connector.GetDiskNameByWWN(ctx, upType, lunWWN)
 		if err == nil {
@@ -768,10 +789,10 @@ func findDiskOfDM(ctx context.Context, lenIndex int, LunWWN string, iSCSIShareDa
 	var lastTryOn int64
 	var mPath, wwn string
 	var err error
-	for !((int64(lenIndex) == iSCSIShareData.stoppedThreads && len(iSCSIShareData.foundDevices) == 0) ||
-		(mPath != "" && int64(lenIndex) == iSCSIShareData.numLogin+iSCSIShareData.failedLogin)) {
-		if wwn == "" && len(iSCSIShareData.foundDevices) != 0 {
-			wwn, err = getSYSfsWwn(ctx, iSCSIShareData.foundDevices, mPath)
+	for !((int64(lenIndex) == iSCSIShareData.stoppedThreads.Load() && iSCSIShareData.foundDevices.Len() == 0) ||
+		(mPath != "" && int64(lenIndex) == iSCSIShareData.numLogin.Load()+iSCSIShareData.failedLogin.Load())) {
+		if wwn == "" && iSCSIShareData.foundDevices.Len() != 0 {
+			wwn, err = getSYSfsWwn(ctx, iSCSIShareData.foundDevices.Values(), mPath)
 			if err != nil {
 				break
 			}
@@ -782,10 +803,10 @@ func findDiskOfDM(ctx context.Context, lenIndex int, LunWWN string, iSCSIShareDa
 		}
 
 		mPath, wwnAdded = scanMultiDevice(ctx, mPath, wwn, iSCSIShareData, wwnAdded)
-		if lastTryOn == 0 && len(iSCSIShareData.foundDevices) != 0 && int64(
-			lenIndex) == iSCSIShareData.stoppedThreads {
+		if lastTryOn == 0 && iSCSIShareData.foundDevices.Len() != 0 &&
+			int64(lenIndex) == iSCSIShareData.stoppedThreads.Load() {
 			log.AddContext(ctx).Infoln("All connection threads finished, giving 15 seconds for dm to appear.")
-			lastTryOn = time.Now().Unix() + 15
+			lastTryOn = time.Now().Unix() + timeForDMAppear
 		} else if lastTryOn != 0 && lastTryOn < time.Now().Unix() {
 			break
 		}
@@ -815,7 +836,7 @@ func getISCSISession(ctx context.Context, devSessionIds []string) []singleConnec
 func disconnectFromISCSIPortal(ctx context.Context, tgtPortal, targetIQN string) {
 	checkExitCode := []string{"exit status 0", "exit status 15", "exit status 255"}
 	err := updateISCSIAdminWithExitCode(ctx, tgtPortal, targetIQN,
-		iscsiCMD("node.startup", "manual"),
+		genIscsiOpArgs("node.startup", "manual"),
 		checkExitCode)
 	if err != nil {
 		log.AddContext(ctx).Warningf("Update node startUp error, reason: %v", err)
