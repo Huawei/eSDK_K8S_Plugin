@@ -20,9 +20,9 @@ package model
 import (
 	"context"
 
-	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/csi/backend/plugin"
-	"huawei-csi-driver/utils/log"
+	xuanwuV1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // StorageBackendTuple contains sbc and sbct

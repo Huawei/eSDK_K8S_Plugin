@@ -17,14 +17,15 @@ package v1
 
 import (
 	"context"
-	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	scheme "huawei-csi-driver/pkg/client/clientset/versioned/scheme"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	rest "k8s.io/client-go/rest"
+
+	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	scheme "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/scheme"
 )
 
 // StorageBackendContentsGetter has a method to return a StorageBackendContentInterface.

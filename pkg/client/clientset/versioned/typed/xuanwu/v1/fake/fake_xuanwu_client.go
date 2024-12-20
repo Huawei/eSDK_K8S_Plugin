@@ -16,10 +16,10 @@
 package fake
 
 import (
-	v1 "huawei-csi-driver/pkg/client/clientset/versioned/typed/xuanwu/v1"
-
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
+
+	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/typed/xuanwu/v1"
 )
 
 type FakeXuanwuV1 struct {

@@ -17,7 +17,7 @@
 // Package provider is related with storage provider
 package provider
 
-import "huawei-csi-driver/csi/backend/handler"
+import "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/handler"
 
 // StorageProvider is for storage provider
 type StorageProvider struct {

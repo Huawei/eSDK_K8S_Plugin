@@ -22,7 +22,7 @@ import (
 
 	"github.com/prashantv/gostub"
 
-	"huawei-csi-driver/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 var showArrayOutput = `

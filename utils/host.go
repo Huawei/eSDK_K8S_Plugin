@@ -22,7 +22,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // ChmodFsPermission used for change target path permission

@@ -20,10 +20,10 @@ import (
 	"context"
 	"fmt"
 
-	"huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/csi/backend/model"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // BackendRegisterInterface register backend operation set

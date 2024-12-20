@@ -21,8 +21,8 @@ import (
 	"context"
 	"sync"
 
-	"huawei-csi-driver/csi/backend/model"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // BackendCacheProvider provider for backend cache

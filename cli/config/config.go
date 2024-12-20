@@ -18,12 +18,12 @@
 package config
 
 import (
-	"huawei-csi-driver/cli/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/client"
 )
 
 const (
 	// CliVersion oceanctl version
-	CliVersion = "v4.5.0"
+	CliVersion = "v4.6.0"
 
 	// DefaultMaxClientThreads default max client threads
 	DefaultMaxClientThreads = "30"

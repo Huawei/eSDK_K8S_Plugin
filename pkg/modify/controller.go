@@ -29,15 +29,15 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/lib/drcsi"
-	clientset "huawei-csi-driver/pkg/client/clientset/versioned"
-	"huawei-csi-driver/pkg/client/clientset/versioned/scheme"
-	external "huawei-csi-driver/pkg/client/informers/externalversions"
-	modifyinformers "huawei-csi-driver/pkg/client/informers/externalversions/xuanwu/v1"
-	modifylisters "huawei-csi-driver/pkg/client/listers/xuanwu/v1"
-	"huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	clientset "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/scheme"
+	external "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions"
+	modifyinformers "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions/xuanwu/v1"
+	modifylisters "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/listers/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

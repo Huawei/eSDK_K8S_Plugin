@@ -19,7 +19,7 @@ package main
 import (
 	"os"
 
-	"huawei-csi-driver/cli/cmd"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/cmd"
 )
 
 const (

@@ -21,13 +21,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/tools/cache"
 
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 var logName = "pvc_helper_test.log"
@@ -40,36 +41,20 @@ func TestMain(m *testing.M) {
 }
 
 func initClient() *KubeClient {
+	clientSet := fake.NewSimpleClientset()
 	helper := KubeClient{
-		clientSet:             fake.NewSimpleClientset(),
-		pvcControllerStopChan: make(chan struct{}),
-		volumeNamePrefix:      "pvc",
+		clientSet:         clientSet,
+		informersStopChan: make(chan struct{}),
+		volumeNamePrefix:  "pvc",
+		informerFactory:   informers.NewSharedInformerFactory(clientSet, 0),
 	}
-	helper.pvcController = cache.NewSharedIndexInformer(
-		helper.pvcSource,
-		&v1.PersistentVolumeClaim{},
-		cacheSyncPeriod,
-		cache.Indexers{uidIndex: metaUIDKeyFunc},
-	)
 	return &helper
 }
 
-func TestInitPVCWatcher(t *testing.T) {
-	helper := initClient()
-	initPVCWatcher(context.TODO(), helper)
-}
-
-func TestActivate(t *testing.T) {
-	helper := initClient()
-	initPVCWatcher(context.TODO(), helper)
-	helper.Activate()
-	defer helper.Deactivate()
-}
-
-func TestProcessPVC(t *testing.T) {
-	obj := &v1.PersistentVolumeClaim{
+func genFakePvc(name string) *v1.PersistentVolumeClaim {
+	return &v1.PersistentVolumeClaim{
 		TypeMeta:   metav1.TypeMeta{Kind: "PersistentVolumeClaim"},
-		ObjectMeta: metav1.ObjectMeta{Name: "fake-pvc"},
+		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: v1.PersistentVolumeClaimSpec{
 			Resources: v1.VolumeResourceRequirements{
 				Requests: map[v1.ResourceName]resource.Quantity{
@@ -77,6 +62,34 @@ func TestProcessPVC(t *testing.T) {
 				}},
 		},
 	}
+}
+
+func TestInitPVCAccessor(t *testing.T) {
+	// arrange
+	helper := initClient()
+
+	// action
+	err := initPVCAccessor(helper)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func TestActivate(t *testing.T) {
+	// arrange
+	helper := initClient()
+
+	// action
+	err := initPVCAccessor(helper)
+	helper.Activate()
+	defer helper.Deactivate()
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func TestProcessPVC(t *testing.T) {
+	obj := genFakePvc("fake-pvc")
 	helper := initClient()
 	helper.addPVC(obj)
 	helper.deletePVC(obj)
@@ -84,9 +97,14 @@ func TestProcessPVC(t *testing.T) {
 }
 
 func TestGetVolumeConfiguration(t *testing.T) {
+	// arrange
 	helper := initClient()
-	helper.pvcIndexer = helper.pvcController.GetIndexer()
+
+	// action
+	initPVCAccessor(helper)
 	_, err := helper.GetVolumeConfiguration(context.TODO(), "fake-pvc")
+
+	// assert
 	if err == nil {
 		t.Error("TestGetVolumeConfiguration failed")
 	}

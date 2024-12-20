@@ -25,13 +25,13 @@ import (
 	"github.com/prashantv/gostub"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/csi/backend"
-	"huawei-csi-driver/csi/backend/model"
-	"huawei-csi-driver/csi/backend/plugin"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

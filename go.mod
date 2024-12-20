@@ -1,4 +1,4 @@
-module huawei-csi-driver
+module github.com/Huawei/eSDK_K8S_Plugin/v4
 
 go 1.22
 

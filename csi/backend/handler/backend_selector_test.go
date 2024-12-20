@@ -24,8 +24,8 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 
-	"huawei-csi-driver/csi/backend"
-	"huawei-csi-driver/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
 )
 
 func TestBackendSelector_SelectBackend(t *testing.T) {

@@ -29,7 +29,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"huawei-csi-driver/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 )
 
 const (

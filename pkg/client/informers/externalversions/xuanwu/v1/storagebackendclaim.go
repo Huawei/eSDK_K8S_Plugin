@@ -17,16 +17,17 @@ package v1
 
 import (
 	"context"
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	versioned "huawei-csi-driver/pkg/client/clientset/versioned"
-	internalinterfaces "huawei-csi-driver/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "huawei-csi-driver/pkg/client/listers/xuanwu/v1"
-	time "time"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
+
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	versioned "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions/internalinterfaces"
+	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/listers/xuanwu/v1"
 )
 
 // StorageBackendClaimInformer provides access to a shared informer and lister for

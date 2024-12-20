@@ -20,8 +20,8 @@ import (
 	"errors"
 	"fmt"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 func (ctrl *BackendController) deleteStorageBackendContent(ctx context.Context,

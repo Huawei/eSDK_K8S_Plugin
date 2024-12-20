@@ -18,10 +18,10 @@
 package job
 
 import (
-	"huawei-csi-driver/csi/backend/handler"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/handler"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 var backendSyncInterface = handler.BackendRegisterInterface(nil)

@@ -31,12 +31,12 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	backendInformers "huawei-csi-driver/pkg/client/informers/externalversions/xuanwu/v1"
-	backendListers "huawei-csi-driver/pkg/client/listers/xuanwu/v1"
-	"huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	backendInformers "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions/xuanwu/v1"
+	backendListers "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/listers/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

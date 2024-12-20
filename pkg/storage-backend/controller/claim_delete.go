@@ -23,10 +23,10 @@ import (
 	coreV1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/pkg/finalizers"
-	"huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/finalizers"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 func (ctrl *BackendController) deleteStorageBackendClaim(ctx context.Context,

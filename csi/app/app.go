@@ -24,8 +24,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	cfg "huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/csi/app/options"
+	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/options"
 )
 
 const (

@@ -29,10 +29,10 @@ import (
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

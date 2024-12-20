@@ -1,20 +1,20 @@
 images:
   # Images provided by Huawei
-  huaweiCSIService: huawei-csi:4.5.0
-  storageBackendSidecar: storage-backend-sidecar:4.5.0
-  storageBackendController: storage-backend-controller:4.5.0
-  huaweiCSIExtender: huawei-csi-extender:4.5.0
+  huaweiCSIService: huawei-csi:4.6.0
+  storageBackendSidecar: storage-backend-sidecar:4.6.0
+  storageBackendController: storage-backend-controller:4.6.0
+  huaweiCSIExtender: huawei-csi-extender:4.6.0
 
   # CSI-related sidecar images provided by the Kubernetes community.
   # These must match the appropriate Kubernetes version.
   sidecar:
-    attacher: k8s.gcr.io/sig-storage/csi-attacher:v3.4.0
-    provisioner: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
-    resizer: k8s.gcr.io/sig-storage/csi-resizer:v1.4.0
-    registrar: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0
-    livenessProbe: k8s.gcr.io/sig-storage/livenessprobe:v2.5.0
-    snapshotter: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
-    snapshotController: k8s.gcr.io/sig-storage/snapshot-controller:v4.2.1
+    attacher: registry.k8s.io/sig-storage/csi-attacher:v4.4.0
+    provisioner: registry.k8s.io/sig-storage/csi-provisioner:v3.6.0
+    resizer: registry.k8s.io/sig-storage/csi-resizer:v1.9.0
+    registrar: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.0
+    livenessProbe: registry.k8s.io/sig-storage/livenessprobe:v2.12.0
+    snapshotter: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.0
+    snapshotController: registry.k8s.io/sig-storage/snapshot-controller:v6.3.0
 
 # Default image pull policy for sidecar container images, support [IfNotPresent, Always, Never]
 sidecarImagePullPolicy: "IfNotPresent"
@@ -114,6 +114,17 @@ controller:
       retryMaxDelay: 5m
       # Duration, volume modify resource reconcile delay time
       reconcileDelay: 1s
+
+  exportCsiService:
+    # enabled: Enable/Disable running the CSI exported server on service, so that other pod can call CSI
+    # Allowed values:
+    #   true: enable running the exported CSI server
+    #   false: disable running the exported CSI server on service
+    # Default value: false
+    enabled: false
+    # Port used by the CSI server when it is exported on service. The default port is 9090.
+    # You can change the port to another port that is not occupied.
+    port: 9090
 
   # nodeSelector: Define node selection constraints for controller pods.
   # For the pod to be eligible to run on a node, the node must have each

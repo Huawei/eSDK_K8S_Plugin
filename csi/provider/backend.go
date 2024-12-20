@@ -22,12 +22,12 @@ import (
 	"errors"
 	"fmt"
 
-	"huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/pkg/constants"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // AddStorageBackend used to add storage backend, and return the backend ID

@@ -20,17 +20,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
-	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/pkg/constants"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/storage/oceanstor/client"
-	"huawei-csi-driver/storage/oceanstor/clientv6"
-	"huawei-csi-driver/storage/oceanstor/smartx"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/clientv6"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/smartx"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -52,13 +50,13 @@ type OceanstorPlugin struct {
 
 	vStoreId string
 
-	cli          client.BaseClientInterface
-	product      string
+	cli          client.OceanstorClientInterface
+	product      constants.OceanstorVersion
 	capabilities map[string]interface{}
 }
 
 func (p *OceanstorPlugin) init(ctx context.Context, config map[string]interface{}, keepLogin bool) error {
-	backendClientConfig, err := p.formatInitParam(config)
+	backendClientConfig, err := formatOceanstorInitParam(config)
 	if err != nil {
 		return err
 	}
@@ -82,7 +80,7 @@ func (p *OceanstorPlugin) init(ctx context.Context, config map[string]interface{
 	p.name = backendClientConfig.Name
 	p.product = cli.Product
 
-	if p.product == constants.OceanStorDoradoV6 {
+	if p.product.IsDoradoV6OrV7() {
 		clientV6, err := clientv6.NewClientV6(ctx, backendClientConfig)
 		if err != nil {
 			cli.Logout(ctx)
@@ -165,13 +163,13 @@ func (p *OceanstorPlugin) updateBackendCapabilities(ctx context.Context) (map[st
 	log.AddContext(ctx).Debugf("Get license feature: %v", features)
 
 	supportThin := utils.IsSupportFeature(features, "SmartThin")
-	supportThick := p.product != "Dorado" && p.product != "DoradoV6"
+	supportThick := !p.product.IsDorado() && !p.product.IsDoradoV6OrV7()
 	supportQoS := utils.IsSupportFeature(features, "SmartQoS")
 	supportMetro := utils.IsSupportFeature(features, "HyperMetro")
 	supportMetroNAS := utils.IsSupportFeature(features, "HyperMetroNAS")
 	supportReplication := utils.IsSupportFeature(features, "HyperReplication")
 	supportClone := utils.IsSupportFeature(features, "HyperClone") || utils.IsSupportFeature(features, "HyperCopy")
-	supportApplicationType := p.product == "DoradoV6"
+	supportApplicationType := p.product.IsDoradoV6OrV7()
 
 	log.AddContext(ctx).Debugf("storageVersion: %v", p.cli.GetStorageVersion())
 
@@ -228,8 +226,10 @@ func (p *OceanstorPlugin) updateVStorePair(ctx context.Context, specifications m
 		specifications = map[string]interface{}{}
 	}
 
-	if p.product != constants.OceanStorDoradoV6 || p.cli.GetvStoreID() == "" ||
-		p.cli.GetStorageVersion() < constants.DoradoV615 {
+	// only Dorado V6 6.1.5 and later versions need to update vStorePair.
+	if !p.product.IsDoradoV6OrV7() ||
+		(p.product.IsDoradoV6() && p.cli.GetStorageVersion() < constants.DoradoV615) ||
+		p.cli.GetvStoreID() == "" {
 		log.AddContext(ctx).Debugf("storage product is %s,version is %s, vStore id is %s, "+
 			"do not update VStorePairId", p.product, p.cli.GetStorageVersion(), p.cli.GetvStoreID())
 		return
@@ -264,7 +264,7 @@ func (p *OceanstorNasPlugin) updateSmartThin(capabilities map[string]interface{}
 	if capabilities == nil {
 		return nil
 	}
-	if p.product == "Dorado" || p.product == "DoradoV6" {
+	if p.product.IsDorado() || p.product.IsDoradoV6OrV7() {
 		capabilities["SupportThin"] = true
 	}
 	return nil
@@ -288,7 +288,7 @@ func (p *OceanstorPlugin) UpdateBackendCapabilities(ctx context.Context) (map[st
 	return capabilities, specifications, nil
 }
 
-func (p *OceanstorPlugin) getParams(ctx context.Context, name string,
+func getParams(ctx context.Context, name string,
 	parameters map[string]interface{}) map[string]interface{} {
 
 	params := map[string]interface{}{
@@ -394,50 +394,8 @@ func (p *OceanstorPlugin) updatePoolCapabilities(ctx context.Context, poolNames 
 		}
 	}
 
-	capabilities := p.analyzePoolsCapacity(ctx, validPools, vStoreQuotaMap)
+	capabilities := analyzePoolsCapacity(ctx, validPools, vStoreQuotaMap)
 	return capabilities, nil
-}
-
-func (p *OceanstorPlugin) analyzePoolsCapacity(ctx context.Context, pools []map[string]interface{},
-	vStoreQuotaMap map[string]interface{}) map[string]interface{} {
-	capabilities := make(map[string]interface{})
-
-	for _, pool := range pools {
-		name, ok := pool["NAME"].(string)
-		if !ok {
-			continue
-		}
-		var err error
-		var freeCapacity, totalCapacity int64
-		if freeStr, ok := pool["USERFREECAPACITY"].(string); ok {
-			freeCapacity, err = strconv.ParseInt(freeStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
-		}
-		if totalStr, ok := pool["USERTOTALCAPACITY"].(string); ok {
-			totalCapacity, err = strconv.ParseInt(totalStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
-		}
-		if err != nil {
-			log.AddContext(ctx).Warningf("parse capacity failed, error: %v", err)
-		}
-		poolCapacityMap := map[string]interface{}{
-			string(xuanwuV1.FreeCapacity):  freeCapacity * constants.AllocationUnitBytes,
-			string(xuanwuV1.TotalCapacity): totalCapacity * constants.AllocationUnitBytes,
-			string(xuanwuV1.UsedCapacity):  totalCapacity - freeCapacity,
-		}
-		if len(vStoreQuotaMap) == 0 {
-			capabilities[name] = poolCapacityMap
-			continue
-		}
-		log.AddContext(ctx).Debugf("analyzePoolsCapacity poolName: %s, poolCapacity: %+v, vstoreQuota: %+v",
-			name, poolCapacityMap, vStoreQuotaMap)
-		free, ok := vStoreQuotaMap[string(xuanwuV1.FreeCapacity)].(int64)
-		if ok && free < freeCapacity*constants.AllocationUnitBytes {
-			capabilities[name] = vStoreQuotaMap
-		} else {
-			capabilities[name] = poolCapacityMap
-		}
-	}
-
-	return capabilities
 }
 
 // SupportQoSParameters checks requested QoS parameters support by Oceanstor plugin
@@ -451,8 +409,14 @@ func (p *OceanstorPlugin) Logout(ctx context.Context) {
 		p.cli.Logout(ctx)
 	}
 }
-func (p *OceanstorPlugin) switchClient(ctx context.Context, newClient client.BaseClientInterface) error {
-	log.AddContext(ctx).Infoln("Using OceanStor V6 or Dorado V6 BaseClient.")
+
+// GetSectorSize get sector size of plugin
+func (p *OceanstorPlugin) GetSectorSize() int64 {
+	return SectorSize
+}
+
+func (p *OceanstorPlugin) switchClient(ctx context.Context, newClient client.OceanstorClientInterface) error {
+	log.AddContext(ctx).Infoln("Using OceanStor V6 or Dorado V6 client.")
 	p.cli = newClient
 	err := p.cli.Login(ctx)
 	if err != nil {
@@ -471,8 +435,7 @@ func (p *OceanstorPlugin) switchClient(ctx context.Context, newClient client.Bas
 	return nil
 }
 
-func (p *OceanstorPlugin) getNewClientConfig(ctx context.Context,
-	param map[string]interface{}) (*client.NewClientConfig, error) {
+func getNewClientConfig(ctx context.Context, param map[string]interface{}) (*client.NewClientConfig, error) {
 	data := &client.NewClientConfig{}
 	configUrls, exist := param["urls"].([]interface{})
 	if !exist || len(configUrls) <= 0 {

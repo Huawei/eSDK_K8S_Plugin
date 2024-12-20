@@ -30,7 +30,7 @@ import (
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
 
-	"huawei-csi-driver/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 func TestGetDevice(t *testing.T) {

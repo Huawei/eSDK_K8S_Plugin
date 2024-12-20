@@ -22,8 +22,8 @@ import (
 	"os"
 	"time"
 
-	"huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 )
 
 const (
@@ -34,6 +34,7 @@ const (
 	defaultLeaderRenewDeadline          = 6 * time.Second
 	defaultLeaderLeaseDuration          = 8 * time.Second
 	defaultBackendUpdateIntervalSeconds = 60
+	defaultExportCsiServerPort          = 9090
 )
 
 // serviceOptions include service's configuration
@@ -54,6 +55,9 @@ type serviceOptions struct {
 	webHookAddress        string
 	backendUpdateInterval int
 	workerThreads         int
+
+	exportCsiServerAddress string
+	exportCsiServerPort    int
 
 	leaderLeaseDuration time.Duration
 	leaderRenewDeadline time.Duration
@@ -111,6 +115,10 @@ func (opt *serviceOptions) AddFlags(ff *flag.FlagSet) {
 	ff.DurationVar(&opt.timeout, "timeout", defaultRpcTimeout, "timeout for any RPCs")
 	ff.StringVar(&opt.kubeletVolumeDevicesDirName, "kubelet-volume-devices-dir-name",
 		constants.DefaultKubeletVolumeDevicesDirName, "The dir name of volume devices")
+	ff.IntVar(&opt.exportCsiServerPort, "export-csi-service-port", defaultExportCsiServerPort,
+		"The port of exported csi server")
+	ff.StringVar(&opt.exportCsiServerAddress, "export-csi-service-address", "",
+		"The address of exported csi server")
 }
 
 // ApplyFlags assign the service flags
@@ -135,6 +143,8 @@ func (opt *serviceOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.WorkerThreads = opt.workerThreads
 	cfg.Timeout = opt.timeout
 	cfg.KubeletVolumeDevicesDirName = opt.kubeletVolumeDevicesDirName
+	cfg.ExportCsiServerAddress = opt.exportCsiServerAddress
+	cfg.ExportCsiServerPort = opt.exportCsiServerPort
 }
 
 // ValidateFlags validate the service flags

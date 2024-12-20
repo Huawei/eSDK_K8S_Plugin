@@ -20,10 +20,10 @@ import (
 	"context"
 	"fmt"
 
-	"huawei-csi-driver/csi/backend"
-	"huawei-csi-driver/csi/backend/model"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // BackendSelectInterface all backend select operation set

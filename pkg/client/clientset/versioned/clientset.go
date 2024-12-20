@@ -24,7 +24,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 
-	xuanwuv1 "huawei-csi-driver/pkg/client/clientset/versioned/typed/xuanwu/v1"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/typed/xuanwu/v1"
 )
 
 type Interface interface {

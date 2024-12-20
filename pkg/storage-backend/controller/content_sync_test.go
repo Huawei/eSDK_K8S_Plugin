@@ -20,9 +20,9 @@ import (
 	"context"
 	"testing"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/pkg/finalizers"
-	"huawei-csi-driver/pkg/utils"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/finalizers"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 )
 
 func TestUpdateContentAddFinalizerFailed(t *testing.T) {

@@ -23,9 +23,9 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	pkgUtils "huawei-csi-driver/pkg/utils"
+	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 )
 
 func TestBackendFetcher_FetchAllBackends(t *testing.T) {

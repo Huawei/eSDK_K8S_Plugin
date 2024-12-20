@@ -19,7 +19,7 @@ package resources
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"huawei-csi-driver/cli/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
 )
 
 type resourceTuple struct {

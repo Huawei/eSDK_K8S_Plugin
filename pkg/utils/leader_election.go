@@ -26,8 +26,8 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // LeaderElectionConf include the configuration of leader election

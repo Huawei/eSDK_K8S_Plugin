@@ -22,8 +22,8 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/pkg/utils"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 )
 
 func TestDeleteStorageBackendClaim(t *testing.T) {

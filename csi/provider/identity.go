@@ -20,8 +20,8 @@ package provider
 import (
 	"context"
 
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // GetProviderInfo is used to get provider info

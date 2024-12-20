@@ -25,12 +25,12 @@ import (
 	"path"
 	"strings"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/connector/nfs"
-	"huawei-csi-driver/csi/backend/plugin"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -128,7 +128,7 @@ func mountNFSPlus(ctx context.Context, conn *connectorInfo) error {
 	if exist {
 		// check the filesystem by comparing the sourcePath and mountPath
 		if value == conn.sourcePath || path.Base(path.Dir(conn.targetPath)) == path.Base(path.Dir(conn.sourcePath)) ||
-			nfs.ContainSourceDevice(ctx, conn.sourcePath, value) {
+			connUtils.ContainSourceDevice(ctx, conn.sourcePath, value) {
 			log.AddContext(ctx).Infof("Mount %s to %s is already exist", conn.sourcePath, conn.targetPath)
 			return nil
 		}

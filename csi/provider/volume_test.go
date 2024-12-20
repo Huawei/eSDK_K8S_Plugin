@@ -26,13 +26,13 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/require"
 
-	"huawei-csi-driver/csi/backend/handler"
-	"huawei-csi-driver/csi/backend/model"
-	"huawei-csi-driver/csi/backend/plugin"
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/storage/oceanstor/volume"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/handler"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

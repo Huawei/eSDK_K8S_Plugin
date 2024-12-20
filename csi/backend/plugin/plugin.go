@@ -20,9 +20,9 @@ import (
 	"context"
 
 	// init the nfs connector
-	_ "huawei-csi-driver/connector/nfs"
-	pkgVolume "huawei-csi-driver/pkg/volume"
-	"huawei-csi-driver/utils"
+	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nfs"
+	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 // StoragePlugin defines storage plugin interfaces
@@ -48,12 +48,14 @@ type StoragePlugin interface {
 	Validate(context.Context, map[string]interface{}) error
 
 	DeleteDTreeVolume(context.Context, map[string]interface{}) error
-	ExpandDTreeVolume(context.Context, map[string]interface{}) (bool, error)
+	ExpandDTreeVolume(context.Context, string, string, int64) (bool, error)
 
 	// SetOnline sets the online status of plugin
 	SetOnline(bool)
 	// GetOnline gets the online status of plugin
 	GetOnline() bool
+	// GetSectorSize gets the sector size of plugin
+	GetSectorSize() int64
 }
 
 // SmartXQoSQuery provides Quality of Service(QoS) Query operations

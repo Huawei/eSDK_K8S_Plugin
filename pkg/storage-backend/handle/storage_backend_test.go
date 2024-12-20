@@ -23,8 +23,8 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"google.golang.org/grpc"
 
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/lib/drcsi/rpc"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi/rpc"
 )
 
 func initBackend() *backend {

@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -29,19 +30,20 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
-	"huawei-csi-driver/connector/host"
-	connUtils "huawei-csi-driver/connector/utils"
-	"huawei-csi-driver/connector/utils/lock"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/backend/handler"
-	"huawei-csi-driver/csi/backend/job"
-	"huawei-csi-driver/csi/driver"
-	"huawei-csi-driver/csi/provider"
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
-	"huawei-csi-driver/utils/notify"
-	"huawei-csi-driver/utils/version"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/host"
+	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils/lock"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/handler"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/job"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/driver"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/provider"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/cert"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/notify"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/version"
 )
 
 const (
@@ -49,7 +51,7 @@ const (
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 
-	csiVersion      = "4.5.0"
+	csiVersion      = "4.6.0"
 	endpointDirPerm = 0755
 )
 
@@ -87,7 +89,7 @@ func releaseStorageClient(ctx context.Context) {
 	handler.NewCacheWrapper().Clear(ctx)
 }
 
-func runCSIController(ctx context.Context) {
+func runCSIController(ctx context.Context, csiDriver *driver.CsiDriver) {
 	log.AddContext(ctx).Infoln("Run as huawei-csi-controller.")
 
 	app.GetGlobalConfig().K8sUtils.Activate()
@@ -101,11 +103,14 @@ func runCSIController(ctx context.Context) {
 	// register the kahu community DRCSI service
 	go registerDRCSIServer()
 
+	// expose csi controller server on k8s service
+	go runCsiControllerOnService(ctx, csiDriver)
+
 	// register the K8S community CSI service
-	registerCSIServer()
+	registerCSIServer(csiDriver)
 }
 
-func runCSINode(ctx context.Context) {
+func runCSINode(ctx context.Context, csiDriver *driver.CsiDriver) {
 	go exitClean(false)
 
 	// Init file lock
@@ -133,7 +138,7 @@ func runCSINode(ctx context.Context) {
 	}()
 
 	// register the K8S community CSI service
-	registerCSIServer()
+	registerCSIServer(csiDriver)
 }
 
 func main() {
@@ -155,11 +160,16 @@ func main() {
 		logrus.Fatalf("Init log error: %v", err)
 	}
 
+	csiDriver := driver.NewServer(app.GetGlobalConfig().DriverName,
+		csiVersion,
+		app.GetGlobalConfig().K8sUtils,
+		app.GetGlobalConfig().NodeName)
+
 	// Start CSI service
 	if app.GetGlobalConfig().Controller {
-		runCSIController(context.Background())
+		runCSIController(context.Background(), csiDriver)
 	} else {
-		runCSINode(context.Background())
+		runCSINode(context.Background(), csiDriver)
 	}
 }
 
@@ -179,13 +189,45 @@ func registerDRCSIServer() {
 	}
 }
 
-func registerCSIServer() {
-	d := driver.NewServer(app.GetGlobalConfig().DriverName,
-		csiVersion,
-		app.GetGlobalConfig().K8sUtils,
-		app.GetGlobalConfig().NodeName)
+func runCsiControllerOnService(ctx context.Context, csiDriver *driver.CsiDriver) {
+	if app.GetGlobalConfig().ExportCsiServerAddress == "" {
+		return
+	}
+
+	address := fmt.Sprintf("%s:%d",
+		app.GetGlobalConfig().ExportCsiServerAddress,
+		app.GetGlobalConfig().ExportCsiServerPort)
+	listen, err := net.Listen("tcp", address)
+	if err != nil {
+		notify.Stop("listen on %s error: %v", address, err)
+	}
+	registerServerOnService(ctx, listen, csiDriver)
+}
+
+func registerServerOnService(ctx context.Context, listener net.Listener, d *driver.CsiDriver) {
+	cred, err := cert.GetGrpcCredential(ctx)
+	if err != nil {
+		notify.Stop("start Huawei CSI driver on service error: %v", err)
+	}
+	opts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(log.EnsureGRPCContext),
+		grpc.Creds(cred),
+	}
+	server := grpc.NewServer(opts...)
+
+	csi.RegisterIdentityServer(server, d)
+	csi.RegisterControllerServer(server, d)
+	csi.RegisterNodeServer(server, d)
+
+	log.Infof("starting Huawei CSI driver on service, listening on %s", listener.Addr().String())
+	if err := server.Serve(listener); err != nil {
+		notify.Stop("start Huawei CSI driver on service error: %v", err)
+	}
+}
+
+func registerCSIServer(csiDriver *driver.CsiDriver) {
 	listener := listenEndpoint(app.GetGlobalConfig().Endpoint)
-	registerServer(listener, d)
+	registerServer(listener, csiDriver)
 }
 
 func listenEndpoint(endpoint string) net.Listener {

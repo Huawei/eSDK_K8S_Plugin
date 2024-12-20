@@ -21,11 +21,11 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/csi/backend/plugin"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // NasManager implements VolumeManager interface

@@ -21,14 +21,14 @@ import (
 	"errors"
 	"fmt"
 
-	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/pkg/constants"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	pkgVolume "huawei-csi-driver/pkg/volume"
-	"huawei-csi-driver/storage/oceanstor/client"
-	"huawei-csi-driver/storage/oceanstor/volume"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -93,16 +93,9 @@ func (p *OceanstorDTreePlugin) CreateVolume(ctx context.Context, name string, pa
 		return nil, errors.New("empty parameters")
 	}
 
-	size, ok := parameters["size"].(int64)
-	if !ok || !utils.IsCapacityAvailable(size, SectorSize) {
-		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", size)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
 	parameters["vstoreId"] = p.vStoreId
 	parameters["parentname"] = p.parentName
-	params := p.getParams(ctx, name, parameters)
+	params := getParams(ctx, name, parameters)
 
 	volObj, err := p.getDTreeObj().Create(ctx, params)
 	if err != nil {
@@ -136,30 +129,19 @@ func (p *OceanstorDTreePlugin) DeleteDTreeVolume(ctx context.Context, params map
 }
 
 // ExpandDTreeVolume used to expand DTree volume
-func (p *OceanstorDTreePlugin) ExpandDTreeVolume(ctx context.Context, params map[string]interface{}) (bool, error) {
+func (p *OceanstorDTreePlugin) ExpandDTreeVolume(ctx context.Context,
+	dTreeName, parentName string, spaceHardQuota int64) (bool, error) {
 	dTree := p.getDTreeObj()
 
-	dTreeName, _ := utils.ToStringWithFlag(params["name"])
-	spaceHardQuota, ok := params["spacehardquota"].(int64)
-	if !ok {
-		log.AddContext(ctx).Errorln("expand dTree volume failed, spacehardquota is not found")
-		return false, errors.New("spacehardquota not found")
-	}
-
-	if !utils.IsCapacityAvailable(spaceHardQuota, SectorSize) {
-		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", spaceHardQuota)
-		log.AddContext(ctx).Errorln(msg)
-		return false, errors.New(msg)
-	}
-
-	parentName, _ := utils.ToStringWithFlag(params["parentname"])
+	// The unit of DTree's quota is bytes, but not sector size.
+	spaceHardQuota = utils.TransK8SCapacity(spaceHardQuota, p.GetSectorSize())
 	err := dTree.Expand(ctx, parentName, dTreeName, p.vStoreId, spaceHardQuota)
 	if err != nil {
 		log.AddContext(ctx).Errorf("expand dTree volume failed, ")
 		return false, err
 	}
 	log.AddContext(ctx).Infof("expand dTree volume success, parentName: %v, dTreeName: %v,"+
-		" vStoreId: %v, spaceHardQuota: %v", params, dTreeName, p.vStoreId, spaceHardQuota)
+		" vStoreId: %v, spaceHardQuota: %v", parentName, dTreeName, p.vStoreId, spaceHardQuota)
 	return false, nil
 }
 
@@ -178,7 +160,7 @@ func (p *OceanstorDTreePlugin) ExpandVolume(ctx context.Context, name string, si
 func (p *OceanstorDTreePlugin) Validate(ctx context.Context, param map[string]interface{}) error {
 	log.AddContext(ctx).Infoln("Start to validate OceanstorDTreePlugin parameters.")
 
-	clientConfig, err := p.getNewClientConfig(ctx, param)
+	clientConfig, err := getNewClientConfig(ctx, param)
 	if err != nil {
 		return err
 	}
@@ -307,6 +289,7 @@ func (p *OceanstorDTreePlugin) updateNFS4Capability(ctx context.Context, capabil
 	capabilities["SupportNFS3"] = true
 	capabilities["SupportNFS4"] = false
 	capabilities["SupportNFS41"] = false
+	capabilities["SupportNFS42"] = false
 
 	if !nfsServiceSetting["SupportNFS3"] {
 		capabilities["SupportNFS3"] = false
@@ -317,6 +300,9 @@ func (p *OceanstorDTreePlugin) updateNFS4Capability(ctx context.Context, capabil
 	if nfsServiceSetting["SupportNFS41"] {
 		capabilities["SupportNFS41"] = true
 	}
+	if nfsServiceSetting["SupportNFS42"] {
+		capabilities["SupportNFS42"] = true
+	}
 
 	return nil
 }
@@ -326,7 +312,7 @@ func (p *OceanstorDTreePlugin) updateSmartThin(capabilities map[string]interface
 	if capabilities == nil {
 		return nil
 	}
-	if p.product == "Dorado" || p.product == "DoradoV6" {
+	if p.product.IsDorado() || p.product.IsDoradoV6OrV7() {
 		capabilities["SupportThin"] = true
 	}
 	return nil

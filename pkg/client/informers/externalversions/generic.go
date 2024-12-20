@@ -17,10 +17,11 @@ package externalversions
 
 import (
 	"fmt"
-	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
 
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
+
+	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other

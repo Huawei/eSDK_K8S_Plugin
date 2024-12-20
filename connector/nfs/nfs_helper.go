@@ -23,16 +23,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -46,13 +45,8 @@ type connectorInfo struct {
 	sourcePath string
 	targetPath string
 	fsType     string
-	mntFlags   mountParam
+	mntFlags   connUtils.MountParam
 	accessMode csi.VolumeCapability_AccessMode_Mode
-}
-
-type mountParam struct {
-	dashT string
-	dashO string
 }
 
 func parseNFSInfo(ctx context.Context,
@@ -97,7 +91,7 @@ func parseNFSInfo(ctx context.Context,
 	con.targetPath = targetPath
 	con.fsType = fsType
 	con.accessMode = accessMode
-	con.mntFlags = mountParam{dashO: strings.TrimSpace(mntDashO), dashT: mntDashT}
+	con.mntFlags = connUtils.MountParam{DashO: strings.TrimSpace(mntDashO), DashT: mntDashT}
 
 	return &con, nil
 }
@@ -146,133 +140,8 @@ func preMount(sourcePath, targetPath string, checkSourcePath bool) error {
 	return nil
 }
 
-func mountFS(ctx context.Context, sourcePath, targetPath string, flags mountParam) error {
-	return mountUnix(ctx, sourcePath, targetPath, flags, false)
-}
-
-func compareMountPath(ctx context.Context, sourcePath, mountSourcePath string) error {
-	// the mount source path is like: /dev/mapper/mpath<x> or /dev/sd<x>
-	// but the source path is like: /dev/dm-<n> or /dev/sd<n>.
-	// The relationship of these two path as follows:
-	//     lrwxrwxrwx 1 root root 7 Aug 1 17:13 /dev/mapper/mpathc -> ../dm-3
-	_, err := connector.ReadDevice(ctx, mountSourcePath)
-	if err != nil {
-		return err
-	}
-
-	mountRealPath, err := filepath.EvalSymlinks(mountSourcePath)
-	if err != nil {
-		return err
-	}
-
-	sourceRealPath, err := filepath.EvalSymlinks(sourcePath)
-	if err != nil {
-		return err
-	}
-
-	if sourceRealPath != mountRealPath {
-		msg := fmt.Sprintf("The source path is %s, the real path is %s",
-			sourcePath, mountRealPath)
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-
-	return nil
-}
-
-func appendXFSMountFlags(ctx context.Context, sourcePath string, flags mountParam) mountParam {
-	// Only disk devices need to be determined whether the system is XFS.
-	if !strings.Contains(sourcePath, "/dev/") {
-		return flags
-	}
-	fsType, err := connector.GetFsTypeByDevPath(ctx, sourcePath)
-	if err != nil {
-		log.AddContext(ctx).Warningf("Get device: [%s] FsType failed. error: %v", sourcePath, err)
-		return flags
-	}
-	if fsType == "xfs" {
-		// xfs volumes are always mounted with '-o nouuid' to allow clones to be mounted to the same node as the source
-		if flags.dashO == "" {
-			flags.dashO = "nouuid"
-		} else {
-			flags.dashO = fmt.Sprintf("%s,nouuid", flags.dashO)
-		}
-	}
-
-	log.AddContext(ctx).Infof("mount flags: [%v]", flags)
-	return flags
-}
-
-func mountUnix(ctx context.Context, sourcePath, targetPath string, flags mountParam, checkSourcePath bool) error {
-	var output string
-	var err error
-	err = preMount(sourcePath, targetPath, checkSourcePath)
-	if err != nil {
-		return err
-	}
-
-	mountMap, err := connector.ReadMountPoints(ctx)
-	value, exist := mountMap[targetPath]
-	if exist {
-		// checkSourcePath means the source is block type, need to check the realpath
-		if checkSourcePath {
-			err := compareMountPath(ctx, sourcePath, value)
-			if err != nil {
-				return err
-			}
-			log.AddContext(ctx).Infof("%s is already mount to %s", sourcePath, targetPath)
-			return nil
-		}
-
-		// if the checkSourcePath is false, check the filesystem by comparing the sourcePath and mountPath
-		if value == sourcePath || path.Base(path.Dir(targetPath)) == path.Base(path.Dir(sourcePath)) ||
-			ContainSourceDevice(ctx, sourcePath, value) {
-			log.AddContext(ctx).Infof("Mount %s to %s is already exist", sourcePath, targetPath)
-			return nil
-		}
-
-		return utils.Errorf(ctx, "The mount %s is already exist, but the source path is not %s, instead of %s",
-			targetPath, sourcePath, value)
-	}
-
-	flags = appendXFSMountFlags(ctx, sourcePath, flags)
-
-	if flags.dashT != "" {
-		flags.dashT = fmt.Sprintf("-t %s", flags.dashT)
-	}
-
-	if flags.dashO != "" {
-		flags.dashO = fmt.Sprintf("-o %s", flags.dashO)
-	}
-
-	output, err = utils.ExecShellCmd(ctx, "mount %s %s %s %s", sourcePath, targetPath, flags.dashT, flags.dashO)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Mount %s to %s failed, error res: %s, error: %s",
-			sourcePath, targetPath, output, err)
-		return err
-	}
-
-	return nil
-}
-
-// ContainSourceDevice used to check target path referenced source device is equal sourceDev
-func ContainSourceDevice(ctx context.Context, targetPath, sourceDev string) bool {
-	for _, value := range findSourceDevice(ctx, targetPath) {
-		if value == sourceDev {
-			return true
-		}
-	}
-	return false
-}
-
-// findSourceDevice use findmnt command to find mountPath referenced source device
-func findSourceDevice(ctx context.Context, targetPath string) []string {
-	output, err := utils.ExecShellCmd(ctx, "findmnt -o source --noheadings --target %s", targetPath)
-	if err != nil {
-		return []string{}
-	}
-
-	return strings.Split(output, "\n")
+func mountFS(ctx context.Context, sourcePath, targetPath string, flags connUtils.MountParam) error {
+	return connUtils.MountToDir(ctx, sourcePath, targetPath, flags, false)
 }
 
 func getFSType(ctx context.Context, sourcePath string) (string, error) {
@@ -397,12 +266,12 @@ func mountDisk(ctx context.Context, conn *connectorInfo) error {
 			return err
 		}
 
-		err = mountUnix(ctx, conn.sourcePath, conn.targetPath, conn.mntFlags, true)
+		err = connUtils.MountToDir(ctx, conn.sourcePath, conn.targetPath, conn.mntFlags, true)
 		if err != nil {
 			return err
 		}
 	} else {
-		err = mountUnix(ctx, conn.sourcePath, conn.targetPath, conn.mntFlags, true)
+		err = connUtils.MountToDir(ctx, conn.sourcePath, conn.targetPath, conn.mntFlags, true)
 		if err != nil {
 			return err
 		}
@@ -423,22 +292,6 @@ func mountDisk(ctx context.Context, conn *connectorInfo) error {
 			return err
 		}
 	}
-	return nil
-}
-
-func unmountUnix(ctx context.Context, targetPath string) error {
-	_, err := os.Stat(targetPath)
-	if err != nil && os.IsNotExist(err) {
-		return nil
-	}
-
-	output, err := utils.ExecShellCmd(ctx, "umount %s", targetPath)
-	if err != nil && !(strings.Contains(output, "not mounted") ||
-		strings.Contains(output, "not found")) {
-		log.AddContext(ctx).Errorf("Unmount %s error: %s", targetPath, output)
-		return err
-	}
-
 	return nil
 }
 
@@ -463,7 +316,7 @@ func removeTargetPath(targetPath string) error {
 }
 
 func tryDisConnectVolume(ctx context.Context, targetPath string) error {
-	err := unmountUnix(ctx, targetPath)
+	err := connUtils.Unmount(ctx, targetPath)
 	if err != nil {
 		return err
 	}

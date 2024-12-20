@@ -25,21 +25,22 @@ import (
 	"strconv"
 	"sync"
 
-	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/pkg/constants"
-	pkgVolume "huawei-csi-driver/pkg/volume"
-	"huawei-csi-driver/proto"
-	"huawei-csi-driver/storage/oceanstor/attacher"
-	"huawei-csi-driver/storage/oceanstor/client"
-	"huawei-csi-driver/storage/oceanstor/volume"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	xuanwuV1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/proto"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/attacher"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
 	hyperMetroPairRunningStatusNormal = "1"
 	hyperMetroPairRunningStatusPause  = "41"
 	reflectResultLength               = 2
+	csiInvoker                        = "csi"
 )
 
 // OceanstorSanPlugin implements storage StoragePlugin interface
@@ -57,8 +58,8 @@ type OceanstorSanPlugin struct {
 }
 
 type handlerRequest struct {
-	localCli   client.BaseClientInterface
-	metroCli   client.BaseClientInterface
+	localCli   client.OceanstorClientInterface
+	metroCli   client.OceanstorClientInterface
 	lun        map[string]interface{}
 	parameters map[string]interface{}
 	method     string
@@ -103,7 +104,7 @@ func (p *OceanstorSanPlugin) Init(ctx context.Context, config map[string]interfa
 		return err
 	}
 
-	if (protocol == "roce" || protocol == "fc-nvme") && p.product != "DoradoV6" {
+	if (protocol == "roce" || protocol == "fc-nvme") && !p.product.IsDoradoV6OrV7() {
 		p.Logout(ctx)
 
 		msg := fmt.Sprintf("The storage backend %s does not support NVME protocol", p.product)
@@ -118,8 +119,8 @@ func (p *OceanstorSanPlugin) Init(ctx context.Context, config map[string]interfa
 }
 
 func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
-	var metroRemoteCli client.BaseClientInterface
-	var replicaRemoteCli client.BaseClientInterface
+	var metroRemoteCli client.OceanstorClientInterface
+	var replicaRemoteCli client.OceanstorClientInterface
 
 	if p.metroRemotePlugin != nil {
 		metroRemoteCli = p.metroRemotePlugin.cli
@@ -133,23 +134,16 @@ func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
 
 // CreateVolume used to create volume
 func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
-	name string,
-	parameters map[string]interface{}) (utils.Volume, error) {
-	size, ok := parameters["size"].(int64)
-	if !ok || !utils.IsCapacityAvailable(size, SectorSize) {
-		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", size)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	}
+	name string, parameters map[string]interface{}) (utils.Volume, error) {
 
-	params := p.getParams(ctx, name, parameters)
+	params := getParams(ctx, name, parameters)
 	san := p.getSanObj()
 
-	volObl, err := san.Create(ctx, params)
+	volObj, err := san.Create(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	return volObl, nil
+	return volObj, nil
 }
 
 // QueryVolume used to query volume
@@ -167,15 +161,8 @@ func (p *OceanstorSanPlugin) DeleteVolume(ctx context.Context, name string) erro
 
 // ExpandVolume used to expand volume
 func (p *OceanstorSanPlugin) ExpandVolume(ctx context.Context, name string, size int64) (bool, error) {
-	if !utils.IsCapacityAvailable(size, SectorSize) {
-		msg := fmt.Sprintf("Expand Volume: the capacity %d is not an integer multiple of 512.", size)
-		log.AddContext(ctx).Errorln(msg)
-		return false, errors.New(msg)
-	}
 	san := p.getSanObj()
-	newSize := utils.TransVolumeCapacity(size, constants.AllocationUnitBytes)
-	isAttach, err := san.Expand(ctx, name, newSize)
-	return isAttach, err
+	return san.Expand(ctx, name, size)
 }
 
 func (p *OceanstorSanPlugin) isHyperMetro(ctx context.Context, lun map[string]interface{}) bool {
@@ -294,7 +281,7 @@ func (p *OceanstorSanPlugin) handler(ctx context.Context, req handlerRequest) ([
 // AttachVolume attach volume to node,return storage mapping info.
 func (p *OceanstorSanPlugin) AttachVolume(ctx context.Context, name string,
 	parameters map[string]interface{}) (map[string]interface{}, error) {
-	var localCli, metroCli client.BaseClientInterface
+	var localCli, metroCli client.OceanstorClientInterface
 	if p.storageOnline {
 		localCli = p.cli
 	}
@@ -338,7 +325,7 @@ func (p *OceanstorSanPlugin) AttachVolume(ctx context.Context, name string,
 
 // DetachVolume used to detach volume from node
 func (p *OceanstorSanPlugin) DetachVolume(ctx context.Context, name string, parameters map[string]interface{}) error {
-	var localCli, metroCli client.BaseClientInterface
+	var localCli, metroCli client.OceanstorClientInterface
 	if p.storageOnline {
 		localCli = p.cli
 	}
@@ -378,7 +365,7 @@ func (p *OceanstorSanPlugin) DetachVolume(ctx context.Context, name string, para
 
 func (p *OceanstorSanPlugin) mutexReleaseClient(ctx context.Context,
 	plugin *OceanstorSanPlugin,
-	cli client.BaseClientInterface) {
+	cli client.OceanstorClientInterface) {
 	plugin.clientMutex.Lock()
 	defer plugin.clientMutex.Unlock()
 	plugin.clientCount--
@@ -388,7 +375,7 @@ func (p *OceanstorSanPlugin) mutexReleaseClient(ctx context.Context,
 	}
 }
 
-func (p *OceanstorSanPlugin) releaseClient(ctx context.Context, cli, metroCli client.BaseClientInterface) {
+func (p *OceanstorSanPlugin) releaseClient(ctx context.Context, cli, metroCli client.OceanstorClientInterface) {
 	if p.storageOnline {
 		p.mutexReleaseClient(ctx, p, cli)
 	}
@@ -411,8 +398,10 @@ func (p *OceanstorSanPlugin) UpdatePoolCapabilities(ctx context.Context, poolNam
 }
 
 func (p *OceanstorSanPlugin) getVstoreCapacity(ctx context.Context) (map[string]interface{}, error) {
-	if p.product != constants.OceanStorDoradoV6 || p.cli.GetvStoreName() == "" ||
-		p.cli.GetStorageVersion() < constants.DoradoV615 {
+	// only Dorado V6 6.1.5 and later versions need to get vStore's capacity.
+	if !p.product.IsDoradoV6OrV7() ||
+		(p.product.IsDoradoV6() && p.cli.GetStorageVersion() < constants.DoradoV615) ||
+		p.cli.GetvStoreName() == "" {
 		return map[string]interface{}{}, nil
 	}
 	vStore, err := p.cli.GetvStoreByName(ctx, p.cli.GetvStoreName())
@@ -485,7 +474,7 @@ func (p *OceanstorSanPlugin) DeleteSnapshot(ctx context.Context,
 	return nil
 }
 
-func (p *OceanstorSanPlugin) mutexGetClient(ctx context.Context) (client.BaseClientInterface, error) {
+func (p *OceanstorSanPlugin) mutexGetClient(ctx context.Context) (client.OceanstorClientInterface, error) {
 	p.clientMutex.Lock()
 	defer p.clientMutex.Unlock()
 	var err error
@@ -502,10 +491,10 @@ func (p *OceanstorSanPlugin) mutexGetClient(ctx context.Context) (client.BaseCli
 	return p.cli, err
 }
 
-func (p *OceanstorSanPlugin) getClient(ctx context.Context) (client.BaseClientInterface,
-	client.BaseClientInterface, error) {
+func (p *OceanstorSanPlugin) getClient(ctx context.Context) (client.OceanstorClientInterface,
+	client.OceanstorClientInterface, error) {
 	cli, locErr := p.mutexGetClient(ctx)
-	var metroCli client.BaseClientInterface
+	var metroCli client.OceanstorClientInterface
 	var rmtErr error
 	if p.metroRemotePlugin != nil {
 		metroCli, rmtErr = p.metroRemotePlugin.mutexGetClient(ctx)
@@ -520,7 +509,7 @@ func (p *OceanstorSanPlugin) getClient(ctx context.Context) (client.BaseClientIn
 	return cli, metroCli, nil
 }
 
-func (p *OceanstorSanPlugin) getLunInfo(ctx context.Context, localCli, remoteCli client.BaseClientInterface,
+func (p *OceanstorSanPlugin) getLunInfo(ctx context.Context, localCli, remoteCli client.OceanstorClientInterface,
 	lunName string) (map[string]interface{}, error) {
 	var lun map[string]interface{}
 	var err error
@@ -576,7 +565,7 @@ func (p *OceanstorSanPlugin) Validate(ctx context.Context, param map[string]inte
 		return err
 	}
 
-	clientConfig, err := p.getNewClientConfig(ctx, param)
+	clientConfig, err := getNewClientConfig(ctx, param)
 	if err != nil {
 		return err
 	}
@@ -636,7 +625,7 @@ func (p *OceanstorSanPlugin) DeleteDTreeVolume(ctx context.Context, m map[string
 }
 
 // ExpandDTreeVolume used to expand DTree volume
-func (p *OceanstorSanPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
+func (p *OceanstorSanPlugin) ExpandDTreeVolume(context.Context, string, string, int64) (bool, error) {
 	return false, errors.New("not implement")
 }
 

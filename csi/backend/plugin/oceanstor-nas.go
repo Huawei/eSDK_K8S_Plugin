@@ -24,16 +24,16 @@ import (
 	"net"
 	"strconv"
 
-	"huawei-csi-driver/cli/helper"
-	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/pkg/constants"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	pkgVolume "huawei-csi-driver/pkg/volume"
-	"huawei-csi-driver/storage/oceanstor/client"
-	"huawei-csi-driver/storage/oceanstor/volume"
-	"huawei-csi-driver/storage/oceanstor/volume/creator"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/helper"
+	xuanwuV1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume/creator"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -97,10 +97,12 @@ func (p *OceanstorNasPlugin) Init(ctx context.Context, config map[string]interfa
 		return err
 	}
 
-	if protocol == ProtocolNfsPlus && p.cli.GetStorageVersion() < constants.MinVersionSupportNfsPlus {
+	// only Dorado V6 6.1.7 and later versions support this nfs+ feature.
+	if protocol == ProtocolNfsPlus && (!p.product.IsDoradoV6OrV7() ||
+		(p.product.IsDoradoV6() && p.cli.GetStorageVersion() < constants.MinVersionSupportNfsPlus)) {
 		p.Logout(ctx)
 
-		return errors.New("only oceanstor nas version gte 6.1.7 support nfs plus")
+		return errors.New("current storage version doesn't support nfs+")
 	}
 
 	return nil
@@ -129,7 +131,7 @@ func (p *OceanstorNasPlugin) checkNfsPlusPortalsFormat(portals []string) bool {
 }
 
 func (p *OceanstorNasPlugin) getNasObj() *volume.NAS {
-	var metroRemoteCli client.BaseClientInterface
+	var metroRemoteCli client.OceanstorClientInterface
 
 	if p.metroRemotePlugin != nil {
 		metroRemoteCli = p.metroRemotePlugin.cli
@@ -146,14 +148,8 @@ func (p *OceanstorNasPlugin) CreateVolume(ctx context.Context, name string, para
 			return nil, err
 		}
 	}
-	size, ok := parameters["size"].(int64)
-	if !ok || !utils.IsCapacityAvailable(size, SectorSize) {
-		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer multiple of 512.", size)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	}
 
-	params := p.getParams(ctx, name, parameters)
+	params := getParams(ctx, name, parameters)
 	params["metroDomainID"] = p.metroDomainID
 	nas := p.getNasObj()
 	volObj, err := nas.Create(ctx, params)
@@ -164,8 +160,8 @@ func (p *OceanstorNasPlugin) CreateVolume(ctx context.Context, name string, para
 	return volObj, nil
 }
 
-func (p *OceanstorNasPlugin) getClient() (client.BaseClientInterface, client.BaseClientInterface) {
-	var replicaRemoteCli client.BaseClientInterface
+func (p *OceanstorNasPlugin) getClient() (client.OceanstorClientInterface, client.OceanstorClientInterface) {
+	var replicaRemoteCli client.OceanstorClientInterface
 	if p.replicaRemotePlugin != nil {
 		replicaRemoteCli = p.replicaRemotePlugin.cli
 	}
@@ -175,7 +171,7 @@ func (p *OceanstorNasPlugin) getClient() (client.BaseClientInterface, client.Bas
 // QueryVolume used to query volume
 func (p *OceanstorNasPlugin) QueryVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
-	params := p.getParams(ctx, name, parameters)
+	params := getParams(ctx, name, parameters)
 	nas := p.getNasObj()
 	return nas.Query(ctx, name, params)
 }
@@ -198,14 +194,8 @@ func (p *OceanstorNasPlugin) ExpandVolume(ctx context.Context, name string, size
 			return false, err
 		}
 	}
-	if !utils.IsCapacityAvailable(size, SectorSize) {
-		msg := fmt.Sprintf("Expand Volume: the capacity %d is not an integer multiple of 512.", size)
-		log.AddContext(ctx).Errorln(msg)
-		return false, errors.New(msg)
-	}
-	newSize := utils.TransVolumeCapacity(size, SectorSize)
 	nas := p.getNasObj()
-	return false, nas.Expand(ctx, name, newSize)
+	return false, nas.Expand(ctx, name, size)
 }
 
 // UpdatePoolCapabilities used to update pool capabilities
@@ -221,8 +211,10 @@ func (p *OceanstorNasPlugin) UpdatePoolCapabilities(ctx context.Context,
 }
 
 func (p *OceanstorNasPlugin) getVstoreCapacity(ctx context.Context) (map[string]interface{}, error) {
-	if p.product != constants.OceanStorDoradoV6 || p.cli.GetvStoreName() == "" ||
-		p.cli.GetStorageVersion() < constants.DoradoV615 {
+	// only Dorado V6 6.1.5 and later versions need to get vStore's capacity.
+	if !p.product.IsDoradoV6OrV7() ||
+		(p.product.IsDoradoV6() && p.cli.GetStorageVersion() < constants.DoradoV615) ||
+		p.cli.GetvStoreName() == "" {
 		return map[string]interface{}{}, nil
 	}
 	vStore, err := p.cli.GetvStoreByName(ctx, p.cli.GetvStoreName())
@@ -347,7 +339,7 @@ func (p *OceanstorNasPlugin) UpdateBackendCapabilities(ctx context.Context) (map
 
 func (p *OceanstorNasPlugin) updateHyperMetroCapability(ctx context.Context,
 	capabilities map[string]interface{}) error {
-	if p.product == "DoradoV6" {
+	if p.product.IsDoradoV6OrV7() {
 		capabilities["SupportMetro"] = capabilities["SupportMetroNAS"]
 	}
 	delete(capabilities, "SupportMetroNAS")
@@ -367,7 +359,7 @@ func (p *OceanstorNasPlugin) updateHyperMetroCapability(ctx context.Context,
 	}
 
 	var ok bool
-	if p.product == "DoradoV6" && vStorePair != nil {
+	if p.product.IsDoradoV6OrV7() && vStorePair != nil {
 		fsHyperMetroDomain, err := p.cli.GetFSHyperMetroDomain(ctx,
 			vStorePair["DOMAINNAME"].(string))
 		if err != nil {
@@ -402,13 +394,15 @@ func (p *OceanstorNasPlugin) updateHyperMetroCapability(ctx context.Context,
 }
 
 func (p *OceanstorNasPlugin) updateConsistentSnapshotCapability(capabilities, specifications map[string]any) error {
-	if p.cli.GetStorageVersion() < supportConsistentSnapshotsMinVersion {
-		capabilities["SupportConsistentSnapshot"] = false
+	// only storage version gte DoradoV6 6.1.7 or DoradoV7 support consistent snapshot feature.
+	if p.product.IsDoradoV6() && p.cli.GetStorageVersion() >= supportConsistentSnapshotsMinVersion ||
+		p.product.IsDoradoV7() {
+		capabilities["SupportConsistentSnapshot"] = true
+		specifications["ConsistentSnapshotLimits"] = ConsistentSnapshotsSpecification
 		return nil
 	}
 
-	capabilities["SupportConsistentSnapshot"] = true
-	specifications["ConsistentSnapshotLimits"] = ConsistentSnapshotsSpecification
+	capabilities["SupportConsistentSnapshot"] = false
 	return nil
 }
 
@@ -433,6 +427,7 @@ func (p *OceanstorNasPlugin) updateNFS4Capability(ctx context.Context, capabilit
 	capabilities["SupportNFS3"] = true
 	capabilities["SupportNFS4"] = false
 	capabilities["SupportNFS41"] = false
+	capabilities["SupportNFS42"] = false
 
 	if !nfsServiceSetting["SupportNFS3"] {
 		capabilities["SupportNFS3"] = false
@@ -444,6 +439,10 @@ func (p *OceanstorNasPlugin) updateNFS4Capability(ctx context.Context, capabilit
 
 	if nfsServiceSetting["SupportNFS41"] {
 		capabilities["SupportNFS41"] = true
+	}
+
+	if nfsServiceSetting["SupportNFS42"] {
+		capabilities["SupportNFS42"] = true
 	}
 
 	return nil
@@ -495,7 +494,7 @@ func (p *OceanstorNasPlugin) Validate(ctx context.Context, param map[string]inte
 		return err
 	}
 
-	clientConfig, err := p.getNewClientConfig(ctx, param)
+	clientConfig, err := getNewClientConfig(ctx, param)
 	if err != nil {
 		return err
 	}
@@ -521,7 +520,7 @@ func (p *OceanstorNasPlugin) DeleteDTreeVolume(ctx context.Context, m map[string
 }
 
 // ExpandDTreeVolume used to expand DTree volume
-func (p *OceanstorNasPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
+func (p *OceanstorNasPlugin) ExpandDTreeVolume(context.Context, string, string, int64) (bool, error) {
 	return false, errors.New("not implement")
 }
 

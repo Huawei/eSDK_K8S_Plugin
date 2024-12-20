@@ -20,11 +20,11 @@ package handler
 import (
 	"context"
 
-	"huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/csi/backend"
-	"huawei-csi-driver/csi/backend/cache"
-	"huawei-csi-driver/csi/backend/model"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/cache"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // BackendCacheWrapperInterface wrapping interface of the backend cache,

@@ -30,7 +30,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const BackendNameMaxLength = 63

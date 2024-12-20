@@ -27,7 +27,7 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/sirupsen/logrus"
 
-	"huawei-csi-driver/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
 )
 
 func initOptions() *optionsManager {

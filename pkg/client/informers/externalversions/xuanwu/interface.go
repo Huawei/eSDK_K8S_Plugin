@@ -16,8 +16,8 @@
 package xuanwu
 
 import (
-	internalinterfaces "huawei-csi-driver/pkg/client/informers/externalversions/internalinterfaces"
-	v1 "huawei-csi-driver/pkg/client/informers/externalversions/xuanwu/v1"
+	internalinterfaces "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions/internalinterfaces"
+	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions/xuanwu/v1"
 )
 
 // Interface provides access to each of this group's versions.

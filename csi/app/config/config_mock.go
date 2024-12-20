@@ -20,8 +20,8 @@ package config
 import (
 	"time"
 
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	"huawei-csi-driver/utils/k8sutils"
+	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 )
 
 const (

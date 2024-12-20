@@ -23,8 +23,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 )
 
 type k8sOptions struct {

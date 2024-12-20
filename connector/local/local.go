@@ -20,9 +20,9 @@ package local
 import (
 	"context"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // Connector to define a local lock when connect or disconnect, in order to preventing connect and disconnect confusion

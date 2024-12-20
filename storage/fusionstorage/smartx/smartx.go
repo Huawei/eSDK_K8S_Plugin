@@ -24,8 +24,8 @@ import (
 	"fmt"
 	"time"
 
-	"huawei-csi-driver/storage/fusionstorage/client"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 var (

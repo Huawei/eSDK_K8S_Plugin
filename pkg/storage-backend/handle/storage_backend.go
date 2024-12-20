@@ -21,10 +21,10 @@ import (
 
 	"google.golang.org/grpc"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/lib/drcsi/rpc"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi/rpc"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // BackendInterfaces includes interfaces that call provider

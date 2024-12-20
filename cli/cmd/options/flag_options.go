@@ -20,8 +20,8 @@ package options
 import (
 	"github.com/spf13/cobra"
 
-	"huawei-csi-driver/cli/config"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // FlagsOptions is used for processing flags which user input

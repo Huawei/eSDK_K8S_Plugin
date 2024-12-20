@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"huawei-csi-driver/utils/flow"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/flow"
 )
 
 func TestTransaction_NoError(t *testing.T) {

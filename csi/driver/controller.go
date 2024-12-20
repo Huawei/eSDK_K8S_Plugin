@@ -27,10 +27,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/backend/plugin"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // CreateVolume used to create volume
@@ -112,17 +112,7 @@ func (d *CsiDriver) ControllerExpandVolume(ctx context.Context, req *csi.Control
 		return nil, status.Error(codes.InvalidArgument, "no volume ID provided")
 	}
 
-	log.AddContext(ctx).Infof("Start to controller expand volume %s", volumeId)
-	if req.GetCapacityRange() == nil {
-		return nil, status.Error(codes.InvalidArgument, "no capacity range provided")
-	}
-
-	minSize := req.GetCapacityRange().GetRequiredBytes()
-	maxSize := req.GetCapacityRange().GetLimitBytes()
-	if 0 < maxSize && maxSize < minSize {
-		return nil, status.Error(codes.InvalidArgument, "limitBytes is smaller than requiredBytes")
-	}
-
+	log.AddContext(ctx).Infof("Start to controller expand volume %s, req: %v", volumeId, req)
 	backendName, volName := utils.SplitVolumeId(volumeId)
 	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
 	if backend == nil || err != nil {
@@ -131,19 +121,32 @@ func (d *CsiDriver) ControllerExpandVolume(ctx context.Context, req *csi.Control
 		return nil, status.Error(codes.Internal, msg)
 	}
 
-	if support, err := isSupportExpandVolume(ctx, req, backend); !support {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+	err = verifyExpandArguments(ctx, req, backend)
+	if err != nil {
+		msg := fmt.Sprintf("Verify expand arguments error: %v", err)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, status.Error(codes.InvalidArgument, msg)
 	}
 
+	minSize := req.GetCapacityRange().GetRequiredBytes()
+	sectorSize := backend.Plugin.GetSectorSize()
+	size := utils.TransVolumeCapacity(minSize, sectorSize)
+	if size < minSize {
+		log.AddContext(ctx).Infof("Required capacity is %d,"+
+			" actual capacity %d is an integer multiple of the required sector size %d", minSize, size, sectorSize)
+	}
 	var nodeExpansionRequired bool
 	if backend.Storage == plugin.DTreeStorage {
-		nodeExpansionRequired, err = backend.Plugin.ExpandDTreeVolume(ctx, map[string]interface{}{
-			"name":           volName,
-			"parentname":     backend.Parameters["parentname"],
-			"spacehardquota": minSize,
-		})
+		parentName, ok := backend.Parameters["parentname"].(string)
+		if !ok || parentName == "" {
+			msg := "DTree volume must provide parent name"
+			log.AddContext(ctx).Errorln(msg)
+			return nil, status.Error(codes.InvalidArgument, msg)
+		}
+
+		nodeExpansionRequired, err = backend.Plugin.ExpandDTreeVolume(ctx, volName, parentName, size)
 	} else {
-		nodeExpansionRequired, err = backend.Plugin.ExpandVolume(ctx, volName, minSize)
+		nodeExpansionRequired, err = backend.Plugin.ExpandVolume(ctx, volName, size)
 	}
 	if err != nil {
 		log.AddContext(ctx).Errorf("Expand volume %s error: %v", volumeId, err)
@@ -151,11 +154,10 @@ func (d *CsiDriver) ControllerExpandVolume(ctx context.Context, req *csi.Control
 	}
 
 	log.AddContext(ctx).Infof("Volume %s is expanded to %d, nodeExpansionRequired %t",
-		volName, minSize, nodeExpansionRequired)
+		volName, size, nodeExpansionRequired)
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         minSize,
-		NodeExpansionRequired: nodeExpansionRequired,
-	}, nil
+		CapacityBytes:         utils.TransK8SCapacity(size, sectorSize),
+		NodeExpansionRequired: nodeExpansionRequired}, nil
 }
 
 // ControllerPublishVolume used to controller publish volume

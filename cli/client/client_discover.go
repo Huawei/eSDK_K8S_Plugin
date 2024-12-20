@@ -22,7 +22,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // DiscoverKubernetesCLI used to discover kubernetes CLI.

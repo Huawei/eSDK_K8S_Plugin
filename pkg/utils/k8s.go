@@ -33,12 +33,12 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/csi/app"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	"huawei-csi-driver/pkg/constants"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 func IsSBCTExist(ctx context.Context, backendID string) bool {

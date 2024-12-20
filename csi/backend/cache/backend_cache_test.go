@@ -25,10 +25,10 @@ import (
 
 	"github.com/prashantv/gostub"
 
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/csi/backend/model"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

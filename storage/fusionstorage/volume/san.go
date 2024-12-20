@@ -22,12 +22,13 @@ import (
 	"fmt"
 	"strconv"
 
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/storage/fusionstorage/client"
-	"huawei-csi-driver/storage/fusionstorage/smartx"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/flow"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/smartx"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/flow"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -116,21 +117,25 @@ func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.
 		taskflow.Revert()
 		return nil, err
 	}
-	volObj := p.prepareVolObj(ctx, params, res)
-	return volObj, nil
+
+	return p.prepareVolObj(ctx, params, res)
 }
 
-func (p *SAN) prepareVolObj(ctx context.Context, params, res map[string]interface{}) utils.Volume {
-	volName, isStr := params["name"].(string)
-	if !isStr {
-		// Not expecting this error to happen
-		log.AddContext(ctx).Warningf("Expecting string for volume name, received type %T", params["name"])
+func (p *SAN) prepareVolObj(ctx context.Context, params, res map[string]interface{}) (utils.Volume, error) {
+	volName, ok := params["name"].(string)
+	if !ok {
+		return nil, utils.Errorf(ctx, "expecting string for volume name, received type %T", params["name"])
 	}
+
 	volObj := utils.NewVolume(volName)
 	if lunWWN, ok := res["lunWWN"].(string); ok {
 		volObj.SetLunWWN(lunWWN)
 	}
-	return volObj
+
+	capacity := utils.GetValueOrFallback(params, "capacity", int64(0))
+	volObj.SetSize(utils.TransK8SCapacity(capacity, constants.FusionAllocUnitBytes))
+
+	return volObj, nil
 }
 
 func (p *SAN) createLun(ctx context.Context,
@@ -314,7 +319,7 @@ func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
 
 	// set the size, need to trans MiB to Bytes
 	capacity := int64(vol["volSize"].(float64))
-	volObj.SetSize(utils.TransK8SCapacity(capacity, 1024*1024))
+	volObj.SetSize(utils.TransK8SCapacity(capacity, constants.FusionAllocUnitBytes))
 	return volObj, nil
 }
 

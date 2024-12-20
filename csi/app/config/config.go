@@ -22,8 +22,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	"huawei-csi-driver/utils/k8sutils"
+	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 )
 
 type loggingConfig struct {
@@ -52,6 +52,9 @@ type serviceConfig struct {
 	WebHookAddress        string
 	WorkerThreads         int
 	BackendUpdateInterval int
+
+	ExportCsiServerAddress string
+	ExportCsiServerPort    int
 
 	LeaderLeaseDuration time.Duration
 	LeaderRenewDeadline time.Duration

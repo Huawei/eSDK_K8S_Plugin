@@ -25,9 +25,9 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/require"
 
-	"huawei-csi-driver/storage/fusionstorage/client"
-	"huawei-csi-driver/storage/fusionstorage/types"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/types"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

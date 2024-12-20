@@ -20,8 +20,8 @@ import (
 
 	admissionV1 "k8s.io/api/admissionregistration/v1"
 
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 )
 
 const (

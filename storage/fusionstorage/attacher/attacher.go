@@ -24,13 +24,13 @@ import (
 	"net"
 	"strings"
 
-	"huawei-csi-driver/connector"
-	_ "huawei-csi-driver/connector/iscsi"
-	_ "huawei-csi-driver/connector/local"
-	"huawei-csi-driver/storage/fusionstorage/client"
-	"huawei-csi-driver/storage/oceanstor/attacher"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/iscsi"
+	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/local"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base/attacher"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // VolumeAttacher defines attacher client

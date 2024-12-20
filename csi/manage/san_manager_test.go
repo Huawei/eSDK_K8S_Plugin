@@ -27,14 +27,15 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/connector/fibrechannel"
-	"huawei-csi-driver/connector/iscsi"
-	"huawei-csi-driver/connector/nvme"
-	"huawei-csi-driver/connector/roce"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/fibrechannel"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/iscsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/roce"
+	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 func TestSanManagerStageFileSystemVolume(t *testing.T) {
@@ -107,7 +108,7 @@ func TestSanManagerStageBlockVolume(t *testing.T) {
 	patches := gomonkey.NewPatches()
 	mockClearResidualPath(patches, manager.protocol)
 	mockConnectIscsiVolume(patches, manager.Conn)
-	mockCreateSymlink(patches)
+	mockBindMount(patches)
 	request := mockSanStageVolumeRequest(t, "Block")
 
 	err := manager.StageVolume(context.Background(), request)
@@ -249,8 +250,8 @@ func mockChmodFsPermission(patch *gomonkey.Patches, t *testing.T) {
 	})
 }
 
-func mockCreateSymlink(patch *gomonkey.Patches) {
-	patch.ApplyFunc(utils.CreateSymlink, func(ctx context.Context, source string, target string) error {
+func mockBindMount(patch *gomonkey.Patches) {
+	patch.ApplyFunc(connUtils.BindMountRawBlockDevice, func(ctx context.Context, source string, target string) error {
 		if source == "test_dev_path" && target == "/test_staging_target_path/test_backend.pvc-san-xxx" {
 			return nil
 		}

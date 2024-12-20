@@ -16,12 +16,13 @@
 package internalinterfaces
 
 import (
-	versioned "huawei-csi-driver/pkg/client/clientset/versioned"
-	time "time"
+	"time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	cache "k8s.io/client-go/tools/cache"
+
+	versioned "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
 )
 
 // NewInformerFunc takes versioned.Interface and time.Duration to return a SharedIndexInformer.

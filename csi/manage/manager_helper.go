@@ -27,16 +27,17 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"huawei-csi-driver/connector"
-	_ "huawei-csi-driver/connector/nfsplus"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/backend"
-	"huawei-csi-driver/csi/backend/plugin"
-	"huawei-csi-driver/pkg/constants"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/storage/oceanstor/client"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nfsplus"
+	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // BuildParameterOption define build function
@@ -334,22 +335,16 @@ func PublishBlock(ctx context.Context, req *csi.NodePublishVolumeRequest) error 
 	targetPath := req.GetTargetPath()
 	// If the request is to publish raw block device then create symlink of the device
 	// from the staging are to publish. Do not create fs and mount
-	log.AddContext(ctx).Infoln("Creating symlink for the staged device on the node to publish")
+	log.AddContext(ctx).Infoln("Bind mount for the staged device on the node to publish")
 	sourcePath = sourcePath + "/" + volumeId
-	err := utils.CreateSymlink(ctx, sourcePath, targetPath)
+	err := connUtils.BindMountRawBlockDevice(ctx, sourcePath, targetPath,
+		req.GetVolumeCapability().GetMount().GetMountFlags())
 	if err != nil {
-		log.AddContext(ctx).Errorf("Failed to create symlink for the staging path [%v] to target path [%v]",
+		log.AddContext(ctx).Errorf("Failed to bind mount for the staging path [%v] to target path [%v]",
 			sourcePath, targetPath)
 		return err
 	}
-	accessMode := utils.GetAccessModeType(req.GetVolumeCapability().GetAccessMode().GetMode())
-	if accessMode == "ReadOnly" {
-		_, err = utils.ExecShellCmd(ctx, "chmod 440 %s", targetPath)
-		if err != nil {
-			log.AddContext(ctx).Errorln("Unable to set ReadOnlyMany permission")
-			return err
-		}
-	}
+
 	log.AddContext(ctx).Infof("Raw Block Volume %s is node published to %s", volumeId, targetPath)
 	return nil
 }

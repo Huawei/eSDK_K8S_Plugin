@@ -25,7 +25,7 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"huawei-csi-driver/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
 )
 
 func mockNasStageVolumeRequest() *csi.NodeStageVolumeRequest {

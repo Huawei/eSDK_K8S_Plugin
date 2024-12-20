@@ -23,10 +23,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"huawei-csi-driver/cli/client"
-	"huawei-csi-driver/cli/cmd/options"
-	"huawei-csi-driver/cli/config"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/cmd/options"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // RootCmd is a root command of oceanctl.

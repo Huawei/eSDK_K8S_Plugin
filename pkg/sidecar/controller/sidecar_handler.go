@@ -19,10 +19,10 @@ import (
 	"context"
 	"time"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/lib/drcsi"
-	storageBackend "huawei-csi-driver/pkg/storage-backend/handle"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	storageBackend "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/storage-backend/handle"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // Handler includes the interface of storage backend side

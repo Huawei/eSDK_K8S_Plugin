@@ -21,10 +21,11 @@ import (
 	"errors"
 	"fmt"
 
-	"huawei-csi-driver/storage/fusionstorage/client"
-	"huawei-csi-driver/storage/fusionstorage/volume"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // FusionStorageNasPlugin implements storage StoragePlugin interface
@@ -76,21 +77,13 @@ func (p *FusionStorageNasPlugin) updateNasCapacity(ctx context.Context,
 	if !exist {
 		return utils.Errorf(ctx, "the size does not exist in parameters %v", parameters)
 	}
-	params["capacity"] = utils.RoundUpSize(size, fileCapacityUnit)
+	params["capacity"] = utils.RoundUpSize(size, constants.FusionFileCapacityUnit)
 	return nil
 }
 
 // CreateVolume used to create volume
 func (p *FusionStorageNasPlugin) CreateVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
-
-	size, ok := parameters["size"].(int64)
-	// for fusionStorage filesystem, the unit is KiB
-	if !ok || !utils.IsCapacityAvailable(size, fileCapacityUnit) {
-		return nil, utils.Errorf(ctx, "Create Volume: the capacity %d is not an integer or not multiple of %d.",
-			size, fileCapacityUnit)
-	}
-
 	params, err := p.getParams(name, parameters)
 	if err != nil {
 		return nil, err
@@ -161,13 +154,18 @@ func (p *FusionStorageNasPlugin) ExpandVolume(ctx context.Context,
 	name string,
 	size int64) (bool, error) {
 	nas := volume.NewNAS(p.cli)
-	return false, nas.Expand(ctx, name, size)
+	return false, nas.Expand(ctx, name, utils.TransK8SCapacity(size, p.GetSectorSize()))
 }
 
 // UpdatePoolCapabilities used to update pool capabilities
 func (p *FusionStorageNasPlugin) UpdatePoolCapabilities(ctx context.Context,
 	poolNames []string) (map[string]interface{}, error) {
 	return p.updatePoolCapabilities(ctx, poolNames, FusionStorageNas)
+}
+
+// GetSectorSize get sector size of plugin
+func (p *FusionStorageNasPlugin) GetSectorSize() int64 {
+	return constants.FusionFileCapacityUnit
 }
 
 func (p *FusionStorageNasPlugin) updateNFS4Capability(ctx context.Context, capabilities map[string]interface{}) error {
@@ -246,14 +244,4 @@ func (p *FusionStorageNasPlugin) verifyFusionStorageNasParam(ctx context.Context
 	}
 
 	return nil
-}
-
-// DeleteDTreeVolume used to delete DTree volume
-func (p *FusionStorageNasPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
-	return errors.New("not implement")
-}
-
-// ExpandDTreeVolume used to expand DTree volume
-func (p *FusionStorageNasPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
-	return false, errors.New("not implement")
 }

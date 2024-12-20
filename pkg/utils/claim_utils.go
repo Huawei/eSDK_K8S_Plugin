@@ -20,9 +20,9 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // GetClaim used to get claim by xuanwu client

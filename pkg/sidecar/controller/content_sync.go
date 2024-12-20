@@ -22,10 +22,10 @@ import (
 
 	coreV1 "k8s.io/api/core/v1"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 func (ctrl *backendController) initContentStatus(ctx context.Context, content *xuanwuv1.StorageBackendContent) (

@@ -16,17 +16,18 @@
 package externalversions
 
 import (
-	versioned "huawei-csi-driver/pkg/client/clientset/versioned"
-	internalinterfaces "huawei-csi-driver/pkg/client/informers/externalversions/internalinterfaces"
-	xuanwu "huawei-csi-driver/pkg/client/informers/externalversions/xuanwu"
-	reflect "reflect"
-	sync "sync"
-	time "time"
+	"reflect"
+	"sync"
+	"time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
+
+	versioned "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions/internalinterfaces"
+	xuanwu "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions/xuanwu"
 )
 
 // SharedInformerOption defines the functional option type for SharedInformerFactory.
@@ -191,25 +192,25 @@ func (f *sharedInformerFactory) InformerFor(obj runtime.Object, newFunc internal
 //
 // It is typically used like this:
 //
-//   ctx, cancel := context.Background()
-//   defer cancel()
-//   factory := NewSharedInformerFactory(client, resyncPeriod)
-//   defer factory.WaitForStop()    // Returns immediately if nothing was started.
-//   genericInformer := factory.ForResource(resource)
-//   typedInformer := factory.SomeAPIGroup().V1().SomeType()
-//   factory.Start(ctx.Done())          // Start processing these informers.
-//   synced := factory.WaitForCacheSync(ctx.Done())
-//   for v, ok := range synced {
-//       if !ok {
-//           fmt.Fprintf(os.Stderr, "caches failed to sync: %v", v)
-//           return
-//       }
-//   }
+//	ctx, cancel := context.Background()
+//	defer cancel()
+//	factory := NewSharedInformerFactory(client, resyncPeriod)
+//	defer factory.WaitForStop()    // Returns immediately if nothing was started.
+//	genericInformer := factory.ForResource(resource)
+//	typedInformer := factory.SomeAPIGroup().V1().SomeType()
+//	factory.Start(ctx.Done())          // Start processing these informers.
+//	synced := factory.WaitForCacheSync(ctx.Done())
+//	for v, ok := range synced {
+//	    if !ok {
+//	        fmt.Fprintf(os.Stderr, "caches failed to sync: %v", v)
+//	        return
+//	    }
+//	}
 //
-//   // Creating informers can also be created after Start, but then
-//   // Start must be called again:
-//   anotherGenericInformer := factory.ForResource(resource)
-//   factory.Start(ctx.Done())
+//	// Creating informers can also be created after Start, but then
+//	// Start must be called again:
+//	anotherGenericInformer := factory.ForResource(resource)
+//	factory.Start(ctx.Done())
 type SharedInformerFactory interface {
 	internalinterfaces.SharedInformerFactory
 

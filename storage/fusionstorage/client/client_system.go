@@ -22,9 +22,9 @@ import (
 	"fmt"
 	"strings"
 
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // GetAccountIdByName gets account id by account name

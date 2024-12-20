@@ -24,14 +24,11 @@ import (
 	"strings"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -51,35 +48,47 @@ type persistentVolumeClaimOps interface {
 	GetVolumeConfiguration(ctx context.Context, pvName string) (map[string]string, error)
 }
 
-func initPVCWatcher(ctx context.Context, helper *KubeClient) {
-	// Set up a watch for PVCs
-	helper.pvcSource = &cache.ListWatch{
-		ListFunc: func(options metaV1.ListOptions) (runtime.Object, error) {
-			return helper.clientSet.CoreV1().PersistentVolumeClaims(v1.NamespaceAll).List(ctx, options)
-		},
-		WatchFunc: func(options metaV1.ListOptions) (watch.Interface, error) {
-			return helper.clientSet.CoreV1().PersistentVolumeClaims(v1.NamespaceAll).Watch(ctx, options)
-		},
+// GetVolumeConfiguration return pvc's annotations
+func (k *KubeClient) GetVolumeConfiguration(ctx context.Context, pvName string) (map[string]string, error) {
+	log.AddContext(ctx).Infof("Start to get volume %s configuration.", pvName)
+	// Get the PVC corresponding to the new PV being provisioned
+	pvcUID := strings.TrimPrefix(pvName, fmt.Sprintf("%s-", k.volumeNamePrefix))
+	pvc, err := k.pvcAccessor.GetByIndex(uidIndex, pvcUID)
+	if err != nil {
+		return nil, err
 	}
 
-	// Set up the PVC indexing controller
-	helper.pvcController = cache.NewSharedIndexInformer(
-		helper.pvcSource,
-		&v1.PersistentVolumeClaim{},
-		cacheSyncPeriod,
-		cache.Indexers{uidIndex: metaUIDKeyFunc},
-	)
+	return pvc.Annotations, nil
+}
 
-	helper.pvcIndexer = helper.pvcController.GetIndexer()
-	_, err := helper.pvcController.AddEventHandler(
-		cache.ResourceEventHandlerFuncs{
+func initPVCAccessor(helper *KubeClient) error {
+	pvcAccessor, err := NewResourceAccessor(
+		helper.informerFactory.Core().V1().PersistentVolumeClaims().Informer(),
+		WithTransformer[*corev1.PersistentVolumeClaim](stripUnusedPvcFields),
+		WithIndexers[*corev1.PersistentVolumeClaim](cache.Indexers{uidIndex: metaUIDKeyFunc}),
+		WithHandler[*corev1.PersistentVolumeClaim](cache.ResourceEventHandlerFuncs{
 			AddFunc:    helper.addPVC,
 			UpdateFunc: helper.updatePVC,
 			DeleteFunc: helper.deletePVC,
-		})
-	if err != nil {
-		log.Errorf("Add event handler failed, error %v", err)
+		}))
+	helper.pvcAccessor = pvcAccessor
+
+	return err
+}
+
+func stripUnusedPvcFields(obj any) (any, error) {
+	pvc, ok := obj.(*corev1.PersistentVolumeClaim)
+	if !ok {
+		return obj, nil
 	}
+
+	res := &corev1.PersistentVolumeClaim{}
+	res.SetUID(pvc.GetUID())
+	res.SetName(pvc.Name)
+	res.SetAnnotations(pvc.GetAnnotations())
+	res.Spec.VolumeName = pvc.Spec.VolumeName
+
+	return res, nil
 }
 
 // metaUIDKeyFunc is a default index function that indexes based on an object's uid
@@ -101,7 +110,7 @@ func metaUIDKeyFunc(obj interface{}) ([]string, error) {
 
 func (k *KubeClient) processPVC(obj interface{}, eventType string) {
 	switch pvc := obj.(type) {
-	case *v1.PersistentVolumeClaim:
+	case *corev1.PersistentVolumeClaim:
 		k.processPVCEvent(pvc, eventType)
 	default:
 		log.Errorf("K8S helper expected PVC; got %v", obj)
@@ -121,9 +130,9 @@ func (k *KubeClient) deletePVC(obj interface{}) {
 }
 
 // processPVC logs the add/update/delete PVC events.
-func (k *KubeClient) processPVCEvent(pvc *v1.PersistentVolumeClaim, eventType string) {
+func (k *KubeClient) processPVCEvent(pvc *corev1.PersistentVolumeClaim, eventType string) {
 	// Validate the PVC
-	size, ok := pvc.Spec.Resources.Requests[v1.ResourceStorage]
+	size, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
 	if !ok {
 		log.Debugf("Rejecting PVC %s/%s, no size specified.", pvc.Namespace, pvc.Name)
 		return
@@ -140,54 +149,5 @@ func (k *KubeClient) processPVCEvent(pvc *v1.PersistentVolumeClaim, eventType st
 		log.Debugf("PVC [%s] deleted in cache", msg)
 	default:
 		log.Warningf("UnSupport event type %s", eventType)
-	}
-}
-
-// GetVolumeConfiguration return pvc's annotations
-func (k *KubeClient) GetVolumeConfiguration(ctx context.Context, pvName string) (map[string]string, error) {
-	log.AddContext(ctx).Infof("Start to get volume %s configuration.", pvName)
-	// Get the PVC corresponding to the new PV being provisioned
-	pvc, err := k.getPVC(ctx, pvName)
-	if err != nil {
-		return nil, err
-	}
-
-	return pvc.Annotations, nil
-}
-
-func (k *KubeClient) getPVC(ctx context.Context, pvName string) (*v1.PersistentVolumeClaim, error) {
-	pvcUID := strings.TrimPrefix(pvName, fmt.Sprintf("%s-", k.volumeNamePrefix))
-	pvc, err := k.getCachedPVCByUID(pvcUID)
-	if err != nil {
-		log.AddContext(ctx).Debugf("PVC %s not found in local cache: %v", pvName, err)
-
-		// Not found immediately, so re-sync and try again
-		if err = k.pvcIndexer.Resync(); err != nil {
-			return nil, fmt.Errorf("could not refresh local PVC cache: %v", err)
-		}
-
-		if pvc, err = k.getCachedPVCByUID(pvcUID); err != nil {
-			log.AddContext(ctx).Debugf("PVC %s not found in local cache after reSync: %v", pvName, err)
-			return nil, fmt.Errorf("PVCNotFound %s: %v", pvcUID, err)
-		}
-	}
-
-	return pvc, nil
-}
-
-func (k *KubeClient) getCachedPVCByUID(uid string) (*v1.PersistentVolumeClaim, error) {
-	items, err := k.pvcIndexer.ByIndex(uidIndex, uid)
-	if err != nil {
-		return nil, fmt.Errorf("could not search cache for PVC by UID %s", uid)
-	} else if len(items) == 0 {
-		return nil, fmt.Errorf("PVC object not found in cache by UID %s", uid)
-	} else if len(items) > 1 {
-		return nil, fmt.Errorf("multiple cached PVC objects found by UID %s", uid)
-	}
-
-	if pvc, ok := items[0].(*v1.PersistentVolumeClaim); !ok {
-		return nil, fmt.Errorf("non-PVC cached object found by UID %s", uid)
-	} else {
-		return pvc, nil
 	}
 }

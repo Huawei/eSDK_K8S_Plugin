@@ -22,11 +22,11 @@ import (
 	"errors"
 	"fmt"
 
-	"huawei-csi-driver/lib/drcsi"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/pkg/volume"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

@@ -23,8 +23,8 @@ import (
 	apisErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"huawei-csi-driver/pkg/admission"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/admission"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // AdmissionWebHookCFG defines cfg of admission webhook

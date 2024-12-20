@@ -135,7 +135,7 @@ spec:
           args:
             - "--csi-address=/csi/csi.sock"
             - "--health-port=9800"
-          image: k8s.gcr.io/sig-storage/livenessprobe:v2.5.0
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.12.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -151,7 +151,7 @@ spec:
           args:
             - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.huawei.com/csi.sock"
-          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -166,7 +166,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:4.5.0
+          image: huawei-csi:4.6.0
           imagePullPolicy: "IfNotPresent"
           args:
             - "--endpoint=/csi/csi.sock"

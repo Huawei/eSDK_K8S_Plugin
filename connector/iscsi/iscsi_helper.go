@@ -30,12 +30,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"huawei-csi-driver/connector"
-	connutils "huawei-csi-driver/connector/utils"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/concurrent"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	connutils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/concurrent"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

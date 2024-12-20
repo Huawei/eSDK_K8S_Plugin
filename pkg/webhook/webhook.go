@@ -35,11 +35,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/backend"
-	"huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/cert"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // Controller include webhook resources
@@ -231,14 +232,14 @@ func (c *Controller) getTlsCert(ctx context.Context, webHookCfg Config, ns strin
 	} else if apisErrors.IsNotFound(err) {
 		dnsName := webHookCfg.ServiceName + "." + ns + ".svc"
 		cn := fmt.Sprintf("%s CA", webHookCfg.ServiceName)
-		caBundle, key, err := GenerateCertificate(ctx, cn, dnsName)
+		caBundle, key, err := cert.GenerateCertificate(ctx, cn, dnsName)
 		if err != nil {
 			log.AddContext(ctx).Errorf("Unable to generate x509 certificate: %v", err)
 			return tls.Certificate{}, nil, err
 		}
 		caBytes = caBundle
 
-		tlsCert, err = GetTLSCertificate(caBundle, key)
+		tlsCert, err = cert.GetTLSCertificate(caBundle, key)
 		if err != nil {
 			log.AddContext(ctx).Errorf("Unable to create tls certificate: %v", err)
 			return tls.Certificate{}, nil, err
@@ -261,7 +262,7 @@ func (c *Controller) getTlsCert(ctx context.Context, webHookCfg Config, ns strin
 		}
 		caBytes = caBundle
 
-		tlsCert, err = GetTLSCertificate(caBundle, secretData)
+		tlsCert, err = cert.GetTLSCertificate(caBundle, secretData)
 		if err != nil {
 			log.AddContext(ctx).Errorf("unable to generate tls certs: %v", err)
 			return tls.Certificate{}, nil, err

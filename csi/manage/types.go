@@ -21,7 +21,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"huawei-csi-driver/connector/nvme"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
 )
 
 // VolumeManager defines the operations which storage manager should implement

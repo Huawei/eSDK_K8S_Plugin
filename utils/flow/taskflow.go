@@ -20,8 +20,8 @@ package flow
 import (
 	"context"
 
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // TaskRunFunc run task
@@ -70,12 +70,12 @@ func (p *TaskFlow) AddTask(name string, run TaskRunFunc, revert TaskRevertFunc) 
 
 // Run execute tasks in the task flow
 func (p *TaskFlow) Run(params map[string]interface{}) (map[string]interface{}, error) {
-	log.AddContext(p.ctx).Debugf("Start to run taskflow %s", p.name)
+	log.AddContext(p.ctx).Debugf("Start to run task flow %s", p.name)
 
 	for _, task := range p.tasks {
 		result, err := task.run(p.ctx, params, p.result)
 		if err != nil {
-			log.AddContext(p.ctx).Errorf("Run task %s of taskflow %s error: %v", task.name, p.name, err)
+			log.AddContext(p.ctx).Errorf("Run task %s of task flow %s error: %v", task.name, p.name, err)
 			return nil, err
 		}
 
@@ -86,7 +86,7 @@ func (p *TaskFlow) Run(params map[string]interface{}) (map[string]interface{}, e
 		}
 	}
 
-	log.AddContext(p.ctx).Debugf("Taskflow %s is finished", p.name)
+	log.AddContext(p.ctx).Debugf("Task flow %s is finished", p.name)
 	return p.result, nil
 }
 

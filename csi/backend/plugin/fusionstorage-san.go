@@ -25,12 +25,13 @@ import (
 	"strings"
 	"sync"
 
-	"huawei-csi-driver/proto"
-	"huawei-csi-driver/storage/fusionstorage/attacher"
-	"huawei-csi-driver/storage/fusionstorage/client"
-	"huawei-csi-driver/storage/fusionstorage/volume"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/proto"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/attacher"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // FusionStorageSanPlugin implements storage StoragePlugin interface
@@ -143,16 +144,6 @@ func (p *FusionStorageSanPlugin) getParams(name string,
 // CreateVolume used to create volume
 func (p *FusionStorageSanPlugin) CreateVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
-
-	size, ok := parameters["size"].(int64)
-	// for fusionStorage block, the unit is MiB
-	if !ok || !utils.IsCapacityAvailable(size, CapacityUnit) {
-		msg := fmt.Sprintf("Create Volume: the capacity %d is not an integer or not multiple of %d.",
-			size, CapacityUnit)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
-	}
-
 	params, err := p.getParams(name, parameters)
 	if err != nil {
 		return nil, err
@@ -182,15 +173,8 @@ func (p *FusionStorageSanPlugin) DeleteVolume(ctx context.Context, name string) 
 
 // ExpandVolume used to expand volume
 func (p *FusionStorageSanPlugin) ExpandVolume(ctx context.Context, name string, size int64) (bool, error) {
-	// for fusionStorage block, the unit is MiB
-	if !utils.IsCapacityAvailable(size, CapacityUnit) {
-		return false, utils.Errorf(ctx, "Expand Volume: the capacity %d is not an integer multiple of %d.",
-			size, CapacityUnit)
-	}
 	san := volume.NewSAN(p.cli)
-	newSize := utils.TransVolumeCapacity(size, CapacityUnit)
-	isAttach, err := san.Expand(ctx, name, newSize)
-	return isAttach, err
+	return san.Expand(ctx, name, size)
 }
 
 // AttachVolume attach volume to node and return storage mapping info.
@@ -232,6 +216,11 @@ func (p *FusionStorageSanPlugin) DetachVolume(ctx context.Context,
 	}
 
 	return nil
+}
+
+// GetSectorSize get sector size of plugin
+func (p *FusionStorageSanPlugin) GetSectorSize() int64 {
+	return constants.FusionAllocUnitBytes
 }
 
 func (p *FusionStorageSanPlugin) mutexReleaseClient(ctx context.Context,
@@ -348,14 +337,4 @@ func (p *FusionStorageSanPlugin) verifyFusionStorageSanParam(ctx context.Context
 	}
 
 	return nil
-}
-
-// DeleteDTreeVolume used to delete DTree volume
-func (p *FusionStorageSanPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
-	return errors.New("not implement")
-}
-
-// ExpandDTreeVolume used to expand DTree volume
-func (p *FusionStorageSanPlugin) ExpandDTreeVolume(ctx context.Context, m map[string]interface{}) (bool, error) {
-	return false, errors.New("not implement")
 }

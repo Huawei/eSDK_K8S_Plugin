@@ -461,7 +461,7 @@ spec:
           args:
             - "--csi-address=/csi/csi.sock"
             - "--health-port=9808"
-          image: k8s.gcr.io/sig-storage/livenessprobe:v2.5.0
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.12.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -482,7 +482,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
+          image: registry.k8s.io/sig-storage/csi-provisioner:v3.6.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -501,7 +501,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-attacher:v3.4.0
+          image: registry.k8s.io/sig-storage/csi-attacher:v4.4.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -522,7 +522,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-resizer:v1.4.0
+          image: registry.k8s.io/sig-storage/csi-resizer:v1.9.0
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - mountPath: /csi
@@ -542,7 +542,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
+          image: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -558,7 +558,7 @@ spec:
           args:
             - "--v=5"
             - "--leader-election"
-          image: k8s.gcr.io/sig-storage/snapshot-controller:v4.2.1
+          image: registry.k8s.io/sig-storage/snapshot-controller:v6.3.0
           imagePullPolicy: "IfNotPresent"
           resources:
             limits:
@@ -568,7 +568,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-controller
-          image: storage-backend-controller:4.5.0
+          image: storage-backend-controller:4.6.0
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CSI_NAMESPACE
@@ -607,7 +607,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-sidecar
-          image: storage-backend-sidecar:4.5.0
+          image: storage-backend-sidecar:4.6.0
           imagePullPolicy: "IfNotPresent"
           env:
             - name: DRCSI_ENDPOINT
@@ -644,7 +644,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-extender
-          image: huawei-csi-extender:4.5.0
+          image: huawei-csi-extender:4.6.0
           imagePullPolicy: "IfNotPresent"
           env:
             - name: DRCSI_ENDPOINT
@@ -683,7 +683,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:4.5.0
+          image: huawei-csi:4.6.0
           imagePullPolicy: "IfNotPresent"
           args:
             - "--endpoint=$(CSI_ENDPOINT)"

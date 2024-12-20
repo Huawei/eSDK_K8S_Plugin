@@ -19,8 +19,8 @@ package driver
 import (
 	"strings"
 
-	"huawei-csi-driver/csi/backend/handler"
-	"huawei-csi-driver/utils/k8sutils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/handler"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 )
 
 // CsiDriver defines csi driver

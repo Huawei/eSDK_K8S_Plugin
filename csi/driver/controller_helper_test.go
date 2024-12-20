@@ -22,20 +22,21 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"huawei-csi-driver/csi/backend/model"
-
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/prashantv/gostub"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-	"huawei-csi-driver/csi/app"
-	cfg "huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/csi/backend/handler"
-	"huawei-csi-driver/csi/backend/plugin"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/handler"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -236,4 +237,68 @@ func Test_processAnnotations(t *testing.T) {
 		t.Errorf("Test_processAnnotations() failed, anno: %+v, want annVolumeName exist and equal HyperMetro, "+
 			"but got = %v", annotations, volume)
 	}
+}
+
+func Test_VerifyExpandArguments_Success(t *testing.T) {
+	// arrange
+	req := &csi.ControllerExpandVolumeRequest{CapacityRange: &csi.CapacityRange{RequiredBytes: 1073741824}}
+	backend := &model.Backend{}
+
+	// mock
+	patches := gomonkey.ApplyFuncReturn(isSupportExpandVolume, true, nil).
+		ApplyFuncReturn(verifySectorSize, nil)
+	defer patches.Reset()
+
+	// action
+	err := verifyExpandArguments(context.Background(), req, backend)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func Test_VerifySectorSize_Success(t *testing.T) {
+	// arrange
+	req := &csi.ControllerExpandVolumeRequest{VolumeId: "backend.pvc_test_volume_id"}
+	backend := &model.Backend{
+		Plugin: &plugin.OceanstorNasPlugin{},
+	}
+	minSize := int64(1024 * 1024 * 1024)
+	app.GetGlobalConfig().K8sUtils = &k8sutils.KubeClient{}
+
+	// mock
+	patches := gomonkey.ApplyMethodReturn(backend.Plugin,
+		"GetSectorSize", int64(constants.AllocationUnitBytes)).
+		ApplyMethodReturn(app.GetGlobalConfig().K8sUtils, "GetVolumeAttrByVolumeId", nil, nil).
+		ApplyFuncReturn(utils.GetValueOrFallback[string], "true")
+	defer patches.Reset()
+
+	// action
+	err := verifySectorSize(context.Background(), req.GetVolumeId(), backend, minSize)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func Test_VerifySectorSize_CapacityNotMultiple(t *testing.T) {
+	// arrange
+	req := &csi.ControllerExpandVolumeRequest{VolumeId: "backend.pvc_test_volume_id"}
+	backend := &model.Backend{
+		Plugin: &plugin.OceanstorNasPlugin{},
+	}
+	minSize := int64(1024*1024*1024) + 511
+	app.GetGlobalConfig().K8sUtils = &k8sutils.KubeClient{}
+
+	// mock
+	patches := gomonkey.ApplyMethodReturn(backend.Plugin,
+		"GetSectorSize", int64(constants.AllocationUnitBytes)).
+		ApplyMethodReturn(app.GetGlobalConfig().K8sUtils, "GetVolumeAttrByVolumeId", nil, nil).
+		ApplyFuncReturn(utils.GetValueOrFallback[string], "true")
+	defer patches.Reset()
+
+	// action
+	err := verifySectorSize(context.Background(), req.GetVolumeId(), backend, minSize)
+
+	// assert
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "is not an integer or not multiple of")
 }

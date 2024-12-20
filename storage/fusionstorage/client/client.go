@@ -32,19 +32,22 @@ import (
 	"sync"
 	"time"
 
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/storage/fusionstorage/types"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/types"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
 	noAuthenticated int64 = 10000003
 	offLineCodeInt  int64 = 1077949069
 
-	defaultParallelCount int = 50
-	maxParallelCount     int = 1000
-	minParallelCount     int = 20
+	// Cause of pacific storage does not have a determined parallel count,
+	// we set default parallel count to 30, which is consistent with the previous default value in our document.
+	// This configuration has run smoothly for a long time.
+	defaultParallelCount int = 30
+	maxParallelCount     int = 30
+	minParallelCount     int = 1
 
 	loginFailed         = 1077949061
 	loginFailedWithArg  = 1077987870
@@ -73,8 +76,7 @@ var (
 		},
 	}
 
-	debugLogRegex   = map[string][]string{}
-	clientSemaphore *utils.Semaphore
+	debugLogRegex = map[string][]string{}
 )
 
 func isFilterLog(method, url string) bool {
@@ -98,7 +100,8 @@ type RestClient struct {
 	authToken string
 	client    *http.Client
 
-	reloginMutex sync.Mutex
+	reloginMutex     sync.Mutex
+	RequestSemaphore *utils.Semaphore
 }
 
 // NewClientConfig stores the information needed to create a new FusionStorage client
@@ -119,28 +122,24 @@ func NewClient(ctx context.Context, clientConfig *NewClientConfig) *RestClient {
 	var err error
 	var parallelCount int
 
-	if len(clientConfig.ParallelNum) > 0 {
-		parallelCount, err = strconv.Atoi(clientConfig.ParallelNum)
-		if err != nil || parallelCount > maxParallelCount || parallelCount < minParallelCount {
-			log.AddContext(ctx).Warningf("The config parallelNum %d is invalid, set it to the default value %d",
-				parallelCount, defaultParallelCount)
-			parallelCount = defaultParallelCount
-		}
-	} else {
+	parallelCount, err = strconv.Atoi(clientConfig.ParallelNum)
+	if err != nil || parallelCount > maxParallelCount || parallelCount < minParallelCount {
+		log.Infof("The config parallelNum %d is invalid, set it to the default value %d",
+			parallelCount, defaultParallelCount)
 		parallelCount = defaultParallelCount
 	}
 
 	log.AddContext(ctx).Infof("Init parallel count is %d", parallelCount)
-	clientSemaphore = utils.NewSemaphore(parallelCount)
 	return &RestClient{
-		url:             clientConfig.Url,
-		user:            clientConfig.User,
-		secretName:      clientConfig.SecretName,
-		secretNamespace: clientConfig.SecretNamespace,
-		backendID:       clientConfig.BackendID,
-		accountName:     clientConfig.AccountName,
-		useCert:         clientConfig.UseCert,
-		certSecretMeta:  clientConfig.CertSecretMeta,
+		url:              clientConfig.Url,
+		user:             clientConfig.User,
+		secretName:       clientConfig.SecretName,
+		secretNamespace:  clientConfig.SecretNamespace,
+		backendID:        clientConfig.BackendID,
+		accountName:      clientConfig.AccountName,
+		useCert:          clientConfig.UseCert,
+		certSecretMeta:   clientConfig.CertSecretMeta,
+		RequestSemaphore: utils.NewSemaphore(parallelCount),
 	}
 }
 
@@ -360,8 +359,8 @@ func (cli *RestClient) doCall(ctx context.Context, method string, url string, da
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
 		fmt.Sprintf("Request method: %s, url: %s, body: %v", method, req.URL, data))
 
-	clientSemaphore.Acquire()
-	defer clientSemaphore.Release()
+	cli.RequestSemaphore.Acquire()
+	defer cli.RequestSemaphore.Release()
 
 	resp, err := cli.client.Do(req)
 	if err != nil {

@@ -31,14 +31,14 @@ import (
 	coreV1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 
-	"huawei-csi-driver/csi/app"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	backendScheme "huawei-csi-driver/pkg/client/clientset/versioned/scheme"
-	backendInformers "huawei-csi-driver/pkg/client/informers/externalversions"
-	"huawei-csi-driver/pkg/storage-backend/controller"
-	"huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/pkg/webhook"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	backendScheme "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/scheme"
+	backendInformers "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/storage-backend/controller"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/webhook"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

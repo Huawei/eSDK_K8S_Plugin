@@ -25,17 +25,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"huawei-csi-driver/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 
-	"huawei-csi-driver/csi/app"
-	cfg "huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/utils/k8sutils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -284,4 +284,57 @@ func TestMain(m *testing.M) {
 	defer getGlobalConfig.Reset()
 
 	m.Run()
+}
+
+func TestIsCapacityAvailable_Success(t *testing.T) {
+	// arrange
+	const validSize int64 = 1024 * 1024 * 1024
+	const notValidSize int64 = 1024*1024*1024 + 511
+	cases := []struct {
+		name     string
+		size     int64
+		params   map[string]any
+		hasError bool
+	}{
+		{
+			name:     "Empty_Map",
+			size:     validSize,
+			params:   map[string]any{},
+			hasError: false,
+		},
+		{
+			name:     "Empty_Value",
+			size:     validSize,
+			params:   map[string]any{"disableVerifyCapacity": ""},
+			hasError: false,
+		},
+		{
+			name:     "False",
+			size:     validSize,
+			params:   map[string]any{"disableVerifyCapacity": "false"},
+			hasError: false,
+		},
+		{
+			name:     "True_Valid",
+			size:     validSize,
+			params:   map[string]any{"disableVerifyCapacity": "false"},
+			hasError: false,
+		},
+		{
+			name:     "True_Not_Valid",
+			size:     notValidSize,
+			params:   map[string]any{"disableVerifyCapacity": "false"},
+			hasError: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// action
+			err := IsCapacityAvailable(c.size, constants.AllocationUnitBytes, c.params)
+
+			// assert
+			assert.Equal(t, c.hasError, err != nil)
+		})
+	}
 }

@@ -24,7 +24,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"huawei-csi-driver/cli/helper"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/helper"
 )
 
 type Filter struct {

@@ -16,11 +16,12 @@
 package v1
 
 import (
-	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/pkg/client/clientset/versioned/scheme"
 	"net/http"
 
 	rest "k8s.io/client-go/rest"
+
+	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/scheme"
 )
 
 type XuanwuV1Interface interface {

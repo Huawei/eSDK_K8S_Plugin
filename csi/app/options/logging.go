@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"huawei-csi-driver/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
 )
 
 const (

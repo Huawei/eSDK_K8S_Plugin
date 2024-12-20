@@ -28,15 +28,15 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/lib/drcsi/rpc"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	crdScheme "huawei-csi-driver/pkg/client/clientset/versioned/scheme"
-	crdInformers "huawei-csi-driver/pkg/client/informers/externalversions"
-	"huawei-csi-driver/pkg/modify"
-	"huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi/rpc"
+	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	crdScheme "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/scheme"
+	crdInformers "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/modify"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

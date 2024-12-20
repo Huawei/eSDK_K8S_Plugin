@@ -23,7 +23,7 @@ import (
 
 	"k8s.io/api/core/v1"
 
-	"huawei-csi-driver/cli/helper"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/helper"
 )
 
 const (

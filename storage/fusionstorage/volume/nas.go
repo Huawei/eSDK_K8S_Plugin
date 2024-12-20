@@ -27,14 +27,15 @@ import (
 	"strings"
 	"time"
 
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	"huawei-csi-driver/storage/fusionstorage/client"
-	"huawei-csi-driver/storage/fusionstorage/smartx"
-	"huawei-csi-driver/storage/fusionstorage/types"
-	fsUtils "huawei-csi-driver/storage/fusionstorage/utils"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/flow"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/smartx"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/types"
+	fsUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/flow"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -305,17 +306,19 @@ func (p *NAS) Create(ctx context.Context, params map[string]interface{}) (utils.
 		return nil, err
 	}
 
-	volObj := p.prepareVolObj(ctx, params)
-	return volObj, nil
+	return p.prepareVolObj(ctx, params)
 }
 
-func (p *NAS) prepareVolObj(ctx context.Context, params map[string]interface{}) utils.Volume {
-	volName, isStr := params["name"].(string)
-	if !isStr {
-		// Not expecting this error to happen
-		log.AddContext(ctx).Warningf("Expecting string for volume name, received type %T", params["name"])
+func (p *NAS) prepareVolObj(ctx context.Context, params map[string]interface{}) (utils.Volume, error) {
+	volName, ok := params["name"].(string)
+	if !ok {
+		return nil, utils.Errorf(ctx, "expecting string for volume name, received type %T", params["name"])
 	}
-	return utils.NewVolume(volName)
+
+	vol := utils.NewVolume(volName)
+	capacity := utils.GetValueOrFallback(params, "capacity", int64(0))
+	vol.SetSize(utils.TransK8SCapacity(capacity, constants.FusionFileCapacityUnit))
+	return vol, nil
 }
 
 func (p *NAS) createFS(ctx context.Context,
@@ -679,7 +682,7 @@ func (p *NAS) setSize(ctx context.Context, fsName string, quota map[string]inter
 	if hardSize, exits := quota["space_hard_quota"].(float64); exits && hardSize != quotaInvalidValue {
 		capacity = int64(hardSize)
 	} else if softSize, exits := quota["space_soft_quota"].(float64); exits && softSize != quotaInvalidValue {
-		capacity = int64(hardSize)
+		capacity = int64(softSize)
 	} else {
 		msg := fmt.Sprintf("Quota %v does not contain space_hard_quota or space_soft_quota.", quota)
 		log.AddContext(ctx).Errorln(msg)

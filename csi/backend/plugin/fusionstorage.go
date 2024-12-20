@@ -22,18 +22,17 @@ import (
 	"fmt"
 	"strings"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	pkgVolume "huawei-csi-driver/pkg/volume"
-	"huawei-csi-driver/storage/fusionstorage/client"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
 	// CapacityUnit unit of capacity
-	CapacityUnit     int64 = 1024 * 1024
-	fileCapacityUnit int64 = 1024
+	CapacityUnit int64 = 1024 * 1024
 
 	// ProtocolDpc protocol DPC string
 	ProtocolDpc = "dpc"
@@ -226,9 +225,19 @@ func (p *FusionStoragePlugin) getNewClientConfig(ctx context.Context,
 	return newClientConfig, nil
 }
 
+// DeleteDTreeVolume used to delete DTree volume
+func (p *FusionStoragePlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
+	return errors.New("fusion storage does not support DTree feature")
+}
+
+// ExpandDTreeVolume used to expand DTree volume
+func (p *FusionStoragePlugin) ExpandDTreeVolume(context.Context, string, string, int64) (bool, error) {
+	return false, errors.New("fusion storage does not support DTree feature")
+}
+
 // ModifyVolume used to modify volume hyperMetro status
 func (p *FusionStoragePlugin) ModifyVolume(ctx context.Context, volumeName string,
 	modifyType pkgVolume.ModifyVolumeType, param map[string]string) error {
 
-	return errors.New("not implement")
+	return errors.New("fusion storage does not support modify volume feature")
 }

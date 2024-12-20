@@ -2,6 +2,19 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
+## v4.6.0
+
+- Support Kubernetes 1.31.
+- Support Openshift 4.16/4.17.
+- Support OceanStor Dorado V700R001C00.
+- Supports the PPC64LE CPU architecture of the IBM Power platform.
+- Support for Red Hat Enterprise Linux 8.6/8.7/8.8/8.9/8.10/9.4 x86_64.
+- Support NFS 4.2 on OceanStor Dorado storage 6.1.8 and later version.
+- Support NFS over RDMA on OceanStor Pacific storage 8.2.0 and later version.
+- Added `disableVerifyCapacity` parameter in StorageClass whether allow to disable volume capacity verification.
+- Added the restriction which is 1~30 on the `maxClientThreads` parameter in the backend.
+- Fixed an issue where raw volumes may be misplaced when they are powered off unexpectedly.
+
 ## v4.5.0
 
 - The default synchronization speed of hyper metro pair is changed from the highest speed to the default speed determined by the storage.

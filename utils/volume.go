@@ -24,7 +24,7 @@ type Volume interface {
 	GetLunWWN() (string, error)
 	SetLunWWN(string)
 	SetSize(int64)
-	GetSize() (int64, error)
+	GetSize() int64
 	SetDTreeParentName(string)
 	GetDTreeParentName() string
 	GetFilesystemMode() string
@@ -32,6 +32,7 @@ type Volume interface {
 	GetID() string
 	SetID(string)
 }
+
 type volume struct {
 	id              string
 	name            string
@@ -73,12 +74,8 @@ func (vol *volume) SetSize(size int64) {
 }
 
 // GetSize gets volume size in volume object
-func (vol *volume) GetSize() (int64, error) {
-	if 0 == vol.size {
-		return 0, errors.New("empty Size")
-	}
-
-	return vol.size, nil
+func (vol *volume) GetSize() int64 {
+	return vol.size
 }
 
 func (vol *volume) SetDTreeParentName(dTreeParentName string) {

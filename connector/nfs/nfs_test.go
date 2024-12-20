@@ -26,9 +26,9 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -169,6 +169,8 @@ func TestDisConnectVolume(t *testing.T) {
 	}
 
 	stubs := gostub.Stub(&utils.ExecShellCmd, testExecShellCmd)
+	gomonkey.ApplyFuncReturn(connector.MountPathIsExist, true, nil)
+
 	defer stubs.Reset()
 
 	for _, tt := range tests {

@@ -19,13 +19,15 @@ package manage
 import (
 	"context"
 	"errors"
+	"path"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/flow"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/flow"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // SanManager implements VolumeManager interface
@@ -101,7 +103,15 @@ func (m *SanManager) UnStageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		return nil
 	}
 
-	if err = Unmount(ctx, targetPath); err != nil {
+	rawBlockStagePath := path.Join(targetPath, volumeId)
+	rawBlock, err := connector.MountPathIsExist(ctx, rawBlockStagePath)
+
+	if rawBlock {
+		err = connUtils.Unmount(ctx, rawBlockStagePath)
+	} else {
+		err = Unmount(ctx, targetPath)
+	}
+	if err != nil {
 		log.AddContext(ctx).Errorf("umount target path failed while unstage volume, error: %v", err)
 		return err
 	}
@@ -281,7 +291,7 @@ func stageForBlock(ctx context.Context, parameters map[string]interface{}) error
 		return errors.New("device path doesn't exist while stage for block")
 	}
 
-	err := utils.CreateSymlink(ctx, devPath, mountPoint)
+	err := connUtils.BindMountRawBlockDevice(ctx, devPath, mountPoint, nil)
 	if err != nil {
 		log.AddContext(ctx).Errorln("create system link failed, error: %v", err)
 		return err

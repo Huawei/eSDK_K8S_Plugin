@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	"huawei-csi-driver/cli/config"
-	"huawei-csi-driver/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 // Validator is used to validate a Resource object

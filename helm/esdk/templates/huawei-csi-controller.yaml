@@ -765,6 +765,10 @@ spec:
             - "--log-file-size={{ .Values.csiDriver.controllerLogging.fileSize }}"
             - "--max-backups={{ .Values.csiDriver.controllerLogging.maxBackups }}"
             {{ end }}
+            {{ if .Values.controller.exportCsiService.enabled }}
+            - "--export-csi-service-address=$(POD_IP)"
+            - "--export-csi-service-port={{ .Values.controller.exportCsiService.port }}"
+            {{ end }}
           env:
             - name: CSI_ENDPOINT
               value: {{ .Values.csiDriver.endpoint }}
@@ -775,6 +779,10 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           livenessProbe:
             failureThreshold: 5
             httpGet:
@@ -830,3 +838,9 @@ spec:
       protocol: TCP
       port: {{ int .Values.controller.webhookPort | default 4433 }}
       targetPort: {{ int .Values.controller.webhookPort | default 4433 }}
+    {{ if .Values.controller.exportCsiService.enabled }}
+    - name: huawei-csi-driver-csi-grpc
+      protocol: TCP
+      port: {{ int .Values.controller.exportCsiService.port | default 9090 }}
+      targetPort: {{ int .Values.controller.exportCsiService.port | default 9090 }}
+    {{ end }}

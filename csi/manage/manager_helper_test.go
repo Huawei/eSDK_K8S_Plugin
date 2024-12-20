@@ -28,11 +28,11 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/prashantv/gostub"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/connector/nvme"
-	"huawei-csi-driver/csi/app"
-	cfg "huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

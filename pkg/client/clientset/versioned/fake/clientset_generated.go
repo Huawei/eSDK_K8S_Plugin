@@ -16,15 +16,15 @@
 package fake
 
 import (
-	clientset "huawei-csi-driver/pkg/client/clientset/versioned"
-	xuanwuv1 "huawei-csi-driver/pkg/client/clientset/versioned/typed/xuanwu/v1"
-	fakexuanwuv1 "huawei-csi-driver/pkg/client/clientset/versioned/typed/xuanwu/v1/fake"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
+
+	clientset "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/typed/xuanwu/v1"
+	fakexuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/typed/xuanwu/v1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.

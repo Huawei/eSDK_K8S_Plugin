@@ -28,15 +28,15 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"huawei-csi-driver/cli/helper"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/backend"
-	"huawei-csi-driver/csi/backend/handler"
-	"huawei-csi-driver/csi/backend/model"
-	"huawei-csi-driver/csi/backend/plugin"
-	"huawei-csi-driver/pkg/constants"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/helper"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/handler"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -62,6 +62,7 @@ var (
 		"nfsvers=4":   "nfs4",
 		"nfsvers=4.0": "nfs4",
 		"nfsvers=4.1": "nfs41",
+		"nfsvers=4.2": "nfs42",
 	}
 
 	annManageVolumeName  = "/manageVolumeName"
@@ -107,6 +108,38 @@ func processNFSProtocol(ctx context.Context, req *csi.CreateVolumeRequest,
 	}
 
 	return nil
+}
+
+func verifyExpandArguments(ctx context.Context, req *csi.ControllerExpandVolumeRequest, backend *model.Backend) error {
+	if req.GetCapacityRange() == nil {
+		return errors.New("no capacity range provided")
+	}
+
+	minSize := req.GetCapacityRange().GetRequiredBytes()
+	maxSize := req.GetCapacityRange().GetLimitBytes()
+	if 0 < maxSize && maxSize < minSize {
+		return errors.New("limitBytes is smaller than requiredBytes")
+	}
+
+	if support, err := isSupportExpandVolume(ctx, req, backend); !support {
+		return err
+	}
+
+	err := verifySectorSize(ctx, req.GetVolumeId(), backend, minSize)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func verifySectorSize(ctx context.Context, volumeId string, backend *model.Backend, minSize int64) error {
+	volumeAttrs, err := app.GetGlobalConfig().K8sUtils.GetVolumeAttrByVolumeId(volumeId)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, fmt.Sprintf("failed to verify expand arguments: %v", err))
+	}
+
+	return utils.IsCapacityAvailable(minSize, backend.Plugin.GetSectorSize(), utils.CopyMap(volumeAttrs))
 }
 
 func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest, b *model.Backend) (
@@ -258,10 +291,11 @@ func getAccessibleTopologies(ctx context.Context, req *csi.CreateVolumeRequest,
 
 func getAttributes(req *csi.CreateVolumeRequest, vol utils.Volume, backendName string) map[string]string {
 	attributes := map[string]string{
-		"backend":         backendName,
-		"name":            vol.GetVolumeName(),
-		"fsPermission":    req.Parameters["fsPermission"],
-		"dTreeParentName": vol.GetDTreeParentName(),
+		"backend":               backendName,
+		"name":                  vol.GetVolumeName(),
+		"fsPermission":          req.Parameters["fsPermission"],
+		"dTreeParentName":       vol.GetDTreeParentName(),
+		"disableVerifyCapacity": req.Parameters["disableVerifyCapacity"],
 	}
 
 	if lunWWN, err := vol.GetLunWWN(); err == nil {
@@ -284,11 +318,10 @@ func getVolumeResponse(accessibleTopologies []*csi.Topology,
 func makeCreateVolumeResponse(ctx context.Context, req *csi.CreateVolumeRequest, vol utils.Volume,
 	pool *model.StoragePool) *csi.Volume {
 	contentSource := req.GetVolumeContentSource()
-	size := req.GetCapacityRange().GetRequiredBytes()
 
 	accessibleTopologies := getAccessibleTopologies(ctx, req, pool)
 	attributes := getAttributes(req, vol, pool.Parent)
-	csiVolume := getVolumeResponse(accessibleTopologies, attributes, pool.Parent+"."+vol.GetVolumeName(), size)
+	csiVolume := getVolumeResponse(accessibleTopologies, attributes, pool.Parent+"."+vol.GetVolumeName(), vol.GetSize())
 	if contentSource != nil {
 		csiVolume.ContentSource = contentSource
 	}
@@ -432,8 +465,8 @@ func processCreateVolumeParameters(ctx context.Context, req *csi.CreateVolumeReq
 	return parameters, nil
 }
 
-func processCreateVolumeParametersAfterSelect(parameters map[string]interface{}, localPool *model.StoragePool,
-	remotePool *model.StoragePool) {
+func processCreateVolumeParametersAfterSelect(parameters map[string]interface{},
+	localPool *model.StoragePool, remotePool *model.StoragePool) error {
 
 	parameters["storagepool"] = localPool.Name
 	if remotePool != nil {
@@ -443,6 +476,9 @@ func processCreateVolumeParametersAfterSelect(parameters map[string]interface{},
 	}
 
 	parameters["accountName"] = backend.GetAccountName(localPool.Parent)
+
+	size := utils.GetValueOrFallback(parameters, "size", int64(0))
+	return utils.IsCapacityAvailable(size, localPool.Plugin.GetSectorSize(), parameters)
 }
 
 // createVolume used to create a lun/filesystem in huawei storage
@@ -457,7 +493,11 @@ func (d *CsiDriver) createVolume(ctx context.Context, req *csi.CreateVolumeReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	processCreateVolumeParametersAfterSelect(parameters, storagePoolPair.Local, storagePoolPair.Remote)
+	err = processCreateVolumeParametersAfterSelect(parameters, storagePoolPair.Local, storagePoolPair.Remote)
+	if err != nil {
+		log.AddContext(ctx).Errorln(err)
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	vol, err := storagePoolPair.Local.Plugin.CreateVolume(ctx, req.GetName(), parameters)
 	if err != nil {
@@ -465,12 +505,24 @@ func (d *CsiDriver) createVolume(ctx context.Context, req *csi.CreateVolumeReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	recordCapacityChanged(ctx, req.GetCapacityRange().GetRequiredBytes(),
+		vol.GetSize(), storagePoolPair.Local.Plugin.GetSectorSize())
+
 	log.AddContext(ctx).Infof("Volume %s is created", req.GetName())
 	res := &csi.CreateVolumeResponse{
 		Volume: makeCreateVolumeResponse(ctx, req, vol, storagePoolPair.Local),
 	}
 
 	return res, nil
+}
+
+func recordCapacityChanged(ctx context.Context, required, actual, sectorSize int64) {
+	if required < actual {
+		log.AddContext(ctx).Infof("Required capacity is %d, actual capacity is %d, "+
+			"when this parameter is set to true,"+
+			" if required capacity is not an integer multiple of the sector size %d,"+
+			" it is automatically filled up.", required, actual, sectorSize)
+	}
 }
 
 // In the volume import scenario, only the fields in the annotation are obtained.
@@ -528,9 +580,9 @@ func (d *CsiDriver) manageVolume(ctx context.Context, req *csi.CreateVolumeReque
 }
 
 func validateCapacity(ctx context.Context, req *csi.CreateVolumeRequest, vol utils.Volume) error {
-	actualCapacity, err := vol.GetSize()
-	if err != nil {
-		return err
+	actualCapacity := vol.GetSize()
+	if actualCapacity == 0 {
+		return errors.New("empty Size")
 	}
 
 	if actualCapacity != req.GetCapacityRange().RequiredBytes {

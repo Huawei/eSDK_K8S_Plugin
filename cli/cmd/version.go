@@ -21,7 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"huawei-csi-driver/cli/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
 )
 
 func registerVersionCmd() {

@@ -19,7 +19,7 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 
-	"huawei-csi-driver/cli/cmd/options"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/cmd/options"
 )
 
 func registerCreateCmd() {

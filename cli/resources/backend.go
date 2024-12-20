@@ -26,11 +26,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"huawei-csi-driver/cli/client"
-	"huawei-csi-driver/cli/config"
-	"huawei-csi-driver/cli/helper"
-	xuanwuV1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/helper"
+	xuanwuV1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // Backend is a storage backend object

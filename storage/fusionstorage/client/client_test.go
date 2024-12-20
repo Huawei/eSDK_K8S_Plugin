@@ -23,9 +23,9 @@ import (
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/require"
 
-	"huawei-csi-driver/csi/app"
-	cfg "huawei-csi-driver/csi/app/config"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 var (

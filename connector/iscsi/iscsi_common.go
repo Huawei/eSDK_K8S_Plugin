@@ -25,9 +25,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"huawei-csi-driver/connector"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 func getSessionIds(ctx context.Context, devices []string, deviceType int) ([]string, error) {

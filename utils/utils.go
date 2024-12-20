@@ -32,31 +32,28 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	"huawei-csi-driver/cli/helper"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/pkg/constants"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/helper"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
+	DoradoV7Prefix    = "V700"
 	DoradoV6Prefix    = "V600"
 	OceanStorV5Prefix = "V500"
 
 	longTimeout = 60
-)
-
-var (
-	createSymLock sync.Mutex
-	removeSymLock sync.Mutex
 )
 
 const (
@@ -271,6 +268,10 @@ func GetFileSystemName(name string) string {
 	return strings.Replace(name, "-", "_", -1)
 }
 
+func GetPersistentVolumeName(name string) string {
+	return strings.Replace(name, "_", "-", -1)
+}
+
 func GetFSSnapshotName(name string) string {
 	return strings.Replace(name, "-", "_", -1)
 }
@@ -410,13 +411,17 @@ func ReflectCall(obj interface{}, method string, args ...interface{}) []reflect.
 }
 
 // GetProductVersion is to get the oceanStorage version by get info from the system
-func GetProductVersion(systemInfo map[string]interface{}) (string, error) {
+func GetProductVersion(systemInfo map[string]interface{}) (constants.OceanstorVersion, error) {
 	productVersion, ok := systemInfo["PRODUCTVERSION"].(string)
 	if !ok {
 		return "", errors.New("there is no PRODUCTVERSION field in system info")
 	}
 
-	if strings.HasPrefix(productVersion, DoradoV6Prefix) {
+	// There is no version evolution in the current oceandisk storage,
+	// so there is currently no version processing involved for oceandisk.
+	if strings.HasPrefix(productVersion, DoradoV7Prefix) {
+		return constants.OceanStorDoradoV7, nil
+	} else if strings.HasPrefix(productVersion, DoradoV6Prefix) {
 		return constants.OceanStorDoradoV6, nil
 	} else if strings.HasPrefix(productVersion, OceanStorV5Prefix) {
 		return constants.OceanStorV5, nil
@@ -444,8 +449,7 @@ func IsSupportFeature(features map[string]int, feature string) bool {
 }
 
 func TransVolumeCapacity(size int64, unit int64) int64 {
-	newSize := RoundUpSize(size, unit)
-	return newSize
+	return RoundUpSize(size, unit)
 }
 
 func RoundUpSize(volumeSizeBytes int64, allocationUnitBytes int64) int64 {
@@ -573,13 +577,29 @@ func IgnoreExistCode(err error, checkExitCode []string) error {
 	return err
 }
 
-// IsCapacityAvailable indicates whether the volume size is an integer multiple of 512.
-func IsCapacityAvailable(volumeSizeBytes int64, allocationUnitBytes int64) bool {
+// IsCapacityAvailable indicates whether the volume size is an integer multiple of allocationUnitBytes.
+func IsCapacityAvailable(volumeSizeBytes, allocationUnitBytes int64, parameters map[string]any) error {
 	if allocationUnitBytes == 0 {
-		log.Warningf("IsCapacityAvailable.allocationUnitBytes is invalid, can't be zero")
-		return false
+		return errors.New("IsCapacityAvailable.allocationUnitBytes is invalid, can't be zero")
 	}
-	return volumeSizeBytes%allocationUnitBytes == 0
+
+	disableVerifyCapacity := GetValueOrFallback(parameters, "disableVerifyCapacity", "false")
+	var disableVerify bool
+	if disableVerifyCapacity != "" {
+		var err error
+		disableVerify, err = strconv.ParseBool(disableVerifyCapacity)
+		if err != nil {
+			return status.Error(codes.InvalidArgument,
+				fmt.Sprintf("Parse %s to bool failed: %v", disableVerifyCapacity, err))
+		}
+	}
+
+	if disableVerify || volumeSizeBytes%allocationUnitBytes == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("failed to check volume: the capacity %d is not an integer or not multiple of %d",
+		volumeSizeBytes, allocationUnitBytes)
 }
 
 // TransToInt is to trans different type to int type.
@@ -789,59 +809,6 @@ func IsPathSymlinkWithTimeout(targetPath string, duration time.Duration) (bool, 
 	case <-time.After(duration):
 		return symlink, errors.New(fmt.Sprintf("Access path %s timeout", targetPath))
 	}
-}
-
-// CreateSymlink between source and target
-func CreateSymlink(ctx context.Context, source string, target string) error {
-	// First check if File exists in the staging area, then remove the mount
-	// and then create a symlink to the devpath Serialize symlink request
-
-	createSymLock.Lock()
-	defer createSymLock.Unlock()
-
-	log.AddContext(ctx).Infof("Create symlink called for [%s] to [%s]", source, target)
-
-	finfo, err := os.Lstat(target)
-	if err != nil && os.IsNotExist(err) {
-		log.AddContext(ctx).Infof("Mountpoint [%v] does not exist", target)
-	} else {
-		if finfo.Mode()&os.ModeSymlink == os.ModeSymlink {
-			log.AddContext(ctx).Infof("Path symlink already exists")
-			return nil
-		}
-		// As the file exists but no symlink created,
-		// then throw error and it should be handled by user
-		log.AddContext(ctx).Errorf("Already target path exists [%v].", target)
-		return err
-	}
-	log.AddContext(ctx).Infof("Creating symlink for [%s] to [%s]", source, target)
-	err = os.Symlink(source, target)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Failed to create a link for [%v] to [%v]", source, target)
-		return err
-	}
-	return nil
-}
-
-// RemoveSymlink from target path
-func RemoveSymlink(ctx context.Context, target string) error {
-	log.AddContext(ctx).Infof("Remove symlink called for [%s]", target)
-
-	removeSymLock.Lock()
-	defer removeSymLock.Unlock()
-
-	// If the file is symlink delete it
-	symLink, err := IsPathSymlink(target)
-	if symLink {
-		clierr := os.Remove(target)
-		if clierr != nil {
-			log.AddContext(ctx).Errorf("Failed to delete the target [%v]", target)
-			return clierr
-		}
-		log.AddContext(ctx).Infof("Successfully deleted the target [%v]", target)
-		return nil
-	}
-	return err
 }
 
 // RemoveDir delete directory from filePath
@@ -1064,4 +1031,66 @@ func RemoveString(slice []string, s string) []string {
 		newSlice = append(newSlice, item)
 	}
 	return newSlice
+}
+
+// FormatRespErr formats resp error and returns code and msg.
+func FormatRespErr(respErr map[string]interface{}) (int64, string, error) {
+	code, ok := respErr["code"]
+	if !ok {
+		return 0, "", fmt.Errorf("can not get code from respErr %v", respErr)
+	}
+
+	floatCode, ok := code.(float64)
+	if !ok {
+		return 0, "", fmt.Errorf("can not convert resp code %v to float64", code)
+	}
+
+	intCode := int64(floatCode)
+	msg, ok := respErr["description"]
+	if !ok {
+		return intCode, "", nil
+	}
+
+	strMsg, ok := msg.(string)
+	if !ok {
+		return intCode, "", nil
+	}
+
+	return intCode, strMsg, nil
+}
+
+// GetValueOrFallback returns the value of the given key
+// or the fallback value if the key is not present or type convert error.
+func GetValueOrFallback[T any](m map[string]any, k string, fallback T) T {
+	v, exists := m[k]
+	if !exists {
+		return fallback
+	}
+
+	val, ok := v.(T)
+	if !ok {
+		return fallback
+	}
+
+	return val
+}
+
+func GetValue[T any](m map[string]any, k string) (T, bool) {
+	v, exists := m[k]
+	if !exists {
+		return zeroValue[T](), false
+	}
+
+	val, ok := v.(T)
+	if !ok {
+		return zeroValue[T](), false
+	}
+
+	return val, true
+}
+
+// zeroValue returns zero value of the given type.
+func zeroValue[T any]() T {
+	var zero T
+	return zero
 }

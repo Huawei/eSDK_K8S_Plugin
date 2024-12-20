@@ -27,12 +27,12 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -65,6 +65,9 @@ type Interface interface {
 	// GetVolumeAttributes returns volume attributes of PV
 	GetVolumeAttributes(ctx context.Context, pvName string) (map[string]string, error)
 
+	// GetVolumeAttrByVolumeId returns volume attributes of PV from volume id
+	GetVolumeAttrByVolumeId(volumeId string) (map[string]string, error)
+
 	// Activate the k8s helpers when start the service
 	Activate()
 	// Deactivate the k8s helpers when stop the service
@@ -79,11 +82,11 @@ type Interface interface {
 type KubeClient struct {
 	clientSet kubernetes.Interface
 
-	// pvc resources cache
-	pvcIndexer            cache.Indexer
-	pvcController         cache.SharedIndexInformer
-	pvcControllerStopChan chan struct{}
-	pvcSource             cache.ListerWatcher
+	// kubernetes resources cache
+	informersStopChan chan struct{}
+	informerFactory   informers.SharedInformerFactory
+	pvcAccessor       *ResourceAccessor[*corev1.PersistentVolumeClaim]
+	pvAccessor        *ResourceAccessor[*corev1.PersistentVolume]
 
 	volumeNamePrefix string
 	volumeLabels     map[string]string
@@ -115,12 +118,19 @@ func NewK8SUtils(kubeConfig string, volumeNamePrefix string, volumeLabels map[st
 	}
 
 	helper := &KubeClient{
-		clientSet:             clientset,
-		pvcControllerStopChan: make(chan struct{}),
-		volumeNamePrefix:      volumeNamePrefix,
-		volumeLabels:          volumeLabels,
+		clientSet:         clientset,
+		informersStopChan: make(chan struct{}),
+		volumeNamePrefix:  volumeNamePrefix,
+		volumeLabels:      volumeLabels,
+		informerFactory:   informers.NewSharedInformerFactory(clientset, cacheSyncPeriod),
 	}
-	initPVCWatcher(context.Background(), helper)
+
+	if err = initPVCAccessor(helper); err != nil {
+		return nil, err
+	}
+	if err = initPVAccessor(helper); err != nil {
+		return nil, err
+	}
 	return helper, nil
 }
 
@@ -282,11 +292,11 @@ func (k *KubeClient) GetVolumeAttributes(ctx context.Context, pvName string) (ma
 // Activate activate k8s helpers
 func (k *KubeClient) Activate() {
 	log.Infoln("Activate k8S helpers.")
-	go k.pvcController.Run(k.pvcControllerStopChan)
+	go k.informerFactory.Start(k.informersStopChan)
 }
 
 // Deactivate deactivate k8s helpers
 func (k *KubeClient) Deactivate() {
 	log.Infoln("Deactivate k8S helpers.")
-	close(k.pvcControllerStopChan)
+	close(k.informersStopChan)
 }

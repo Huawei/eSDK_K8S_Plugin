@@ -24,9 +24,9 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 
-	"huawei-csi-driver/cli/client"
-	"huawei-csi-driver/cli/config"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

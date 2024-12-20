@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"runtime/debug"
 
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

@@ -24,12 +24,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"huawei-csi-driver/connector/utils/lock"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/manage"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/k8sutils"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils/lock"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/manage"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

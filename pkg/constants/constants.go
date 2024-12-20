@@ -22,7 +22,7 @@ type FileType string
 
 const (
 	// ProviderVersion defines provider version
-	ProviderVersion = "4.5.0"
+	ProviderVersion = "4.6.0"
 	// ProviderVendorName defines provider vendor name
 	ProviderVendorName = "Huawei"
 	// EndpointDirPermission defines permission of endpoint dir
@@ -74,8 +74,12 @@ const (
 	// DefaultKubeletVolumeDevicesDirName default kubelet volumeDevice name
 	DefaultKubeletVolumeDevicesDirName = "/volumeDevices/"
 
-	// AllocationUnitBytes default is 512
+	// AllocationUnitBytes default is 512 Bytes, it is the allocation and capacity unit for OceanStor
 	AllocationUnitBytes = 512
+	// FusionAllocUnitBytes default is 1Mi, it is the allocation unit for FusionStorage
+	FusionAllocUnitBytes = 1024 * 1024
+	// FusionFileCapacityUnit default is 1024 Bytes, it is the capacity unit for FusionStorage
+	FusionFileCapacityUnit int64 = 1024
 
 	// DefaultIntBase is the default value of int base
 	DefaultIntBase = 10

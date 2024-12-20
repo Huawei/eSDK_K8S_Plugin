@@ -25,9 +25,9 @@ import (
 	"strings"
 	"time"
 
-	"huawei-csi-driver/cli/config"
-	"huawei-csi-driver/cli/helper"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/helper"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // FileLogsCollect is the interface to collect file logs.

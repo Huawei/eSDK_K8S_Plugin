@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"huawei-csi-driver/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 const (
@@ -88,11 +88,12 @@ func ExtractStorageQuotaParameters(ctx context.Context, storageQuotaConfig strin
 // CheckErrorCode used to check Response
 // Response data struct
 // Response
-//   data
-//     ...
-//   result:
-//     code: 0
-//     description: ""
+//
+//	data
+//	  ...
+//	result:
+//	  code: 0
+//	  description: ""
 func CheckErrorCode(response map[string]interface{}) error {
 
 	result, ok := response["result"].(map[string]interface{})

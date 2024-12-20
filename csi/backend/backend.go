@@ -26,16 +26,17 @@ import (
 	"strconv"
 	"strings"
 
-	v1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/csi/backend/cache"
-	"huawei-csi-driver/csi/backend/model"
-	"huawei-csi-driver/csi/backend/plugin"
-	pkgUtils "huawei-csi-driver/pkg/utils"
-	fsUtils "huawei-csi-driver/storage/fusionstorage/utils"
-	"huawei-csi-driver/utils"
-	"huawei-csi-driver/utils/k8sutils"
-	"huawei-csi-driver/utils/log"
+	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/cache"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	fsUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -486,15 +487,17 @@ func filterByVolumeType(ctx context.Context, volumeType string, candidatePools [
 
 	for _, pool := range candidatePools {
 		if volumeType == "lun" || volumeType == "" {
-			if pool.Storage == "oceanstor-san" || pool.Storage == "fusionstorage-san" {
+			if pool.Storage == constants.OceanStorSan || pool.Storage == constants.FusionSan ||
+				pool.Storage == constants.OceandiskSan {
 				filterPools = append(filterPools, pool)
 			}
 		} else if volumeType == "fs" {
-			if pool.Storage == "oceanstor-nas" || pool.Storage == "oceanstor-9000" || pool.Storage == "fusionstorage-nas" {
+			if pool.Storage == constants.OceanStorNas || pool.Storage == constants.OceanStor9000 ||
+				pool.Storage == constants.FusionNas {
 				filterPools = append(filterPools, pool)
 			}
 		} else if volumeType == "dtree" {
-			if pool.Storage == "oceanstor-dtree" {
+			if pool.Storage == constants.OceanStorDtree {
 				filterPools = append(filterPools, pool)
 			}
 		}
@@ -510,7 +513,7 @@ func filterByAllocType(ctx context.Context, allocType string, candidatePools []*
 	for _, pool := range candidatePools {
 		valid := false
 
-		if pool.Storage == "oceanstor-9000" {
+		if pool.Storage == constants.OceanStor9000 {
 			valid = true
 		} else if allocType == "thin" || allocType == "" {
 			supportThin, exist := pool.Capabilities["SupportThin"]
@@ -828,6 +831,8 @@ func filterByNFSProtocol(ctx context.Context, nfsProtocol string, candidatePools
 		} else if nfsProtocol == "nfs4" && pool.Capabilities["SupportNFS4"] {
 			filterPools = append(filterPools, pool)
 		} else if nfsProtocol == "nfs41" && pool.Capabilities["SupportNFS41"] {
+			filterPools = append(filterPools, pool)
+		} else if nfsProtocol == "nfs42" && pool.Capabilities["SupportNFS42"] {
 			filterPools = append(filterPools, pool)
 		}
 	}

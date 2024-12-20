@@ -28,11 +28,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	clientSet "huawei-csi-driver/pkg/client/clientset/versioned"
-	"huawei-csi-driver/pkg/client/clientset/versioned/fake"
-	backendInformers "huawei-csi-driver/pkg/client/informers/externalversions"
-	"huawei-csi-driver/utils"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/fake"
+	backendInformers "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/informers/externalversions"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 func TestModifyClaimController_syncClaimWork_WhenGetClaimFromListerFailed(t *testing.T) {

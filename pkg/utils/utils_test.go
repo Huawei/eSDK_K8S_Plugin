@@ -23,12 +23,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	//"huawei-csi-driver/utils/log"
+	//"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
-	"huawei-csi-driver/utils/log"
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (

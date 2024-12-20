@@ -25,10 +25,10 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	"google.golang.org/grpc"
 
-	"huawei-csi-driver/csi/app"
-	"huawei-csi-driver/lib/drcsi"
-	"huawei-csi-driver/lib/drcsi/connection"
-	"huawei-csi-driver/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi/connection"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 // ConnectProvider connect provider

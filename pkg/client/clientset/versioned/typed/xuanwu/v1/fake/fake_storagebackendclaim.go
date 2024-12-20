@@ -17,7 +17,6 @@ package fake
 
 import (
 	"context"
-	xuanwuv1 "huawei-csi-driver/client/apis/xuanwu/v1"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -25,6 +24,8 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
+
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 )
 
 // FakeStorageBackendClaims implements StorageBackendClaimInterface

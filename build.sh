@@ -25,21 +25,27 @@ PLATFORM=$2
 package_name="eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64"
 
 echo "Start to make with Makefile"
-make -f Makefile VER=$1 PLATFORM=$2 BUILD_ON=github
+make -f Makefile VER=$1 PLATFORM=$2
 
 echo "Platform confirmation"
 if [[ "${PLATFORM}" == "ARM" ]];then
   PULL_FLAG="--platform=arm64"
   BUILD_FLAG="--platform linux/arm64"
+  GO_PLATFORM="arm64"
 elif [[ "${PLATFORM}" == "X86" ]];then
   PULL_FLAG="--platform=amd64"
   BUILD_FLAG="--platform linux/amd64"
+  GO_PLATFORM="amd64"
+elif [[ "${PLATFORM}" == "PPC64LE" ]];then
+  PULL_FLAG="--platform=ppc64le"
+  BUILD_FLAG="--platform linux/ppc64le"
+  GO_PLATFORM="ppc64le"
 else
-  echo "Wrong PLATFORM, support [X86, ARM]"
+  echo "Wrong PLATFORM, support [X86, ARM, PPC64LE]"
   exit
 fi
 
-echo "Start to pull busybox image with architecture"
+echo "Start to pull busybox image with architecture ${PULL_FLAG}"
 docker pull ${PULL_FLAG} busybox:stable-glibc
 docker pull ${PULL_FLAG} gcr.io/distroless/base:latest
 
@@ -82,6 +88,9 @@ cd ..
 
 echo "Start to clear temporary files"
 rm -f ./huawei-csi
+rm -f ./huawei-csi-extender
+rm -f ./storage-backend-controller
+rm -f ./storage-backend-sidecar
 rm -rf ./build_dir
 
 echo "Build finish"
