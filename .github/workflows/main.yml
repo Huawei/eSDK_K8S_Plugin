@@ -25,6 +25,7 @@ jobs:
         chmod +x ./build.sh
         ./build.sh ${{ steps.branch-names.outputs.tag }} X86
         ./build.sh ${{ steps.branch-names.outputs.tag }} ARM
+        ./build.sh ${{ steps.branch-names.outputs.tag }} PPC64LE
     - name: Create Release and Upload Release Asset
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
@@ -34,3 +35,4 @@ jobs:
         files: |
           eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${{ steps.branch-names.outputs.tag }}_X86_64.zip
           eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${{ steps.branch-names.outputs.tag }}_ARM_64.zip
+          eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${{ steps.branch-names.outputs.tag }}_PPC64LE_64.zip
