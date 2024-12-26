@@ -40,25 +40,27 @@ func TestGetISCSIInitiator(t *testing.T) {
 		wantErr error
 	}{
 		{
-			"Normal scenario",
-			"iqn.1994-05.com.redhat:98d87323a952",
-			nil,
-			"iqn.1994-05.com.redhat:98d87323a952",
-			nil,
+			name:    "Normal scenario",
+			output:  "iqn.1994-05.com.redhat:98d87323a952",
+			err:     nil,
+			wantIQN: "iqn.1994-05.com.redhat:98d87323a952",
+			wantErr: nil,
 		},
 		{
-			"If the initiatorname.iscsi file does not exist",
-			"awk: cmd. line:1: fatal: cannot open file `/etc/iscsi/initiatorname.iscsi' for reading (No such file or directory)",
-			errors.New("status 2"),
-			"",
-			errors.New("no ISCSI initiator exist"),
+			name: "If the initiatorname.iscsi file does not exist",
+			output: "awk: cmd. line:1: fatal: cannot open file" +
+				" `/etc/iscsi/initiatorname.iscsi' for reading (No such file or directory)",
+			err:     errors.New("status 2"),
+			wantIQN: "",
+			wantErr: errors.New("no ISCSI initiator exist"),
 		},
 		{
-			"Execution Error",
-			"fork/exec awk 'BEGIN{FS=\"=\";ORS=\"\"}/^InitiatorName=/{print $2}' /etc/iscsi/initiatorname.iscs: no such file or directory",
-			errors.New("status 2"),
-			"",
-			errors.New("status 2"),
+			name: "Execution Error",
+			output: "fork/exec awk 'BEGIN{FS=\"=\";ORS=\"\"}/^InitiatorName=/{print $2}'" +
+				" /etc/iscsi/initiatorname.iscs: no such file or directory",
+			err:     errors.New("status 2"),
+			wantIQN: "",
+			wantErr: errors.New("status 2"),
 		},
 	}
 

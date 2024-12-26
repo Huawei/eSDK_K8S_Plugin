@@ -23,17 +23,15 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
-
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )

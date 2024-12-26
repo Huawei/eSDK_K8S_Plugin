@@ -48,7 +48,6 @@ func testExecShellCmd(_ context.Context, format string, args ...interface{}) (st
 }
 
 func TestConnectVolume(t *testing.T) {
-	var ctx = context.TODO()
 
 	if err := os.MkdirAll("test-sourcePath", 0750); err != nil {
 		t.Fatal("can not create a source path")
@@ -56,78 +55,20 @@ func TestConnectVolume(t *testing.T) {
 	defer utils.RemoveDir("test-sourcePath", "test-sourcePath")
 	defer utils.RemoveDir("test-targetPath", "test-targetPath")
 
-	var blockConnMap = map[string]interface{}{
-		"srcType":    "block",
-		"sourcePath": "test-sourcePath",
-		"targetPath": "test-targetPath",
-		"fsType":     "",
-		"mountFlags": "",
-	}
-	var existFsTypeIsEmptyMap = map[string]interface{}{
-		"srcType":    "block",
-		"sourcePath": "sourcePath",
-		"targetPath": "test-targetPath",
-		"fsType":     "",
-		"mountFlags": "",
-	}
-	var fsConnMap = map[string]interface{}{
-		"srcType":    "fs",
-		"sourcePath": "test-sourcePath",
-		"targetPath": "test",
-		"fsType":     "",
-		"mountFlags": "test-flag",
-	}
-	var otherSrcTypeMap = map[string]interface{}{
-		"srcType": "test",
-	}
-	var emptySrcTypeMap = map[string]interface{}{
-		"srcType": "",
-	}
-	var emptySourcePathMap = map[string]interface{}{
-		"srcType":    "block",
-		"sourcePath": "",
-	}
-	var emptyTargetPathMap = map[string]interface{}{
-		"srcType":    "fs",
-		"sourcePath": "testSourcePath",
-		"targetPath": "",
-	}
-
-	type args struct {
-		ctx  context.Context
-		conn map[string]interface{}
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    string
-		wantErr bool
-	}{
-		{"EmptySrcType", args{ctx, emptySrcTypeMap}, "", true},
-		{"EmptySourcePath", args{ctx, emptySourcePathMap}, "", true},
-		{"EmptyTargetPath", args{ctx, emptyTargetPathMap}, "", true},
-
-		{"SrcTypeIsOther", args{ctx, otherSrcTypeMap}, "", true},
-		{"SrcTypeIsFS", args{ctx, fsConnMap}, "", false},
-
-		{"SrcTypeIsBlock", args{ctx, blockConnMap}, "", false},
-		{"ExistFsTypeIsEmpty", args{ctx, existFsTypeIsEmptyMap}, "", true},
-	}
-
 	stubs := gostub.StubFunc(&connector.ReadDevice, []byte{}, nil)
-	defer stubs.Reset()
-
 	stubs.StubFunc(&utils.PathExist, true, nil)
 	stubs.StubFunc(&connector.ResizeMountPath, nil)
 	stubs.StubFunc(&connector.IsInFormatting, false, nil)
 	stubs.StubFunc(&connector.GetDeviceSize, int64(halfTiSizeBytes), nil)
 	stubs.Stub(&utils.ExecShellCmd, testExecShellCmd)
+	defer stubs.Reset()
 
 	readFile := gomonkey.ApplyFunc(ioutil.ReadFile, func(filename string) ([]byte, error) {
 		return []byte("test test\n"), nil
 	})
 	defer readFile.Reset()
 
+	tests := getConnectVolumeTests()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nfs := &Connector{}
@@ -140,6 +81,45 @@ func TestConnectVolume(t *testing.T) {
 				t.Errorf("ConnectVolume() got = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+type args struct {
+	ctx  context.Context
+	conn map[string]interface{}
+}
+
+func getConnectVolumeTests() []struct {
+	name    string
+	args    args
+	want    string
+	wantErr bool
+} {
+	var ctx = context.TODO()
+	var blockConnMap = map[string]any{"srcType": "block", "sourcePath": "test-sourcePath",
+		"targetPath": "test-targetPath", "fsType": "", "mountFlags": ""}
+	var existFsTypeIsEmptyMap = map[string]any{"srcType": "block", "sourcePath": "sourcePath",
+		"targetPath": "test-targetPath", "fsType": "", "mountFlags": ""}
+	var fsConnMap = map[string]any{"srcType": "fs", "sourcePath": "test-sourcePath",
+		"targetPath": "test", "fsType": "", "mountFlags": "test-flag"}
+	var otherSrcTypeMap = map[string]any{"srcType": "test"}
+	var emptySrcTypeMap = map[string]any{"srcType": ""}
+	var emptySourcePathMap = map[string]any{"srcType": "block", "sourcePath": ""}
+	var emptyTargetPathMap = map[string]any{"srcType": "fs", "sourcePath": "testSourcePath", "targetPath": ""}
+
+	return []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{"EmptySrcType", args{ctx, emptySrcTypeMap}, "", true},
+		{"EmptySourcePath", args{ctx, emptySourcePathMap}, "", true},
+		{"EmptyTargetPath", args{ctx, emptyTargetPathMap}, "", true},
+		{"SrcTypeIsOther", args{ctx, otherSrcTypeMap}, "", true},
+		{"SrcTypeIsFS", args{ctx, fsConnMap}, "", false},
+		{"SrcTypeIsBlock", args{ctx, blockConnMap}, "", false},
+		{"ExistFsTypeIsEmpty", args{ctx, existFsTypeIsEmptyMap}, "", true},
 	}
 }
 

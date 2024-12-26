@@ -67,15 +67,6 @@ func TestGetDevice(t *testing.T) {
 }
 
 func TestGetDeviceLink(t *testing.T) {
-	const (
-		stubTgtLunGUID = "test123456"
-
-		normalCmdOutput     = "test output"
-		nofileCmdOutput     = "No such file or directory"
-		emptyCmdOutput      = ""
-		otherErrorCmdOutput = "other result"
-	)
-
 	var stubCtx = context.TODO()
 
 	type args struct {
@@ -93,11 +84,14 @@ func TestGetDeviceLink(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		// TODO: Add test cases.
-		{"Normal", args{stubCtx, stubTgtLunGUID}, outputs{normalCmdOutput, nil}, "test output", false},
-		{"EmptyCmdResult", args{stubCtx, stubTgtLunGUID}, outputs{emptyCmdOutput, errors.New("test")}, "", false},
-		{"CmdResultIsFileOrDirectoryNoExist", args{stubCtx, stubTgtLunGUID}, outputs{nofileCmdOutput, errors.New("test")}, "", false},
-		{"CmdResultIsOtherError", args{stubCtx, stubTgtLunGUID}, outputs{otherErrorCmdOutput, errors.New("test")}, "", true},
+		{"Normal", args{stubCtx, "test123456"},
+			outputs{"test output", nil}, "test output", false},
+		{"EmptyCmdResult", args{stubCtx, "test123456"},
+			outputs{"", errors.New("test")}, "", false},
+		{"CmdResultIsFileOrDirectoryNoExist", args{stubCtx, "test123456"},
+			outputs{"No such file or directory", errors.New("test")}, "", false},
+		{"CmdResultIsOtherError", args{stubCtx, "test123456"},
+			outputs{"other result", errors.New("test")}, "", true},
 	}
 
 	stub := utils.ExecShellCmd
@@ -364,34 +358,6 @@ func TestXfsResize(t *testing.T) {
 }
 
 func TestGetVirtualDevice(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		LunWWN string
-	}
-	type outputs struct {
-		output    []string
-		cmdOutput string
-		err       error
-		cmdErr    error
-	}
-	tests := []struct {
-		name           string
-		args           args
-		mockOutputs    outputs
-		wantDeviceName string
-		wantDeviceKind int
-		wantErr        bool
-	}{
-		{"NormalUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh"}, "", nil, nil}, "ultrapathh", UseUltraPathNVMe, false},
-		{"NormalDm-*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"dm-2"}, "lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha -> ../dm-2", nil, nil}, "dm-2", UseDMMultipath, false},
-		{"NormalPhysicalSd*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"sdd"}, "", nil, nil}, "sdd", NotUseMultipath, false},
-		{"NormalPhysicalNVMe*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1"}, "", nil, nil}, "nvme1n1", NotUseMultipath, false},
-		{"ErrorMultiUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathi"}, "", nil, nil}, "", 0, true},
-		{"ErrorPartitionUltrapath*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"ultrapathh", "ultrapathh2"}, "", nil, nil}, "ultrapathh", UseUltraPathNVMe, false},
-		{"ErrorPartitionDm-*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"dm-2"}, "lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha2 -> ../dm-2", nil, nil}, "", 0, false},
-		{"ErrorPartitionNvme*", args{context.TODO(), "7100e98b8e19b76d00e4069a00000003"}, outputs{[]string{"nvme1n1", "nvme1n1p1"}, "", nil, nil}, "nvme1n1", 0, false},
-	}
-
 	stub := GetDevicesByGUID
 	stub2 := utils.ExecShellCmd
 	defer func() {
@@ -399,6 +365,7 @@ func TestGetVirtualDevice(t *testing.T) {
 		utils.ExecShellCmd = stub2
 	}()
 
+	tests := getVirtualDeviceTest()
 	for _, tt := range tests {
 		GetDevicesByGUID = func(_ context.Context, tgtLunGUID string) ([]string, error) {
 			return tt.mockOutputs.output, tt.mockOutputs.err
@@ -417,6 +384,70 @@ func TestGetVirtualDevice(t *testing.T) {
 	}
 }
 
+type VirtualDeviceArgs struct {
+	ctx    context.Context
+	LunWWN string
+}
+type VirtualDeviceOutputs struct {
+	output    []string
+	cmdOutput string
+	err       error
+	cmdErr    error
+}
+
+func getVirtualDeviceTest() []struct {
+	name           string
+	args           VirtualDeviceArgs
+	mockOutputs    VirtualDeviceOutputs
+	wantDeviceName string
+	wantDeviceKind int
+	wantErr        bool
+} {
+	return []struct {
+		name           string
+		args           VirtualDeviceArgs
+		mockOutputs    VirtualDeviceOutputs
+		wantDeviceName string
+		wantDeviceKind int
+		wantErr        bool
+	}{
+		{"NormalUltrapath*",
+			VirtualDeviceArgs{context.TODO(), "7100e98b8e19b76d00e4069a00000003"},
+			VirtualDeviceOutputs{[]string{"ultrapathh"},
+				"", nil, nil}, "ultrapathh", UseUltraPathNVMe, false},
+		{"NormalDm-*",
+			VirtualDeviceArgs{context.TODO(), "7100e98b8e19b76d00e4069a00000003"},
+			VirtualDeviceOutputs{[]string{"dm-2"},
+				"lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha -> ../dm-2", nil, nil},
+			"dm-2", UseDMMultipath, false},
+		{"NormalPhysicalSd*",
+			VirtualDeviceArgs{context.TODO(), "7100e98b8e19b76d00e4069a00000003"},
+			VirtualDeviceOutputs{[]string{"sdd"},
+				"", nil, nil}, "sdd", NotUseMultipath, false},
+		{"NormalPhysicalNVMe*",
+			VirtualDeviceArgs{context.TODO(), "7100e98b8e19b76d00e4069a00000003"},
+			VirtualDeviceOutputs{[]string{"nvme1n1"},
+				"", nil, nil}, "nvme1n1", NotUseMultipath, false},
+		{"ErrorMultiUltrapath*",
+			VirtualDeviceArgs{context.TODO(), "7100e98b8e19b76d00e4069a00000003"},
+			VirtualDeviceOutputs{[]string{"ultrapathh", "ultrapathi"},
+				"", nil, nil}, "", 0, true},
+		{"ErrorPartitionUltrapath*",
+			VirtualDeviceArgs{context.TODO(), "7100e98b8e19b76d00e4069a00000003"},
+			VirtualDeviceOutputs{[]string{"ultrapathh", "ultrapathh2"},
+				"", nil, nil}, "ultrapathh", UseUltraPathNVMe, false},
+		{"ErrorPartitionDm-*",
+			VirtualDeviceArgs{context.TODO(), "7100e98b8e19b76d00e4069a00000003"},
+			VirtualDeviceOutputs{[]string{"dm-2"},
+				"lrwxrwxrwx. 1 root root       7 Mar 14 10:26 mpatha2 -> ../dm-2", nil, nil},
+			"", 0, false},
+		{"ErrorPartitionNvme*",
+			VirtualDeviceArgs{context.TODO(), "7100e98b8e19b76d00e4069a00000003"},
+			VirtualDeviceOutputs{[]string{"nvme1n1", "nvme1n1p1"},
+				"", nil, nil}, "nvme1n1", 0, false},
+	}
+}
+
 func TestWatchDMDevice(t *testing.T) {
 	var cases = []struct {
 		name             string
@@ -428,36 +459,12 @@ func TestWatchDMDevice(t *testing.T) {
 		pathCompleteTime time.Duration
 		err              error
 	}{
-		{
-			"Normal",
-			"6582575100bc510f12345678000103e8",
-			"dm-0",
-			3,
-			[]string{"sdb", "sdc", "sdd"},
-			100 * time.Millisecond,
-			100 * time.Millisecond,
-			nil,
-		},
-		{
-			"PathIncomplete",
-			"6582575100bc510f12345678000103e8",
-			"dm-0",
-			3,
-			[]string{"sdb", "sdc"},
-			100 * time.Millisecond,
-			100 * time.Millisecond,
-			errors.New(VolumePathIncomplete),
-		},
-		{
-			"Timeout",
-			"6582575100bc510f12345678000103e8",
-			"dm-0",
-			3,
-			[]string{"sdb", "sdc", "sdd"},
-			100 * time.Millisecond,
-			10000 * time.Millisecond,
-			errors.New(VolumeNotFound),
-		},
+		{"Normal", "6582575100bc510f12345678000103e8", "dm-0", 3, []string{"sdb", "sdc", "sdd"},
+			100 * time.Millisecond, 100 * time.Millisecond, nil},
+		{"PathIncomplete", "6582575100bc510f12345678000103e8", "dm-0", 3, []string{"sdb", "sdc"},
+			100 * time.Millisecond, 100 * time.Millisecond, errors.New(VolumePathIncomplete)},
+		{"Timeout", "6582575100bc510f12345678000103e8", "dm-0", 3, []string{"sdb", "sdc", "sdd"},
+			100 * time.Millisecond, 10000 * time.Millisecond, errors.New(VolumeNotFound)},
 	}
 
 	stubs := gostub.New()
@@ -521,7 +528,8 @@ func TestGetFsTypeByDevPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fsType, err := GetFsTypeByDevPath(tt.args.ctx, tt.args.devPath)
 			if (err != nil) != tt.wantErr || fsType != tt.want {
-				t.Errorf("Test GetFsTypeByDevPath() error = %v, wantErr: [%v]; fsType: [%s], want: [%s]", err, tt.wantErr, fsType, tt.want)
+				t.Errorf("Test GetFsTypeByDevPath() error = %v, wantErr: [%v]; fsType: [%s], want: [%s]",
+					err, tt.wantErr, fsType, tt.want)
 			}
 		})
 	}
@@ -571,38 +579,15 @@ func TestGetDeviceFromMountFile(t *testing.T) {
 		mountMap    map[string]string
 		wantErr     bool
 	}{
-		{
-			name:        "test_device_not_exist",
-			targetPath:  "/mnt/test",
-			checkDevRef: true,
-			want:        "",
-			mountMap:    map[string]string{},
-			wantErr:     true,
-		},
-		{
-			name:        "test_device_exist_and_ref_one_path",
-			targetPath:  "/mnt/test1",
-			checkDevRef: true,
-			want:        "/dev/sda",
-			mountMap:    map[string]string{"/mnt/test1": "/dev/sda", "/mnt/test2": "/dev/sdb"},
-			wantErr:     false,
-		},
-		{
-			name:        "test_device_exist_and_ref_multiple_path",
-			targetPath:  "/mnt/test1",
-			checkDevRef: true,
-			want:        "",
-			mountMap:    map[string]string{"/mnt/test1": "/dev/sda", "/mnt/test2": "/dev/sda"},
-			wantErr:     true,
-		},
-		{
-			name:        "test_device_exist_and_ref_multiple_path_and_no_check",
-			targetPath:  "/mnt/test1",
-			checkDevRef: false,
-			want:        "/dev/sda",
-			mountMap:    map[string]string{"/mnt/test1": "/dev/sda", "/mnt/test2": "/dev/sda"},
-			wantErr:     false,
-		},
+		{name: "test_device_not_exist", targetPath: "/mnt/test",
+			checkDevRef: true, want: "", mountMap: map[string]string{}, wantErr: true},
+		{name: "test_device_exist_and_ref_one_path", targetPath: "/mnt/test1", checkDevRef: true, want: "/dev/sda",
+			mountMap: map[string]string{"/mnt/test1": "/dev/sda", "/mnt/test2": "/dev/sdb"}, wantErr: false},
+		{name: "test_device_exist_and_ref_multiple_path", targetPath: "/mnt/test1", checkDevRef: true, want: "",
+			mountMap: map[string]string{"/mnt/test1": "/dev/sda", "/mnt/test2": "/dev/sda"}, wantErr: true},
+		{name: "test_device_exist_and_ref_multiple_path_and_no_check", targetPath: "/mnt/test1", checkDevRef: false,
+			want: "/dev/sda", mountMap: map[string]string{"/mnt/test1": "/dev/sda", "/mnt/test2": "/dev/sda"},
+			wantErr: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

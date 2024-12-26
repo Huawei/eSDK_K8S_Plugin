@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
-
 	coreV1 "k8s.io/api/core/v1"
 )
 

@@ -37,50 +37,26 @@ const (
 	logName = "nvmeTest.log"
 )
 
+type args struct {
+	ctx  context.Context
+	conn map[string]any
+}
+
 func TestConnectVolume(t *testing.T) {
 	var ctx = context.TODO()
-
 	var mutex = sync.Mutex{}
+	var GetSubSysInfoOutput = map[string]any{
+		"Subsystems": []any{map[string]any{"Paths": []any{map[string]any{
+			"Transport": "fc", "State": "live", "Name": "channelName", "Address": "address"}}}}}
+	var normalConnMap = map[string]any{"tgtLunGuid": "LunGUID", "volumeUseMultiPath": true,
+		"multiPathType": "UseUltraPath",
+		"portWWNList":   []PortWWNPair{{"address", "address"}}}
+	var noTgtLunGuidConnMap = map[string]any{}
+	var noVolumeUseMultiPathConnMap = map[string]any{"tgtLunGuid": "LunGUID"}
+	var noMultiPathTypeConnMap = map[string]any{"tgtLunGuid": "LunGUID", "volumeUseMultiPath": true}
+	var noPortWWNListConnMap = map[string]any{"tgtLunGuid": "LunGUID", "volumeUseMultiPath": true,
+		"multiPathType": "UseUltraPath"}
 
-	var GetSubSysInfoOutput = map[string]interface{}{
-		"Subsystems": []interface{}{
-			map[string]interface{}{
-				"Paths": []interface{}{
-					map[string]interface{}{
-						"Transport": "fc",
-						"State":     "live",
-						"Name":      "channelName",
-						"Address":   "address",
-					},
-				},
-			},
-		},
-	}
-
-	var normalConnMap = map[string]interface{}{
-		"tgtLunGuid":         "LunGUID",
-		"volumeUseMultiPath": true,
-		"multiPathType":      "UseUltraPath",
-		"portWWNList":        []PortWWNPair{{"address", "address"}},
-	}
-	var noTgtLunGuidConnMap = map[string]interface{}{}
-	var noVolumeUseMultiPathConnMap = map[string]interface{}{
-		"tgtLunGuid": "LunGUID",
-	}
-	var noMultiPathTypeConnMap = map[string]interface{}{
-		"tgtLunGuid":         "LunGUID",
-		"volumeUseMultiPath": true,
-	}
-	var noPortWWNListConnMap = map[string]interface{}{
-		"tgtLunGuid":         "LunGUID",
-		"volumeUseMultiPath": true,
-		"multiPathType":      "UseUltraPath",
-	}
-
-	type args struct {
-		ctx  context.Context
-		conn map[string]interface{}
-	}
 	tests := []struct {
 		name    string
 		mutex   sync.Mutex
@@ -94,7 +70,6 @@ func TestConnectVolume(t *testing.T) {
 		{"NoMultiPathType", mutex, args{ctx, noMultiPathTypeConnMap}, "", true},
 		{"NoPortWWNList", mutex, args{ctx, noPortWWNListConnMap}, "", true},
 	}
-
 	stubs := gostub.StubFunc(&connector.GetSubSysInfo, GetSubSysInfoOutput, nil)
 	defer stubs.Reset()
 	stubs.StubFunc(&connector.DoScanNVMeDevice, nil)
@@ -103,9 +78,7 @@ func TestConnectVolume(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fc := &FCNVMe{
-				mutex: tt.mutex,
-			}
+			fc := &FCNVMe{mutex: tt.mutex}
 			got, err := fc.ConnectVolume(tt.args.ctx, tt.args.conn)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ConnectVolume() error = %v, wantErr %v", err, tt.wantErr)

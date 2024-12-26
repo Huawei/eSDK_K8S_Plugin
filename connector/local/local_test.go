@@ -49,32 +49,11 @@ func TestConnectVolume(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{
-			name: "NoTgtLunWWN",
-			args: args{
-				ctx:  ctx,
-				conn: map[string]interface{}{}},
-			want:    "",
-			wantErr: true,
-		},
-		{
-			name: "devPathNoExist",
-			args: args{
-				ctx:  ctx,
-				conn: map[string]interface{}{"tgtLunWWN": "test"},
-			},
-			want:    "",
-			wantErr: false,
-		},
-		{
-			name: "Normal",
-			args: args{
-				ctx:  ctx,
-				conn: map[string]interface{}{"tgtLunWWN": "tgtLunWWN"},
-			},
-			want:    "/dev/disk/by-id/wwn-0xtgtLunWWN",
-			wantErr: false,
-		},
+		{name: "NoTgtLunWWN", args: args{ctx: ctx, conn: map[string]interface{}{}}, want: "", wantErr: true},
+		{name: "devPathNoExist", args: args{ctx: ctx, conn: map[string]interface{}{"tgtLunWWN": "test"}},
+			want: "", wantErr: false},
+		{name: "Normal", args: args{ctx: ctx, conn: map[string]interface{}{
+			"tgtLunWWN": "tgtLunWWN"}}, want: "/dev/disk/by-id/wwn-0xtgtLunWWN", wantErr: false},
 	}
 
 	var interval = waitDevOnlineTimeInterval
@@ -116,30 +95,9 @@ func TestDisConnectVolume(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-		{
-			name: "EmptyTgtLunWWN",
-			args: args{
-				ctx:       ctx,
-				tgtLunWWN: "",
-			},
-			wantErr: false,
-		},
-		{
-			name: "DeviceNotExist",
-			args: args{
-				ctx:       ctx,
-				tgtLunWWN: "test",
-			},
-			wantErr: false,
-		},
-		{
-			name: "Normal",
-			args: args{
-				ctx:       ctx,
-				tgtLunWWN: "tgtLunWWN",
-			},
-			wantErr: true,
-		},
+		{name: "EmptyTgtLunWWN", args: args{ctx: ctx, tgtLunWWN: ""}, wantErr: false},
+		{name: "DeviceNotExist", args: args{ctx: ctx, tgtLunWWN: "test"}, wantErr: false},
+		{name: "Normal", args: args{ctx: ctx, tgtLunWWN: "tgtLunWWN"}, wantErr: true},
 	}
 
 	stubs := gostub.Stub(&connector.DisconnectVolumeTimeOut, time.Millisecond)

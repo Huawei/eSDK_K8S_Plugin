@@ -44,40 +44,21 @@ func TestSanManagerStageFileSystemVolume(t *testing.T) {
 		manager           *SanManager
 		connectVolumeFunc func(patch *gomonkey.Patches, conn connector.VolumeConnector)
 		wantErr           bool
-	}{
-		{
-			name: "TestSanManagerStageIscsiFileSystemVolume",
-			manager: &SanManager{
-				protocol: "iscsi",
-				Conn:     connector.GetConnector(context.Background(), connector.ISCSIDriver),
-			},
-			connectVolumeFunc: mockConnectIscsiVolume,
-		},
-		{
-			name: "TestSanManagerStageFcFileSystemVolume",
-			manager: &SanManager{
-				protocol: "fc",
-				Conn:     connector.GetConnector(context.Background(), connector.FCDriver),
-			},
-			connectVolumeFunc: mockConnectFcVolume,
-		},
-		{
-			name: "TestSanManagerStageRoceFileSystemVolume",
-			manager: &SanManager{
-				protocol: "roce",
-				Conn:     connector.GetConnector(context.Background(), connector.RoCEDriver),
-			},
-			connectVolumeFunc: mockConnectRoceVolume,
-		},
-		{
-			name: "TestSanManagerStageFcNvmeFileSystemVolume",
-			manager: &SanManager{
-				protocol: "fc-nvme",
-				Conn:     connector.GetConnector(context.Background(), connector.FCNVMeDriver),
-			},
-			connectVolumeFunc: mockConnectFcNvmeVolume,
-		},
-	}
+	}{{name: "TestSanManagerStageIscsiFileSystemVolume", manager: &SanManager{protocol: "iscsi",
+		Conn: connector.GetConnector(context.Background(), connector.ISCSIDriver)},
+		connectVolumeFunc: mockConnectIscsiVolume},
+		{name: "TestSanManagerStageFcFileSystemVolume", manager: &SanManager{protocol: "fc",
+			Conn: connector.GetConnector(context.Background(), connector.FCDriver)},
+			connectVolumeFunc: mockConnectFcVolume},
+		{name: "TestSanManagerStageRoceFileSystemVolume", manager: &SanManager{
+			protocol: "roce",
+			Conn:     connector.GetConnector(context.Background(), connector.RoCEDriver)},
+			connectVolumeFunc: mockConnectRoceVolume},
+		{name: "TestSanManagerStageFcNvmeFileSystemVolume", manager: &SanManager{
+			protocol: "fc-nvme",
+			Conn:     connector.GetConnector(context.Background(), connector.FCNVMeDriver)},
+			connectVolumeFunc: mockConnectFcNvmeVolume}}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			patches := gomonkey.NewPatches()

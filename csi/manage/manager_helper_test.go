@@ -418,17 +418,18 @@ func TestNewManagerAndProtocolNotExist(t *testing.T) {
 
 // newManagerTest is a helper function called from multiple test cases
 func newManagerTest(t *testing.T, testCase testCaseStructForNewManager) {
-	getBackendConfig := gomonkey.ApplyFunc(GetBackendConfig, func(ctx context.Context, backendName string) (*BackendConfig, error) {
-		if backendName != "test_backend_name" {
-			return nil, errors.New("not found backend")
-		}
+	getBackendConfig := gomonkey.ApplyFunc(GetBackendConfig,
+		func(ctx context.Context, backendName string) (*BackendConfig, error) {
+			if backendName != "test_backend_name" {
+				return nil, errors.New("not found backend")
+			}
 
-		var portals []string
-		if testCase.protocol == "nfs" {
-			portals = []string{"127.0.0.1"}
-		}
-		return &BackendConfig{protocol: testCase.protocol, portals: portals, metroPortals: []string{}}, nil
-	})
+			var portals []string
+			if testCase.protocol == "nfs" {
+				portals = []string{"127.0.0.1"}
+			}
+			return &BackendConfig{protocol: testCase.protocol, portals: portals, metroPortals: []string{}}, nil
+		})
 	defer getBackendConfig.Reset()
 
 	got, err := NewManager(context.Background(), testCase.backendName)

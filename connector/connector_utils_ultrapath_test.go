@@ -27,37 +27,22 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
+type RunUpCommandArgs struct {
+	ctx    context.Context
+	upType string
+	format string
+	args   []interface{}
+}
+
 func TestRunUpCommand(t *testing.T) {
 	const stubFormat = "show vlun | grep -w %s"
-
 	var stubCtx = context.TODO()
-
 	var stubArgs = []interface{}{"test-targetLunWWN", "test-devName"}
-
-	type args struct {
-		ctx    context.Context
-		upType string
-		format string
-		args   []interface{}
-	}
-	var ultraPathCommandArgs = args{
-		stubCtx,
-		UltraPathCommand,
-		stubFormat,
-		stubArgs[:1],
-	}
-	var UltraPathNVMeCommandArgs = args{
-		stubCtx,
-		UltraPathNVMeCommand,
-		stubFormat,
-		stubArgs[1:],
-	}
-	var noneUpTypeArgs = args{
-		stubCtx,
-		"",
-		stubFormat,
-		stubArgs,
-	}
+	var ultraPathCommandArgs = RunUpCommandArgs{ctx: stubCtx,
+		upType: UltraPathCommand, format: stubFormat, args: stubArgs[:1]}
+	var UltraPathNVMeCommandArgs = RunUpCommandArgs{ctx: stubCtx,
+		upType: UltraPathNVMeCommand, format: stubFormat, args: stubArgs[1:]}
+	var noneUpTypeArgs = RunUpCommandArgs{ctx: stubCtx, upType: "", format: stubFormat, args: stubArgs}
 
 	type outputs struct {
 		output string
@@ -67,7 +52,7 @@ func TestRunUpCommand(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		args    args
+		args    RunUpCommandArgs
 		outputs outputs
 		want    string
 		wantErr bool
@@ -78,9 +63,7 @@ func TestRunUpCommand(t *testing.T) {
 	}
 
 	stub := utils.ExecShellCmd
-	defer func() {
-		utils.ExecShellCmd = stub
-	}()
+	defer func() { utils.ExecShellCmd = stub }()
 	for _, tt := range tests {
 		utils.ExecShellCmd = func(_ context.Context, format string, args ...interface{}) (string, error) {
 			return tt.outputs.output, tt.outputs.err

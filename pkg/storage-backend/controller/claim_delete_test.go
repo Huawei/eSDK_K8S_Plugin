@@ -38,9 +38,10 @@ func TestDeleteStorageBackendClaim(t *testing.T) {
 }
 
 func TestProcessWithDeletionTimeStamp(t *testing.T) {
-	removePatch := gomonkey.ApplyFunc(utils.NeedRemoveClaimBoundFinalizers, func(storageBackend *xuanwuv1.StorageBackendClaim) bool {
-		return false
-	})
+	removePatch := gomonkey.ApplyFunc(utils.NeedRemoveClaimBoundFinalizers,
+		func(storageBackend *xuanwuv1.StorageBackendClaim) bool {
+			return false
+		})
 	defer removePatch.Reset()
 
 	fakeClaim := newClaim(xuanwuv1.StorageBackendClaimSpec{})

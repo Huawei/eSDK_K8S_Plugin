@@ -297,19 +297,19 @@ func (p *Parameter) SnapshotReservePer() (int, bool) {
 
 // AccessKrb5 gets the AccessKrb5 value of the params map.
 func (p *Parameter) AccessKrb5() int {
-	val := utils.GetValueOrFallback(p.params, AccessKrb5Key, AccessKrb(""))
+	val := AccessKrb(utils.GetValueOrFallback(p.params, AccessKrb5Key, ""))
 	return val.Int()
 }
 
 // AccessKrb5i gets the AccessKrb5i value of the params map.
 func (p *Parameter) AccessKrb5i() int {
-	val := utils.GetValueOrFallback(p.params, AccessKrb5iKey, AccessKrb(""))
+	val := AccessKrb(utils.GetValueOrFallback(p.params, AccessKrb5iKey, ""))
 	return val.Int()
 }
 
 // AccessKrb5p gets the AccessKrb5p value of the params map.
 func (p *Parameter) AccessKrb5p() int {
-	val := utils.GetValueOrFallback(p.params, AccessKrb5pKey, AccessKrb(""))
+	val := AccessKrb(utils.GetValueOrFallback(p.params, AccessKrb5pKey, ""))
 	return val.Int()
 }
 
