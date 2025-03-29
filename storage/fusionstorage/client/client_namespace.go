@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,9 +33,22 @@ const (
 	notForbidden       int   = 0
 )
 
+// Namespace is the interface for namespace
+type Namespace interface {
+	CreateFileSystem(ctx context.Context, params map[string]any) (map[string]any, error)
+	DeleteFileSystem(ctx context.Context, id string) error
+	GetFileSystemByName(ctx context.Context, name string) (map[string]interface{}, error)
+	CreateNfsShare(ctx context.Context, params map[string]any) (map[string]any, error)
+	DeleteNfsShare(ctx context.Context, id, accountId string) error
+	GetNfsShareByPath(ctx context.Context, path, accountId string) (map[string]interface{}, error)
+	AllowNfsShareAccess(ctx context.Context, req *AllowNfsShareAccessRequest) error
+	DeleteNfsShareAccess(ctx context.Context, accessID string) error
+	GetNfsShareAccess(ctx context.Context, shareID string) (map[string]interface{}, error)
+	GetQuotaByFileSystemName(ctx context.Context, fsName string) (*QueryQuotaResponse, error)
+}
+
 // CreateFileSystem used to create file system by params
-func (cli *RestClient) CreateFileSystem(ctx context.Context,
-	params map[string]interface{}) (map[string]interface{}, error) {
+func (cli *RestClient) CreateFileSystem(ctx context.Context, params map[string]any) (map[string]any, error) {
 	data := map[string]interface{}{
 		"name":            params["name"].(string),
 		"storage_pool_id": params["poolId"].(int64),
@@ -362,7 +375,7 @@ func (cli *RestClient) GetNfsShareAccess(ctx context.Context, shareID string) (m
 }
 
 // GetQuotaByFileSystemName query quota info by file system name
-func (cli *RestClient) GetQuotaByFileSystemName(ctx context.Context, fsName string) (map[string]interface{}, error) {
+func (cli *RestClient) GetQuotaByFileSystemName(ctx context.Context, fsName string) (*QueryQuotaResponse, error) {
 	fs, err := cli.GetFileSystemByName(ctx, fsName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", fsName, err)
@@ -379,7 +392,7 @@ func (cli *RestClient) GetQuotaByFileSystemName(ctx context.Context, fsName stri
 		return nil, errors.New(msg)
 	}
 	fsID := strconv.FormatInt(int64(fs["id"].(float64)), 10)
-	quota, err := cli.GetQuotaByFileSystemById(ctx, fsID)
+	quota, err := cli.QueryQuotaByFsId(ctx, fsID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem %s quota error: %v", fsID, err)
 		return nil, err

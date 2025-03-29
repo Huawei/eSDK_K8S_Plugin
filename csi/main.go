@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/driver"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/provider"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/cert"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -51,13 +52,13 @@ const (
 	controllerLogFile = "huawei-csi-controller"
 	nodeLogFile       = "huawei-csi-node"
 
-	csiVersion      = "4.6.0"
 	endpointDirPerm = 0755
 )
 
 var (
-	config CSIConfig
-	secret CSISecret
+	csiVersion = constants.CSIVersion
+	config     CSIConfig
+	secret     CSISecret
 )
 
 // CSIConfig defines csi config

@@ -29,6 +29,7 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
 	connutils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/concurrent"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -158,12 +159,14 @@ func connectVol(ctx context.Context,
 		return
 	}
 
-	err = connectRoCEPortal(ctx, existSessions, tgtPortal, targetNQN)
-	if err != nil {
-		log.AddContext(ctx).Errorf("connect roce portal %s error, reason: %v", tgtPortal, err)
-		nvmeShareData.failedLogin.Add(1)
-		nvmeShareData.stoppedThreads.Add(1)
-		return
+	if app.GetGlobalConfig().EnableRoCEConnect {
+		err = connectRoCEPortal(ctx, existSessions, tgtPortal, targetNQN)
+		if err != nil {
+			log.AddContext(ctx).Errorf("connect roce portal %s error, reason: %v", tgtPortal, err)
+			nvmeShareData.failedLogin.Add(1)
+			nvmeShareData.stoppedThreads.Add(1)
+			return
+		}
 	}
 
 	nvmeShareData.numLogin.Add(1)

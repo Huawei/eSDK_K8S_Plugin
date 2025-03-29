@@ -166,7 +166,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:4.6.0
+          image: huawei-csi:{{csi-version}}
           imagePullPolicy: "IfNotPresent"
           args:
             - "--endpoint=/csi/csi.sock"
@@ -178,6 +178,7 @@ spec:
             - "--nvme-multipath-type=HW-UltraPath-NVMe"
             - "--scan-volume-timeout=3"
             - "--exec-command-timeout=30"
+            - "--enable-roce-connect=true"
             - "--logging-module=file"
             - "--log-level=info"
             - "--log-file-dir=/var/log/huawei"

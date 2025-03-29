@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import (
 
 	xuanwuV1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -95,7 +96,7 @@ func (p *StoragePool) UpdatePoolBySBCT(ctx context.Context, content *xuanwuV1.St
 // UpdateCapacities update pool capacities
 func (p *StoragePool) UpdateCapacities(ctx context.Context, capacities map[string]string) {
 	// The storage p capability does not need to be updated in the DTree scenario.
-	if p.Storage == plugin.DTreeStorage {
+	if p.Storage == constants.OceanStorDtree || p.Storage == constants.FusionDTree {
 		return
 	}
 

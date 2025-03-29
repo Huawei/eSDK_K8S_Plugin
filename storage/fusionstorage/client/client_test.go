@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ func TestMain(m *testing.M) {
 		User:            "dev-account",
 		SecretName:      "mock-sec-name",
 		SecretNamespace: "mock-sec-namespace",
-		ParallelNum:     "",
+		ParallelNum:     "30",
 		BackendID:       "mock-backend-id",
 		AccountName:     "dev-account",
 		UseCert:         false,

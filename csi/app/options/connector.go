@@ -53,6 +53,7 @@ type connectorOptions struct {
 	connectorThreads     int
 	allPathOnline        bool
 	execCommandTimeout   int
+	enableRoCEConnect    bool
 }
 
 // NewConnectorOptions returns connector configurations
@@ -65,6 +66,7 @@ func NewConnectorOptions() *connectorOptions {
 		scanVolumeTimeout:    defaultScanVolumeTimeout,
 		connectorThreads:     defaultConnectorThreads,
 		allPathOnline:        false,
+		enableRoCEConnect:    true,
 	}
 }
 
@@ -94,6 +96,8 @@ func (opt *connectorOptions) AddFlags(ff *flag.FlagSet) {
 	ff.IntVar(&opt.execCommandTimeout, "exec-command-timeout",
 		defaultExecCommandTimeout,
 		"The timeout for running command on host")
+	ff.BoolVar(&opt.enableRoCEConnect, "enable-roce-connect", true,
+		"Whether to enable automatic CSI disk scanning when RoCE is used, default is true")
 }
 
 // ApplyFlags assign the connector flags
@@ -106,6 +110,7 @@ func (opt *connectorOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.ConnectorThreads = opt.connectorThreads
 	cfg.AllPathOnline = opt.allPathOnline
 	cfg.ExecCommandTimeout = opt.execCommandTimeout
+	cfg.EnableRoCEConnect = opt.enableRoCEConnect
 }
 
 // ValidateFlags validate the connector flags

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/version"
 )
 
 const (
@@ -400,7 +401,7 @@ func (p *OceanstorSanPlugin) UpdatePoolCapabilities(ctx context.Context, poolNam
 func (p *OceanstorSanPlugin) getVstoreCapacity(ctx context.Context) (map[string]interface{}, error) {
 	// only Dorado V6 6.1.5 and later versions need to get vStore's capacity.
 	if !p.product.IsDoradoV6OrV7() ||
-		(p.product.IsDoradoV6() && p.cli.GetStorageVersion() < constants.DoradoV615) ||
+		(p.product.IsDoradoV6() && version.CompareVersions(p.cli.GetStorageVersion(), constants.DoradoV615) == -1) ||
 		p.cli.GetvStoreName() == "" {
 		return map[string]interface{}{}, nil
 	}
@@ -544,12 +545,20 @@ func (p *OceanstorSanPlugin) updateHyperMetroCapability(capabilities map[string]
 		return
 	}
 
+	if capabilities == nil {
+		return
+	}
+
 	capabilities["SupportMetro"] = p.metroRemotePlugin != nil &&
 		p.storageOnline && p.metroRemotePlugin.storageOnline
 }
 
 func (p *OceanstorSanPlugin) updateReplicaCapability(capabilities map[string]interface{}) {
 	if metroReplica, exist := capabilities["SupportReplication"]; !exist || metroReplica == false {
+		return
+	}
+
+	if capabilities == nil {
 		return
 	}
 
@@ -620,18 +629,17 @@ func (p *OceanstorSanPlugin) verifyOceanstorSanParam(ctx context.Context, config
 }
 
 // DeleteDTreeVolume used to delete DTree volume
-func (p *OceanstorSanPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
-	return errors.New("not implement")
+func (p *OceanstorSanPlugin) DeleteDTreeVolume(_ context.Context, _ string, _ string) error {
+	return errors.New("fusion storage does not support DTree feature")
 }
 
 // ExpandDTreeVolume used to expand DTree volume
 func (p *OceanstorSanPlugin) ExpandDTreeVolume(context.Context, string, string, int64) (bool, error) {
-	return false, errors.New("not implement")
+	return false, errors.New("fusion storage does not support DTree feature")
 }
 
 // ModifyVolume used to modify volume hyperMetro status
 func (p *OceanstorSanPlugin) ModifyVolume(ctx context.Context, volumeName string,
 	modifyType pkgVolume.ModifyVolumeType, param map[string]string) error {
-
-	return errors.New("not implement")
+	return errors.New("fusion storage does not support modify volume feature")
 }

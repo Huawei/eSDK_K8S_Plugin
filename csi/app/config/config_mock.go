@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ func mockServiceConfig() serviceConfig {
 
 		Endpoint:         "",
 		DrEndpoint:       "",
-		DriverName:       "",
+		DriverName:       "fake.driver.name",
 		KubeConfig:       "",
 		NodeName:         "",
 		KubeletRootDir:   "",
@@ -80,13 +80,14 @@ func mockServiceConfig() serviceConfig {
 
 func mockConnectorConfig() connectorConfig {
 	return connectorConfig{
-		VolumeUseMultiPath:   false,
+		VolumeUseMultiPath:   true,
 		ScsiMultiPathType:    "DM-multipath",
 		NvmeMultiPathType:    "HW-UltraPath-NVMe",
 		DeviceCleanupTimeout: 5,
 		ScanVolumeTimeout:    5,
 		ConnectorThreads:     5,
 		AllPathOnline:        true,
+		EnableRoCEConnect:    true,
 	}
 }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,17 @@ const (
 	deleteVolumeNotExist int64 = 32150005
 	queryVolumeNotExist  int64 = 31000000
 )
+
+// Volume is the interface for volume
+type Volume interface {
+	CreateVolume(ctx context.Context, params map[string]interface{}) error
+	GetVolumeByName(ctx context.Context, name string) (map[string]interface{}, error)
+	DeleteVolume(ctx context.Context, name string) error
+	AttachVolume(ctx context.Context, name, ip string) error
+	DetachVolume(ctx context.Context, name, ip string) error
+	ExtendVolume(ctx context.Context, lunName string, newCapacity int64) error
+	GetHostLunId(ctx context.Context, hostName, lunName string) (string, error)
+}
 
 // CreateVolume creates volume by params
 func (cli *RestClient) CreateVolume(ctx context.Context, params map[string]interface{}) error {

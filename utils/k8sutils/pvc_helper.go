@@ -85,8 +85,10 @@ func stripUnusedPvcFields(obj any) (any, error) {
 	res := &corev1.PersistentVolumeClaim{}
 	res.SetUID(pvc.GetUID())
 	res.SetName(pvc.Name)
+	res.SetNamespace(pvc.Namespace)
 	res.SetAnnotations(pvc.GetAnnotations())
 	res.Spec.VolumeName = pvc.Spec.VolumeName
+	res.Status.Phase = pvc.Status.Phase
 
 	return res, nil
 }

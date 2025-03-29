@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,13 @@ const (
 	initiatorAddedToHost  int64 = 50157021
 	initiatorNotExist     int64 = 50155103
 )
+
+// Iscsi is the interface for iSCSI
+type Iscsi interface {
+	GetInitiatorByName(ctx context.Context, name string) (map[string]interface{}, error)
+	CreateInitiator(ctx context.Context, name string) error
+	QueryIscsiPortal(ctx context.Context) ([]map[string]interface{}, error)
+}
 
 // GetInitiatorByName used to get initiator by name
 func (cli *RestClient) GetInitiatorByName(ctx context.Context, name string) (map[string]interface{}, error) {

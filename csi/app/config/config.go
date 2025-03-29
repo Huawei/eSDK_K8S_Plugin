@@ -75,6 +75,7 @@ type connectorConfig struct {
 	ConnectorThreads     int
 	AllPathOnline        bool
 	ExecCommandTimeout   int
+	EnableRoCEConnect    bool
 }
 
 type k8sConfig struct {

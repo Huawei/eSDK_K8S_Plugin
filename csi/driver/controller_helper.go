@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -144,7 +144,8 @@ func verifySectorSize(ctx context.Context, volumeId string, backend *model.Backe
 
 func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest, b *model.Backend) (
 	bool, error) {
-	if b.Storage == "fusionstorage-nas" || b.Storage == "oceanstor-nas" || b.Storage == "oceanstor-dtree" {
+	if b.Storage == constants.OceanStorNas || b.Storage == constants.OceanStorDtree ||
+		b.Storage == constants.FusionNas || b.Storage == constants.FusionDTree {
 		log.AddContext(ctx).Debugf("Storage is [%s], support expand volume.", b.Storage)
 		return true, nil
 	}
@@ -291,11 +292,11 @@ func getAccessibleTopologies(ctx context.Context, req *csi.CreateVolumeRequest,
 
 func getAttributes(req *csi.CreateVolumeRequest, vol utils.Volume, backendName string) map[string]string {
 	attributes := map[string]string{
-		"backend":               backendName,
-		"name":                  vol.GetVolumeName(),
-		"fsPermission":          req.Parameters["fsPermission"],
-		"dTreeParentName":       vol.GetDTreeParentName(),
-		"disableVerifyCapacity": req.Parameters["disableVerifyCapacity"],
+		"backend":                          backendName,
+		"name":                             vol.GetVolumeName(),
+		"fsPermission":                     req.Parameters["fsPermission"],
+		constants.DTreeParentKey:           vol.GetDTreeParentName(),
+		constants.DisableVerifyCapacityKey: req.Parameters[constants.DisableVerifyCapacityKey],
 	}
 
 	if lunWWN, err := vol.GetLunWWN(); err == nil {
@@ -380,6 +381,27 @@ func processDescription(ctx context.Context, parameters map[string]interface{}) 
 	return nil
 }
 
+func processParentName(ctx context.Context, parameters map[string]interface{}) error {
+	parentNameParam, exist := parameters["parentname"]
+	if !exist {
+		return nil
+	}
+
+	parentName, ok := parentNameParam.(string)
+	if !ok {
+		return fmt.Errorf("parentname in StorageClass must be a string type, but got: %v", parameters["parentname"])
+	}
+	if parentName == "" {
+		return nil
+	}
+
+	if _, exist := parameters["backend"]; !exist {
+		return fmt.Errorf("when parentname is configured in StorageClass, backend must be configured together")
+	}
+
+	return nil
+}
+
 func checkReservedSnapshotSpaceRatio(ctx context.Context, parameters map[string]interface{}) error {
 	reservedSnapshotSpaceRatioString, exist := parameters["reservedSnapshotSpaceRatio"].(string)
 	if !exist {
@@ -459,6 +481,10 @@ func processCreateVolumeParameters(ctx context.Context, req *csi.CreateVolumeReq
 	// process description parameter in sc
 	err = processDescription(ctx, parameters)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := processParentName(ctx, parameters); err != nil {
 		return nil, err
 	}
 
@@ -613,7 +639,7 @@ func processAnnotations(annotations map[string]string, req *csi.CreateVolumeRequ
 
 func getBackendFilesystemMode(ctx context.Context, bk *model.Backend, volName string) string {
 	if protocol, ok := bk.Parameters["protocol"].(string); ok && protocol == plugin.ProtocolNfsPlus &&
-		bk.Storage != plugin.DTreeStorage {
+		bk.Storage != constants.OceanStorDtree && bk.Storage != constants.FusionDTree {
 		volume, err := bk.Plugin.QueryVolume(ctx, volName, map[string]interface{}{
 			"description": "Query from Huawei Storage",
 			"size":        int64(0),

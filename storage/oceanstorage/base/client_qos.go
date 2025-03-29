@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -52,7 +52,8 @@ type Qos interface {
 	DeactivateQos(ctx context.Context, qosID, vStoreID string) error
 	// GetAllQos used for get all qos
 	GetAllQos(ctx context.Context) ([]map[string]interface{}, error)
-	getSystemUTCTime(ctx context.Context) (int64, error)
+	// GetSystemUTCTime used to get system UTC time
+	GetSystemUTCTime(ctx context.Context) (int64, error)
 }
 
 // QosClient defines client implements the Qos interface
@@ -72,7 +73,7 @@ type CreateQoSArgs struct {
 // CreateQos used for create qos
 func (cli *QosClient) CreateQos(ctx context.Context, args CreateQoSArgs) (map[string]any, error) {
 
-	utcTime, err := cli.getSystemUTCTime(ctx)
+	utcTime, err := cli.GetSystemUTCTime(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +280,8 @@ func (cli *QosClient) GetAllQos(ctx context.Context) ([]map[string]interface{}, 
 	return GetBatchObjs(ctx, cli.RestClientInterface, api.GetAllQos)
 }
 
-func (cli *QosClient) getSystemUTCTime(ctx context.Context) (int64, error) {
+// GetSystemUTCTime used to get system UTC time
+func (cli *QosClient) GetSystemUTCTime(ctx context.Context) (int64, error) {
 	resp, err := cli.Get(ctx, "/system_utc_time", nil)
 	if err != nil {
 		return 0, err

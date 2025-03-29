@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/cookiejar"
 	"slices"
@@ -81,18 +82,41 @@ type Response struct {
 
 // AssertErrorCode asserts if error code represents success
 func (resp *Response) AssertErrorCode() error {
-	val, exists := resp.Error["code"]
-	if !exists {
-		return fmt.Errorf("error code not exists, data: %+v", *resp)
+	code, err := resp.getInt64Code()
+	if err != nil {
+		return err
 	}
 
-	code, ok := val.(float64)
-	if !ok {
-		return fmt.Errorf("code is not float64, data: %+v", *resp)
+	if code != SuccessCode {
+		return fmt.Errorf("error code %d: [%v]", code, resp.Error["description"])
 	}
 
-	if int64(code) != SuccessCode {
-		return fmt.Errorf("error code is not success, data: %+v", *resp)
+	return nil
+}
+
+// ResponseToleration defines the error code that can be tolerant and its reason
+type ResponseToleration struct {
+	Code   int64
+	Reason string
+}
+
+// AssertErrorWithTolerations asserts if error code represents success
+func (resp *Response) AssertErrorWithTolerations(ctx context.Context, tolerations ...ResponseToleration) error {
+	code, err := resp.getInt64Code()
+	if err != nil {
+		return err
+	}
+
+	if code != SuccessCode {
+		tolerantIndex := slices.IndexFunc(tolerations, func(toleration ResponseToleration) bool {
+			return code == toleration.Code
+		})
+		if tolerantIndex != -1 {
+			log.AddContext(ctx).Infof(tolerations[tolerantIndex].Reason)
+			return nil
+		}
+
+		return fmt.Errorf("error code %d: [%v]", code, resp.Error["description"])
 	}
 
 	return nil
@@ -111,6 +135,25 @@ func (resp *Response) GetData(val any) error {
 	}
 
 	return nil
+}
+
+func (resp *Response) getInt64Code() (int64, error) {
+	val, exists := resp.Error["code"]
+	if !exists {
+		return 0, fmt.Errorf("error code not exists, response: %+v", *resp)
+	}
+
+	codeRaw, ok := val.(float64)
+	if !ok {
+		return 0, fmt.Errorf("code is not float64, response: %+v", *resp)
+	}
+
+	code, accuracy := big.NewFloat(codeRaw).Int64()
+	if accuracy != big.Exact {
+		return 0, fmt.Errorf("code is not accuracy, response: %+v", *resp)
+	}
+
+	return code, nil
 }
 
 // RestClientInterface defines interfaces for base restful call

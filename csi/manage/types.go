@@ -51,8 +51,14 @@ type ControllerPublishInfo struct {
 	MultiPathType      string             `json:"multiPathType"`
 }
 
+// DTreePublishInfo records dtree parent name and pass by ControllerPublishVolume
+type DTreePublishInfo struct {
+	DTreeParentName string `json:"dTreeParentName"`
+}
+
 // BackendConfig backend configuration
 type BackendConfig struct {
+	storage         string
 	protocol        string
 	dTreeParentName string
 	portals         []string

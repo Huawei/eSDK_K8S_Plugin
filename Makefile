@@ -25,13 +25,15 @@ else
 arch=amd64
 endif
 env = CGO_ENABLED=0 GOOS=linux GOARCH=${arch}
-flag = -ldflags="-s -bindnow" -buildmode=pie
+BUILD_VERSION=github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants.CSIVersion
+flag = -ldflags="-s -bindnow -X '${BUILD_VERSION}=${VER}'" -buildmode=pie
 
 all:PREPARE BUILD COPY_FILE PACK
 
 PREPARE:
 	rm -rf ./${PACKAGE}
 	mkdir -p ./${PACKAGE}/bin
+	find . -name "*.yaml" -exec sed -i "s/{{csi-version}}/${VER}/g" {} +
 
 BUILD:
 # usage: [env] go build [-o output] [flags] packages
@@ -56,3 +58,12 @@ COPY_FILE:
 PACK:
 	zip -r ${PACKAGE}.zip ./${PACKAGE}
 	rm -rf ./${PACKAGE}
+
+GENERATE:
+	go install go.uber.org/mock/mockgen@v0.5.0
+	mockgen -source ./storage/oceanstorage/oceanstor/client/client.go -package mock_client \
+	 -destination ./test/mocks/mock_client/oceanstor.go OceanstorClientInterface
+	mockgen -source ./storage/fusionstorage/client/client.go -package mock_client \
+	 -destination ./test/mocks/mock_client/fusionstorage.go IRestClient
+	mockgen -source ./storage/oceanstorage/oceandisk/client/client.go -package mock_client \
+	 -destination ./test/mocks/mock_client/oceandisk.go OceandiskClientInterface

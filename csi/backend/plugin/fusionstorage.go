@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -48,17 +48,16 @@ const (
 // FusionStoragePlugin defines the plugin for Fusion storage
 type FusionStoragePlugin struct {
 	basePlugin
-	cli *client.RestClient
+	cli client.IRestClient
 }
 
 func (p *FusionStoragePlugin) init(ctx context.Context, config map[string]interface{}, keepLogin bool) error {
-
 	clientConfig, err := p.getNewClientConfig(ctx, config)
 	if err != nil {
 		return err
 	}
 
-	cli := client.NewClient(ctx, clientConfig)
+	cli := client.NewIRestClient(ctx, clientConfig)
 	err = cli.Login(ctx)
 	if err != nil {
 		return err
@@ -226,7 +225,7 @@ func (p *FusionStoragePlugin) getNewClientConfig(ctx context.Context,
 }
 
 // DeleteDTreeVolume used to delete DTree volume
-func (p *FusionStoragePlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
+func (p *FusionStoragePlugin) DeleteDTreeVolume(_ context.Context, _ string, _ string) error {
 	return errors.New("fusion storage does not support DTree feature")
 }
 
@@ -240,4 +239,9 @@ func (p *FusionStoragePlugin) ModifyVolume(ctx context.Context, volumeName strin
 	modifyType pkgVolume.ModifyVolumeType, param map[string]string) error {
 
 	return errors.New("fusion storage does not support modify volume feature")
+}
+
+// SetCli sets the cli for Oceanstor Plugin
+func (p *FusionStoragePlugin) SetCli(cli client.IRestClient) {
+	p.cli = cli
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,23 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
+
+// Qos is the interface for QoS
+type Qos interface {
+	GetConvergedQoSNameByID(ctx context.Context, qosId int) (string, error)
+	CreateConvergedQoS(ctx context.Context, req *types.CreateConvergedQoSReq) (int, error)
+	DeleteConvergedQoS(ctx context.Context, qosName string) error
+	CreateQoS(ctx context.Context, qosName string, qosData map[string]int) error
+	DeleteQoS(ctx context.Context, qosName string) error
+	DisassociateConvergedQoSWithVolume(ctx context.Context, objectName string) error
+	AssociateConvergedQoSWithVolume(ctx context.Context, req *types.AssociateConvergedQoSWithVolumeReq) error
+	AssociateQoSWithVolume(ctx context.Context, volName, qosName string) error
+	DisassociateQoSWithVolume(ctx context.Context, volName, qosName string) error
+	GetQoSPolicyAssociationCount(ctx context.Context, qosPolicyId int) (int, error)
+	GetQoSPolicyIdByFsName(ctx context.Context, namespaceName string) (int, error)
+	GetQoSNameByVolume(ctx context.Context, volName string) (string, error)
+	GetAssociateCountOfQoS(ctx context.Context, qosName string) (int, error)
+}
 
 // GetConvergedQoSNameByID used to get qos name by id
 func (cli *RestClient) GetConvergedQoSNameByID(ctx context.Context, qosId int) (string, error) {

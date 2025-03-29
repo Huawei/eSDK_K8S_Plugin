@@ -159,14 +159,14 @@ func validateQoSParametersSupport(ctx context.Context,
 	// decide validators based on product
 	validator, ok := oceanStorQosValidators[product]
 	if !ok {
-		return utils.Errorf(ctx, "QoS is currently not supported for OceanStor %s", product)
+		return utils.Errorf(ctx, "QoS is currently not supported for OceanStor")
 	}
 
 	// validate QoS parameters and parameter ranges
 	for k, v := range qosParam {
 		f, exist := validator[k]
 		if !exist {
-			return utils.Errorf(ctx, "%s is a invalid key for OceanStor %s QoS", k, product)
+			return utils.Errorf(ctx, "%s is a invalid key for OceanStor QoS", k)
 		}
 
 		if !f(int(v)) { // silently ignoring decimal number
@@ -181,7 +181,7 @@ func validateQoSParametersSupport(ctx context.Context,
 	}
 
 	if !product.IsDoradoV6OrV7() && lowerLimit && upperLimit {
-		return utils.Errorf(ctx, "Cannot specify both lower and upper limits in qos for OceanStor %s", product)
+		return utils.Errorf(ctx, "Cannot specify both lower and upper limits in qos for OceanStor")
 	}
 
 	return nil
@@ -204,8 +204,8 @@ func ExtractQoSParameters(ctx context.Context,
 		// assert for other than number
 		value, ok := val.(float64)
 		if !ok {
-			return nil, utils.Errorf(ctx, "Invalid QoS parameter [%s] with value type [%T] for OceanStor %s",
-				key, val, product)
+			return nil, utils.Errorf(ctx, "Invalid QoS parameter [%s] with value type [%T] for OceanStor",
+				key, val)
 		}
 
 		if product.IsDoradoV6OrV7() && key == "LATENCY" {

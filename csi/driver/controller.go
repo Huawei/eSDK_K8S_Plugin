@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -83,15 +83,16 @@ func (d *CsiDriver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReque
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
-	if bk.Storage == plugin.DTreeStorage {
-		err = bk.Plugin.DeleteDTreeVolume(ctx, map[string]interface{}{
-			"parentname": bk.Parameters["parentname"],
-			"name":       volName,
-		})
+	if bk.Storage == constants.OceanStorDtree || bk.Storage == constants.FusionDTree {
+		var parentName string
+		parentName, err = app.GetGlobalConfig().K8sUtils.GetDTreeParentNameByVolumeId(volumeId)
+		if err != nil {
+			return &csi.DeleteVolumeResponse{}, err
+		}
+		err = bk.Plugin.DeleteDTreeVolume(ctx, volName, parentName)
 	} else {
 		err = bk.Plugin.DeleteVolume(ctx, volName)
 	}
-
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete volume %s error: %v", volumeId, err)
 		return nil, status.Error(codes.Internal, err.Error())
@@ -131,17 +132,14 @@ func (d *CsiDriver) ControllerExpandVolume(ctx context.Context, req *csi.Control
 	minSize := req.GetCapacityRange().GetRequiredBytes()
 	sectorSize := backend.Plugin.GetSectorSize()
 	size := utils.TransVolumeCapacity(minSize, sectorSize)
-	if size < minSize {
-		log.AddContext(ctx).Infof("Required capacity is %d,"+
-			" actual capacity %d is an integer multiple of the required sector size %d", minSize, size, sectorSize)
-	}
+	log.AddContext(ctx).Infof("Required capacity is %d, actual capacity is %d, sector size is %d",
+		minSize, size*sectorSize, sectorSize)
 	var nodeExpansionRequired bool
-	if backend.Storage == plugin.DTreeStorage {
-		parentName, ok := backend.Parameters["parentname"].(string)
-		if !ok || parentName == "" {
-			msg := "DTree volume must provide parent name"
-			log.AddContext(ctx).Errorln(msg)
-			return nil, status.Error(codes.InvalidArgument, msg)
+	if backend.Storage == constants.OceanStorDtree || backend.Storage == constants.FusionDTree {
+		var parentName string
+		parentName, err = app.GetGlobalConfig().K8sUtils.GetDTreeParentNameByVolumeId(volumeId)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 
 		nodeExpansionRequired, err = backend.Plugin.ExpandDTreeVolume(ctx, volName, parentName, size)
@@ -177,14 +175,14 @@ func (d *CsiDriver) ControllerPublishVolume(ctx context.Context, req *csi.Contro
 		return nil, status.Error(codes.Internal, msg)
 	}
 
-	var parameters map[string]interface{}
-
+	parameters := map[string]any{}
 	err = json.Unmarshal([]byte(nodeId), &parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Unmarshal node info of %s error: %v", nodeId, err)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	parameters["volumeContext"] = req.GetVolumeContext()
 	mappingInfo, err := backend.Plugin.AttachVolume(ctx, volName, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("controller publish volume %s to node %s error: %v", volName, nodeId, err)

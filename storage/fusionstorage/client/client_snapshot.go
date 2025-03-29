@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,14 @@ import (
 const (
 	snapshotNotExist int64 = 50150006
 )
+
+// Snapshot is the interface for snapshot
+type Snapshot interface {
+	CreateSnapshot(ctx context.Context, snapshotName, volName string) error
+	DeleteSnapshot(ctx context.Context, snapshotName string) error
+	GetSnapshotByName(ctx context.Context, snapshotName string) (map[string]interface{}, error)
+	CreateVolumeFromSnapshot(ctx context.Context, volName string, volSize int64, snapshotName string) error
+}
 
 // CreateSnapshot creates volume snapshot
 func (cli *RestClient) CreateSnapshot(ctx context.Context, snapshotName, volName string) error {

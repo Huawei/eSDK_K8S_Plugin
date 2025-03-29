@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -95,7 +95,7 @@ type CSIConfig struct {
 func analyzePools(backend *model.Backend, config map[string]interface{}) error {
 	var pools []*model.StoragePool
 
-	if backend.Storage == plugin.DTreeStorage {
+	if backend.Storage == constants.OceanStorDtree || backend.Storage == constants.FusionDTree {
 		pools = append(pools, &model.StoragePool{
 			Storage:      backend.Storage,
 			Name:         backend.Name,
@@ -178,7 +178,14 @@ func BuildBackend(ctx context.Context, content v1.StorageBackendContent) (*model
 // NewBackend constructs an object of Kubernetes backend resource
 func NewBackend(backendName string, config map[string]interface{}) (*model.Backend, error) {
 	// Verifying Common Parameters:
-	// - storage: oceanstor-san; oceanstor-nas; oceanstor-dtree; fusionstorage-san; fusionstorage-nas;
+	// - storage:
+	//     oceanstor-san;
+	//     oceanstor-nas;
+	//     oceanstor-dtree;
+	//     fusionstorage-san;
+	//     fusionstorage-nas;
+	//     fusionstorage-dtree;
+	//     oceandisk-san;
 	// - parameters: must exist
 	// - supportedTopologies: must valid
 	// - hypermetro must valid
@@ -377,7 +384,8 @@ func SelectRemotePool(ctx context.Context, requestSize int64, parameters map[str
 	if hyperMetroOK && utils.StrToBool(ctx, hyperMetro) {
 		localBackend, exists := cache.BackendCacheProvider.Load(localBackendName)
 		if !exists || localBackend.MetroBackend == nil {
-			return nil, fmt.Errorf("no metro backend exists for volume: %v, local backend: %s", parameters, localBackendName)
+			return nil, fmt.Errorf("no metro backend exists for volume: %v, local backend: %s", parameters,
+				localBackendName)
 		}
 
 		remotePools, err = FilterStoragePool(ctx, requestSize, parameters, localBackend.MetroBackend.Pools,
@@ -387,7 +395,8 @@ func SelectRemotePool(ctx context.Context, requestSize int64, parameters map[str
 	if replicationOK && utils.StrToBool(ctx, replication) {
 		localBackend, exists := cache.BackendCacheProvider.Load(localBackendName)
 		if !exists || localBackend.ReplicaBackend == nil {
-			return nil, fmt.Errorf("no replica backend exists for volume: %v, local backend: %s", parameters, localBackendName)
+			return nil, fmt.Errorf("no replica backend exists for volume: %v, local backend: %s", parameters,
+				localBackendName)
 		}
 
 		remotePools, err = FilterStoragePool(ctx, requestSize, parameters, localBackend.ReplicaBackend.Pools,
@@ -497,7 +506,7 @@ func filterByVolumeType(ctx context.Context, volumeType string, candidatePools [
 				filterPools = append(filterPools, pool)
 			}
 		} else if volumeType == "dtree" {
-			if pool.Storage == constants.OceanStorDtree {
+			if pool.Storage == constants.OceanStorDtree || pool.Storage == constants.FusionDTree {
 				filterPools = append(filterPools, pool)
 			}
 		}
@@ -941,7 +950,8 @@ var ValidateBackend = func(ctx context.Context, selectBackend *model.Backend, pa
 		if err := validator(ctx, value, selectBackend); err != nil {
 			return fmt.Errorf("validate backend %s error for manage Volume. "+
 				"the final validator field: %s, validator function: %s, parameters %v. Reason: %v",
-				selectBackend.Name, key, runtime.FuncForPC(reflect.ValueOf(validator).Pointer()).Name(), parameters, err)
+				selectBackend.Name, key, runtime.FuncForPC(reflect.ValueOf(validator).Pointer()).Name(), parameters,
+				err)
 		}
 	}
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ const (
 	quotaTargetFilesystem   = 1
 	quotaParentFileSystem   = "40"
 	directoryQuotaType      = "1"
-	quotaInvalidValue       = 18446744073709552000
+	quotaInvalidValue       = 18446744073709551615
 	waitUntilTimeout        = 6 * time.Hour
 	waitUntilInterval       = 5 * time.Second
 )
@@ -64,11 +64,11 @@ const (
 
 // NAS provides nas storage client
 type NAS struct {
-	cli *client.RestClient
+	cli client.IRestClient
 }
 
 // NewNAS inits a new nas client
-func NewNAS(cli *client.RestClient) *NAS {
+func NewNAS(cli client.IRestClient) *NAS {
 	return &NAS{
 		cli: cli,
 	}
@@ -190,8 +190,9 @@ func (p *NAS) preProcessSnapDir(ctx context.Context, params map[string]interface
 		} else if strings.EqualFold(val, invisibleString) {
 			params["isshowsnapdir"] = false
 		} else {
-			return pkgUtils.Errorln(ctx, fmt.Sprintf("parameter snapshotDirectoryVisibility [%v] in sc must be %s or %s.",
-				params["snapshotdirectoryvisibility"], visibleString, invisibleString))
+			return pkgUtils.Errorln(ctx,
+				fmt.Sprintf("parameter snapshotDirectoryVisibility [%v] in sc must be %s or %s.",
+					params["snapshotdirectoryvisibility"], visibleString, invisibleString))
 		}
 	}
 
@@ -669,31 +670,30 @@ func (p *NAS) allowShareAccess(ctx context.Context, params, taskResult map[strin
 func (p *NAS) Query(ctx context.Context, fsName string) (utils.Volume, error) {
 	quota, err := p.cli.GetQuotaByFileSystemName(ctx, fsName)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get filesystem %s error: %v", fsName, err)
-		return nil, err
+		log.AddContext(ctx)
+		return nil, fmt.Errorf("get filesystem %s error: %w", fsName, err)
+	}
+
+	if quota == nil {
+		return nil, fmt.Errorf("the quota of filesystem %s does not exist", fsName)
 	}
 
 	return p.setSize(ctx, fsName, quota)
 }
 
-func (p *NAS) setSize(ctx context.Context, fsName string, quota map[string]interface{}) (utils.Volume, error) {
+func (p *NAS) setSize(ctx context.Context, fsName string, quota *client.QueryQuotaResponse) (utils.Volume, error) {
 	volObj := utils.NewVolume(fsName)
 	var capacity int64
-	if hardSize, exits := quota["space_hard_quota"].(float64); exits && hardSize != quotaInvalidValue {
-		capacity = int64(hardSize)
-	} else if softSize, exits := quota["space_soft_quota"].(float64); exits && softSize != quotaInvalidValue {
-		capacity = int64(softSize)
+
+	if quota.SpaceHardQuota != 0 && quota.SpaceHardQuota != quotaInvalidValue {
+		capacity = int64(quota.SpaceHardQuota)
+	} else if quota.SpaceSoftQuota != 0 && quota.SpaceSoftQuota != quotaInvalidValue {
+		capacity = int64(quota.SpaceSoftQuota)
 	} else {
-		msg := fmt.Sprintf("Quota %v does not contain space_hard_quota or space_soft_quota.", quota)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, errors.New(msg)
+		return nil, fmt.Errorf("quota %v does not contain space_hard_quota or space_soft_quota", quota)
 	}
 
-	spaceUnitType, exist := quota["space_unit_type"].(float64)
-	if !exist {
-		return nil, utils.Errorln(ctx, "Quota %v does not contain space_unit_type.")
-	}
-	volObj.SetSize(utils.TransK8SCapacity(capacity, int64(math.Pow(1024, spaceUnitType))))
+	volObj.SetSize(utils.TransK8SCapacity(capacity, int64(math.Pow(1024, quota.SpaceUnitType))))
 	return volObj, nil
 }
 
@@ -777,27 +777,21 @@ func (p *NAS) Delete(ctx context.Context, fsName string) error {
 func (p *NAS) Expand(ctx context.Context, fsName string, newSize int64) error {
 	quota, err := p.cli.GetQuotaByFileSystemName(ctx, fsName)
 	if err != nil {
-		log.AddContext(ctx).Errorf("query quota error: %v", err)
-		return err
+		return fmt.Errorf("query quota error: %v", err)
 	}
-	quotaId, ok := quota["id"].(string)
-	if !ok {
-		msg := fmt.Sprintf("Quota %v does not contain id field.", quota)
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
+	if quota == nil || quota.Id == "" {
+		return fmt.Errorf("quota %v does not contain id field", quota)
 	}
-	params := map[string]interface{}{
-		"id": quotaId,
-	}
-	if oldHardSize, exits := quota["space_hard_quota"].(float64); exits && oldHardSize != quotaInvalidValue {
+	params := map[string]interface{}{"id": quota.Id}
+
+	if quota.SpaceHardQuota != 0 && quota.SpaceHardQuota != quotaInvalidValue {
 		params["space_hard_quota"] = newSize
-	} else if oldSoftSize, exits := quota["space_soft_quota"].(float64); exits && oldSoftSize != quotaInvalidValue {
+	} else if quota.SpaceSoftQuota != 0 && quota.SpaceSoftQuota != quotaInvalidValue {
 		params["space_soft_quota"] = newSize
 	} else {
-		msg := fmt.Sprintf("Quota %v does not contain space_hard_quota or space_soft_quota.", quota)
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
+		return fmt.Errorf("quota %v does not contain space_hard_quota or space_soft_quota", quota)
 	}
+
 	err = p.cli.UpdateQuota(ctx, params)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Update quota  error: %v", err)

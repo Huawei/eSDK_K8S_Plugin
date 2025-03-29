@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -76,6 +76,8 @@ const (
 	FusionSan = "fusionstorage-san"
 	// FusionNas storage type is fusionstorage-nas
 	FusionNas = "fusionstorage-nas"
+	// FusionDTree storage type is fusionstorage-dtree
+	FusionDTree = "fusionstorage-dtree"
 
 	// CloneSpeedLevel1 means level1 of the clone speed
 	CloneSpeedLevel1 = 1
@@ -85,6 +87,28 @@ const (
 	CloneSpeedLevel3 = 3
 	// CloneSpeedLevel4 means level4 of the clone speed
 	CloneSpeedLevel4 = 4
+
+	// ProtocolNfs defines the NFS protocol type
+	ProtocolNfs = "nfs"
+	// ProtocolDpc defines the DPC protocol type
+	ProtocolDpc = "dpc"
+
+	// AllSquash is the value of all squash configured on the StorageClass
+	AllSquash = "all_squash"
+	// AllSquashValue is the value of all squash when request
+	AllSquashValue = 0
+	// NoAllSquash is the value of no all squash configured on the StorageClass
+	NoAllSquash = "no_all_squash"
+	// NoAllSquashValue is the value of no all squash when request
+	NoAllSquashValue = 1
+	// RootSquash is the value of root squash configured on the StorageClass
+	RootSquash = "root_squash"
+	// RootSquashValue is the value of root squash when request
+	RootSquashValue = 0
+	// NoRootSquash is the value of no root squash configured on the StorageClass
+	NoRootSquash = "no_root_squash"
+	// NoRootSquashValue is the value of no root squash when request
+	NoRootSquashValue = 1
 )
 
 // BackendCapability backend capability
@@ -116,3 +140,12 @@ var SupportApplicationType BackendCapability = "SupportApplicationType"
 
 // SupportMetroNAS defines backend capability SupportMetroNAS
 var SupportMetroNAS BackendCapability = "SupportMetroNAS"
+
+// SupportNFS3 defines backend capability SupportNFS3
+const SupportNFS3 = "SupportNFS3"
+
+// SupportNFS4 defines backend capability SupportNFS4
+const SupportNFS4 = "SupportNFS4"
+
+// SupportNFS41 defines backend capability SupportNFS41
+const SupportNFS41 = "SupportNFS41"

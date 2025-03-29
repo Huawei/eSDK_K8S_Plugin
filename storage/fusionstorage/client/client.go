@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"strconv"
@@ -84,7 +83,26 @@ func isFilterLog(method, url string) bool {
 	return exist && filter[url]
 }
 
-// RestClient defines fusion storage client
+// IRestClient defines all methods for fusion storage client
+type IRestClient interface {
+	Host
+	Iscsi
+	Namespace
+	Qos
+	Quota
+	Snapshot
+	System
+	Volume
+	DTree
+
+	ValidateLogin(ctx context.Context) error
+	Login(ctx context.Context) error
+	SetAccountId(ctx context.Context) error
+	Logout(ctx context.Context)
+	KeepAlive(ctx context.Context)
+}
+
+// RestClient implement fusion storage client
 type RestClient struct {
 	url             string
 	user            string
@@ -143,12 +161,9 @@ func NewClient(ctx context.Context, clientConfig *NewClientConfig) *RestClient {
 	}
 }
 
-// DuplicateClient used to duplicate client
-func (cli *RestClient) DuplicateClient() *RestClient {
-	dup := *cli
-	dup.client = nil
-
-	return &dup
+// NewIRestClient returns a RestClient as IRestClient
+func NewIRestClient(ctx context.Context, clientConfig *NewClientConfig) IRestClient {
+	return NewClient(ctx, clientConfig)
 }
 
 // ValidateLogin try to login fusion storage by secret
@@ -237,7 +252,8 @@ func (cli *RestClient) Login(ctx context.Context) error {
 		if code == loginFailed || code == loginFailedWithArg || code == userPasswordInvalid || code == IPLock {
 			setErr := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.backendID, false)
 			if setErr != nil {
-				msg = msg + fmt.Sprintf("\nSetStorageBackendContentOffline [%s] failed. error: %v", cli.backendID, setErr)
+				msg = msg + fmt.Sprintf("\nSetStorageBackendContentOffline [%s] failed. error: %v", cli.backendID,
+					setErr)
 			}
 		}
 
@@ -324,8 +340,7 @@ func (cli *RestClient) reLoginUnlock(ctx context.Context) {
 	log.AddContext(ctx).Debugln("ReLoginUnlock success.")
 }
 
-func (cli *RestClient) doCall(ctx context.Context, method string, url string, data map[string]any) (
-	http.Header, []byte, error) {
+func (cli *RestClient) doCall(ctx context.Context, method string, url string, data any) (http.Header, []byte, error) {
 	var err error
 	var reqUrl string
 	var reqBody io.Reader
@@ -337,7 +352,7 @@ func (cli *RestClient) doCall(ctx context.Context, method string, url string, da
 		return nil, nil, errors.New(errMsg)
 	}
 
-	if data != nil {
+	if !utils.IsNil(data) {
 		reqBytes, err := json.Marshal(data)
 		if err != nil {
 			log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
@@ -370,7 +385,7 @@ func (cli *RestClient) doCall(ctx context.Context, method string, url string, da
 
 	defer resp.Body.Close()
 
-	respBody, err = ioutil.ReadAll(resp.Body)
+	respBody, err = io.ReadAll(resp.Body)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Read response data error: %v", err)
 		return nil, nil, err

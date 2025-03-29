@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
@@ -33,6 +34,8 @@ const (
 
 	// SecurityStyleUnix defines unix style of security
 	SecurityStyleUnix int = 3
+
+	dtreeNotExist = 1077955336
 )
 
 // DTree defines interfaces for DTree operations
@@ -72,14 +75,14 @@ func (cli *OceanstorClient) GetDTreeByName(ctx context.Context,
 		return nil, err
 	}
 
-	if utils.ResCodeExist(resp.Error["code"]) {
-		return nil, fmt.Errorf("get dtree by name failed, dtree: %+v error: %s", name, resp.Error["description"])
+	if err = resp.AssertErrorWithTolerations(ctx, base.ResponseToleration{
+		Code:   dtreeNotExist,
+		Reason: fmt.Sprintf("dtree %q of %q not exist", name, parentName),
+	}); err != nil {
+		return nil, fmt.Errorf("failed to get dtree %q: %w", name, err)
 	}
-	if resp.Data == nil {
-		return nil, nil
-	}
-	return cli.getResponseDataMap(ctx, resp.Data)
 
+	return cli.getResponseDataMap(ctx, resp.Data)
 }
 
 // DeleteDTreeByID use for delete a dTree

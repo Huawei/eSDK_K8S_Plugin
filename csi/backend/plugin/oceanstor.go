@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/smartx"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/version"
 )
 
 const (
@@ -228,7 +229,7 @@ func (p *OceanstorPlugin) updateVStorePair(ctx context.Context, specifications m
 
 	// only Dorado V6 6.1.5 and later versions need to update vStorePair.
 	if !p.product.IsDoradoV6OrV7() ||
-		(p.product.IsDoradoV6() && p.cli.GetStorageVersion() < constants.DoradoV615) ||
+		(p.product.IsDoradoV6() && version.CompareVersions(p.cli.GetStorageVersion(), constants.DoradoV615) == -1) ||
 		p.cli.GetvStoreID() == "" {
 		log.AddContext(ctx).Debugf("storage product is %s,version is %s, vStore id is %s, "+
 			"do not update VStorePairId", p.product, p.cli.GetStorageVersion(), p.cli.GetvStoreID())
@@ -237,7 +238,7 @@ func (p *OceanstorPlugin) updateVStorePair(ctx context.Context, specifications m
 
 	vStorePairs, err := p.cli.GetVStorePairs(ctx)
 	if err != nil {
-		log.AddContext(ctx).Debugf("Get vStore pairs error: %v", err)
+		log.AddContext(ctx).Errorf("Get vStore pairs error: %v", err)
 		return
 	}
 
@@ -489,4 +490,9 @@ func getNewClientConfig(ctx context.Context, param map[string]interface{}) (*cli
 	data.CertSecretMeta, _ = param["certSecret"].(string)
 
 	return data, nil
+}
+
+// SetCli sets the cli for Oceanstor Plugin
+func (p *OceanstorPlugin) SetCli(cli client.OceanstorClientInterface) {
+	p.cli = cli
 }

@@ -1,9 +1,9 @@
 images:
   # Images provided by Huawei
-  huaweiCSIService: huawei-csi:4.6.0
-  storageBackendSidecar: storage-backend-sidecar:4.6.0
-  storageBackendController: storage-backend-controller:4.6.0
-  huaweiCSIExtender: huawei-csi-extender:4.6.0
+  huaweiCSIService: huawei-csi:{{csi-version}}
+  storageBackendSidecar: storage-backend-sidecar:{{csi-version}}
+  storageBackendController: storage-backend-controller:{{csi-version}}
+  huaweiCSIExtender: huawei-csi-extender:{{csi-version}}
 
   # CSI-related sidecar images provided by the Kubernetes community.
   # These must match the appropriate Kubernetes version.
@@ -220,6 +220,10 @@ csiDriver:
   scanVolumeTimeout: 3
   # Timeout interval for running command on the host. support 1~600
   execCommandTimeout: 30
+  # Whether to enable automatic CSI disk scanning when RoCE protocol is used,
+  # If an external tool is used to establish a connection, this parameter can be set to false.
+  # Default value: true
+  enableRoCEConnect: true
   # check the number of paths for multipath aggregation
   # Allowed values:
   #   true: the number of paths aggregated by DM-multipath is equal to the number of online paths

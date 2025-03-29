@@ -68,6 +68,9 @@ type Interface interface {
 	// GetVolumeAttrByVolumeId returns volume attributes of PV from volume id
 	GetVolumeAttrByVolumeId(volumeId string) (map[string]string, error)
 
+	// GetDTreeParentNameByVolumeId returns dDTreeParentname field of PV by volume id
+	GetDTreeParentNameByVolumeId(volumeId string) (string, error)
+
 	// Activate the k8s helpers when start the service
 	Activate()
 	// Deactivate the k8s helpers when stop the service

@@ -615,8 +615,7 @@ func dealCreateFSError(ctx context.Context, code int64) error {
 	}
 
 	if code != 0 {
-		return utils.Errorf(ctx, "Create filesystem error. ErrorCode: %d. Please contact technical "+
-			"support.", code)
+		return utils.Errorf(ctx, "Create filesystem error. ErrorCode: %d.", code)
 	}
 
 	return nil

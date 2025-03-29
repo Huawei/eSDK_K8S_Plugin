@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,18 @@ import (
 const (
 	hostnameAlreadyExist int64 = 50157019
 )
+
+// Host is the interface for host
+type Host interface {
+	CreateHost(ctx context.Context, hostName string, alua map[string]interface{}) error
+	UpdateHost(ctx context.Context, hostName string, alua map[string]interface{}) error
+	QueryHostByPort(ctx context.Context, port string) (string, error)
+	AddPortToHost(ctx context.Context, initiatorName, hostName string) error
+	AddLunToHost(ctx context.Context, lunName, hostName string) error
+	DeleteLunFromHost(ctx context.Context, lunName, hostName string) error
+	QueryHostOfVolume(ctx context.Context, lunName string) ([]map[string]interface{}, error)
+	GetHostByName(ctx context.Context, hostName string) (map[string]interface{}, error)
+}
 
 // GetHostByName used to get host by name
 func (cli *RestClient) GetHostByName(ctx context.Context, hostName string) (map[string]interface{}, error) {
@@ -66,9 +78,7 @@ func (cli *RestClient) GetHostByName(ctx context.Context, hostName string) (map[
 }
 
 // CreateHost used to create host
-func (cli *RestClient) CreateHost(ctx context.Context,
-	hostName string,
-	alua map[string]interface{}) error {
+func (cli *RestClient) CreateHost(ctx context.Context, hostName string, alua map[string]interface{}) error {
 	data := map[string]interface{}{
 		"hostName": hostName,
 	}

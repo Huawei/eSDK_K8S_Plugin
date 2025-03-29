@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -583,7 +583,7 @@ func IsCapacityAvailable(volumeSizeBytes, allocationUnitBytes int64, parameters 
 		return errors.New("IsCapacityAvailable.allocationUnitBytes is invalid, can't be zero")
 	}
 
-	disableVerifyCapacity := GetValueOrFallback(parameters, "disableVerifyCapacity", "false")
+	disableVerifyCapacity := GetValueOrFallback(parameters, constants.DisableVerifyCapacityKey, "false")
 	var disableVerify bool
 	if disableVerifyCapacity != "" {
 		var err error
@@ -1075,6 +1075,7 @@ func GetValueOrFallback[T any](m map[string]any, k string, fallback T) T {
 	return val
 }
 
+// GetValue get value from map[string]any by key
 func GetValue[T any](m map[string]any, k string) (T, bool) {
 	v, exists := m[k]
 	if !exists {
@@ -1093,4 +1094,22 @@ func GetValue[T any](m map[string]any, k string) (T, bool) {
 func zeroValue[T any]() T {
 	var zero T
 	return zero
+}
+
+// IsNil check whether the VALUE of a given variable is nil
+func IsNil(val any) bool {
+	// fast path: type of val is empty
+	if val == nil {
+		return true
+	}
+
+	// slow path: check whether the value of val is empty
+	rv := reflect.ValueOf(val)
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.UnsafePointer,
+		reflect.Interface, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }

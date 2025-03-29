@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,8 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/flow"
@@ -125,9 +127,15 @@ func (p *DTree) Create(ctx context.Context, params map[string]interface{}) (util
 func (p *DTree) Delete(ctx context.Context, params map[string]interface{}) error {
 	var err error
 
+	exists, err := p.checkDtreeExist(ctx, params)
+	if err != nil {
+		return fmt.Errorf("failed to delete dtree: %w", err)
+	}
+	if !exists {
+		return nil
+	}
+
 	taskFlow := flow.NewTaskFlow(ctx, "Delete-FileSystem-DTree-Volume")
-	taskFlow.AddTask("Check-DTree", p.checkDtreeExist, nil)
-	taskFlow.AddTask("Delete-Quota", p.deleteQuota, nil)
 	taskFlow.AddTask("Delete-Share", p.deleteShare, nil)
 	taskFlow.AddTask("Delete-DTree", p.deleteDtree, nil)
 
@@ -141,7 +149,8 @@ func (p *DTree) Delete(ctx context.Context, params map[string]interface{}) error
 }
 
 // Expand expands volume size
-func (p *DTree) Expand(ctx context.Context, parentName, dTreeName, vstoreID string, spaceHardQuota int64) error {
+func (p *DTree) Expand(ctx context.Context, parentName string, dTreeName string, vstoreID string,
+	spaceHardQuota int64) error {
 	dTreeID, err := p.getDtreeID(ctx, parentName, vstoreID, dTreeName)
 	if err != nil {
 		return err
@@ -153,44 +162,43 @@ func (p *DTree) Expand(ctx context.Context, parentName, dTreeName, vstoreID stri
 		"range":         "[0-100]",
 		"vstoreId":      vstoreID,
 		"QUERYTYPE":     "2",
-		"SPACEUNITTYPE": client.SpaceUnitTypeGB,
+		"SPACEUNITTYPE": client.SpaceUnitTypeBytes,
 	}
 	quotaInfos, err := p.cli.BatchGetQuota(ctx, req)
 	if err != nil {
-		log.AddContext(ctx).Errorf("get quota arrays failed, params: %+v, error: %v", req, err)
-		return err
+		return fmt.Errorf("get quota arrays failed, params: %+v, error: %v", req, err)
 	}
 	if len(quotaInfos) == 0 {
 		log.AddContext(ctx).Infof("get empty quota arrays params: %+v", req)
-		data := make(map[string]interface{})
-		data["PARENTTYPE"] = client.ParentTypeDTree
-		data["PARENTNAME"] = dTreeName
-		data["QUOTATYPE"] = client.QuotaTypeDir
-		data["SPACEUNITTYPE"] = client.SpaceUnitTypeGB
-		data["SPACEHARDQUOTA"] = spaceHardQuota
-		data["vstoreId"] = vstoreID
+		data := map[string]any{"PARENTTYPE": client.ParentTypeDTree, "PARENTNAME": dTreeName,
+			"QUOTATYPE": client.QuotaTypeDir, "SPACEUNITTYPE": client.SpaceUnitTypeBytes,
+			"SPACEHARDQUOTA": spaceHardQuota, "vstoreId": vstoreID}
 		_, err = p.cli.CreateQuota(ctx, data)
 		if err != nil {
-			log.AddContext(ctx).Errorf("create dtree quota failed, params: %+v, error: %v", data, err)
-			return err
+			return fmt.Errorf("create dtree quota failed, params: %+v, error: %v", data, err)
 		}
 		return nil
 	}
 
 	quotaInfo, ok := quotaInfos[0].(map[string]interface{})
 	if !ok {
-		log.AddContext(ctx).Errorf("quota arrays data is not valid, quotaInfos[0]: %+v", quotaInfos[0])
-		return errors.New("data in response is not valid")
+		return fmt.Errorf("quota arrays data is not valid, quotaInfos[0]: %+v", quotaInfos[0])
 	}
 	quotaID, _ := utils.ToStringWithFlag(quotaInfo["ID"])
-	err = p.cli.UpdateQuota(ctx, quotaID, map[string]interface{}{
-		"SPACEHARDQUOTA": spaceHardQuota,
-		"vstoreId":       vstoreID,
-	})
+	actualSpaceHardQuota, _ := utils.GetValue[string](quotaInfo, "SPACEHARDQUOTA")
+	actualQuota, err := strconv.ParseInt(actualSpaceHardQuota, constants.DefaultIntBase,
+		constants.DefaultIntBitSize)
 	if err != nil {
-		log.AddContext(ctx).Errorf("update quota failed, SPACEHARDQUOTA :%v, SPACEUNITTYPE: %v vstoreId: %v, err: %v",
-			spaceHardQuota, client.SpaceUnitTypeGB, vstoreID, err)
-		return err
+		return fmt.Errorf("failed to convert quota, actualSpaceHardQuota: %v, error: %v", actualSpaceHardQuota, err)
+	}
+	if spaceHardQuota < actualQuota {
+		return fmt.Errorf("new quota size %v must be larger than old size %v", spaceHardQuota, actualSpaceHardQuota)
+	}
+
+	err = p.cli.UpdateQuota(ctx, quotaID, map[string]any{"SPACEHARDQUOTA": spaceHardQuota, "vstoreId": vstoreID})
+	if err != nil {
+		return fmt.Errorf("update quota failed, SPACEHARDQUOTA :%v, SPACEUNITTYPE: %v vstoreId: %v, err: %w",
+			spaceHardQuota, client.SpaceUnitTypeBytes, vstoreID, err)
 	}
 	return nil
 }
@@ -232,27 +240,30 @@ func (p *DTree) createDtree(ctx context.Context,
 	}, nil
 }
 
-func (p *DTree) checkDtreeExist(ctx context.Context, params,
-	taskResult map[string]interface{}) (map[string]interface{}, error) {
-
+func (p *DTree) checkDtreeExist(ctx context.Context, params map[string]any) (bool, error) {
 	dTreeName, _ := utils.ToStringWithFlag(params["name"])
-	fsName, _ := utils.ToStringWithFlag(params["parentname"])
+	parentName, _ := utils.ToStringWithFlag(params["parentname"])
 	vStoreID, _ := utils.ToStringWithFlag(params["vstoreid"])
 
-	dTreeInfo, err := p.cli.GetDTreeByName(ctx, "0", fsName, vStoreID, dTreeName)
+	parentFs, err := p.cli.GetFileSystemByName(ctx, parentName)
 	if err != nil {
-		msg := fmt.Sprintf("get dtree failed, params: %+v, error:%v", params, err)
-		log.AddContext(ctx).Errorf(msg)
-		return nil, errors.New(msg)
+		return false, fmt.Errorf("failed to check dtree exist: %w", err)
+	}
+	if parentFs == nil {
+		log.AddContext(ctx).Infof("delete dtree finish, parent filesystem of dtree not found. params :%+v", params)
+		return false, nil
+	}
+
+	dTreeInfo, err := p.cli.GetDTreeByName(ctx, "0", parentName, vStoreID, dTreeName)
+	if err != nil {
+		return false, fmt.Errorf("failed to get dtree, params: %+v, error:%w", params, err)
 	}
 	if dTreeInfo == nil {
 		log.AddContext(ctx).Infof("delete dtree finish, dtree not found. params :%+v", params)
-		return nil, nil
+		return false, nil
 	}
 
-	return map[string]interface{}{
-		"dTreeId": dTreeInfo["ID"],
-	}, nil
+	return true, nil
 }
 
 func (p *DTree) checkFSExist(ctx context.Context, params,
@@ -450,7 +461,8 @@ func (p *DTree) deleteShareAccess(ctx context.Context, params,
 		return nil, err
 	}
 	if nfsInfo == nil {
-		log.AddContext(ctx).Infof("delete share access finish, nfs not exist. path: %v, vstoreID: %v", sharePath, vStoreID)
+		log.AddContext(ctx).Infof("delete share access finish, nfs not exist. path: %v, vstoreID: %v", sharePath,
+			vStoreID)
 		return nil, nil
 	}
 
@@ -534,40 +546,6 @@ func (p *DTree) revertQuota(ctx context.Context, taskResult map[string]interface
 
 	log.AddContext(ctx).Errorf("revert quota success, quotaID: %v, vStoreID: %v", quotaID, vStoreID)
 	return nil
-}
-
-func (p *DTree) deleteQuota(ctx context.Context, params, taskResult map[string]any) (map[string]any, error) {
-	req := map[string]interface{}{
-		"PARENTTYPE":    client.ParentTypeDTree,
-		"PARENTID":      taskResult["dTreeId"],
-		"range":         "[0-100]",
-		"vstoreId":      params["vstoreid"],
-		"QUERYTYPE":     "2",
-		"SPACEUNITTYPE": client.SpaceUnitTypeGB,
-	}
-	quotaInfos, err := p.cli.BatchGetQuota(ctx, req)
-	if err != nil {
-		log.AddContext(ctx).Errorf("get quota arrays failed, params: %+v, error: %v", req, err)
-		return nil, err
-	}
-	if len(quotaInfos) == 0 {
-		log.AddContext(ctx).Infof("get empty quota arrays params: %+v", req)
-		return nil, nil
-	}
-
-	quotaInfo, ok := quotaInfos[0].(map[string]interface{})
-	if !ok {
-		log.AddContext(ctx).Errorf("quota arrays data is not valid, quotaInfos[0]: %+v", quotaInfos[0])
-		return nil, errors.New("data in response is not valid")
-	}
-
-	vStoreID, _ := utils.ToStringWithFlag(params["vstoreid"])
-	quotaID, _ := utils.ToStringWithFlag(quotaInfo["ID"])
-	err = p.cli.DeleteQuota(ctx, quotaID, vStoreID, client.ForceFlagFalse)
-	if err != nil {
-		log.AddContext(ctx).Errorf("delete quota failed, quotaID: %v, vStoreID: %v, err: %v", quotaID, vStoreID, err)
-	}
-	return nil, err
 }
 
 func (p *DTree) createShare(ctx context.Context, params,

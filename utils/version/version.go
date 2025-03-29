@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -107,4 +109,55 @@ func ClearVersion(versionFile string) error {
 	}
 
 	return nil
+}
+
+// CompareVersions compares two semantic versions
+// Returns:
+//
+//	-1 if v1 < v2
+//	 0 if v1 == v2
+//	 1 if v1 > v2
+func CompareVersions(v1, v2 string) int {
+	// Split versions into numeric segments
+	segments1 := strings.Split(v1, ".")
+	segments2 := strings.Split(v2, ".")
+
+	maxLen := max(len(segments1), len(segments2))
+
+	for i := 0; i < maxLen; i++ {
+		result := compareSegmentValue(segments1, segments2, i)
+		if result == 0 {
+			continue
+		}
+		return result
+	}
+	return 0
+}
+
+func compareSegmentValue(segments1, segments2 []string, index int) int {
+	if index >= len(segments1) && index < len(segments2) {
+		return -1
+	}
+	if index < len(segments1) && index >= len(segments2) {
+		return 1
+	}
+
+	str1, str2 := segments1[index], segments2[index]
+
+	num1, err := strconv.Atoi(str1)
+	if err != nil {
+		return strings.Compare(str1, str2)
+	}
+	num2, err := strconv.Atoi(str2)
+	if err != nil {
+		return strings.Compare(str1, str2)
+	}
+
+	if num1 > num2 {
+		return 1
+	} else if num1 < num2 {
+		return -1
+	}
+
+	return 0
 }

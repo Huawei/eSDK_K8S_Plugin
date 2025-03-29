@@ -163,6 +163,11 @@ spec:
             {{ end }}
             - "--scan-volume-timeout={{ .Values.csiDriver.scanVolumeTimeout }}"
             - "--exec-command-timeout={{ int (.Values.csiDriver).execCommandTimeout | default 30 }}"
+            {{ if ne .Values.csiDriver.enableRoCEConnect false }}
+            - "--enable-roce-connect=true"
+            {{ else }}
+            - "--enable-roce-connect=false"
+            {{ end }}
             - "--logging-module={{ .Values.csiDriver.nodeLogging.module }}"
             - "--log-level={{ .Values.csiDriver.nodeLogging.level }}"
             {{ if eq .Values.csiDriver.nodeLogging.module "file" }}

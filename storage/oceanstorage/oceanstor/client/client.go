@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -109,19 +109,19 @@ var (
 
 	debugLog = map[string]map[string]bool{
 		"GET": {
-			"/license/feature":       true,
-			"/nfsservice":            true,
-			"/storagepool":           true,
-			`/vstore_pair\?RETYPE=1`: true,
-			`/vstore?filter=NAME`:    true,
-			`/container_pv`:          true,
-			`/system`:                true,
+			"/license/feature":        true,
+			"/nfsservice":             true,
+			"/storagepool":            true,
+			`/vstore_pair\?REPTYPE=1`: true,
+			`/vstore?filter=NAME`:     true,
+			`/container_pv`:           true,
+			`/system`:                 true,
 		},
 	}
 
 	debugLogRegex = map[string][]string{
 		"GET": {
-			`/vstore_pair\?RETYPE=1`,
+			`/vstore_pair\?REPTYPE=1`,
 			`/vstore\?filter=NAME`,
 			`/system`,
 		},
@@ -415,6 +415,11 @@ func (cli *OceanstorClient) getResponseDataMap(ctx context.Context, data interfa
 	if !ok {
 		return nil, utils.Errorf(ctx, "the response data is not a map[string]interface{}")
 	}
+
+	if len(respData) == 0 {
+		return nil, nil
+	}
+
 	return respData, nil
 }
 

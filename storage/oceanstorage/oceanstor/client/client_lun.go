@@ -433,7 +433,6 @@ func (cli *OceanstorClient) GetLunCountOfHost(ctx context.Context, hostID string
 
 // GetHostLunId used for get host lun id
 func (cli *OceanstorClient) GetHostLunId(ctx context.Context, hostID, lunID string) (string, error) {
-	hostLunId := "1"
 	url := fmt.Sprintf("/lun/associate?TYPE=11&ASSOCIATEOBJTYPE=21&ASSOCIATEOBJID=%s", hostID)
 	resp, err := cli.Get(ctx, url, nil)
 	if err != nil {
@@ -466,13 +465,12 @@ func (cli *OceanstorClient) GetHostLunId(ctx context.Context, hostID, lunID stri
 			}
 			hostLunIdFloat, ok := associateData["HostLUNID"].(float64)
 			if ok {
-				hostLunId = strconv.FormatInt(int64(hostLunIdFloat), constants.DefaultIntBase)
-				break
+				return strconv.FormatInt(int64(hostLunIdFloat), constants.DefaultIntBase), nil
 			}
 		}
 	}
 
-	return hostLunId, nil
+	return "", fmt.Errorf("not found host lun id of lun %s", lunID)
 }
 
 // UpdateLun used for update lun

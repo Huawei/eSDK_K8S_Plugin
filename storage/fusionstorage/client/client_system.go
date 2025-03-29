@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,16 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
+
+// System is the interface for system
+type System interface {
+	GetAccountIdByName(ctx context.Context, accountName string) (string, error)
+	GetPoolByName(ctx context.Context, poolName string) (map[string]interface{}, error)
+	GetPoolById(ctx context.Context, poolId int64) (map[string]interface{}, error)
+	GetAllAccounts(ctx context.Context) ([]string, error)
+	GetAllPools(ctx context.Context) (map[string]interface{}, error)
+	GetNFSServiceSetting(ctx context.Context) (map[string]bool, error)
+}
 
 // GetAccountIdByName gets account id by account name
 func (cli *RestClient) GetAccountIdByName(ctx context.Context, accountName string) (string, error) {

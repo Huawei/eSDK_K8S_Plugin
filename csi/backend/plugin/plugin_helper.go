@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,19 +33,35 @@ import (
 )
 
 // verifyProtocolAndPortals verifyProtocolAndPortals
-func verifyProtocolAndPortals(parameters map[string]interface{}) (string, []string, error) {
+func verifyProtocolAndPortals(parameters map[string]interface{}, storage string) (string, []string, error) {
 	protocol, exist := parameters["protocol"].(string)
-	if !exist || protocol != ProtocolNfs && protocol != ProtocolNfsPlus {
-		return "", []string{}, errors.New(fmt.Sprintf("protocol must be provided and be %s or %s for oceanstor-nas backend",
-			ProtocolNfs, ProtocolNfsPlus))
+	if !exist {
+		return "", []string{}, fmt.Errorf("protocol must be provided for %s backend", storage)
 	}
+
+	if (storage == constants.OceanStorNas || storage == constants.OceanStorDtree) &&
+		(protocol != ProtocolNfs && protocol != ProtocolNfsPlus) {
+		return "", []string{}, fmt.Errorf("protocol must be %s or %s for %s backend", ProtocolNfs,
+			ProtocolNfsPlus, storage)
+	}
+
+	if (storage == constants.FusionNas || storage == constants.FusionDTree) &&
+		(protocol != constants.ProtocolNfs && protocol != constants.ProtocolDpc) {
+		return "", []string{}, fmt.Errorf("protocol must be %s or %s for %s backend", constants.ProtocolNfs,
+			constants.ProtocolDpc, storage)
+	}
+
+	if protocol == constants.ProtocolDpc {
+		return "", nil, nil
+	}
+
 	portals, exist := parameters["portals"].([]interface{})
 	if !exist || len(portals) == 0 {
-		return "", []string{}, errors.New("portals must be provided for oceanstor-nas backend")
+		return "", []string{}, fmt.Errorf("portals must be provided for %s backend", storage)
 	}
 	portalsStrs := pkgUtils.ConvertToStringSlice(portals)
 	if protocol == ProtocolNfs && len(portalsStrs) != 1 {
-		return "", []string{}, errors.New("portals just support one portal for oceanstor-nas backend nfs")
+		return "", []string{}, fmt.Errorf("portals just support one portal for %s backend nfs", storage)
 	}
 	if protocol == ProtocolNfsPlus && !checkNfsPlusPortalsFormat(portalsStrs) {
 		return "", []string{}, errors.New("portals must be ip or domain and can't both exist")
@@ -213,4 +229,75 @@ func analyzePoolsCapacity(ctx context.Context, pools []map[string]interface{},
 	}
 
 	return capacities
+}
+
+func verifyDTreeParam(ctx context.Context, config map[string]any, storageType string) error {
+	// verify storage
+	storage, exist := utils.ToStringWithFlag(config["storage"])
+	if !exist || (storage != storageType) {
+		return fmt.Errorf("verify storage %v failed: storage must be %q", config["storage"], storageType)
+	}
+
+	// verify parameters
+	parameters, exist := config["parameters"].(map[string]any)
+	if !exist {
+		return errors.New("parameters of backend must be provided, but got empty")
+	}
+
+	// verify protocol portals
+	_, _, err := verifyProtocolAndPortals(parameters, storageType)
+	if err != nil {
+		return pkgUtils.Errorf(ctx, "check fusionstorage-dtree parameter failed, err: %v", err)
+	}
+
+	return nil
+}
+
+// getValidParentname gets the valid parent name of dtree by compare StorageClass.parentname and backend.parentname
+// returns:
+//
+// error if StorageClass.parentname == "" && backend.parentname == ""
+// backend.parentname if StorageClass.parentname == "" && backend.parentname != ""
+// StorageClass.parentname if StorageClass.parentname != "" && backend.parentname == ""
+// error if StorageClass.parentname != "" && backend.parentname != "" && StorageClass.parentname != backend.parentname
+// StorageClass.parentname if StorageClass.parentname == backend.parentname
+func getValidParentname(scParentname, bkParentname string) (string, error) {
+	if scParentname == "" {
+		if bkParentname == "" {
+			return "", errors.New("parentname must be provided in StorageClass or backend")
+		}
+
+		return bkParentname, nil
+	}
+
+	if bkParentname == "" {
+		return scParentname, nil
+	}
+
+	if scParentname != bkParentname {
+		return "", errors.New(fmt.Sprintf("parentname %q in StorageClass is not equal to %q in backend",
+			scParentname, bkParentname))
+	}
+
+	return scParentname, nil
+}
+
+// DTreeAttachVolumeParameter is the parameter for attaching volume
+type DTreeAttachVolumeParameter struct {
+	VolumeContext map[string]string `json:"volumeContext"`
+}
+
+// attachDTreeVolume attach dtree volume to node and return storage mapping info.
+func attachDTreeVolume(parameters map[string]any) (map[string]any, error) {
+	params, err := utils.ConvertMapToStruct[DTreeAttachVolumeParameter](parameters)
+	if err != nil {
+		return nil, fmt.Errorf("convert parameters to struct failed when attach dtree: %w", err)
+	}
+
+	dtreeParentName, exists := params.VolumeContext[constants.DTreeParentKey]
+	if exists {
+		return map[string]any{constants.DTreeParentKey: dtreeParentName}, nil
+	}
+
+	return map[string]any{}, nil
 }

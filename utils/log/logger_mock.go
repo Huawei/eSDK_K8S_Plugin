@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import (
 
 var (
 	mockLogFileSize        = "1024"
-	mockLoggingModule      = "file"
+	mockLoggingModule      = "console"
 	mockLogLevel           = "info"
 	mockLogFileDir         = "/var/log/huawei/"
 	mockMaxBackups    uint = 3

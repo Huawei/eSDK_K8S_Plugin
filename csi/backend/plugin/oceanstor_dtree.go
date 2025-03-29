@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,17 +23,11 @@ import (
 
 	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
-	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
-)
-
-const (
-	// DTreeStorage defines DTree storage name
-	DTreeStorage = "oceanstor-dtree"
 )
 
 // OceanstorDTreePlugin implements storage StoragePlugin interface
@@ -45,7 +39,7 @@ type OceanstorDTreePlugin struct {
 }
 
 func init() {
-	RegPlugin(DTreeStorage, &OceanstorDTreePlugin{})
+	RegPlugin(constants.OceanStorDtree, &OceanstorDTreePlugin{})
 }
 
 // NewPlugin used to create new plugin
@@ -56,15 +50,16 @@ func (p *OceanstorDTreePlugin) NewPlugin() StoragePlugin {
 // Init used to init the plugin
 func (p *OceanstorDTreePlugin) Init(ctx context.Context, config map[string]interface{},
 	parameters map[string]interface{}, keepLogin bool) error {
-	var exist bool
-	p.parentName, exist = utils.ToStringWithFlag(parameters["parentname"])
-	if !exist || p.parentName == "" {
-		return pkgUtils.Errorf(ctx, "Verify parentname: [%v] failed. \nParentname must be provided for "+
-			"oceanstor-dtree backend\n", parameters["parentname"])
+	parentname, ok := parameters["parentname"]
+	if ok {
+		p.parentName, ok = parentname.(string)
+		if !ok {
+			return errors.New("parentname must be a string type")
+		}
 	}
 
 	var err error
-	_, p.portals, err = verifyProtocolAndPortals(parameters)
+	_, p.portals, err = verifyProtocolAndPortals(parameters, constants.OceanStorDtree)
 	if err != nil {
 		log.Errorf("verify protocol and portals failed, err: %v", err)
 		return err
@@ -93,15 +88,23 @@ func (p *OceanstorDTreePlugin) CreateVolume(ctx context.Context, name string, pa
 		return nil, errors.New("empty parameters")
 	}
 
+	parentname := p.parentName
+	scParentname, _ := utils.GetValue[string](parameters, "parentname")
+	var err error
+	parentname, err = getValidParentname(scParentname, p.parentName)
+	if err != nil {
+		return nil, err
+	}
+
 	parameters["vstoreId"] = p.vStoreId
-	parameters["parentname"] = p.parentName
+	parameters["parentname"] = parentname
 	params := getParams(ctx, name, parameters)
 
 	volObj, err := p.getDTreeObj().Create(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	volObj.SetDTreeParentName(p.parentName)
+	volObj.SetDTreeParentName(parentname)
 
 	return volObj, nil
 }
@@ -110,19 +113,19 @@ func (p *OceanstorDTreePlugin) CreateVolume(ctx context.Context, name string, pa
 func (p *OceanstorDTreePlugin) QueryVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
 
-	return nil, errors.New(" not implement")
+	return nil, errors.New("oceanstor-dtree does not support DTree feature")
 }
 
 // DeleteDTreeVolume used to delete DTree volume
-func (p *OceanstorDTreePlugin) DeleteDTreeVolume(ctx context.Context, params map[string]interface{}) error {
+func (p *OceanstorDTreePlugin) DeleteDTreeVolume(ctx context.Context, dTreeName, parentName string) error {
 	if p == nil {
 		return errors.New("empty dtree plugin")
 	}
-	if params == nil {
-		return errors.New("empty parameters")
+	params := map[string]any{
+		"parentname": parentName,
+		"name":       dTreeName,
+		"vstoreid":   p.vStoreId,
 	}
-	params["vstoreid"] = p.vStoreId
-	params["parentname"] = p.parentName
 
 	return p.getDTreeObj().Delete(ctx, params)
 
@@ -137,12 +140,17 @@ func (p *OceanstorDTreePlugin) ExpandDTreeVolume(ctx context.Context,
 	spaceHardQuota = utils.TransK8SCapacity(spaceHardQuota, p.GetSectorSize())
 	err := dTree.Expand(ctx, parentName, dTreeName, p.vStoreId, spaceHardQuota)
 	if err != nil {
-		log.AddContext(ctx).Errorf("expand dTree volume failed, ")
-		return false, err
+		return false, fmt.Errorf("failed to expand dtree volume: %w", err)
 	}
 	log.AddContext(ctx).Infof("expand dTree volume success, parentName: %v, dTreeName: %v,"+
 		" vStoreId: %v, spaceHardQuota: %v", parentName, dTreeName, p.vStoreId, spaceHardQuota)
 	return false, nil
+}
+
+// AttachVolume attach volume to node and return storage mapping info.
+func (p *OceanstorDTreePlugin) AttachVolume(_ context.Context, _ string, parameters map[string]any) (map[string]any,
+	error) {
+	return attachDTreeVolume(parameters)
 }
 
 // DeleteVolume used to delete volume
@@ -165,7 +173,7 @@ func (p *OceanstorDTreePlugin) Validate(ctx context.Context, param map[string]in
 		return err
 	}
 
-	err = verifyOceanstorDTreeParam(ctx, param)
+	err = verifyDTreeParam(ctx, param, constants.OceanStorDtree)
 	if err != nil {
 		return err
 	}
@@ -182,40 +190,6 @@ func (p *OceanstorDTreePlugin) Validate(ctx context.Context, param map[string]in
 	}
 
 	cli.Logout(ctx)
-
-	return nil
-}
-
-func verifyOceanstorDTreeParam(ctx context.Context, config map[string]interface{}) error {
-	// verify storage
-	storage, exist := utils.ToStringWithFlag(config["storage"])
-	if !exist || storage != DTreeStorage {
-		msg := fmt.Sprintf("Verify storage: [%v] failed. \nstorage must be %s", config["storage"], DTreeStorage)
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-	// verify parameters
-	parameters, exist := config["parameters"].(map[string]interface{})
-	if !exist {
-		msg := fmt.Sprintf("Verify parameters: [%v] failed. \nparameters must be provided", config["parameters"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-
-	// verify parent name
-	parentName, exist := utils.ToStringWithFlag(parameters["parentname"])
-	if !exist || parentName == "" {
-		msg := fmt.Sprintf("Verify parentname: [%v] failed. \nParentname must be provided for "+
-			"oceanstor-dtree backend\n", parameters["parentname"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-
-	// verify protocol portals
-	_, _, err := verifyProtocolAndPortals(parameters)
-	if err != nil {
-		return pkgUtils.Errorf(ctx, "check nas parameter failed, err: %v", err)
-	}
 
 	return nil
 }
@@ -323,4 +297,14 @@ func (p *OceanstorDTreePlugin) ModifyVolume(ctx context.Context, volumeName stri
 	modifyType pkgVolume.ModifyVolumeType, param map[string]string) error {
 
 	return errors.New("not implement")
+}
+
+// SetParentName sets the parentName of Oceanstor DTree plugin
+func (p *OceanstorDTreePlugin) SetParentName(parentName string) {
+	p.parentName = parentName
+}
+
+// GetDTreeParentName gets the parent name of dtree plugin
+func (p *OceanstorDTreePlugin) GetDTreeParentName() string {
+	return p.parentName
 }

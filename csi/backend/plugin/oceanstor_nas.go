@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume/creator"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/version"
 )
 
 const (
@@ -84,7 +85,7 @@ func (p *OceanstorNasPlugin) Init(ctx context.Context, config map[string]interfa
 
 	var protocol string
 	var err error
-	protocol, p.portals, err = verifyProtocolAndPortals(parameters)
+	protocol, p.portals, err = verifyProtocolAndPortals(parameters, constants.OceanStorNas)
 	if err != nil {
 		log.AddContext(ctx).Errorf("check parameter failed, err: %v", err)
 		return err
@@ -98,8 +99,8 @@ func (p *OceanstorNasPlugin) Init(ctx context.Context, config map[string]interfa
 	}
 
 	// only Dorado V6 6.1.7 and later versions support this nfs+ feature.
-	if protocol == ProtocolNfsPlus && (!p.product.IsDoradoV6OrV7() ||
-		(p.product.IsDoradoV6() && p.cli.GetStorageVersion() < constants.MinVersionSupportNfsPlus)) {
+	versionComp := version.CompareVersions(p.cli.GetStorageVersion(), constants.MinVersionSupportNfsPlus)
+	if protocol == ProtocolNfsPlus && (!p.product.IsDoradoV6OrV7() || (p.product.IsDoradoV6() && versionComp == -1)) {
 		p.Logout(ctx)
 
 		return errors.New("current storage version doesn't support nfs+")
@@ -213,7 +214,7 @@ func (p *OceanstorNasPlugin) UpdatePoolCapabilities(ctx context.Context,
 func (p *OceanstorNasPlugin) getVstoreCapacity(ctx context.Context) (map[string]interface{}, error) {
 	// only Dorado V6 6.1.5 and later versions need to get vStore's capacity.
 	if !p.product.IsDoradoV6OrV7() ||
-		(p.product.IsDoradoV6() && p.cli.GetStorageVersion() < constants.DoradoV615) ||
+		(p.product.IsDoradoV6() && version.CompareVersions(p.cli.GetStorageVersion(), constants.DoradoV615) == -1) ||
 		p.cli.GetvStoreName() == "" {
 		return map[string]interface{}{}, nil
 	}
@@ -337,8 +338,11 @@ func (p *OceanstorNasPlugin) UpdateBackendCapabilities(ctx context.Context) (map
 	return capabilities, specifications, nil
 }
 
-func (p *OceanstorNasPlugin) updateHyperMetroCapability(ctx context.Context,
-	capabilities map[string]interface{}) error {
+func (p *OceanstorNasPlugin) updateHyperMetroCapability(ctx context.Context, capabilities map[string]any) error {
+	if capabilities == nil {
+		return nil
+	}
+
 	if p.product.IsDoradoV6OrV7() {
 		capabilities["SupportMetro"] = capabilities["SupportMetroNAS"]
 	}
@@ -394,11 +398,17 @@ func (p *OceanstorNasPlugin) updateHyperMetroCapability(ctx context.Context,
 }
 
 func (p *OceanstorNasPlugin) updateConsistentSnapshotCapability(capabilities, specifications map[string]any) error {
+	if capabilities == nil {
+		return nil
+	}
+
 	// only storage version gte DoradoV6 6.1.7 or DoradoV7 support consistent snapshot feature.
-	if p.product.IsDoradoV6() && p.cli.GetStorageVersion() >= supportConsistentSnapshotsMinVersion ||
-		p.product.IsDoradoV7() {
+	versionComp := version.CompareVersions(p.cli.GetStorageVersion(), supportConsistentSnapshotsMinVersion)
+	if p.product.IsDoradoV6() && versionComp != -1 || p.product.IsDoradoV7() {
 		capabilities["SupportConsistentSnapshot"] = true
-		specifications["ConsistentSnapshotLimits"] = ConsistentSnapshotsSpecification
+		if specifications != nil {
+			specifications["ConsistentSnapshotLimits"] = ConsistentSnapshotsSpecification
+		}
 		return nil
 	}
 
@@ -407,6 +417,10 @@ func (p *OceanstorNasPlugin) updateConsistentSnapshotCapability(capabilities, sp
 }
 
 func (p *OceanstorNasPlugin) updateReplicationCapability(capabilities map[string]interface{}) error {
+	if capabilities == nil {
+		return nil
+	}
+
 	if capabilities["SupportReplication"] == true && p.replicaRemotePlugin == nil {
 		capabilities["SupportReplication"] = false
 	}
@@ -474,10 +488,11 @@ func (p *OceanstorNasPlugin) UpdateSupportMetroByRemoteLicense(ctx context.Conte
 func (p *OceanstorNasPlugin) verifyOceanstorNasParam(ctx context.Context, config map[string]interface{}) error {
 	parameters, exist := config["parameters"].(map[string]interface{})
 	if !exist {
-		return pkgUtils.Errorf(ctx, "Verify parameters: [%v] failed. \nparameters must be provided", config["parameters"])
+		return pkgUtils.Errorf(ctx, "Verify parameters: [%v] failed. \nparameters must be provided",
+			config["parameters"])
 	}
 
-	_, _, err := verifyProtocolAndPortals(parameters)
+	_, _, err := verifyProtocolAndPortals(parameters, constants.OceanStorNas)
 	if err != nil {
 		return pkgUtils.Errorf(ctx, "check nas parameter failed, err: %v", err)
 	}
@@ -515,13 +530,13 @@ func (p *OceanstorNasPlugin) Validate(ctx context.Context, param map[string]inte
 }
 
 // DeleteDTreeVolume used to delete DTree volume
-func (p *OceanstorNasPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
-	return errors.New("not implement")
+func (p *OceanstorNasPlugin) DeleteDTreeVolume(_ context.Context, _ string, _ string) error {
+	return errors.New("fusion storage does not support DTree feature")
 }
 
 // ExpandDTreeVolume used to expand DTree volume
 func (p *OceanstorNasPlugin) ExpandDTreeVolume(context.Context, string, string, int64) (bool, error) {
-	return false, errors.New("not implement")
+	return false, errors.New("fusion storage does not support DTree feature")
 }
 
 // ModifyVolume used to modify volume hyperMetro status

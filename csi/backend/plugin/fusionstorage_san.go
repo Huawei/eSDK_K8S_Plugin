@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -302,7 +302,7 @@ func (p *FusionStorageSanPlugin) Validate(ctx context.Context, param map[string]
 	}
 
 	// Login verification
-	cli := client.NewClient(ctx, clientConfig)
+	cli := client.NewIRestClient(ctx, clientConfig)
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -71,11 +71,11 @@ func VerifyQos(ctx context.Context, qosConfig string) (map[string]int, error) {
 
 // QoS provides qos client
 type QoS struct {
-	cli *client.RestClient
+	cli client.IRestClient
 }
 
 // NewQoS inits a new qos client
-func NewQoS(cli *client.RestClient) *QoS {
+func NewQoS(cli client.IRestClient) *QoS {
 	return &QoS{
 		cli: cli,
 	}

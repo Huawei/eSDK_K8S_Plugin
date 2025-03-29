@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -281,7 +281,7 @@ func verifyOceandiskProtocolParams(ctx context.Context, parameters map[string]in
 }
 
 // DeleteDTreeVolume used to delete DTree volume
-func (p *OceandiskSanPlugin) DeleteDTreeVolume(ctx context.Context, m map[string]interface{}) error {
+func (p *OceandiskSanPlugin) DeleteDTreeVolume(_ context.Context, _ string, _ string) error {
 	return errors.New("oceandisk does not support dtree feature")
 }
 

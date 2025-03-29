@@ -89,6 +89,9 @@ func compareConnectorOptions(envCfg *config.AppConfig) error {
 		deviceCleanupTimeout: defaultCleanupTimeout,
 		scanVolumeTimeout:    defaultScanVolumeTimeout,
 		connectorThreads:     defaultConnectorThreads,
+		allPathOnline:        false,
+		execCommandTimeout:   0,
+		enableRoCEConnect:    true,
 	}
 
 	if !reflect.DeepEqual(expectConnectorOptions, actuallyConnectorOptions) {

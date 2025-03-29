@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -20,9 +20,15 @@ import "errors"
 // FileType defines file type
 type FileType string
 
-const (
+var (
+	// CSIVersion defines version for CSI, and it will be assigned value dynamic at build time
+	CSIVersion string
+
 	// ProviderVersion defines provider version
-	ProviderVersion = "4.6.0"
+	ProviderVersion = CSIVersion
+)
+
+const (
 	// ProviderVendorName defines provider vendor name
 	ProviderVendorName = "Huawei"
 	// EndpointDirPermission defines permission of endpoint dir
@@ -80,11 +86,18 @@ const (
 	FusionAllocUnitBytes = 1024 * 1024
 	// FusionFileCapacityUnit default is 1024 Bytes, it is the capacity unit for FusionStorage
 	FusionFileCapacityUnit int64 = 1024
+	// FusionDTreeCapacityUnit default is 1 Bytes, it is the capacity unit for FusionStorage DTree quota
+	FusionDTreeCapacityUnit int64 = 1
 
 	// DefaultIntBase is the default value of int base
 	DefaultIntBase = 10
 	// DefaultIntBitSize is the default value of bit size
 	DefaultIntBitSize = 64
+
+	// DTreeParentKey is the key of DTree parent name parameter
+	DTreeParentKey = "dTreeParentName"
+	// DisableVerifyCapacityKey is the key of disableVerifyCapacity parameter
+	DisableVerifyCapacityKey = "disableVerifyCapacity"
 )
 
 var (

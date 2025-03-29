@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -94,14 +94,10 @@ func TestExpandWithNormal(t *testing.T) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
-				return map[string]interface{}{
-					"id":               "522@2",
-					"space_hard_quota": float64(2147483648),
-					"space_soft_quota": float64(18446744073709551615),
-				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			}).ApplyMethodReturn(testClient, "QueryQuotaByFsId",
+			&client.QueryQuotaResponse{
+				Id: "522@2", SpaceHardQuota: 2147483648, SpaceSoftQuota: 18446744073709551615,
+			}, nil).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
 			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
 				_, exitId := param["id"]
 				_, exitHardQuota := param["space_hard_quota"]
@@ -124,14 +120,10 @@ func TestExpandWithFileSystemNotExit(t *testing.T) {
 		p := gomonkey.ApplyMethod(reflect.TypeOf(testClient), "GetFileSystemByName",
 			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
 				return nil, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
-				return map[string]interface{}{
-					"id":               "522@2",
-					"space_hard_quota": float64(2147483648),
-					"space_soft_quota": float64(18446744073709551615),
-				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			}).ApplyMethodReturn(testClient, "QueryQuotaByFsId",
+			&client.QueryQuotaResponse{
+				Id: "522@2", SpaceHardQuota: 2147483648, SpaceSoftQuota: 18446744073709551615,
+			}, nil).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
 			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
 				_, exitId := param["id"]
 				_, exitHardQuota := param["space_hard_quota"]
@@ -156,13 +148,10 @@ func TestExpandWithQuotaIdNotExist(t *testing.T) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
-				return map[string]interface{}{
-					"space_hard_quota": float64(2147483648),
-					"space_soft_quota": float64(18446744073709551615),
-				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			}).ApplyMethodReturn(testClient, "QueryQuotaByFsId",
+			&client.QueryQuotaResponse{
+				SpaceHardQuota: 2147483648, SpaceSoftQuota: 18446744073709551615,
+			}, nil).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
 			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
 				_, exitId := param["id"]
 				_, exitHardQuota := param["space_hard_quota"]
@@ -187,21 +176,17 @@ func TestExpandWhenHardQuotaOrSoftQuotaNotExist(t *testing.T) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
-				return map[string]interface{}{
-					"id": "522@2",
-				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
-				_, exitId := param["id"]
-				_, exitHardQuota := param["space_hard_quota"]
-				_, exitSoftQuota := param["space_soft_quota"]
-				if exitId && (exitSoftQuota || exitHardQuota) {
-					return nil
-				}
-				return errors.New("fail")
-			})
+			}).ApplyMethodReturn(testClient, "QueryQuotaByFsId", &client.QueryQuotaResponse{Id: "522@2"}, nil).
+			ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+				func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
+					_, exitId := param["id"]
+					_, exitHardQuota := param["space_hard_quota"]
+					_, exitSoftQuota := param["space_soft_quota"]
+					if exitId && (exitSoftQuota || exitHardQuota) {
+						return nil
+					}
+					return errors.New("fail")
+				})
 		defer p.Reset()
 
 		nas := NewNAS(testClient)
@@ -217,22 +202,20 @@ func TestExpandWhenHardQuotaNotExist(t *testing.T) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
-				return map[string]interface{}{
-					"id":               "522@2",
-					"space_hard_quota": float64(18446744073709551615),
-				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
-				_, exitId := param["id"]
-				_, exitHardQuota := param["space_hard_quota"]
-				_, exitSoftQuota := param["space_soft_quota"]
-				if exitId && (exitSoftQuota || exitHardQuota) {
-					return nil
-				}
-				return errors.New("fail")
-			})
+			}).ApplyMethodReturn(testClient, "QueryQuotaByFsId", &client.QueryQuotaResponse{
+			Id:             "522@2",
+			SpaceHardQuota: 18446744073709551615,
+		}, nil).
+			ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+				func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
+					_, exitId := param["id"]
+					_, exitHardQuota := param["space_hard_quota"]
+					_, exitSoftQuota := param["space_soft_quota"]
+					if exitId && (exitSoftQuota || exitHardQuota) {
+						return nil
+					}
+					return errors.New("fail")
+				})
 		defer p.Reset()
 
 		nas := NewNAS(testClient)
@@ -248,22 +231,21 @@ func TestExpandWithSoftQuotaNotExist(t *testing.T) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
-				return map[string]interface{}{
-					"id":               "522@2",
-					"space_soft_quota": float64(18446744073709551615),
-				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
-			func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
-				_, exitId := param["id"]
-				_, exitHardQuota := param["space_hard_quota"]
-				_, exitSoftQuota := param["space_soft_quota"]
-				if exitId && (exitSoftQuota || exitHardQuota) {
-					return nil
-				}
-				return errors.New("fail")
-			})
+			}).ApplyMethodReturn(testClient, "QueryQuotaByFsId",
+			&client.QueryQuotaResponse{
+				Id:             "522@2",
+				SpaceHardQuota: 18446744073709551615,
+			}, nil).
+			ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+				func(_ *client.RestClient, _ context.Context, param map[string]interface{}) error {
+					_, exitId := param["id"]
+					_, exitHardQuota := param["space_hard_quota"]
+					_, exitSoftQuota := param["space_soft_quota"]
+					if exitId && (exitSoftQuota || exitHardQuota) {
+						return nil
+					}
+					return errors.New("fail")
+				})
 		defer p.Reset()
 
 		nas := NewNAS(testClient)
@@ -279,14 +261,12 @@ func TestExpandWithUpdateQuotaFail(t *testing.T) {
 				return map[string]interface{}{
 					"id": float64(522),
 				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "GetQuotaByFileSystemById",
-			func(_ *client.RestClient, _ context.Context, _ string) (map[string]interface{}, error) {
-				return map[string]interface{}{
-					"id":               "522@2",
-					"space_hard_quota": float64(2147483648),
-					"space_soft_quota": float64(18446744073709551615),
-				}, nil
-			}).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
+			}).ApplyMethodReturn(testClient, "QueryQuotaByFsId",
+			&client.QueryQuotaResponse{
+				Id:             "522@2",
+				SpaceHardQuota: 2147483648,
+				SpaceSoftQuota: 18446744073709551615,
+			}, nil).ApplyMethod(reflect.TypeOf(testClient), "UpdateQuota",
 			func(_ *client.RestClient, _ context.Context, _ map[string]interface{}) error {
 				return errors.New("fail")
 			})
@@ -371,4 +351,44 @@ func TestDeleteConvergedQoSByFsName(t *testing.T) {
 		err := nas.deleteConvergedQoSByFsName(ctx, "mock-fs-name")
 		require.NoError(t, err)
 	})
+}
+
+func TestNAS_setSize(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	nas := NewNAS(testClient)
+	testFsName := "test-fs-name"
+	var validQuota uint64 = 1024 * 1024
+	var otherQuotaValue uint64 = 1024 * 1024 * 1024
+	tests := []struct {
+		name     string
+		quota    *client.QueryQuotaResponse
+		wantSize uint64
+	}{
+		{
+			name:     "only hard quota",
+			quota:    &client.QueryQuotaResponse{SpaceHardQuota: validQuota, SpaceSoftQuota: quotaInvalidValue},
+			wantSize: validQuota,
+		},
+		{
+			name:     "only soft quota",
+			quota:    &client.QueryQuotaResponse{SpaceHardQuota: quotaInvalidValue, SpaceSoftQuota: validQuota},
+			wantSize: validQuota,
+		},
+		{
+			name:     "hard quota and soft quota",
+			quota:    &client.QueryQuotaResponse{SpaceHardQuota: validQuota, SpaceSoftQuota: otherQuotaValue},
+			wantSize: validQuota,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// action
+			got, err := nas.setSize(ctx, testFsName, tt.quota)
+
+			// assert
+			require.NoError(t, err)
+			require.Equal(t, int64(tt.wantSize), got.GetSize())
+		})
+	}
 }

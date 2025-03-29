@@ -23,6 +23,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 )
 
 const volumeIdIndex = "volumeId"
@@ -39,6 +41,21 @@ func (k *KubeClient) GetVolumeAttrByVolumeId(volumeId string) (map[string]string
 	}
 
 	return volume.Spec.CSI.VolumeAttributes, nil
+}
+
+// GetDTreeParentNameByVolumeId returns dDTreeParentname field of PV by volume id
+func (k *KubeClient) GetDTreeParentNameByVolumeId(volumeId string) (string, error) {
+	volumeAttrs, err := k.GetVolumeAttrByVolumeId(volumeId)
+	if err != nil {
+		return "", fmt.Errorf("failed to get volume atrributes by volume id %q: %v", volumeId, err)
+	}
+
+	parentname, ok := volumeAttrs[constants.DTreeParentKey]
+	if !ok {
+		return "", fmt.Errorf("dTreeParentName field of volume %q is not exist", volumeId)
+	}
+
+	return parentname, nil
 }
 
 // volumeIdKeyFunc is a default index function that indexes based on volume id

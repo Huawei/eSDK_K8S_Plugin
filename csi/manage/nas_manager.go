@@ -23,6 +23,7 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -30,6 +31,7 @@ import (
 
 // NasManager implements VolumeManager interface
 type NasManager struct {
+	storage         string
 	protocol        string
 	portals         []string
 	metroPortals    []string
@@ -37,21 +39,9 @@ type NasManager struct {
 	Conn            connector.VolumeConnector
 }
 
-// NewNasManager build a nas manager instance according to the protocol
-func NewNasManager(ctx context.Context,
-	protocol, dTreeParentName string, portals, metroPortals []string) (VolumeManager, error) {
-	return &NasManager{
-		protocol:        protocol,
-		portals:         portals,
-		metroPortals:    metroPortals,
-		dTreeParentName: dTreeParentName,
-		Conn:            getConnectorByProtocol(ctx, protocol),
-	}, nil
-}
-
 // StageVolume stage volume
 func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) error {
-	if m.dTreeParentName != "" {
+	if m.storage == constants.OceanStorDtree || m.storage == constants.FusionDTree {
 		log.AddContext(ctx).Infoln("dtree needn't to stage volume")
 		return nil
 	}
@@ -96,10 +86,11 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 // UnStageVolume for nas volumes, unstage is only umount the staging target path
 func (m *NasManager) UnStageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) error {
-	if m.dTreeParentName != "" {
+	if m.storage == constants.OceanStorDtree || m.storage == constants.FusionDTree {
 		log.AddContext(ctx).Infoln("dtree needn't to unstage volume")
 		return nil
 	}
+
 	return Unmount(ctx, req.GetStagingTargetPath())
 }
 

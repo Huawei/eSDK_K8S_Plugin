@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -47,8 +47,9 @@ type StoragePlugin interface {
 	// Validate used to check parameters, include login verification
 	Validate(context.Context, map[string]interface{}) error
 
-	DeleteDTreeVolume(context.Context, map[string]interface{}) error
+	DeleteDTreeVolume(context.Context, string, string) error
 	ExpandDTreeVolume(context.Context, string, string, int64) (bool, error)
+	GetDTreeParentName() string
 
 	// SetOnline sets the online status of plugin
 	SetOnline(bool)
@@ -111,4 +112,9 @@ func (p *basePlugin) SetOnline(online bool) {
 // GetOnline gets the online status of plugin
 func (p *basePlugin) GetOnline() bool {
 	return p.online
+}
+
+// GetDTreeParentName gets the parent name of dtree plugin
+func (p *basePlugin) GetDTreeParentName() string {
+	return ""
 }

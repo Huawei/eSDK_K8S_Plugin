@@ -536,7 +536,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-controller
-          image: storage-backend-controller:4.6.0
+          image: storage-backend-controller:{{csi-version}}
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CSI_NAMESPACE
@@ -575,7 +575,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-sidecar
-          image: storage-backend-sidecar:4.6.0
+          image: storage-backend-sidecar:{{csi-version}}
           imagePullPolicy: "IfNotPresent"
           env:
             - name: DRCSI_ENDPOINT
@@ -612,7 +612,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:4.6.0
+          image: huawei-csi:{{csi-version}}
           imagePullPolicy: "IfNotPresent"
           args:
             - "--endpoint=$(CSI_ENDPOINT)"

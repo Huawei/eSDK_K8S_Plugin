@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -71,11 +71,14 @@ func (p *FusionStorageNasPlugin) Init(ctx context.Context, config map[string]int
 	return nil
 }
 
-func (p *FusionStorageNasPlugin) updateNasCapacity(ctx context.Context,
-	params, parameters map[string]interface{}) error {
+func (p *FusionStorageNasPlugin) updateNasCapacity(ctx context.Context, params, parameters map[string]any) error {
 	size, exist := parameters["size"].(int64)
 	if !exist {
 		return utils.Errorf(ctx, "the size does not exist in parameters %v", parameters)
+	}
+
+	if params == nil {
+		return nil
 	}
 	params["capacity"] = utils.RoundUpSize(size, constants.FusionFileCapacityUnit)
 	return nil
@@ -205,7 +208,7 @@ func (p *FusionStorageNasPlugin) Validate(ctx context.Context, param map[string]
 	}
 
 	// Login verification
-	cli := client.NewClient(ctx, clientConfig)
+	cli := client.NewIRestClient(ctx, clientConfig)
 	err = cli.ValidateLogin(ctx)
 	if err != nil {
 		return err

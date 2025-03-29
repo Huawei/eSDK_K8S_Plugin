@@ -83,23 +83,23 @@ func (cli *OceanstorClient) GetvStoreByName(ctx context.Context, name string) (m
 
 // GetVStorePairs used for get vStore pairs
 func (cli *OceanstorClient) GetVStorePairs(ctx context.Context) ([]interface{}, error) {
-	resp, err := cli.Get(ctx, "/vstore_pair?RETYPE=1", nil)
+	resp, err := cli.Get(ctx, "/vstore_pair?REPTYPE=1", nil)
 	if err != nil {
 		return nil, err
 	}
 
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		return nil, fmt.Errorf("Get vstore pair by reType error: %d", code)
+	if err = resp.AssertErrorCode(); err != nil {
+		return nil, err
 	}
+
 	if resp.Data == nil {
-		log.AddContext(ctx).Debugln("vstore pairs with reType does not exist")
-		return nil, nil
+		log.AddContext(ctx).Debugln("vstore pairs with repType does not exist")
+		return []interface{}{}, nil
 	}
 
 	respData, ok := resp.Data.([]interface{})
 	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert respData to arr failed, data: %v", resp.Data)
+		return nil, fmt.Errorf("convert respData to arr failed, data: %v", resp.Data)
 	}
 
 	return respData, nil

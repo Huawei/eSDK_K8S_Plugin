@@ -168,7 +168,8 @@ func CheckParam(ctx context.Context, req *csi.NodeStageVolumeRequest) error {
 		if fsType != "" && !utils.IsContain(constants.FileType(fsType),
 			[]constants.FileType{constants.Ext2, constants.Ext3, constants.Ext4, constants.Xfs}) {
 			return utils.Errorf(ctx, "fsType %v is not correct. [%v, %v, %v, %v] are support,"+
-				" Please check the storage class", fsType, constants.Ext2, constants.Ext3, constants.Ext4, constants.Xfs)
+				" Please check the storage class", fsType, constants.Ext2, constants.Ext3, constants.Ext4,
+				constants.Xfs)
 		}
 	default:
 		return errors.New("invalid volume capability")
@@ -244,14 +245,36 @@ func NewManager(ctx context.Context, backendName string) (VolumeManager, error) 
 		if len(backend.portals) != 1 {
 			return nil, utils.Errorf(ctx, "portals must be one when protocol is %s", plugin.ProtocolNfs)
 		}
-		return NewNasManager(ctx, backend.protocol, backend.dTreeParentName, backend.portals[0:1], []string{})
+
+		return &NasManager{
+			storage:         backend.storage,
+			protocol:        backend.protocol,
+			portals:         backend.portals[0:1],
+			metroPortals:    []string{},
+			dTreeParentName: backend.dTreeParentName,
+			Conn:            getConnectorByProtocol(ctx, backend.protocol),
+		}, nil
 	case plugin.ProtocolNfsPlus:
 		if len(backend.portals) == 0 {
 			return nil, utils.Errorf(ctx, "portals can not be blank when protocol is %s", plugin.ProtocolNfsPlus)
 		}
-		return NewNasManager(ctx, backend.protocol, backend.dTreeParentName, backend.portals, backend.metroPortals)
+		return &NasManager{
+			storage:         backend.storage,
+			protocol:        backend.protocol,
+			portals:         backend.portals,
+			metroPortals:    backend.metroPortals,
+			dTreeParentName: backend.dTreeParentName,
+			Conn:            getConnectorByProtocol(ctx, backend.protocol),
+		}, nil
 	case plugin.ProtocolDpc:
-		return NewNasManager(ctx, backend.protocol, backend.dTreeParentName, []string{}, []string{})
+		return &NasManager{
+			storage:         backend.storage,
+			protocol:        backend.protocol,
+			portals:         []string{},
+			metroPortals:    []string{},
+			dTreeParentName: backend.dTreeParentName,
+			Conn:            getConnectorByProtocol(ctx, backend.protocol),
+		}, nil
 	default:
 		return NewSanManager(ctx, backend.protocol)
 	}
@@ -304,13 +327,13 @@ func GetBackendConfig(ctx context.Context, backendName string) (*BackendConfig, 
 		metroPortals = pkgUtils.ConvertToStringSlice(metroPortalList)
 	}
 
-	storage, ok := backendInfo["storage"]
+	storage, ok := backendInfo["storage"].(string)
 	var dTreeParentName string
-	if ok && storage == "oceanstor-dtree" {
+	if ok && (storage == constants.OceanStorDtree || storage == constants.FusionDTree) {
 		dTreeParentName, _ = utils.ToStringWithFlag(parameters["parentname"])
 	}
 
-	return &BackendConfig{protocol: protocol, portals: portals, metroPortals: metroPortals,
+	return &BackendConfig{storage: storage, protocol: protocol, portals: portals, metroPortals: metroPortals,
 		dTreeParentName: dTreeParentName}, nil
 }
 
@@ -361,29 +384,28 @@ func PublishFilesystem(ctx context.Context, req *csi.NodePublishVolumeRequest) e
 		return err
 	}
 
-	protocol := plugin.ProtocolNfs
-	opts := []string{"bind"}
+	var opts []string
 	// process volume with type is dTree
-	if bk.dTreeParentName != "" {
-		sourcePath = bk.portals[0] + ":/" + bk.dTreeParentName + "/" + volumeName
-		protocol = bk.protocol
-		if req.GetVolumeCapability() != nil && req.GetVolumeCapability().GetMount() != nil &&
-			req.GetVolumeCapability().GetMount().GetMountFlags() != nil {
-			opts = req.GetVolumeCapability().GetMount().GetMountFlags()
-		} else {
-			opts = make([]string, 0)
+	if bk.storage == constants.OceanStorDtree || bk.storage == constants.FusionDTree {
+		sourcePath, err = getDTreeSourcePath(bk, req, volumeName)
+		if err != nil {
+			return err
+		}
+
+		opts = getDTreeMountOptions(req)
+	} else {
+		opts = append(opts, "bind")
+		if req.GetReadonly() {
+			opts = append(opts, "ro")
 		}
 	}
-	if req.GetReadonly() {
-		opts = append(opts, "ro")
-	}
 
-	connectInfo := map[string]interface{}{
+	connectInfo := map[string]any{
 		"srcType":    connector.MountFSType,
 		"sourcePath": sourcePath,
 		"targetPath": targetPath,
 		"mountFlags": strings.Join(opts, ","),
-		"protocol":   protocol,
+		"protocol":   bk.protocol,
 		"portals":    bk.portals,
 	}
 
@@ -394,6 +416,55 @@ func PublishFilesystem(ctx context.Context, req *csi.NodePublishVolumeRequest) e
 
 	log.AddContext(ctx).Infof("Volume %s is node published to %s", volumeId, targetPath)
 	return nil
+}
+
+func getDTreeMountOptions(req *csi.NodePublishVolumeRequest) []string {
+	var opts []string
+	if req.GetVolumeCapability() != nil && req.GetVolumeCapability().GetMount() != nil &&
+		req.GetVolumeCapability().GetMount().GetMountFlags() != nil {
+		opts = req.GetVolumeCapability().GetMount().GetMountFlags()
+	}
+
+	volumeAccessMode := req.GetVolumeCapability().GetAccessMode().GetMode()
+	accessMode := utils.GetAccessModeType(volumeAccessMode)
+	if accessMode == "ReadOnly" {
+		opts = append(opts, "ro")
+	}
+
+	return opts
+}
+
+func getDTreeSourcePath(bk *BackendConfig, req *csi.NodePublishVolumeRequest,
+	volumeName string) (string,
+	error) {
+	parentName := bk.dTreeParentName
+
+	if publishInfo, exist := req.GetPublishContext()["publishInfo"]; exist {
+		dtreePublishInfo := &DTreePublishInfo{}
+		err := json.Unmarshal([]byte(publishInfo), dtreePublishInfo)
+		if err != nil {
+			return "", fmt.Errorf("failed to unmarshal dtree publish info: %w", err)
+		}
+
+		if dtreePublishInfo.DTreeParentName != "" {
+			parentName = dtreePublishInfo.DTreeParentName
+		}
+	}
+
+	if parentName == "" {
+		return "", fmt.Errorf("failed to get dtree parent name," +
+			" please ensure that the attachRequired parameter is enabled")
+	}
+
+	switch bk.protocol {
+	case constants.ProtocolNfs, plugin.ProtocolNfsPlus:
+		return bk.portals[0] + ":/" + parentName + "/" + volumeName, nil
+	case constants.ProtocolDpc:
+		return "/" + parentName + "/" + volumeName, nil
+	default:
+		return "", fmt.Errorf("dtree only support %q or %q protocol, but got %q",
+			constants.ProtocolNfs, constants.ProtocolDpc, bk.protocol)
+	}
 }
 
 func getConnectorByProtocol(ctx context.Context, protocol string) connector.VolumeConnector {

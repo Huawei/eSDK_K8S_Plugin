@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
@@ -60,6 +61,11 @@ func (b *BackendSelector) SelectPoolPair(ctx context.Context, requestSize int64,
 	if err != nil {
 		return nil, err
 	}
+	localPools, err = selectDtreePool(params, localPools)
+	if err != nil {
+		return nil, err
+	}
+
 	var poolPairs []model.SelectPoolPair
 	for _, localPool := range localPools {
 		remotePool, err := b.SelectRemotePool(ctx, requestSize, localPool.Parent, params)
@@ -77,6 +83,30 @@ func (b *BackendSelector) SelectPoolPair(ctx context.Context, requestSize int64,
 	}
 
 	return &model.SelectPoolPair{Local: local, Remote: remote}, nil
+}
+
+func selectDtreePool(params map[string]any, pools []*model.StoragePool) ([]*model.StoragePool, error) {
+	volumeType, _ := utils.GetValue[string](params, "volumeType")
+	if volumeType != "dtree" {
+		return pools, nil
+	}
+	scParentName, _ := utils.GetValue[string](params, "parentname")
+	if scParentName != "" {
+		return pools, nil
+	}
+
+	var dtreePools []*model.StoragePool
+	for _, pool := range pools {
+		if pool.Plugin.GetDTreeParentName() != "" {
+			dtreePools = append(dtreePools, pool)
+		}
+	}
+
+	if len(dtreePools) == 0 {
+		return nil, errors.New("no found any available dtree backend for volume")
+	}
+
+	return dtreePools, nil
 }
 
 // SelectLocalPool select local pool

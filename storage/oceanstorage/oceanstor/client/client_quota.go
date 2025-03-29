@@ -33,8 +33,8 @@ const (
 	// QuotaTypeUserGroup defines user group type
 	QuotaTypeUserGroup int = 3
 
-	// SpaceUnitTypeGB defines GB type of space unit
-	SpaceUnitTypeGB int = 3
+	// SpaceUnitTypeBytes defines bytes type of space unit
+	SpaceUnitTypeBytes int = 0
 
 	// ForceFlagTrue defines force flag true
 	ForceFlagTrue bool = true

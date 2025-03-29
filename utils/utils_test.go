@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,9 +19,11 @@ package utils
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"reflect"
 	"testing"
+	"unsafe"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
@@ -303,25 +305,25 @@ func TestIsCapacityAvailable_Success(t *testing.T) {
 		{
 			name:     "Empty_Value",
 			size:     validSize,
-			params:   map[string]any{"disableVerifyCapacity": ""},
+			params:   map[string]any{constants.DisableVerifyCapacityKey: ""},
 			hasError: false,
 		},
 		{
 			name:     "False",
 			size:     validSize,
-			params:   map[string]any{"disableVerifyCapacity": "false"},
+			params:   map[string]any{constants.DisableVerifyCapacityKey: "false"},
 			hasError: false,
 		},
 		{
 			name:     "True_Valid",
 			size:     validSize,
-			params:   map[string]any{"disableVerifyCapacity": "false"},
+			params:   map[string]any{constants.DisableVerifyCapacityKey: "false"},
 			hasError: false,
 		},
 		{
 			name:     "True_Not_Valid",
 			size:     notValidSize,
-			params:   map[string]any{"disableVerifyCapacity": "false"},
+			params:   map[string]any{constants.DisableVerifyCapacityKey: "false"},
 			hasError: true,
 		},
 	}
@@ -333,6 +335,36 @@ func TestIsCapacityAvailable_Success(t *testing.T) {
 
 			// assert
 			assert.Equal(t, c.hasError, err != nil)
+		})
+	}
+}
+
+func TestIsNil(t *testing.T) {
+	tests := []struct {
+		name string
+		val  any
+		want bool
+	}{
+		{name: "nil map", val: zeroValue[map[string]any](), want: true},
+		{name: "map has value", val: map[string]any{"key": 1}, want: false},
+		{name: "nil func", val: zeroValue[func()](), want: true},
+		{name: "func has value", val: func() {}, want: false},
+		{name: "nil chan", val: zeroValue[chan any](), want: true},
+		{name: "chan has value", val: make(chan any), want: false},
+		{name: "nil pointer", val: zeroValue[*int](), want: true},
+		{name: "pointer has value", val: &struct{}{}, want: false},
+		{name: "nil unsafe pointer", val: zeroValue[unsafe.Pointer](), want: true},
+		{name: "unsafe pointer has value", val: unsafe.Pointer(&struct{}{}), want: false},
+		{name: "nil interface", val: zeroValue[error](), want: true},
+		{name: "interface has value", val: io.EOF, want: false},
+		{name: "nil slice", val: zeroValue[[]int](), want: true},
+		{name: "nil slice", val: make([]int, 0), want: false},
+		{name: "base type", val: 0, want: false},
+		{name: "empty type of variable", val: nil, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsNil(tt.val))
 		})
 	}
 }

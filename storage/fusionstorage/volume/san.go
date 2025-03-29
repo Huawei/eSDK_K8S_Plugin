@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -43,11 +43,11 @@ const (
 
 // SAN provides san storage client
 type SAN struct {
-	cli *client.RestClient
+	cli client.IRestClient
 }
 
 // NewSAN inits a new san client
-func NewSAN(cli *client.RestClient) *SAN {
+func NewSAN(cli client.IRestClient) *SAN {
 	return &SAN{
 		cli: cli,
 	}
