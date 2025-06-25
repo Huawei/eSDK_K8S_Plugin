@@ -480,6 +480,10 @@ spec:
       {{ end }}
       hostNetwork: true
       serviceAccount: huawei-csi-controller
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: liveness-probe
           args:
