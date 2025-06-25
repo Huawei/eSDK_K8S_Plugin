@@ -16,6 +16,10 @@ images:
     snapshotter: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.0
     snapshotController: registry.k8s.io/sig-storage/snapshot-controller:v6.3.0
 
+# Name of image pull secrets for images bundled within eSDK
+imagePullSecrets: []
+# - name: imagepullsecretname
+
 # Default image pull policy for sidecar container images, support [IfNotPresent, Always, Never]
 sidecarImagePullPolicy: "IfNotPresent"
 
