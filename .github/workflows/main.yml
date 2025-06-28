@@ -33,6 +33,6 @@ jobs:
         body: TODO New Release.
         draft: true
         files: |
-          eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${{ steps.branch-names.outputs.tag }}_X86_64.zip
-          eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${{ steps.branch-names.outputs.tag }}_ARM_64.zip
-          eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${{ steps.branch-names.outputs.tag }}_PPC64LE_64.zip
+          eSDK_Storage_CSI_V${{ steps.branch-names.outputs.tag }}_X86_64.zip
+          eSDK_Storage_CSI_V${{ steps.branch-names.outputs.tag }}_ARM_64.zip
+          eSDK_Storage_CSI_V${{ steps.branch-names.outputs.tag }}_PPC64LE_64.zip
