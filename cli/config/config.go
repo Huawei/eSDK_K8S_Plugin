@@ -110,4 +110,7 @@ var (
 
 	// MaxNodeThreads the value of threads-max flag, set by options.WithMaxThreads()
 	MaxNodeThreads int
+
+	// AuthenticationMode the value of authenticationMode flag, set by options.WithAuthenticationMode().
+	AuthenticationMode string
 )

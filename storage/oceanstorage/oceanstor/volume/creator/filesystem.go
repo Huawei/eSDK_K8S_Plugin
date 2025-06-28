@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,10 +18,12 @@ package creator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgutils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -39,6 +41,7 @@ type FilesystemCreator struct {
 	fileSystemMode  string
 	unixPermissions string
 	workloadTypeID  string
+	advancedOptions string
 
 	createdFilesystem map[string]any
 	standbyRequest    map[string]any
@@ -55,6 +58,7 @@ func NewFsCreatorFromParams(cli client.OceanstorClientInterface,
 		fileSystemMode:    client.LocalFilesystemMode,
 		unixPermissions:   params.FsPermission(),
 		workloadTypeID:    params.WorkloadTypeID(),
+		advancedOptions:   params.AdvancedOptions(),
 		createdFilesystem: make(map[string]any),
 		standbyRequest:    make(map[string]any),
 	}
@@ -208,6 +212,16 @@ func (creator *FilesystemCreator) genCreateRequest(ctx context.Context, poolId s
 		}
 
 		req["workloadTypeId"] = uint32(id)
+	}
+
+	if creator.advancedOptions != "" {
+		advancedOptions := make(map[string]any)
+		err := json.Unmarshal([]byte(creator.advancedOptions), &advancedOptions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal advancedOptions parameters[%s] error: %v",
+				creator.advancedOptions, err)
+		}
+		req = pkgutils.CombineMap(advancedOptions, req)
 	}
 
 	return req, nil

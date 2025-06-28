@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,10 +19,11 @@ package connector
 
 import (
 	"context"
-	"strings"
+	"net"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils/lock"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -109,14 +110,19 @@ func DisConnectVolumeCommon(ctx context.Context,
 
 // CheckHostConnectivity used to check host connectivity
 func CheckHostConnectivity(ctx context.Context, portal string) bool {
-	const addrLength = 2
-	addr := strings.Split(portal, ":")
-	if len(addr) != addrLength {
-		log.AddContext(ctx).Errorf("the portal format is incorrect. %s", portal)
+	hostAddr, _, err := net.SplitHostPort(portal)
+	if err != nil {
+		log.AddContext(ctx).Errorf("failed to split host port from portal [%s]", portal)
 		return false
 	}
 
-	_, err := utils.ExecShellCmd(ctx, PingCommand, addr[0])
+	ipWrapper := iputils.NewIPWrapper(hostAddr)
+	if ipWrapper == nil {
+		log.AddContext(ctx).Errorf("hostAddr [%s] is not a valid ip address", hostAddr)
+		return false
+	}
+
+	_, err = utils.ExecShellCmd(ctx, ipWrapper.GetPingCommand(), hostAddr)
 	return err == nil
 }
 

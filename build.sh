@@ -22,7 +22,7 @@ VER=$1
 # [X86 ARM]
 PLATFORM=$2
 
-package_name="eSDK_Huawei_Storage_Kubernetes_CSI_Plugin_V${VER}_${PLATFORM}_64"
+package_name="eSDK_Storage_CSI_V${VER}_${PLATFORM}_64"
 
 echo "Start to make with Makefile"
 make -f Makefile VER=$1 PLATFORM=$2

@@ -97,12 +97,13 @@ func TestValidate(t *testing.T) {
 		}
 		urls := []interface{}{"127.0.0.1"}
 		config := map[string]interface{}{
-			"parameters":      parameters,
-			"urls":            urls,
-			"user":            "mock-user",
-			"secretName":      "mock-secretName",
-			"secretNamespace": "secretNamespace",
-			"backendID":       "mock-backendID",
+			"parameters":         parameters,
+			"urls":               urls,
+			"user":               "mock-user",
+			"secretName":         "mock-secretName",
+			"secretNamespace":    "secretNamespace",
+			"backendID":          "mock-backendID",
+			"authenticationMode": "ldap",
 		}
 
 		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.OceanstorClient{}),

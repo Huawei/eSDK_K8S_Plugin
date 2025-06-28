@@ -22,6 +22,9 @@ sidecarImagePullPolicy: "IfNotPresent"
 # Default image pull policy for Huawei plugin container images, support [IfNotPresent, Always, Never]
 huaweiImagePullPolicy: "IfNotPresent"
 
+# Uses secrets to pull images from private container image registry or repository
+imagePullSecrets: []
+
 # Namespace for installing huawei-csi-nodes and huawei-csi-controllers
 kubernetes:
   # the default value huawei-csi is recommended.
@@ -150,6 +153,9 @@ controller:
   #  - key: "node-role.kubernetes.io/control-plane"
   #    operator: "Exists"
 
+  # affinity: constrain which nodes your Pod can be scheduled on based on node labels
+  affinity: {}
+
 node:
   # maxVolumesPerNode: Defines the maximum number of volumes that can be used by a node.
   # Examples: 100
@@ -189,6 +195,9 @@ node:
 #    - key: "node-role.kubernetes.io/master"
 #      operator: "Exists"
 #      effect: "NoSchedule"
+
+  # affinity: constrain which nodes your Pod can be scheduled on based on node labels
+  affinity: {}
 
   # Node container probe port. The default port is 9800.
   # You can change the port to another port that is not occupied.
@@ -262,3 +271,117 @@ leaderElection:
   leaseDuration: 8s
   renewDeadline: 6s
   retryPeriod: 2s
+
+# The parameter service used to configure dual-IP protocol stack.
+# ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services
+service:
+  # ipFamilyPolicy: define huawei-csi-controller service IP policy
+  # Allowed values:
+  #   SingleStack: Single-stack service. The control plane allocates a cluster IP for the Service, using the first configured service cluster IP range.
+  #   PreferDualStack: Allocates both IPv4 and IPv6 cluster IPs for the Service when dual-stack is enabled. If dual-stack is not enabled or supported, it falls back to single-stack behavior.
+  #   RequireDualStack: Allocates Service .spec.clusterIPs from both IPv4 and IPv6 address ranges when dual-stack is enabled. If dual-stack is not enabled or supported, the Service API object creation fails.
+  # Default value: SingleStack
+  ipFamilyPolicy: SingleStack
+  # ipFamilies: indicate the list of supported IP protocols.
+  # Allowed values: the list of IP protocols, whose elements can contain only IPv4 and IPv6.
+  # Default value: -IPv4
+  ipFamilies:
+    - IPv4
+    # - IPv6
+
+# Specify the amount of CPU and memory resources that a container requires.
+resources:
+# To disable the default configuration, comment out the following section.
+  controller:
+    livenessProbe:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 128Mi
+    csiProvisioner:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    csiAttacher:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    csiResizer:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    csiSnapshotter:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    snapshotController:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    storageBackendController:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    storageBackendSidecar:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    huaweiCsiExtender:
+      limits:
+        cpu: 300m
+        memory: 512Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    huaweiCsiDriver:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+  node:
+    livenessProbe:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 128Mi
+    csiNodeDriverRegistrar:
+      limits:
+        cpu: 300m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    huaweiCsiDriver:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 50m
+        memory: 128Mi

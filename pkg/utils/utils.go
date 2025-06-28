@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -22,7 +22,9 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 
 	coreV1 "k8s.io/api/core/v1"
@@ -31,6 +33,7 @@ import (
 
 	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/finalizers"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -334,4 +337,25 @@ func CombineMap[K comparable, V any](dst map[K]V, src map[K]V) map[K]V {
 	}
 
 	return res
+}
+
+// CheckAuthenticationMode used to check authenticationMode
+func CheckAuthenticationMode(authMode string) bool {
+	authModes := []string{constants.AuthModeLocal, constants.AuthModeLDAP}
+	authMode = strings.ToLower(strings.TrimSpace(authMode))
+	if len(authMode) > 0 && !slices.Contains(authModes, authMode) {
+		return false
+	}
+
+	return true
+}
+
+// ConvertAuthenticationToScope used to convert authentication to scope
+func ConvertAuthenticationToScope(authMode string) string {
+	authMode = strings.ToLower(strings.TrimSpace(authMode))
+	if authMode == constants.AuthModeLDAP {
+		return constants.AuthModeScopeLDAP
+	}
+
+	return constants.AuthModeScopeLocal
 }

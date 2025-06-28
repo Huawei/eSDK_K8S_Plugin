@@ -169,6 +169,15 @@ func (p *FusionStoragePlugin) Logout(ctx context.Context) {
 	}
 }
 
+// ReLogin will refresh the user session of storage
+func (p *FusionStoragePlugin) ReLogin(ctx context.Context) error {
+	if p.cli == nil {
+		return nil
+	}
+
+	return p.cli.ReLogin(ctx)
+}
+
 func (p *FusionStoragePlugin) getNewClientConfig(ctx context.Context,
 	config map[string]interface{}) (*client.NewClientConfig, error) {
 	newClientConfig := &client.NewClientConfig{}

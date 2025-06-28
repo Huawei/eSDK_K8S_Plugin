@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -140,7 +140,7 @@ func (c *BaseCreator) CreateNfsShare(ctx context.Context, fsName, fsId, desc, vS
 		return "", nil
 	}
 
-	sharePath := utils.GetSharePath(fsName)
+	sharePath := utils.GetOriginSharePath(fsName)
 	share, err := c.cli.GetNfsShareByPath(ctx, sharePath, vStoreId)
 	if err != nil {
 		return "", fmt.Errorf("get nfs share by path %s error: %w", sharePath, err)

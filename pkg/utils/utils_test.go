@@ -1,5 +1,5 @@
 /*
- Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -22,12 +22,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prashantv/gostub"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	//"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
 	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -40,6 +45,8 @@ func TestMain(m *testing.M) {
 	log.MockInitLogging(logName)
 	defer log.MockStopLogging(logName)
 
+	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer getGlobalConfig.Reset()
 	m.Run()
 }
 
@@ -326,6 +333,63 @@ func TestCombineMap(t *testing.T) {
 			if got := CombineMap(tt.dst, tt.src); !reflect.DeepEqual(got, tt.want) {
 				require.Equal(t, tt.want, got)
 			}
+		})
+	}
+}
+
+func TestCheckAuthenticationMode(t *testing.T) {
+	//arrange
+	type testCase struct {
+		name         string
+		input        string
+		expectations bool
+	}
+
+	testCases := []testCase{
+		{name: "Test normal local case", input: "local", expectations: true},
+		{name: "Test normal ldap case", input: "ldap", expectations: true},
+		{name: "Test Upper local case", input: "LOCAL", expectations: true},
+		{name: "Test Upper ldap case", input: "LDAP", expectations: true},
+		{name: "Test containing spaces local case", input: " local ", expectations: true},
+		{name: "Test containing spaces ldap case", input: " ldap ", expectations: true},
+		{name: "Test no value case", input: "", expectations: true},
+		{name: "Test error case", input: "invalid", expectations: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			//active
+			result := CheckAuthenticationMode(tc.input)
+			//assert
+			assert.Equal(t, tc.expectations, result)
+		})
+	}
+}
+
+func TestConvertAuthenticationToScope(t *testing.T) {
+	//arrange
+	type testCase struct {
+		name         string
+		input        string
+		expectations string
+	}
+
+	testCases := []testCase{
+		{name: "Test normal local case", input: "local", expectations: constants.AuthModeScopeLocal},
+		{name: "Test normal ldap case", input: "ldap", expectations: constants.AuthModeScopeLDAP},
+		{name: "Test Upper local case", input: "LOCAL", expectations: constants.AuthModeScopeLocal},
+		{name: "Test Upper ldap case", input: "LDAP", expectations: constants.AuthModeScopeLDAP},
+		{name: "Test containing spaces local case", input: " local ", expectations: constants.AuthModeScopeLocal},
+		{name: "Test containing spaces ldap case", input: " ldap ", expectations: constants.AuthModeScopeLDAP},
+		{name: "Test no value case", input: "", expectations: constants.AuthModeScopeLocal},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			//active
+			result := ConvertAuthenticationToScope(tc.input)
+			//assert
+			assert.Equal(t, tc.expectations, result)
 		})
 	}
 }

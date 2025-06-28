@@ -1100,6 +1100,21 @@ func (mr *MockIRestClientMockRecorder) QueryQuotaByFsId(ctx, fsID any) *gomock.C
 		reflect.TypeOf((*MockIRestClient)(nil).QueryQuotaByFsId), ctx, fsID)
 }
 
+// ReLogin mocks base method.
+func (m *MockIRestClient) ReLogin(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReLogin", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReLogin indicates an expected call of ReLogin.
+func (mr *MockIRestClientMockRecorder) ReLogin(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReLogin", reflect.TypeOf((*MockIRestClient)(nil).ReLogin),
+		ctx)
+}
+
 // SetAccountId mocks base method.
 func (m *MockIRestClient) SetAccountId(ctx context.Context) error {
 	m.ctrl.T.Helper()

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/concurrent"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -67,7 +68,13 @@ func parseRoCEInfo(ctx context.Context, connectionProperties map[string]interfac
 
 	var availablePortals []string
 	for _, portal := range tgtPortals {
-		_, err = utils.ExecShellCmd(ctx, connector.PingCommand, portal)
+		ipWrapper := iputils.NewIPWrapper(portal)
+		if ipWrapper == nil {
+			log.AddContext(ctx).Errorf("portal [%s] is not a valid ip address", portal)
+			continue
+		}
+
+		_, err = utils.ExecShellCmd(ctx, ipWrapper.GetPingCommand(), portal)
 		if err != nil {
 			log.AddContext(ctx).Errorf("failed to check the host connectivity. %s", portal)
 			continue

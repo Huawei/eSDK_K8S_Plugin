@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/helper"
 	xuanwuV1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -177,6 +179,20 @@ func createSecretWithUid(claim xuanwuV1.StorageBackendClaim, uuid string) error 
 	}
 
 	secretClient := client.NewCommonCallHandler[corev1.Secret](config.Client)
+	_, oldSecretName := helper.SplitQualifiedName(claim.Spec.SecretMeta)
+	oldSecret, err := secretClient.QueryByName(claim.Namespace, oldSecretName)
+	if err != nil {
+		return err
+	}
+
+	if oldMod, ok := oldSecret.Data[constants.AuthenticationModeKey]; ok {
+		secretConfig.AuthenticationMode = string(oldMod)
+	}
+
+	if config.AuthenticationMode != "" {
+		secretConfig.AuthenticationMode = utils.ConvertAuthenticationToScope(config.AuthenticationMode)
+	}
+
 	return secretClient.Create(secretConfig.ToSecret())
 }
 
@@ -312,6 +328,12 @@ func (b *Backend) Create() error {
 	if err != nil {
 		return helper.LogErrorf("load backend failed: error: %v", err)
 	}
+
+	err = b.checkBackendConfig(creatingBackends)
+	if err != nil {
+		return helper.LogErrorf("failed to verify the backend file, error: %v", err)
+	}
+
 	notConfiguredBackends, err := b.preProcessBackend(creatingBackends)
 	if err != nil {
 		return helper.LogErrorf("pre process backend failed: error: %v", err)
@@ -567,4 +589,22 @@ func printBackendsStatusTable(statusList []*BackendConfiguration) {
 	}
 
 	helper.PrintWithTable(shows)
+}
+
+// checkBackendConfig is used to check the backend config
+func (b *Backend) checkBackendConfig(backends map[string]*BackendConfiguration) error {
+	var errConfig []string
+	for _, configuration := range backends {
+		result := utils.CheckAuthenticationMode(configuration.AuthenticationMode)
+		if !result {
+			errConfig = append(errConfig, configuration.Name)
+		}
+	}
+	if len(errConfig) > 0 {
+		return fmt.Errorf("the authentication mode is not supported. "+
+			"currently, only [%s,%s] authentication is supported. Check the [%s] configuration",
+			constants.AuthModeLocal, constants.AuthModeLDAP, strings.Join(errConfig, ", "))
+	}
+
+	return nil
 }

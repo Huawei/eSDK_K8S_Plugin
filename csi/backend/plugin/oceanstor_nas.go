@@ -150,8 +150,14 @@ func (p *OceanstorNasPlugin) CreateVolume(ctx context.Context, name string, para
 		}
 	}
 
-	params := getParams(ctx, name, parameters)
+	volumeName, err := p.getVolumeNameFromPVNameOrParameters(name, parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	params := getParams(ctx, volumeName, parameters)
 	params["metroDomainID"] = p.metroDomainID
+	params["pvName"] = name
 	nas := p.getNasObj()
 	volObj, err := nas.Create(ctx, params)
 	if err != nil {
@@ -511,6 +517,7 @@ func (p *OceanstorNasPlugin) Validate(ctx context.Context, param map[string]inte
 
 	clientConfig, err := getNewClientConfig(ctx, param)
 	if err != nil {
+		log.AddContext(ctx).Errorln("validate OceanstorNasPlugin parameters failed, err:", err.Error())
 		return err
 	}
 

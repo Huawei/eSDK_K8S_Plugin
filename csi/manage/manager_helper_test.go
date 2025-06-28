@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,11 +27,13 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/prashantv/gostub"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -441,4 +443,139 @@ func newManagerTest(t *testing.T, testCase testCaseStructForNewManager) {
 	if !reflect.DeepEqual(got, testCase.want) {
 		t.Errorf("NewManager() want manager = %+v, got manager = %+v", testCase.want, got)
 	}
+}
+
+func Test_generatePathPrefixByProtocol(t *testing.T) {
+	// arrange
+	portals := []struct {
+		name           string
+		protocol       string
+		portals        []string
+		wantPathPrefix string
+	}{
+		{
+			name:           "NFS IPv4 test",
+			protocol:       plugin.ProtocolNfs,
+			portals:        []string{"127.0.0.1"},
+			wantPathPrefix: "127.0.0.1:/",
+		},
+		{
+			name:           "NFS IPV6 test",
+			protocol:       plugin.ProtocolNfsPlus,
+			portals:        []string{"127::1"},
+			wantPathPrefix: "[127::1]:/",
+		},
+		{
+			name:           "DPC test",
+			protocol:       plugin.ProtocolDpc,
+			portals:        nil,
+			wantPathPrefix: "/",
+		},
+	}
+
+	for _, tt := range portals {
+		t.Run(tt.name, func(t *testing.T) {
+			// action
+			gotPathPrefix, gotErr := generatePathPrefixByProtocol(tt.protocol, tt.portals)
+			assert.Equal(t, gotErr, nil, "failed to generate path prefix, error: %v", gotErr)
+			// assert
+			if gotPathPrefix != tt.wantPathPrefix {
+				t.Errorf("Test_generatePathPrefixByProtocol() failed, "+
+					"gotPathPrefix = %v, wantPathPrefix = %v", gotPathPrefix, tt.wantPathPrefix)
+			}
+		})
+	}
+}
+
+func Test_generatePathPrefixByProtocol_WithErrors(t *testing.T) {
+	// arrange
+	portals := []struct {
+		name     string
+		protocol string
+		portals  []string
+		wantErr  error
+	}{
+		{
+			name:     "nil portal test",
+			protocol: plugin.ProtocolNfs,
+			portals:  nil,
+			wantErr:  errors.New("no portal provided for NFS or NFS+ protocol"),
+		},
+		{
+			name:     "invalid ip test",
+			protocol: plugin.ProtocolNfsPlus,
+			portals:  []string{"127::0:0::1"},
+			wantErr:  errors.New("portal [127::0:0::1] is not a valid ip address"),
+		},
+		{
+			name:     "nil protocol test",
+			protocol: "",
+			portals:  []string{"127::1"},
+			wantErr:  errors.New("protocol [] is not supported"),
+		},
+	}
+
+	for _, tt := range portals {
+		t.Run(tt.name, func(t *testing.T) {
+			// action
+			_, gotErr := generatePathPrefixByProtocol(tt.protocol, tt.portals)
+			// assert
+			assert.Equal(t, gotErr, tt.wantErr, "Test_generatePathPrefixByProtocol_WithErrors() "+
+				"failed, gotErr = %v, wantErr = %v", gotErr, tt.wantErr)
+		})
+	}
+}
+
+func Test_getDTreeSourcePath(t *testing.T) {
+	// arrange
+	backendConfigs := []struct {
+		name            string
+		bk              BackendConfig
+		wantErrContains string
+		wantSourcePath  string
+	}{
+		{
+			name: "success test",
+			bk: BackendConfig{
+				protocol:        plugin.ProtocolNfs,
+				portals:         []string{"127.0.0.1"},
+				dTreeParentName: "parentName",
+			},
+			wantErrContains: "",
+			wantSourcePath:  "127.0.0.1:/parentName/volume",
+		},
+		{
+			name: "error test",
+			bk: BackendConfig{
+				protocol:        plugin.ProtocolNfs,
+				portals:         nil,
+				dTreeParentName: "parentName",
+			},
+			wantErrContains: "generate dtree path prefix failed",
+			wantSourcePath:  "",
+		},
+	}
+	req := &csi.NodePublishVolumeRequest{}
+
+	// mock
+	mock := gomonkey.ApplyMethodReturn(req, "GetPublishContext", map[string]string{})
+
+	for _, tt := range backendConfigs {
+		t.Run(tt.name, func(t *testing.T) {
+			// action
+			gotSourcePath, gotErr := getDTreeSourcePath(&tt.bk, req, "volume")
+			// assert
+			if tt.wantErrContains == "" {
+				assert.NoError(t, gotErr)
+				assert.Equal(t, tt.wantSourcePath, gotSourcePath)
+			} else {
+				assert.ErrorContains(t, gotErr, tt.wantErrContains)
+			}
+		})
+	}
+
+	// cleanup
+	t.Cleanup(func() {
+		mock.Reset()
+	})
 }

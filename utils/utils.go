@@ -846,35 +846,6 @@ func IsDebugLog(method, url string, debugLogMap map[string]map[string]bool, regL
 	return false
 }
 
-// GetPasswordFromSecret used to get password from secret
-func GetPasswordFromSecret(ctx context.Context, SecretName, SecretNamespace string) (string, error) {
-	log.AddContext(ctx).Infof("Get password from secret: %s, ns: %s.", SecretName, SecretNamespace)
-	secret, err := app.GetGlobalConfig().K8sUtils.GetSecret(ctx, SecretName, SecretNamespace)
-	if err != nil {
-		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s] failed, error: [%v]",
-			SecretName, SecretNamespace, err)
-		log.AddContext(ctx).Errorln(msg)
-		return "", errors.New(msg)
-	}
-
-	if secret == nil || secret.Data == nil {
-		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s], but "+
-			"secret is nil or the data not exist in secret", SecretName, SecretNamespace)
-		log.AddContext(ctx).Errorln(msg)
-		return "", errors.New(msg)
-	}
-
-	password, exist := secret.Data["password"]
-	if !exist {
-		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s], but "+
-			"password field not exist in secret data", SecretName, SecretNamespace)
-		log.AddContext(ctx).Errorln(msg)
-		return "", errors.New(msg)
-	}
-
-	return string(password), nil
-}
-
 // GetCertFromSecret used to get cert from secret
 func GetCertFromSecret(ctx context.Context, SecretName, SecretNamespace string) ([]byte, error) {
 	log.AddContext(ctx).Infof("Get cert from secret: %s, ns: %s.", SecretName, SecretNamespace)

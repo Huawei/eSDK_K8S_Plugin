@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -147,9 +148,29 @@ func (cli *RoCEClient) AddRoCEInitiatorToHost(ctx context.Context, initiator, ho
 	return nil
 }
 
+func generateGetRoCEPortalUrlByIP(tgtPortal string) (string, error) {
+	ipWrapper := iputils.NewIPWrapper(tgtPortal)
+	if ipWrapper == nil {
+		return "", fmt.Errorf("tgtPortal %s is invalid", tgtPortal)
+	}
+
+	var url string
+	if ipWrapper.IsIPv4() {
+		url = fmt.Sprintf("/lif?filter=IPV4ADDR::%s", tgtPortal)
+	} else {
+		url = fmt.Sprintf("/lif?filter=IPV6ADDR::%s", strings.ReplaceAll(tgtPortal, ":", "\\:"))
+	}
+
+	return url, nil
+}
+
 // GetRoCEPortalByIP used for get RoCE portal by ip
 func (cli *RoCEClient) GetRoCEPortalByIP(ctx context.Context, tgtPortal string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/lif?filter=IPV4ADDR::%s", tgtPortal)
+	url, err := generateGetRoCEPortalUrlByIP(tgtPortal)
+	if err != nil {
+		return nil, err
+	}
+
 	resp, err := cli.Get(ctx, url, nil)
 	if err != nil {
 		return nil, err

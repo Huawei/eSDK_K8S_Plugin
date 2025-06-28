@@ -2,8 +2,8 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    api-approved.kubernetes.io: https://github.com/kubernetes-csi/external-snapshotter/pull/419
-    controller-gen.kubebuilder.io/version: v0.4.0
+    api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/814"
+    controller-gen.kubebuilder.io/version: v0.11.3
   creationTimestamp: null
   labels:
     provisioner: csi.huawei.com
@@ -91,9 +91,11 @@ spec:
         - jsonPath: .metadata.creationTimestamp
           name: Age
           type: date
+      # This indicates the v1beta1 version of the custom resource is deprecated.
+      # API requests to this version receive a warning in the server response.
       deprecated: true
-      deprecationWarning: snapshot.storage.k8s.io/v1beta1 VolumeSnapshotClass is deprecated;
-        use snapshot.storage.k8s.io/v1 VolumeSnapshotClass
+      # This overrides the default warning returned to clients making v1beta1 API requests.
+      deprecationWarning: "snapshot.storage.k8s.io/v1beta1 VolumeSnapshotClass is deprecated; use snapshot.storage.k8s.io/v1 VolumeSnapshotClass"
       name: v1beta1
       schema:
         openAPIV3Schema:
@@ -138,7 +140,7 @@ spec:
             - deletionPolicy
             - driver
           type: object
-      served: true
+      served: false
       storage: false
       subresources: { }
 status:
@@ -152,8 +154,8 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    api-approved.kubernetes.io: https://github.com/kubernetes-csi/external-snapshotter/pull/419
-    controller-gen.kubebuilder.io/version: v0.4.0
+    api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/814"
+    controller-gen.kubebuilder.io/version: v0.11.3
   creationTimestamp: null
   labels:
     provisioner: csi.huawei.com
@@ -238,7 +240,7 @@ spec:
                     snapshots, this field will automatically be filled in by the CSI
                     snapshotter sidecar with the "DeletionPolicy" field defined in the
                     corresponding VolumeSnapshotClass. For pre-existing snapshots, users
-                    MUST specify this field when creating the  VolumeSnapshotContent
+                    MUST specify this field when creating the VolumeSnapshotContent
                     object. Required.
                   enum:
                     - Delete
@@ -254,11 +256,6 @@ spec:
                   description: source specifies whether the snapshot is (or should be)
                     dynamically provisioned or already exists, and just requires a Kubernetes
                     object representation. This field is immutable after creation. Required.
-                  oneOf:
-                    - required:
-                        - snapshotHandle
-                    - required:
-                        - volumeHandle
                   properties:
                     snapshotHandle:
                       description: snapshotHandle specifies the CSI "snapshot_id" of
@@ -272,6 +269,15 @@ spec:
                         This field is immutable.
                       type: string
                   type: object
+                  oneOf:
+                    - required: ["snapshotHandle"]
+                    - required: ["volumeHandle"]
+                sourceVolumeMode:
+                  description: SourceVolumeMode is the mode of the volume whose snapshot
+                    is taken. Can be either “Filesystem” or “Block”. If not specified,
+                    it indicates the source volume's mode is unknown. This field is
+                    immutable. This field is an alpha field.
+                  type: string
                 volumeSnapshotClassName:
                   description: name of the VolumeSnapshotClass from which this snapshot
                     was (or will be) created. Note that after provisioning, the VolumeSnapshotClass
@@ -320,6 +326,7 @@ spec:
                       description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
                       type: string
                   type: object
+                  x-kubernetes-map-type: atomic
               required:
                 - deletionPolicy
                 - driver
@@ -387,6 +394,10 @@ spec:
                     that dynamic snapshot creation has either failed or it is still
                     in progress.
                   type: string
+                volumeGroupSnapshotContentName:
+                  description: VolumeGroupSnapshotContentName is the name of the VolumeGroupSnapshotContent
+                    of which this VolumeSnapshotContent is a part of.
+                  type: string
               type: object
           required:
             - spec
@@ -432,9 +443,11 @@ spec:
         - jsonPath: .metadata.creationTimestamp
           name: Age
           type: date
+      # This indicates the v1beta1 version of the custom resource is deprecated.
+      # API requests to this version receive a warning in the server response.
       deprecated: true
-      deprecationWarning: snapshot.storage.k8s.io/v1beta1 VolumeSnapshotContent is deprecated;
-        use snapshot.storage.k8s.io/v1 VolumeSnapshotContent
+      # This overrides the default warning returned to clients making v1beta1 API requests.
+      deprecationWarning: "snapshot.storage.k8s.io/v1beta1 VolumeSnapshotContent is deprecated; use snapshot.storage.k8s.io/v1 VolumeSnapshotContent"
       name: v1beta1
       schema:
         openAPIV3Schema:
@@ -614,7 +627,7 @@ spec:
           required:
             - spec
           type: object
-      served: true
+      served: false
       storage: false
       subresources:
         status: { }
@@ -629,11 +642,9 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    api-approved.kubernetes.io: https://github.com/kubernetes-csi/external-snapshotter/pull/419
-    controller-gen.kubebuilder.io/version: v0.4.0
+    api-approved.kubernetes.io: "https://github.com/kubernetes-csi/external-snapshotter/pull/814"
+    controller-gen.kubebuilder.io/version: v0.11.3
   creationTimestamp: null
-  labels:
-    provisioner: csi.huawei.com
   name: volumesnapshots.snapshot.storage.k8s.io
 spec:
   group: snapshot.storage.k8s.io
@@ -710,11 +721,6 @@ spec:
                 source:
                   description: source specifies where a snapshot will be created from.
                     This field is immutable after creation. Required.
-                  oneOf:
-                    - required:
-                        - persistentVolumeClaimName
-                    - required:
-                        - volumeSnapshotContentName
                   properties:
                     persistentVolumeClaimName:
                       description: persistentVolumeClaimName specifies the name of the
@@ -732,6 +738,9 @@ spec:
                         is immutable.
                       type: string
                   type: object
+                  oneOf:
+                    - required: ["persistentVolumeClaimName"]
+                    - required: ["volumeSnapshotContentName"]
                 volumeSnapshotClassName:
                   description: 'VolumeSnapshotClassName is the name of the VolumeSnapshotClass
                   requested by the VolumeSnapshot. VolumeSnapshotClassName may be
@@ -781,7 +790,7 @@ spec:
                     application controller) to decide whether they should continue on
                     waiting for the snapshot to be created based on the type of error
                     reported. The snapshot controller will keep retrying when an error
-                    occurrs during the snapshot creation. Upon success, this error field
+                    occurs during the snapshot creation. Upon success, this error field
                     will be cleared.
                   properties:
                     message:
@@ -805,6 +814,7 @@ spec:
                     it means the readiness of a snapshot is unknown.
                   type: boolean
                 restoreSize:
+                  type: string
                   description: restoreSize represents the minimum size of volume required
                     to create a volume from this snapshot. In dynamic snapshot creation
                     case, this field will be filled in by the snapshot controller with
@@ -816,8 +826,11 @@ spec:
                     if it is specified, otherwise the restoration will fail. If not
                     specified, it indicates that the size is unknown.
                   pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                  type: string
                   x-kubernetes-int-or-string: true
+                volumeGroupSnapshotName:
+                  description: VolumeGroupSnapshotName is the name of the VolumeGroupSnapshot
+                    of which this VolumeSnapshot is a part of.
+                  type: string
               type: object
           required:
             - spec
@@ -866,10 +879,12 @@ spec:
         - jsonPath: .metadata.creationTimestamp
           name: Age
           type: date
-      deprecated: true
-      deprecationWarning: snapshot.storage.k8s.io/v1beta1 VolumeSnapshot is deprecated;
-        use snapshot.storage.k8s.io/v1 VolumeSnapshot
       name: v1beta1
+      # This indicates the v1beta1 version of the custom resource is deprecated.
+      # API requests to this version receive a warning in the server response.
+      deprecated: true
+      # This overrides the default warning returned to clients making v1beta1 API requests.
+      deprecationWarning: "snapshot.storage.k8s.io/v1beta1 VolumeSnapshot is deprecated; use snapshot.storage.k8s.io/v1 VolumeSnapshot"
       schema:
         openAPIV3Schema:
           description: VolumeSnapshot is a user's request for either creating a point-in-time
@@ -1000,7 +1015,7 @@ spec:
           required:
             - spec
           type: object
-      served: true
+      served: false
       storage: false
       subresources:
         status: { }

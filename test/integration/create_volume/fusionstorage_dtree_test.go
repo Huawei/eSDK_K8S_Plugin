@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-// Package delete_volume includes the integration tests of creating volume
+// Package create_volume includes the integration tests of creating volume
 package create_volume
 
 import (

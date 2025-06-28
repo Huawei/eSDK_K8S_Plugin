@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -353,16 +353,18 @@ func (cli *RestClient) loginCall(ctx context.Context, data map[string]interface{
 }
 
 func (cli *RestClient) getRequestParams(ctx context.Context, backendID string) (map[string]interface{}, error) {
-	password, err := pkgUtils.GetPasswordFromBackendID(ctx, backendID)
+	authInfo, err := pkgUtils.GetAuthInfoFromBackendID(ctx, backendID)
 	if err != nil {
 		return nil, err
 	}
+	cli.User = authInfo.User
 
 	data := map[string]interface{}{
-		"username": cli.User,
-		"password": password,
+		"username": authInfo.User,
+		"password": authInfo.Password,
 		"scope":    base.LocalUserType,
 	}
+	authInfo.Password = ""
 
 	return data, err
 }

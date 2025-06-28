@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ func registerUpdateBackendCmd() {
 	options.NewFlagsOptions(updateBackendCmd).
 		WithNameSpace(false).
 		WithPassword(true).
+		WithAuthenticationMode(false).
 		WithParent(updateCmd)
 }
 
@@ -39,7 +40,16 @@ var (
 		oceanctl update backend <name>  --password
 
 	    # Update backend account information in specified namespace
-		oceanctl update backend <name> -n namespace --password`)
+		oceanctl update backend <name> -n namespace --password
+
+		# Update backend account information with ldap authentication mode in default(huawei-csi) namespace
+		oceanctl update backend <name> --password --authenticationMode=ldap
+
+		# Update backend account information with local authentication mode in default(huawei-csi) namespace
+		oceanctl update backend <name> --password --authenticationMode=local
+
+		# Update backend account information with ldap authentication mode in specified namespace
+		oceanctl update backend <name> -n namespace --password --authenticationMode=ldap`)
 )
 
 var updateBackendCmd = &cobra.Command{
@@ -58,7 +68,8 @@ func runUpdateBackend(backendNames []string) error {
 		DefaultNamespace().
 		Build()
 
-	validator := resources.NewValidatorBuilder(res).ValidateNameIsExist().ValidateNameIsSingle().Build()
+	validator := resources.NewValidatorBuilder(res).ValidateNameIsExist().ValidateNameIsSingle().
+		ValidateAuthenticationMode().Build()
 	if err := validator.Validate(); err != nil {
 		return helper.PrintlnError(err)
 	}

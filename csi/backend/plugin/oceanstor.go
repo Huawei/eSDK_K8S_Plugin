@@ -20,8 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
+	"text/template"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
@@ -43,6 +46,8 @@ const (
 
 	// SystemVStore default value is 0
 	SystemVStore = "0"
+
+	volumeNameSuffix = "-{{.PVCUid}}"
 )
 
 // OceanstorPlugin provides oceanstor plugin base operations
@@ -298,6 +303,7 @@ func getParams(ctx context.Context, name string,
 		"capacity":    utils.RoundUpSize(parameters["size"].(int64), constants.AllocationUnitBytes),
 		"vstoreId":    "0",
 	}
+
 	resetParams(parameters, params)
 	toLowerParams(parameters, params)
 	processBoolParams(ctx, parameters, params)
@@ -311,6 +317,10 @@ func resetParams(source, target map[string]interface{}) {
 	}
 	if fileSystemName, ok := source["annVolumeName"]; ok {
 		target["name"] = fileSystemName
+	}
+
+	if advancedOptions, ok := utils.GetValue[string](source, constants.AdvancedOptionsKey); ok {
+		target[constants.AdvancedOptionsKey] = advancedOptions
 	}
 }
 
@@ -411,6 +421,15 @@ func (p *OceanstorPlugin) Logout(ctx context.Context) {
 	}
 }
 
+// ReLogin will refresh the user session of storage
+func (p *OceanstorPlugin) ReLogin(ctx context.Context) error {
+	if p.cli == nil {
+		return nil
+	}
+
+	return p.cli.ReLogin(ctx)
+}
+
 // GetSectorSize get sector size of plugin
 func (p *OceanstorPlugin) GetSectorSize() int64 {
 	return SectorSize
@@ -436,18 +455,84 @@ func (p *OceanstorPlugin) switchClient(ctx context.Context, newClient client.Oce
 	return nil
 }
 
+func (p *OceanstorPlugin) getVolumeNameFromPVNameOrParameters(pvName string, parameters map[string]any) (string,
+	error) {
+	if !p.product.IsDoradoV6OrV7() {
+		return pvName, nil
+	}
+
+	volumeNameTpl, _ := utils.GetValue[string](parameters, constants.ScVolumeNameKey)
+	if volumeNameTpl == "" {
+		return pvName, nil
+	}
+
+	if err := validateVolumeName(volumeNameTpl); err != nil {
+		return "", err
+	}
+
+	metadata, err := newExtraCreateMetadataFromParameters(parameters)
+	if err != nil {
+		return "", err
+	}
+
+	tpl, err := template.New(constants.ScVolumeNameKey).Parse(volumeNameTpl + volumeNameSuffix)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse volume name template %s: %w", volumeNameTpl, err)
+	}
+
+	var volumeName strings.Builder
+	if err := tpl.Execute(&volumeName, metadata); err != nil {
+		return "", fmt.Errorf("failed to excute template: %w", err)
+	}
+
+	return volumeName.String(), nil
+}
+
+var (
+	pvcNamespaceRe = regexp.MustCompile(`\{\{\s*\.PVCNamespace\s*\}\}`)
+	pvcNameRe      = regexp.MustCompile(`\{\{\s*\.PVCName\s*\}\}`)
+)
+
+func validateVolumeName(volumeNameTpl string) error {
+	if !pvcNamespaceRe.MatchString(volumeNameTpl) || !pvcNameRe.MatchString(volumeNameTpl) {
+		return errors.New("{{.PVCNamespace}} or {{." +
+			"PVCName}} must be configured in the volumeName parameter at the same time")
+	}
+
+	return nil
+}
+
+func newExtraCreateMetadataFromParameters(parameters map[string]any) (map[string]string, error) {
+	for _, key := range []string{constants.PVCNamespaceKey, constants.PVCNameKey, constants.PVNameKey} {
+		if _, exist := parameters[key]; !exist {
+			return nil, fmt.Errorf("metadata key %s not found", key)
+		}
+	}
+
+	pvcNamespace, _ := utils.GetValue[string](parameters, constants.PVCNamespaceKey)
+	pvcName, _ := utils.GetValue[string](parameters, constants.PVCNameKey)
+	pvName, _ := utils.GetValue[string](parameters, constants.PVNameKey)
+	pvcUid := strings.TrimPrefix(pvName, app.GetGlobalConfig().VolumeNamePrefix)
+	pvcUid = strings.ReplaceAll(pvcUid, "-", "")
+
+	return map[string]string{
+		"PVCNamespace": pvcNamespace,
+		"PVCName":      pvcName,
+		"PVName":       pvName,
+		"PVCUid":       pvcUid,
+	}, nil
+}
+
 func getNewClientConfig(ctx context.Context, param map[string]interface{}) (*client.NewClientConfig, error) {
 	data := &client.NewClientConfig{}
 	configUrls, exist := param["urls"].([]interface{})
 	if !exist || len(configUrls) <= 0 {
-		msg := fmt.Sprintf("Verify urls: [%v] failed. urls must be provided.", param["urls"])
-		return data, pkgUtils.Errorln(ctx, msg)
+		return data, fmt.Errorf("verify urls: [%v] failed. urls must be provided", param["urls"])
 	}
 	for _, configUrl := range configUrls {
 		url, ok := configUrl.(string)
 		if !ok {
-			msg := fmt.Sprintf("Verify url: [%v] failed. url convert to string failed.", configUrl)
-			return data, pkgUtils.Errorln(ctx, msg)
+			return data, fmt.Errorf("verify url: [%v] failed. url convert to string failed", configUrl)
 		}
 		data.Urls = append(data.Urls, url)
 	}
@@ -457,37 +542,10 @@ func getNewClientConfig(ctx context.Context, param map[string]interface{}) (*cli
 		urls = append(urls, i.(string))
 	}
 
-	data.User, exist = param["user"].(string)
-	if !exist {
-		msg := fmt.Sprintf("Verify user: [%v] failed. user must be provided.", data.User)
-		return data, pkgUtils.Errorln(ctx, msg)
+	err := checkClientConfig(param, data)
+	if err != nil {
+		return data, err
 	}
-
-	data.SecretName, exist = param["secretName"].(string)
-	if !exist {
-		msg := fmt.Sprintf("Verify SecretName: [%v] failed. SecretName must be provided.", data.SecretName)
-		return data, pkgUtils.Errorln(ctx, msg)
-	}
-
-	data.SecretNamespace, exist = param["secretNamespace"].(string)
-	if !exist {
-		msg := fmt.Sprintf("Verify SecretNamespace: [%v] failed. SecretNamespace must be provided.",
-			data.SecretNamespace)
-		return data, pkgUtils.Errorln(ctx, msg)
-	}
-
-	data.BackendID, exist = param["backendID"].(string)
-	if !exist {
-		msg := fmt.Sprintf("Verify backendID: [%v] failed. backendID must be provided.",
-			param["backendID"])
-		return data, pkgUtils.Errorln(ctx, msg)
-	}
-
-	data.VstoreName, _ = param["vstoreName"].(string)
-	data.ParallelNum, _ = param["maxClientThreads"].(string)
-
-	data.UseCert, _ = param["useCert"].(bool)
-	data.CertSecretMeta, _ = param["certSecret"].(string)
 
 	return data, nil
 }
@@ -495,4 +553,49 @@ func getNewClientConfig(ctx context.Context, param map[string]interface{}) (*cli
 // SetCli sets the cli for Oceanstor Plugin
 func (p *OceanstorPlugin) SetCli(cli client.OceanstorClientInterface) {
 	p.cli = cli
+}
+
+// SetProduct sets the product for Oceanstor Plugin
+func (p *OceanstorPlugin) SetProduct(product constants.OceanstorVersion) {
+	p.product = product
+}
+
+// checkClientConfig used to check the param
+func checkClientConfig(param map[string]interface{}, data *client.NewClientConfig) error {
+	var ok bool
+	data.User, ok = utils.GetValue[string](param, "user")
+	if !ok {
+		return fmt.Errorf("verify user: [%v] failed. user must be provided", data.User)
+	}
+
+	data.SecretName, ok = utils.GetValue[string](param, "secretName")
+	if !ok {
+		return fmt.Errorf("verify SecretName: [%v] failed. SecretName must be provided", data.SecretName)
+	}
+
+	data.SecretNamespace, ok = utils.GetValue[string](param, "secretNamespace")
+	if !ok {
+		return fmt.Errorf("verify SecretNamespace: [%v] failed. SecretNamespace must be provided", data.SecretNamespace)
+	}
+
+	data.BackendID, ok = utils.GetValue[string](param, "backendID")
+	if !ok {
+		return fmt.Errorf("verify backendID: [%v] failed. backendID must be provided", param["backendID"])
+	}
+
+	data.AuthenticationMode, ok = utils.GetValue[string](param, constants.AuthenticationModeKey)
+	if ok {
+		result := pkgUtils.CheckAuthenticationMode(data.AuthenticationMode)
+		if !result {
+			return fmt.Errorf("verify authenticationMode: [%v] failed. "+
+				"authenticationMode must be in [%s,%s]", data.AuthenticationMode, constants.AuthModeLocal,
+				constants.AuthModeLDAP)
+		}
+	}
+
+	data.VstoreName, _ = utils.GetValue[string](param, "vstoreName")
+	data.ParallelNum, _ = utils.GetValue[string](param, "maxClientThreads")
+	data.UseCert, _ = utils.GetValue[bool](param, "useCert")
+	data.CertSecretMeta, _ = utils.GetValue[string](param, "certSecret")
+	return nil
 }

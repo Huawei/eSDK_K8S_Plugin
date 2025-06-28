@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -41,6 +41,16 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
+// BackendAuthInfo for login backend
+type BackendAuthInfo struct {
+	// User is the account used for connecting to storage
+	User string
+	// Password used to log in backend
+	Password string
+	// Scope used to log in backend, local:0, ldap:1
+	Scope string
+}
+
 func IsSBCTExist(ctx context.Context, backendID string) bool {
 	content, err := GetContentByClaimMeta(ctx, backendID)
 	if err != nil {
@@ -62,17 +72,12 @@ func IsSBCTOnline(ctx context.Context, backendID string) bool {
 }
 
 func GetPasswordFromBackendID(ctx context.Context, backendID string) (string, error) {
-	_, secretMeta, err := GetConfigMeta(ctx, backendID)
+	namespace, secretName, err := GetNameAndNamespaceFromBackendID(ctx, backendID)
 	if err != nil {
 		return "", err
 	}
 
-	namespace, secretName, err := SplitMetaNamespaceKey(secretMeta)
-	if err != nil {
-		return "", fmt.Errorf("split secret secretMeta %s namespace failed, error: %v", secretMeta, err)
-	}
-
-	return utils.GetPasswordFromSecret(ctx, secretName, namespace)
+	return GetPasswordFromSecret(ctx, secretName, namespace)
 }
 
 // GetCertSecretFromBackendID get cert secret meta from backend
@@ -377,4 +382,98 @@ func InitRecorder(client kubernetes.Interface, componentName string) record.Even
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(&clientV1.EventSinkImpl{Interface: client.CoreV1().Events(v1.NamespaceAll)})
 	return eventBroadcaster.NewRecorder(scheme.Scheme, coreV1.EventSource{Component: componentName})
+}
+
+// GetAuthInfoFromBackendID used to get BackendAuthInfo by backend id
+func GetAuthInfoFromBackendID(ctx context.Context, backendID string) (*BackendAuthInfo, error) {
+	namespace, secretName, err := GetNameAndNamespaceFromBackendID(ctx, backendID)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetAuthInfoFromSecret(ctx, secretName, namespace)
+}
+
+// GetNameAndNamespaceFromBackendID used to get name and namespace from backendId
+func GetNameAndNamespaceFromBackendID(ctx context.Context, backendID string) (string, string, error) {
+	_, secretMeta, err := GetConfigMeta(ctx, backendID)
+	if err != nil {
+		return "", "", err
+	}
+
+	namespace, secretName, err := SplitMetaNamespaceKey(secretMeta)
+	if err != nil {
+		return "", "", fmt.Errorf("split secret secretMeta %s namespace failed, error: %v", secretMeta, err)
+	}
+
+	return namespace, secretName, nil
+}
+
+// GetPasswordFromSecret used to get password from secret
+func GetPasswordFromSecret(ctx context.Context, SecretName, SecretNamespace string) (string, error) {
+	log.AddContext(ctx).Debugf("Get password from secret: %s, ns: %s.", SecretName, SecretNamespace)
+	secret, err := getSecret(ctx, SecretName, SecretNamespace)
+	if err != nil {
+		return "", err
+	}
+
+	password, exist := secret.Data["password"]
+	if !exist {
+		msg := fmt.Sprintf("Get secret with name [%s] and namespace [%s], but "+
+			"password field not exist in secret data", SecretName, SecretNamespace)
+		log.AddContext(ctx).Errorln(msg)
+		return "", errors.New(msg)
+	}
+
+	return string(password), nil
+}
+
+// GetAuthInfoFromSecret used to get BackendAuthInfo by k8s secrets
+func GetAuthInfoFromSecret(ctx context.Context, SecretName,
+	SecretNamespace string) (*BackendAuthInfo, error) {
+	log.AddContext(ctx).Debugf("Get authentication information from secret: %s/%s", SecretNamespace, SecretName)
+	secret, err := getSecret(ctx, SecretName, SecretNamespace)
+	if err != nil {
+		return nil, err
+	}
+
+	user, exist := secret.Data["user"]
+	if !exist || string(user) == "" {
+		return nil, fmt.Errorf(`the "user" field in the secret does not exist or is empty, secret: %s/%s`,
+			SecretNamespace, SecretName)
+	}
+
+	password, exist := secret.Data["password"]
+	if !exist || string(password) == "" {
+		return nil, fmt.Errorf(`the "password" field in the secret does not exist or is empty, secret: %s/%s`,
+			SecretNamespace, SecretName)
+	}
+
+	loginParams := &BackendAuthInfo{
+		User:     string(user),
+		Password: string(password),
+		Scope:    constants.AuthModeScopeLocal,
+	}
+
+	authenticationMode, exist := secret.Data[constants.AuthenticationModeKey]
+	if exist {
+		loginParams.Scope = string(authenticationMode)
+	}
+
+	return loginParams, nil
+}
+
+// GetSecret used to get secret
+func getSecret(ctx context.Context, SecretName, SecretNamespace string) (*coreV1.Secret, error) {
+	secret, err := app.GetGlobalConfig().K8sUtils.GetSecret(ctx, SecretName, SecretNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("get secret with name [%s] and namespace [%s] failed, error: [%w]",
+			SecretName, SecretNamespace, err)
+	}
+
+	if secret == nil || secret.Data == nil {
+		return nil, fmt.Errorf("secret is nil or the data not exist in secret, "+
+			"name : %s, namespace : %s", SecretName, SecretNamespace)
+	}
+	return secret, nil
 }

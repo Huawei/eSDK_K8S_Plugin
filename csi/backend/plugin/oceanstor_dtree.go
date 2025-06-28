@@ -88,9 +88,13 @@ func (p *OceanstorDTreePlugin) CreateVolume(ctx context.Context, name string, pa
 		return nil, errors.New("empty parameters")
 	}
 
+	name, err := p.getVolumeNameFromPVNameOrParameters(name, parameters)
+	if err != nil {
+		return nil, err
+	}
+
 	parentname := p.parentName
 	scParentname, _ := utils.GetValue[string](parameters, "parentname")
-	var err error
 	parentname, err = getValidParentname(scParentname, p.parentName)
 	if err != nil {
 		return nil, err
@@ -170,6 +174,7 @@ func (p *OceanstorDTreePlugin) Validate(ctx context.Context, param map[string]in
 
 	clientConfig, err := getNewClientConfig(ctx, param)
 	if err != nil {
+		log.AddContext(ctx).Errorln("validate OceanstorDTreePlugin parameters failed, err:", err.Error())
 		return err
 	}
 

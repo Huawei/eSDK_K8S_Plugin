@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -203,7 +203,10 @@ func (p *NAS) preCreate(ctx context.Context, params map[string]interface{}) erro
 	if !ok {
 		return pkgUtils.Errorf(ctx, "convert fsName to string failed, data: %v", params["name"])
 	}
-	params["name"] = utils.GetFileSystemName(name)
+	pvName, _ := utils.GetValue[string](params, "pvName")
+	if name == pvName {
+		params["name"] = utils.GetFileSystemName(name)
+	}
 
 	if v, exist := params["sourcevolumename"].(string); exist {
 		params["clonefrom"] = v

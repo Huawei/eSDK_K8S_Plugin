@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
@@ -77,8 +76,6 @@ const (
 	deviceScanAttemptsDefault int = 3
 	intNumTwo                 int = 2
 )
-
-var expectPathCount sync.Map
 
 func parseFCInfo(ctx context.Context, connectionProperties map[string]interface{}) (*connectorInfo, error) {
 	var info = new(connectorInfo)
@@ -545,33 +542,40 @@ func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorI
 		process = skipped
 	}
 
+	conn.pathCount = discoverFCPaths(ctx, process, conn)
+
+	return
+}
+
+func discoverFCPaths(ctx context.Context, process []interface{}, conn *connectorInfo) int {
+	var pathCount int
 	for _, p := range process {
 		pro, ok := p.([]interface{})
 		if !ok {
 			log.AddContext(ctx).Errorf("the %v is not interface", p)
-			return
+			return pathCount
 		}
 
 		if len(pro) != intNumTwo {
 			log.AddContext(ctx).Errorf("the length of %s not equal 2", pro)
-			return
+			return pathCount
 		}
 
 		hba, ok := pro[0].(map[string]string)
 		if !ok {
 			log.AddContext(ctx).Errorf("the %v is not map[string]string", pro[0])
-			return
+			return pathCount
 		}
 
 		ctls, ok := pro[1].([][]string)
 		if !ok {
 			log.AddContext(ctx).Errorf("the %v is not [][]string", pro[1])
-			return
+			return pathCount
 		}
 
 		for _, c := range ctls {
 			scanFC(ctx, c, hba["host_device"])
-			conn.pathCount++
+			pathCount++
 			if !conn.volumeUseMultiPath {
 				break
 			}
@@ -580,6 +584,7 @@ func rescanHosts(ctx context.Context, hbas []map[string]string, conn *connectorI
 			break
 		}
 	}
+	return pathCount
 }
 
 func scanFC(ctx context.Context, channelTargetLun []string, hostDevice string) {

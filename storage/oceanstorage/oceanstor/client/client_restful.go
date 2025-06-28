@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -44,20 +44,21 @@ type RestClient struct {
 	Url    string
 	Urls   []string
 
-	User            string
-	SecretNamespace string
-	SecretName      string
-	VStoreName      string
-	VStoreID        string
-	StorageVersion  string
-	BackendID       string
-	Storage         string
-	CurrentSiteWwn  string
-	CurrentLifWwn   string
-	LastLif         string
-	Product         constants.OceanstorVersion
-	DeviceId        string
-	Token           string
+	User               string
+	SecretNamespace    string
+	SecretName         string
+	VStoreName         string
+	VStoreID           string
+	StorageVersion     string
+	BackendID          string
+	Storage            string
+	CurrentSiteWwn     string
+	CurrentLifWwn      string
+	LastLif            string
+	Product            constants.OceanstorVersion
+	DeviceId           string
+	Token              string
+	AuthenticationMode string
 
 	SystemInfoRefreshing uint32
 	ReLoginMutex         sync.Mutex
@@ -401,16 +402,18 @@ func (cli *RestClient) ReLogin(ctx context.Context) error {
 }
 
 func (cli *RestClient) getRequestParams(ctx context.Context, backendID string) (map[string]interface{}, error) {
-	password, err := pkgUtils.GetPasswordFromBackendID(ctx, backendID)
+	params, err := pkgUtils.GetAuthInfoFromBackendID(ctx, backendID)
 	if err != nil {
 		return nil, err
 	}
+	cli.User = params.User
 
 	data := map[string]interface{}{
-		"username": cli.User,
-		"password": password,
-		"scope":    "0",
+		"username": params.User,
+		"password": params.Password,
+		"scope":    params.Scope,
 	}
+	params.Password = ""
 
 	if len(cli.VStoreName) > 0 && cli.VStoreName != defaultVStore {
 		data["vstorename"] = cli.VStoreName

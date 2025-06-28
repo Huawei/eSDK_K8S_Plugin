@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -334,6 +334,11 @@ func (p *Parameter) SnapshotID() string { return utils.GetValueOrFallback(p.para
 // SnapshotParentName gets the SnapshotParentName value of the params map.
 func (p *Parameter) SnapshotParentName() string {
 	return utils.GetValueOrFallback(p.params, SnapshotParentNameKey, "")
+}
+
+// AdvancedOptions gets the AdvancedOptions value of the params map.
+func (p *Parameter) AdvancedOptions() string {
+	return utils.GetValueOrFallback(p.params, constants.AdvancedOptionsKey, "")
 }
 
 // IsClone returns true if a clone filesystem needs to be created, or returns false.

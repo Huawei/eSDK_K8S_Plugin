@@ -18,12 +18,14 @@ package volume
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgutils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/flow"
@@ -203,25 +205,11 @@ func (p *DTree) Expand(ctx context.Context, parentName string, dTreeName string,
 	return nil
 }
 
-func (p *DTree) createDtree(ctx context.Context,
-	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-
-	// format request param
-	data := make(map[string]interface{})
-	if params["fspermission"] != nil && params["fspermission"] != "" {
-		data["unixPermissions"] = params["fspermission"]
+func (p *DTree) createDtree(ctx context.Context, params, taskResult map[string]any) (map[string]any, error) {
+	data, err := generateCreateDTreeDataFromParams(params)
+	if err != nil {
+		return nil, err
 	}
-	if _, ok := params["name"]; ok {
-		data["NAME"] = params["name"]
-	}
-	if _, ok := params["parentname"]; ok {
-		data["PARENTNAME"] = params["parentname"]
-	}
-	if _, ok := params["vstoreid"]; ok {
-		data["vstoreId"] = params["vstoreid"]
-	}
-	data["PARENTTYPE"] = client.ParentTypeFS
-	data["securityStyle"] = client.SecurityStyleUnix
 
 	res, err := p.cli.CreateDTree(ctx, data)
 	if err != nil {
@@ -672,4 +660,39 @@ func formatKerberosParam(data interface{}) int {
 	default:
 		return accessKrb5Default
 	}
+}
+
+func generateCreateDTreeDataFromParams(params map[string]any) (map[string]any, error) {
+	data := map[string]any{
+		"PARENTTYPE":    client.ParentTypeFS,
+		"securityStyle": client.SecurityStyleUnix,
+	}
+
+	if permission, ok := utils.GetValue[string](params, "fspermission"); ok && permission != "" {
+		data["unixPermissions"] = params["fspermission"]
+	}
+
+	if name, ok := utils.GetValue[string](params, "name"); ok {
+		data["NAME"] = name
+	}
+
+	if parentName, ok := utils.GetValue[string](params, "parentname"); ok {
+		data["PARENTNAME"] = parentName
+	}
+
+	if vstoreId, ok := utils.GetValue[string](params, "vstoreid"); ok {
+		data["vstoreId"] = vstoreId
+	}
+
+	if value, ok := utils.GetValue[string](params, constants.AdvancedOptionsKey); ok && value != "" {
+		advancedOptions := make(map[string]any)
+		err := json.Unmarshal([]byte(value), &advancedOptions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal advancedOptions parameters[%s] error: %v",
+				value, err)
+		}
+		data = pkgutils.CombineMap(advancedOptions, data)
+	}
+
+	return data, nil
 }

@@ -105,6 +105,14 @@ spec:
       tolerations:
       {{- toYaml .Values.node.tolerations | nindent 6 }}
       {{ end }}
+      {{ if .Values.node.affinity }}
+      affinity:
+      {{- toYaml .Values.node.affinity | nindent 8 }}
+      {{ end }}
+      {{ if .Values.imagePullSecrets }}
+      imagePullSecrets:
+      {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{ end }}
       containers:
         - name: liveness-probe
           args:
@@ -115,20 +123,17 @@ spec:
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
+          {{ if ((.Values.resources).node).livenessProbe }}
           resources:
-            limits:
-              cpu: 100m
-              memory: 128Mi
-            requests:
-              cpu: 10m
-              memory: 128Mi
+          {{- toYaml .Values.resources.node.livenessProbe | nindent 12 }}
+          {{ end }}
           env:
             - name: POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
             - name: HEALTHZ_HTTP_ENDPOINT
-              value: "$(POD_IP):{{ int .Values.node.livenessProbePort | default 9800 }}"
+              value: "[$(POD_IP)]:{{ int .Values.node.livenessProbePort | default 9800 }}"
         - name: csi-node-driver-registrar
           args:
             - "--csi-address=/csi/csi.sock"
@@ -140,13 +145,10 @@ spec:
               name: socket-dir
             - mountPath: /registration
               name: registration-dir
+          {{ if ((.Values.resources).node).csiNodeDriverRegistrar }}
           resources:
-            limits:
-              cpu: 300m
-              memory: 128Mi
-            requests:
-              cpu: 50m
-              memory: 128Mi
+          {{- toYaml .Values.resources.node.csiNodeDriverRegistrar | nindent 12 }}
+          {{ end }}
         - name: huawei-csi-driver
           image: {{ required "Must provide the CSI node service node image." .Values.images.huaweiCSIService }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
@@ -233,13 +235,10 @@ spec:
               name: nvme-config-dir
             - mountPath: /etc/localtime
               name: host-time
+          {{ if ((.Values.resources).node).huaweiCsiDriver }}
           resources:
-            limits:
-              cpu: 500m
-              memory: 1Gi
-            requests:
-              cpu: 50m
-              memory: 128Mi
+          {{- toYaml .Values.resources.node.huaweiCsiDriver | nindent 12 }}
+          {{ end }}
       hostNetwork: true
       hostPID: true
       serviceAccountName: huawei-csi-node

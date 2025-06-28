@@ -98,6 +98,28 @@ const (
 	DTreeParentKey = "dTreeParentName"
 	// DisableVerifyCapacityKey is the key of disableVerifyCapacity parameter
 	DisableVerifyCapacityKey = "disableVerifyCapacity"
+	// AdvancedOptionsKey is the key of advanced volume options parameter in StorageClass
+	AdvancedOptionsKey = "advancedOptions"
+	// ScVolumeNameKey is the key of volumeName in StorageClass
+	ScVolumeNameKey = "volumeName"
+
+	// PVCNameKey is the key of PVC name in CreateVolumeRequest parameters
+	PVCNameKey = "csi.storage.k8s.io/pvc/name"
+	// PVCNamespaceKey is the key of PVC namespace in CreateVolumeRequest parameters
+	PVCNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
+	// PVNameKey is the key of PV name in CreateVolumeRequest parameters
+	PVNameKey = "csi.storage.k8s.io/pv/name"
+
+	// AuthenticationModeKey is the param for login backend
+	AuthenticationModeKey = "authenticationMode"
+	// AuthModeLocal is the login backend param
+	AuthModeLocal = "local"
+	// AuthModeLDAP is the login backend param
+	AuthModeLDAP = "ldap"
+	// AuthModeScopeLocal is the login backend scope param
+	AuthModeScopeLocal = "0"
+	// AuthModeScopeLDAP is the login backend scope param
+	AuthModeScopeLDAP = "1"
 )
 
 var (

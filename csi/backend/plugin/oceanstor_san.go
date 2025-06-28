@@ -136,6 +136,10 @@ func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
 // CreateVolume used to create volume
 func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
 	name string, parameters map[string]interface{}) (utils.Volume, error) {
+	name, err := p.getVolumeNameFromPVNameOrParameters(name, parameters)
+	if err != nil {
+		return nil, err
+	}
 
 	params := getParams(ctx, name, parameters)
 	san := p.getSanObj()
@@ -576,6 +580,7 @@ func (p *OceanstorSanPlugin) Validate(ctx context.Context, param map[string]inte
 
 	clientConfig, err := getNewClientConfig(ctx, param)
 	if err != nil {
+		log.AddContext(ctx).Errorln("validate OceanstorSanPlugin parameters, err:", err.Error())
 		return err
 	}
 

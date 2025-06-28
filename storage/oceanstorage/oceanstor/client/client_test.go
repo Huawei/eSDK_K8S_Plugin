@@ -79,13 +79,14 @@ func TestLogin(t *testing.T) {
 	defer m.Reset()
 
 	for _, s := range cases {
-		g := gomonkey.ApplyMethod(testClient.Client, "Do", func(_ *http.Client, req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: 200,
-				Body:       r,
-			}, nil
-		})
+		g := gomonkey.ApplyMethod(testClient.Client, "Do",
+			func(_ *http.Client, req *http.Request) (*http.Response, error) {
+				r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: 200,
+					Body:       r,
+				}, nil
+			})
 
 		err := testClient.Login(context.TODO())
 		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)
@@ -94,17 +95,18 @@ func TestLogin(t *testing.T) {
 }
 
 func getTestLoginPatches() *gomonkey.Patches {
-	m := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
-		func(ctx context.Context, backendID string) (string, error) {
-			return "mock", nil
+	m := gomonkey.ApplyFunc(pkgUtils.GetAuthInfoFromBackendID,
+		func(ctx context.Context, backendID string) (*pkgUtils.BackendAuthInfo, error) {
+			return &pkgUtils.BackendAuthInfo{Password: "mock", Scope: "0"}, nil
 		})
 	m.ApplyFunc(pkgUtils.GetCertSecretFromBackendID,
 		func(ctx context.Context, backendID string) (bool, string, error) {
 			return false, "", nil
 		})
-	m.ApplyFunc(pkgUtils.SetStorageBackendContentOnlineStatus, func(ctx context.Context, backendID string, online bool) error {
-		return nil
-	})
+	m.ApplyFunc(pkgUtils.SetStorageBackendContentOnlineStatus,
+		func(ctx context.Context, backendID string, online bool) error {
+			return nil
+		})
 	return m
 }
 
@@ -182,13 +184,14 @@ func TestReLogin(t *testing.T) {
 	defer m.Reset()
 
 	for _, s := range cases {
-		g := gomonkey.ApplyMethod(reflect.TypeOf(testClient.Client), "Do", func(_ *http.Client, req *http.Request) (*http.Response, error) {
-			r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
-			return &http.Response{
-				StatusCode: 200,
-				Body:       r,
-			}, nil
-		})
+		g := gomonkey.ApplyMethod(reflect.TypeOf(testClient.Client), "Do",
+			func(_ *http.Client, req *http.Request) (*http.Response, error) {
+				r := ioutil.NopCloser(bytes.NewReader([]byte(s.ResponseBody)))
+				return &http.Response{
+					StatusCode: 200,
+					Body:       r,
+				}, nil
+			})
 
 		err := testClient.ReLogin(context.TODO())
 		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.Name, err)

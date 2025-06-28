@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 
+	pkgutils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -99,16 +100,17 @@ func (cli *OceandiskClient) ValidateLogin(ctx context.Context) error {
 	var resp base.Response
 	var err error
 
-	password, err := utils.GetPasswordFromSecret(ctx, cli.SecretName, cli.SecretNamespace)
+	authInfo, err := pkgutils.GetAuthInfoFromSecret(ctx, cli.SecretName, cli.SecretNamespace)
 	if err != nil {
 		return err
 	}
 
 	data := map[string]interface{}{
-		"username": cli.User,
-		"password": password,
+		"username": authInfo.User,
+		"password": authInfo.Password,
 		"scope":    base.LocalUserType,
 	}
+	authInfo.Password = ""
 
 	cli.DeviceId = ""
 	cli.Token = ""

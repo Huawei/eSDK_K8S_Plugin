@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,6 +33,8 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/helper"
 	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 )
 
 const (
@@ -65,6 +67,7 @@ type BackendConfiguration struct {
 	MaxClientThreads    string                   `json:"maxClientThreads,omitempty" yaml:"maxClientThreads"`
 	Configured          bool                     `json:"-" yaml:"configured"`
 	Provisioner         string                   `json:"provisioner,omitempty" yaml:"provisioner"`
+	AuthenticationMode  string                   `json:"-" yaml:"authenticationMode"`
 	Parameters          struct {
 		Protocol   string                            `json:"protocol,omitempty" yaml:"protocol"`
 		ParentName string                            `json:"parentname,omitempty" yaml:"parentname"`
@@ -120,10 +123,11 @@ type StorageBackendClaimConfig struct {
 
 // SecretConfig used to create a secret object
 type SecretConfig struct {
-	Name      string
-	Namespace string
-	User      string
-	Pwd       string
+	Name               string
+	Namespace          string
+	User               string
+	Pwd                string
+	AuthenticationMode string
 }
 
 // ConfigMapConfig used to create a configmap object
@@ -215,12 +219,13 @@ func (b *BackendConfiguration) ToSecretConfig() (SecretConfig, error) {
 	if err != nil {
 		return SecretConfig{}, err
 	}
-
+	scope := utils.ConvertAuthenticationToScope(b.AuthenticationMode)
 	return SecretConfig{
-		Name:      b.Name,
-		Namespace: b.NameSpace,
-		User:      userName,
-		Pwd:       password,
+		Name:               b.Name,
+		Namespace:          b.NameSpace,
+		User:               userName,
+		Pwd:                password,
+		AuthenticationMode: scope,
 	}, nil
 }
 
@@ -253,8 +258,9 @@ func (c *SecretConfig) ToSecret() corev1.Secret {
 			Namespace: c.Namespace,
 		},
 		StringData: map[string]string{
-			"password": c.Pwd,
-			"user":     c.User,
+			"password":                      c.Pwd,
+			"user":                          c.User,
+			constants.AuthenticationModeKey: c.AuthenticationMode,
 		},
 		Type: "Opaque",
 	}

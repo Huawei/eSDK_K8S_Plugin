@@ -42,6 +42,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/cert"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/notify"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/version"
@@ -195,9 +196,12 @@ func runCsiControllerOnService(ctx context.Context, csiDriver *driver.CsiDriver)
 		return
 	}
 
-	address := fmt.Sprintf("%s:%d",
-		app.GetGlobalConfig().ExportCsiServerAddress,
-		app.GetGlobalConfig().ExportCsiServerPort)
+	ipWrapper := iputils.NewIPWrapper(app.GetGlobalConfig().ExportCsiServerAddress)
+	if ipWrapper == nil {
+		notify.Stop("ExportCsiServerAddress [%s] is not a valid ip", app.GetGlobalConfig().ExportCsiServerAddress)
+	}
+
+	address := fmt.Sprintf("%s:%d", ipWrapper.GetFormatPortalIP(), app.GetGlobalConfig().ExportCsiServerPort)
 	listen, err := net.Listen("tcp", address)
 	if err != nil {
 		notify.Stop("listen on %s error: %v", address, err)

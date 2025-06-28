@@ -99,6 +99,7 @@ type IRestClient interface {
 	Login(ctx context.Context) error
 	SetAccountId(ctx context.Context) error
 	Logout(ctx context.Context)
+	ReLogin(ctx context.Context) error
 	KeepAlive(ctx context.Context)
 }
 
@@ -189,15 +190,16 @@ func (cli *RestClient) ValidateLogin(ctx context.Context) error {
 
 	log.AddContext(ctx).Infof("Try to login %s.", cli.url)
 
-	password, err := utils.GetPasswordFromSecret(ctx, cli.secretName, cli.secretNamespace)
+	authInfo, err := pkgUtils.GetAuthInfoFromSecret(ctx, cli.secretName, cli.secretNamespace)
 	if err != nil {
 		return err
 	}
 
 	data := map[string]interface{}{
-		"userName": cli.user,
-		"password": password,
+		"userName": authInfo.User,
+		"password": authInfo.Password,
 	}
+	authInfo.Password = ""
 
 	_, resp, err := cli.baseCall(ctx, "POST", "/dsware/service/v1.3/sec/login", data)
 	if err != nil {
@@ -224,14 +226,15 @@ func (cli *RestClient) Login(ctx context.Context) error {
 
 	log.AddContext(ctx).Infof("Try to login %s.", cli.url)
 
-	password, err := pkgUtils.GetPasswordFromBackendID(ctx, cli.backendID)
+	authInfo, err := pkgUtils.GetAuthInfoFromBackendID(ctx, cli.backendID)
 	if err != nil {
 		return err
 	}
+	cli.user = authInfo.User
 
 	data := map[string]interface{}{
-		"userName": cli.user,
-		"password": password,
+		"userName": authInfo.User,
+		"password": authInfo.Password,
 	}
 
 	respHeader, resp, err := cli.baseCall(ctx, "POST", "/dsware/service/v1.3/sec/login", data)
@@ -439,7 +442,7 @@ func (cli *RestClient) retryCall(ctx context.Context, method string, url string,
 	var respHeader http.Header
 	var respBody []byte
 
-	err = cli.reLogin(ctx)
+	err = cli.ReLogin(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -491,7 +494,8 @@ func (cli *RestClient) call(ctx context.Context, method string, url string, data
 	return respHeader, body, nil
 }
 
-func (cli *RestClient) reLogin(ctx context.Context) error {
+// ReLogin logout and login again
+func (cli *RestClient) ReLogin(ctx context.Context) error {
 	cli.reLoginLock(ctx)
 	defer cli.reLoginUnlock(ctx)
 

@@ -167,52 +167,6 @@ func mockGetSecret(data map[string][]byte, err error) *gomonkey.Patches {
 		})
 }
 
-func TestGetPasswordFromSecret(t *testing.T) {
-	t.Run("TestGetPasswordFromSecret secret is nil case", func(t *testing.T) {
-		m := mockGetSecret(nil, nil)
-		defer m.Reset()
-
-		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		require.Error(t, err)
-	})
-
-	t.Run("TestGetPasswordFromSecret get secret error case", func(t *testing.T) {
-		m := mockGetSecret(nil, errors.New("mock error"))
-		defer m.Reset()
-
-		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		require.Error(t, err)
-	})
-
-	t.Run("TestGetPasswordFromSecret secret data is nil case", func(t *testing.T) {
-		m := mockGetSecret(map[string][]byte{}, nil)
-		defer m.Reset()
-
-		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		require.Error(t, err)
-	})
-
-	t.Run("TestGetPasswordFromSecret secret data dose not have password case", func(t *testing.T) {
-		m := mockGetSecret(map[string][]byte{"user": []byte("mock-user")}, nil)
-		defer m.Reset()
-
-		_, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		require.Error(t, err)
-	})
-
-	t.Run("TestGetPasswordFromSecret normal case", func(t *testing.T) {
-		m := mockGetSecret(map[string][]byte{
-			"user":     []byte("mock-user"),
-			"password": []byte("mock-pw"),
-		}, nil)
-		defer m.Reset()
-
-		pw, err := GetPasswordFromSecret(context.TODO(), "sec-name", "sec-namespace")
-		require.NoError(t, err)
-		require.Equal(t, "mock-pw", pw)
-	})
-}
-
 func TestGetCertFromSecretFailed(t *testing.T) {
 	t.Run("TestGetCertFromSecret secret is nil case", func(t *testing.T) {
 		m := mockGetSecret(nil, nil)

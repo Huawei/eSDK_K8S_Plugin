@@ -91,7 +91,7 @@ func gracefulRetryCall[T any](ctx context.Context,
 	cli *RestClient, method, url string, reqData any) (*Response[T], error) {
 	log.AddContext(ctx).Debugf("retry call: method: %s, url: %s, data: %v.", method, url, reqData)
 
-	err := cli.reLogin(ctx)
+	err := cli.ReLogin(ctx)
 	if err != nil {
 		return nil, err
 	}

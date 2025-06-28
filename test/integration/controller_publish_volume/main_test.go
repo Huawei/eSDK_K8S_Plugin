@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-// Package delete_volume includes the integration tests of ControllerPublishVolume interface
+// Package controller_publish_volume includes the integration tests of ControllerPublishVolume interface
 package controller_publish_volume
 
 import (

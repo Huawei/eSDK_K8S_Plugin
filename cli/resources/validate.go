@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,9 +19,11 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
@@ -80,6 +82,20 @@ func (b *ValidatorBuilder) ValidateNameIsExist() *ValidatorBuilder {
 	if len(b.resource.names) == 0 {
 		b.errs = append(b.errs, fmt.Errorf("resources were provided, but no name was specified"))
 	}
+	return b
+}
+
+// ValidateAuthenticationMode used to validate authenticationMode input.
+func (b *ValidatorBuilder) ValidateAuthenticationMode() *ValidatorBuilder {
+	if config.AuthenticationMode != "" {
+		authenticationMode := strings.ToLower(strings.TrimSpace(config.AuthenticationMode))
+		validParams := []string{constants.AuthModeLDAP, constants.AuthModeLocal}
+		if !slices.Contains(validParams, authenticationMode) {
+			b.errs = append(b.errs, fmt.Errorf("invalid value for --authenticationMode=%s, "+
+				"allowed values are: %+v", config.AuthenticationMode, validParams))
+		}
+	}
+
 	return b
 }
 

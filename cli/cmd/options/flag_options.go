@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -77,6 +77,17 @@ func (b *FlagsOptions) WithPassword(required bool) *FlagsOptions {
 	b.cmd.PersistentFlags().BoolVarP(&config.ChangePassword, "password", "", false, "Update account password")
 	if required {
 		b.markPersistentFlagRequired("password")
+	}
+	return b
+}
+
+// WithAuthenticationMode this function will add an authentication mode options
+func (b *FlagsOptions) WithAuthenticationMode(required bool) *FlagsOptions {
+	b.cmd.PersistentFlags().StringVarP(&config.AuthenticationMode, "authenticationMode",
+		"", "", "Specify authentication mode")
+
+	if required {
+		b.markPersistentFlagRequired("authenticationMode")
 	}
 	return b
 }

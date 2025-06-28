@@ -18,8 +18,8 @@
 package options
 
 import (
+	"errors"
 	"flag"
-	"fmt"
 	"strings"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
@@ -77,7 +77,7 @@ func (opt *optionsManager) ValidateFlags() error {
 	for _, err := range errs {
 		msg = append(msg, err.Error())
 	}
-	return fmt.Errorf(strings.Join(msg, ";"))
+	return errors.New(strings.Join(msg, ";"))
 }
 
 // Config set all configuration

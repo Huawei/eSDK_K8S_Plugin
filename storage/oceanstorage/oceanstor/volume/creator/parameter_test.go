@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -458,4 +458,17 @@ func TestParameters_ProductIsV6(t *testing.T) {
 
 	// assert
 	require.True(t, got)
+}
+
+func TestParameter_AdvancedOptions(t *testing.T) {
+	// arrange
+	value := `{"CAPACITYTHRESHOLD": 90}`
+	in := map[string]any{constants.AdvancedOptionsKey: value}
+	params := creator.NewParameter(in)
+
+	// action
+	advancedOptions := params.AdvancedOptions()
+
+	// assert
+	require.Equal(t, value, advancedOptions)
 }

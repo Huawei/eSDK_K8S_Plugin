@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"sync/atomic"
 
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -161,17 +162,18 @@ type OceanstorClient struct {
 
 // NewClientConfig stores the information needed to create a new oceanstor client
 type NewClientConfig struct {
-	Urls            []string
-	User            string
-	SecretName      string
-	SecretNamespace string
-	VstoreName      string
-	ParallelNum     string
-	BackendID       string
-	UseCert         bool
-	CertSecretMeta  string
-	Storage         string
-	Name            string
+	Urls               []string
+	User               string
+	SecretName         string
+	SecretNamespace    string
+	VstoreName         string
+	ParallelNum        string
+	BackendID          string
+	UseCert            bool
+	CertSecretMeta     string
+	Storage            string
+	Name               string
+	AuthenticationMode string
 }
 
 // NewClient inits a new oceanstor client
@@ -337,16 +339,17 @@ func (cli *OceanstorClient) ValidateLogin(ctx context.Context) error {
 	var resp base.Response
 	var err error
 
-	password, err := utils.GetPasswordFromSecret(ctx, cli.SecretName, cli.SecretNamespace)
+	params, err := pkgUtils.GetAuthInfoFromSecret(ctx, cli.SecretName, cli.SecretNamespace)
 	if err != nil {
 		return err
 	}
 
 	data := map[string]interface{}{
 		"username": cli.User,
-		"password": password,
-		"scope":    "0",
+		"password": params.Password,
+		"scope":    params.Scope,
 	}
+	params.Password = ""
 
 	if len(cli.VStoreName) > 0 && cli.VStoreName != defaultVStore {
 		data["vstorename"] = cli.VStoreName

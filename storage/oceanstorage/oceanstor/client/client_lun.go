@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -301,17 +301,10 @@ func (cli *OceanstorClient) DeleteLunGroup(ctx context.Context, id string) error
 }
 
 // CreateLun used for create lun
-func (cli *OceanstorClient) CreateLun(ctx context.Context,
-	params map[string]interface{}) (map[string]interface{}, error) {
-	data := map[string]interface{}{
-		"NAME":        params["name"].(string),
-		"PARENTID":    params["parentid"].(string),
-		"CAPACITY":    params["capacity"].(int64),
-		"DESCRIPTION": params["description"].(string),
-		"ALLOCTYPE":   params["alloctype"].(int),
-	}
-	if val, ok := params["workloadTypeID"].(string); ok {
-		data["WORKLOADTYPEID"] = val
+func (cli *OceanstorClient) CreateLun(ctx context.Context, params map[string]any) (map[string]any, error) {
+	data, err := generateCreateLunDataFromParams(params)
+	if err != nil {
+		return nil, err
 	}
 
 	resp, err := cli.Post(ctx, "/lun", data)
@@ -488,4 +481,44 @@ func (cli *OceanstorClient) UpdateLun(ctx context.Context, lunID string, params 
 	}
 
 	return nil
+}
+
+func generateCreateLunDataFromParams(params map[string]any) (map[string]any, error) {
+	data := make(map[string]any)
+
+	if name, ok := utils.GetValue[string](params, "name"); ok {
+		data["NAME"] = name
+	}
+
+	if parentId, ok := utils.GetValue[string](params, "parentid"); ok {
+		data["PARENTID"] = parentId
+	}
+
+	if capacity, ok := utils.GetValue[int64](params, "capacity"); ok {
+		data["CAPACITY"] = capacity
+	}
+
+	if description, ok := utils.GetValue[string](params, "description"); ok {
+		data["DESCRIPTION"] = description
+	}
+
+	if allocType, ok := utils.GetValue[int](params, "alloctype"); ok {
+		data["ALLOCTYPE"] = allocType
+	}
+
+	if val, ok := utils.GetValue[string](params, "workloadTypeID"); ok {
+		data["WORKLOADTYPEID"] = val
+	}
+
+	if value, ok := utils.GetValue[string](params, constants.AdvancedOptionsKey); ok && value != "" {
+		advancedOptions := make(map[string]any)
+		err := json.Unmarshal([]byte(value), &advancedOptions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal advancedOptions parameters[%s] error: %v",
+				value, err)
+		}
+		data = pkgUtils.CombineMap(advancedOptions, data)
+	}
+
+	return data, nil
 }

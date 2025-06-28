@@ -445,6 +445,7 @@ spec:
           args:
             - "--csi-address=$(ADDRESS)"
             - "--timeout=6h"
+            - "--extra-create-metadata=true"
             - "--volume-name-prefix=pvc"
             - "--leader-election"
           env:

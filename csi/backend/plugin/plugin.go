@@ -44,6 +44,7 @@ type StoragePlugin interface {
 	DeleteSnapshot(context.Context, string, string) error
 	SmartXQoSQuery
 	Logout(context.Context)
+	ReLogin(ctx context.Context) error
 	// Validate used to check parameters, include login verification
 	Validate(context.Context, map[string]interface{}) error
 

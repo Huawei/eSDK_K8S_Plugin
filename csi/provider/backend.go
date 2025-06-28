@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -83,9 +83,13 @@ func (p *StorageProvider) UpdateStorageBackend(ctx context.Context, req *drcsi.U
 		return nil, errors.New(msg)
 	}
 
-	_, err = p.register.FetchAndRegisterOneBackend(ctx, backendName, false)
+	bk, err := p.register.FetchAndRegisterOneBackend(ctx, backendName, false)
 	if err != nil {
 		log.AddContext(ctx).Errorf("fetch and register backend failed, error: %v", err)
+		return nil, err
+	}
+	if err := bk.Plugin.ReLogin(ctx); err != nil {
+		log.AddContext(ctx).Errorf("failed to refresh user session when re-login: %v", err)
 		return nil, err
 	}
 

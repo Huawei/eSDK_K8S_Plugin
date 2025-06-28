@@ -274,28 +274,28 @@ func (d *CsiDriver) NodeGetVolumeStats(ctx context.Context,
 	if !ok {
 		msg := fmt.Sprintf("Volume metrics used %v is invalid", volumeMetrics.Used)
 		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Errorf(codes.Internal, msg)
+		return nil, status.Error(codes.Internal, msg)
 	}
 
 	volumeInodesFree, ok := volumeMetrics.InodesFree.AsInt64()
 	if !ok {
 		msg := fmt.Sprintf("Volume metrics inodesFree %v is invalid", volumeMetrics.InodesFree)
 		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Errorf(codes.Internal, msg)
+		return nil, status.Error(codes.Internal, msg)
 	}
 
 	volumeInodes, ok := volumeMetrics.Inodes.AsInt64()
 	if !ok {
 		msg := fmt.Sprintf("Volume metrics inodes %v is invalid", volumeMetrics.Inodes)
 		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Errorf(codes.Internal, msg)
+		return nil, status.Error(codes.Internal, msg)
 	}
 
 	volumeInodesUsed, ok := volumeMetrics.InodesUsed.AsInt64()
 	if !ok {
 		msg := fmt.Sprintf("Volume metrics inodesUsed %v is invalid", volumeMetrics.InodesUsed)
 		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Errorf(codes.Internal, msg)
+		return nil, status.Error(codes.Internal, msg)
 	}
 
 	response := &csi.NodeGetVolumeStatsResponse{

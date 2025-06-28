@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,9 +22,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
-	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -52,8 +50,7 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		WithVolumeCapability(ctx, req),
 	)
 	if err != nil {
-		log.AddContext(ctx).Errorf("build nas parameters failed, error: %v", err)
-		return err
+		return utils.Errorf(ctx, "build nas parameters failed, error: %v", err)
 	}
 
 	_, volumeName := utils.SplitVolumeId(req.GetVolumeId())
@@ -61,16 +58,13 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		return utils.Errorf(ctx, "volume name is blank, volumeId: %s", req.GetVolumeId())
 	}
 
-	var sourcePath string
-	switch m.protocol {
-	case plugin.ProtocolDpc:
-		sourcePath = "/" + volumeName
-	case plugin.ProtocolNfs, plugin.ProtocolNfsPlus:
-		sourcePath = m.portals[0] + ":/" + volumeName
-	default:
-		return pkgUtils.Errorf(ctx, "stage volume protocol is invalid, protocol: %s, param: %+v",
-			m.protocol, parameters)
+	sourcePathPrefix, err := generatePathPrefixByProtocol(m.protocol, m.portals)
+	if err != nil {
+		return utils.Errorf(ctx, "generate path prefix failed, error: %v", err)
 	}
+
+	// concatenate the prefix and volume name.
+	sourcePath := sourcePathPrefix + volumeName
 
 	connectInfo := map[string]interface{}{
 		"srcType":    connector.MountFSType,

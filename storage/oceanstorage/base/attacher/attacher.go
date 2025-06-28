@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -234,7 +235,12 @@ func (p *AttachmentManager) addToHostGroupMapping(ctx context.Context, groupName
 
 func (p *AttachmentManager) getISCSIProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]any) (
 	map[string]interface{}, error) {
-	tgtPortals, tgtIQNs, err := p.getTargetISCSIProperties(ctx)
+	validIPs, validIQNs, err := p.getValidISCSIProperties(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tgtPortals, tgtIQNs, err := p.getTargetISCSIProperties(ctx, validIPs, validIQNs)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +321,7 @@ func (p *AttachmentManager) GetMappingProperties(ctx context.Context,
 	return nil, utils.Errorf(ctx, "UnSupport protocol %s", p.Protocol)
 }
 
-func (p *AttachmentManager) getTargetISCSIProperties(ctx context.Context) ([]string, []string, error) {
+func (p *AttachmentManager) getValidISCSIProperties(ctx context.Context) (map[string]bool, map[string]string, error) {
 	ports, err := p.Cli.GetIscsiTgtPort(ctx)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get iSCSI tgt port error: %v", err)
@@ -341,34 +347,41 @@ func (p *AttachmentManager) getTargetISCSIProperties(ctx context.Context) ([]str
 			continue
 		}
 		portIqn := strings.Split(strings.Split(portID, ",")[0], "+")[1]
-		splitIqn := strings.Split(portIqn, ":")
+		splitIqn := strings.SplitN(portIqn, ":", splitIqnLength)
 
 		if len(splitIqn) < splitIqnLength {
 			continue
 		}
-
-		validIPs[splitIqn[splitIqnLength-1]] = true
-		validIQNs[splitIqn[splitIqnLength-1]] = portIqn
-	}
-
-	var tgtPortals []string
-	var tgtIQNs []string
-	for _, portal := range p.Portals {
-		ip := net.ParseIP(portal).String()
-		if !validIPs[ip] {
-			log.AddContext(ctx).Warningf("ISCSI portal %s is not valid", ip)
+		ipWrapper := iputils.NewIPWrapper(splitIqn[splitIqnLength-1])
+		if ipWrapper == nil {
 			continue
 		}
 
-		formatIP := fmt.Sprintf("%s:3260", ip)
+		validIPs[ipWrapper.String()] = true
+		validIQNs[ipWrapper.String()] = portIqn
+	}
+
+	return validIPs, validIQNs, nil
+}
+
+func (p *AttachmentManager) getTargetISCSIProperties(ctx context.Context, validIPs map[string]bool,
+	validIQNs map[string]string) ([]string, []string, error) {
+	var tgtPortals []string
+	var tgtIQNs []string
+	for _, portal := range p.Portals {
+		ipWrapper := iputils.NewIPWrapper(portal)
+		if ipWrapper == nil || !validIPs[ipWrapper.String()] {
+			log.AddContext(ctx).Warningf("ISCSI portal %s is not valid", portal)
+			continue
+		}
+
+		formatIP := fmt.Sprintf("%s:3260", ipWrapper.GetFormatPortalIP())
 		tgtPortals = append(tgtPortals, formatIP)
-		tgtIQNs = append(tgtIQNs, validIQNs[ip])
+		tgtIQNs = append(tgtIQNs, validIQNs[ipWrapper.String()])
 	}
 
 	if len(tgtPortals) == 0 {
-		msg := fmt.Sprintf("All config portal %s is not valid", p.Portals)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, nil, errors.New(msg)
+		return nil, nil, utils.Errorf(ctx, "All config portal %s is not valid", p.Portals)
 	}
 
 	return tgtPortals, tgtIQNs, nil

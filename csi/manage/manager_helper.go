@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ import (
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -435,8 +436,7 @@ func getDTreeMountOptions(req *csi.NodePublishVolumeRequest) []string {
 }
 
 func getDTreeSourcePath(bk *BackendConfig, req *csi.NodePublishVolumeRequest,
-	volumeName string) (string,
-	error) {
+	volumeName string) (string, error) {
 	parentName := bk.dTreeParentName
 
 	if publishInfo, exist := req.GetPublishContext()["publishInfo"]; exist {
@@ -456,14 +456,35 @@ func getDTreeSourcePath(bk *BackendConfig, req *csi.NodePublishVolumeRequest,
 			" please ensure that the attachRequired parameter is enabled")
 	}
 
-	switch bk.protocol {
-	case constants.ProtocolNfs, plugin.ProtocolNfsPlus:
-		return bk.portals[0] + ":/" + parentName + "/" + volumeName, nil
-	case constants.ProtocolDpc:
-		return "/" + parentName + "/" + volumeName, nil
+	sourcePathPrefix, err := generatePathPrefixByProtocol(bk.protocol, bk.portals)
+	if err != nil {
+		return "", fmt.Errorf("generate dtree path prefix failed, error: %v", err)
+	}
+
+	return sourcePathPrefix + parentName + "/" + volumeName, nil
+}
+
+// generatePathPrefixByProtocol used to get source path prefix
+// e.g.
+//   - For ProtocolNfs with IPv4 portal "192.168.1.1", it returns "192.168.1.1:/"
+//   - For ProtocolNfs with IPv6 portal "2001:db8::1", it returns "[2001:db8::1]:/"
+//   - For ProtocolDpc, it returns "/"
+//   - For unsupported protocols, it returns an error
+func generatePathPrefixByProtocol(protocol string, portals []string) (string, error) {
+	switch protocol {
+	case plugin.ProtocolNfs, plugin.ProtocolNfsPlus:
+		if len(portals) == 0 {
+			return "", fmt.Errorf("no portal provided for NFS or NFS+ protocol")
+		}
+		ipWrapper := iputils.NewIPWrapper(portals[0])
+		if ipWrapper == nil {
+			return "", fmt.Errorf("portal [%s] is not a valid ip address", portals[0])
+		}
+		return ipWrapper.GetFormatPortalIP() + ":/", nil
+	case plugin.ProtocolDpc:
+		return "/", nil
 	default:
-		return "", fmt.Errorf("dtree only support %q or %q protocol, but got %q",
-			constants.ProtocolNfs, constants.ProtocolDpc, bk.protocol)
+		return "", fmt.Errorf("protocol [%s] is not supported", protocol)
 	}
 }
 

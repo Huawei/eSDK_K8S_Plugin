@@ -2,6 +2,24 @@
 
 [Releases](https://github.com/Huawei/eSDK_K8S_Plugin/releases)
 
+## v4.8.0
+
+- Added support for OpenShift 4.18
+- Enabled IPv6 integration with Huawei Enterprise Storage
+- Added LDAP user login support for Huawei Enterprise Storage
+- Custom alert thresholds now supported for oceanstor-nas storage type
+- Custom storage resource names for dynamic volume provision (Applies to OceanStor and OceanStor Dorado storage products)
+- Introduced new common parameters in Helm values.yaml:
+  `imagePullSecrets`, `resources`, and `affinity` configurations
+- Upgraded VolumeSnapshot CRDs to align with the external-snapshot sidecar version used by Huawei CSI
+
+## v4.7.0
+
+- Support Kubernetes 1.32
+- Support Oceanstor Pacific 8.2.1
+- Support Oceanstor Pacific DTree feature
+- Add the `csiDriver.enableRoCEConnect` parameter to the Helm values.yaml file to allow disabling automatic disk scanning when using the RoCE protocol
+
 ## v4.6.0
 
 - Support Kubernetes 1.31.

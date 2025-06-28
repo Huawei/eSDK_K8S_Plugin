@@ -1,5 +1,5 @@
 /*
-Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/cert"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -286,7 +287,13 @@ func (c *Controller) Start(ctx context.Context, webHookCfg Config, admissionWebh
 		return err
 	}
 
-	c.srv = &http.Server{Addr: fmt.Sprintf("%s:%d", webHookCfg.WebHookAddress, webHookCfg.WebHookPort),
+	wrapperWebHookAddr := webHookCfg.WebHookAddress
+	ipWrapper := iputils.NewIPWrapper(webHookCfg.WebHookAddress)
+	if ipWrapper != nil {
+		wrapperWebHookAddr = ipWrapper.GetFormatPortalIP()
+	}
+
+	c.srv = &http.Server{Addr: fmt.Sprintf("%s:%d", wrapperWebHookAddr, webHookCfg.WebHookPort),
 		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{tlsCert}}}
 	for _, pair := range webHookCfg.HandleFuncPair {
 		serverRequest := func(w http.ResponseWriter, r *http.Request) {
