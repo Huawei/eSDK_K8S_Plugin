@@ -34,7 +34,7 @@ import (
 
 // DoScanNVMeDevice used to scan device by command nvme ns-rescan
 var DoScanNVMeDevice = func(ctx context.Context, devicePort string) error {
-	output, err := utils.ExecShellCmd(ctx, "nvme ns-rescan /dev/%s", devicePort)
+	output, err := utils.ExecRawHostCmd(ctx, "/usr/local/sbin/nvme ns-rescan /dev/%s", devicePort)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Scan nvme port failed. output:%s, error:%v", output, err)
 		return err
@@ -49,22 +49,23 @@ var GetSubSysInfo = func(ctx context.Context) (map[string]interface{}, error) {
 		return nil, utils.Errorf(ctx, "Failed to check the NVMe version. err:%v", err)
 	}
 
-	output, err := utils.ExecShellCmdFilterLog(ctx, "nvme list-subsys -o json")
+	output, err := utils.ExecRawHostCmd(ctx, "/usr/local/sbin/nvme list-subsys -o json")
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get exist nvme connect info failed, output:%s, error:%v", output, err)
 		return nil, errors.New("get nvme connect port failed")
 	}
 
-	var nvmeConnectInfo map[string]interface{}
+	var nvmeConnectInfo []map[string]interface{}
 	if err = json.Unmarshal([]byte(output), &nvmeConnectInfo); err != nil {
+		log.Errorf("unmarshal nvme connect info failed: %v", err)
 		return nil, errors.New("unmarshal nvme connect info failed")
 	}
 
-	return nvmeConnectInfo, nil
+	return nvmeConnectInfo[0], nil
 }
 
 func checkNVMeVersion(ctx context.Context) error {
-	output, err := utils.ExecShellCmd(ctx, "nvme version")
+	output, err := utils.ExecRawHostCmd(ctx, "/usr/local/sbin/nvme version")
 	if err != nil {
 		return fmt.Errorf("failed to query the NVMe version. err: %v output: %s", err, output)
 	}
@@ -118,7 +119,7 @@ func GetNVMeDevice(ctx context.Context, devicePort string, tgtLunGUID string) (s
 
 	outputLines := strings.Split(output, "\n")
 	for _, dev := range outputLines {
-		match, err := regexp.MatchString(`nvme[0-9]+n[0-9]+`, dev)
+		match, err := regexp.MatchString(`nvme[0-9]+(c[0-9]+)?n[0-9]+`, dev)
 		if err != nil {
 			log.AddContext(ctx).Warningf("Match string failed. dev:%s, error:%v", dev, err)
 			continue

@@ -172,7 +172,7 @@ spec:
             - "--endpoint=/csi/csi.sock"
             - "--driver-name=csi.huawei.com"
             - "--connector-threads=4"
-            - "--volume-use-multipath=true"
+            - "--volume-use-multipath=false"
             - "--all-path-online=false"
             - "--scsi-multipath-type=DM-multipath"
             - "--nvme-multipath-type=HW-UltraPath-NVMe"
@@ -240,6 +240,10 @@ spec:
               name: nvme-config-dir
             - mountPath: /etc/localtime
               name: host-time
+            - name: sys-dir
+              mountPath: /sys
+            - name: run-dir
+              mountPath: /run
           resources:
             limits:
               cpu: 500m
@@ -284,5 +288,13 @@ spec:
           name: nvme-config-dir
         - hostPath:
             path: /etc/localtime
-            type: File
+          #  type: File
           name: host-time
+        - name: sys-dir
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: run-dir
+          hostPath:
+            path: /run
+            type: Directory

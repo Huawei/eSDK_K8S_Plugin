@@ -98,7 +98,7 @@ func parseRoCEInfo(ctx context.Context, connectionProperties map[string]interfac
 }
 
 func getTargetNQN(ctx context.Context, tgtPortal string) (string, error) {
-	output, err := utils.ExecShellCmdFilterLog(ctx, "nvme discover -t rdma -a %s", tgtPortal)
+	output, err := utils.ExecRawHostCmd(ctx, "nvme discover -t rdma -a %s", tgtPortal)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Cannot discover nvme target %s, reason: %v", tgtPortal, output)
 		return "", err
@@ -132,7 +132,7 @@ func connectRoCEPortal(ctx context.Context,
 
 	checkExitCode := []string{"exit status 0", "exit status 70"}
 	iSCSICmd := fmt.Sprintf("nvme connect -t rdma -a %s -n %s", tgtPortal, targetNQN)
-	output, err := utils.ExecShellCmdFilterLog(ctx, iSCSICmd)
+	output, err := utils.ExecRawHostCmd(ctx, iSCSICmd)
 	if strings.Contains(output, "Input/output error") {
 		log.AddContext(ctx).Infof("RoCE target %s has already login, no need login again", tgtPortal)
 		return nil

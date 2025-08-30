@@ -180,7 +180,7 @@ func getFSType(ctx context.Context, sourcePath string) (string, error) {
 func formatDisk(ctx context.Context, sourcePath, fsType, diskSizeType string) error {
 	var cmd string
 	if fsType == "xfs" {
-		cmd = fmt.Sprintf("mkfs -t %s -f %s", fsType, sourcePath)
+		cmd = fmt.Sprintf("mkfs.xfs %s", sourcePath)
 	} else {
 		// Handle ext types
 		switch diskSizeType {

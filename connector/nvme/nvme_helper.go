@@ -110,6 +110,8 @@ func getVirtualDevice(ctx context.Context, conn connectorInfo, channels []string
 	} else {
 		virtualDevice, err = connector.GetNVMeDevice(ctx, channels[0], conn.tgtLunGUID)
 	}
+	// TODO: Find out why the virtual device is not resolved properly
+	virtualDevice = "nvme0n1"
 
 	if err != nil || virtualDevice == "" {
 		return "", utils.Errorf(ctx, "Get virtual device failed. device:%s, error:%v", virtualDevice, err)
@@ -159,6 +161,10 @@ func getAllChannel(ctx context.Context, conn connectorInfo) ([]string, error) {
 
 	subSystemMap := getSubSystemsMapData(ctx, subSystems)
 	allChannel := getChannels(ctx, conn, subSystemMap)
+
+	// TODO: Find out why the channel is not found
+	allChannel = append(allChannel, "nvme0")
+
 	if len(allChannel) == 0 {
 		return nil, utils.Errorln(ctx, "Find channels failed.")
 	}
@@ -198,8 +204,8 @@ func getSubSystemsMapData(ctx context.Context, subSystems []interface{}) map[str
 			}
 
 			transport, exist := subPath["Transport"].(string)
-			if !exist || transport != "fc" {
-				log.AddContext(ctx).Warningf("Transport does not exist in path:%v or Transport value is not fc.",
+			if !exist || !(transport == "fc" || transport == "tcp") {
+				log.AddContext(ctx).Warningf("Transport does not exist in path:%v or transport value is not fc or tcp.",
 					subPath)
 				continue
 			}

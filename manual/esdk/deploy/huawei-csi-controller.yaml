@@ -550,7 +550,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
           args:
-            - "--logging-module=file"
+            - "--logging-module=console"
             - "--log-level=info"
             - "--log-file-dir=/var/log/huawei"
             - "--log-file-size=20M"
@@ -587,7 +587,7 @@ spec:
                   apiVersion: v1
                   fieldPath: metadata.namespace
           args:
-            - "--logging-module=file"
+            - "--logging-module=console"
             - "--log-level=info"
             - "--log-file-dir=/var/log/huawei"
             - "--log-file-size=20M"
@@ -621,7 +621,7 @@ spec:
             - "--controller"
             - "--backend-update-interval=60"
             - "--driver-name=csi.huawei.com"
-            - "--logging-module=file"
+            - "--logging-module=console"
             - "--log-level=info"
             - "--volume-name-prefix=pvc"
             - "--log-file-dir=/var/log/huawei"
@@ -672,7 +672,7 @@ spec:
           name: log
         - hostPath:
             path: /etc/localtime
-            type: File
+          # type: File
           name: host-time
 
 ---

@@ -158,8 +158,8 @@ func runISCSIAdmin(ctx context.Context,
 	tgtPortal, targetIQN string,
 	iSCSICommand string,
 	checkExitCode []string) error {
-	iSCSICmd := fmt.Sprintf("iscsiadm -m node -T %s -p %s %s", targetIQN, tgtPortal, iSCSICommand)
-	output, err := utils.ExecShellCmdFilterLog(ctx, iSCSICmd)
+	iSCSICmd := fmt.Sprintf("/usr/local/sbin/iscsiadm -m node -T %s -p %s %s", targetIQN, tgtPortal, iSCSICommand)
+	output, err := utils.ExecRawHostCmd(ctx, iSCSICmd)
 	if err != nil {
 		if err.Error() == "timeout" {
 			return err
@@ -177,8 +177,8 @@ func runISCSIAdmin(ctx context.Context,
 }
 
 func runISCSIBare(ctx context.Context, iSCSICommand string, checkExitCode []string) (string, error) {
-	iSCSICmd := fmt.Sprintf("iscsiadm %s", iSCSICommand)
-	output, err := utils.ExecShellCmdFilterLog(ctx, iSCSICmd)
+	iSCSICmd := fmt.Sprintf("/usr/local/sbin/iscsiadm %s", iSCSICommand)
+	output, err := utils.ExecRawHostCmd(ctx, iSCSICmd)
 	if err != nil {
 		if err.Error() == "timeout" {
 			return "", err
@@ -858,7 +858,7 @@ func disconnectSessions(ctx context.Context, devConnectorInfos []singleConnector
 		tgtPortal := connectorInfo.tgtPortal
 		tgtIQN := connectorInfo.tgtIQN
 		cmd := buildCheckSessionCmd(tgtPortal, tgtIQN)
-		output, err := utils.ExecShellCmdFilterLog(ctx, cmd)
+		output, err := utils.ExecShellCmd(ctx, cmd)
 		if err != nil {
 			log.AddContext(ctx).Infof("Disconnect iSCSI target %s failed, err: %v", tgtPortal, err)
 			return err
