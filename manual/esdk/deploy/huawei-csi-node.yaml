@@ -166,8 +166,8 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:{{csi-version}}
-          imagePullPolicy: "IfNotPresent"
+          image: registry.gitlab.com/johanngyger/talos-huawei-csi:42
+          imagePullPolicy: "Always"
           args:
             - "--endpoint=/csi/csi.sock"
             - "--driver-name=csi.huawei.com"
@@ -179,8 +179,8 @@ spec:
             - "--scan-volume-timeout=3"
             - "--exec-command-timeout=30"
             - "--enable-roce-connect=true"
-            - "--logging-module=file"
-            - "--log-level=info"
+            - "--logging-module=console"
+            - "--log-level=debug"
             - "--log-file-dir=/var/log/huawei"
             - "--log-file-size=20M"
             - "--max-backups=9"

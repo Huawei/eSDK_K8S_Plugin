@@ -537,7 +537,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-controller
-          image: storage-backend-controller:{{csi-version}}
+          image: hosteurdkuser/storage-backend-controller:4.7.0
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CSI_NAMESPACE
@@ -576,7 +576,7 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: storage-backend-sidecar
-          image: storage-backend-sidecar:{{csi-version}}
+          image: hosteurdkuser/storage-backend-sidecar:4.7.0
           imagePullPolicy: "IfNotPresent"
           env:
             - name: DRCSI_ENDPOINT
@@ -613,8 +613,14 @@ spec:
               cpu: 50m
               memory: 128Mi
         - name: huawei-csi-driver
-          image: huawei-csi:{{csi-version}}
-          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+            privileged: true
+          image: registry.gitlab.com/johanngyger/talos-huawei-csi:42
+          imagePullPolicy: "Always"
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--dr-endpoint=$(DRCSI_ENDPOINT)"
