@@ -130,8 +130,9 @@ func maskSensitiveInfo(info interface{}, maskObjects []string) string {
 }
 
 func execShellCmdTimeout(ctx context.Context,
-	fun func(context.Context, string, bool, ...interface{}) (string, bool, error),
+	fun func(context.Context, string, bool, bool, ...interface{}) (string, bool, error),
 	format string,
+	runHostCmd bool,
 	logFilter bool,
 	args ...interface{}) (string, error) {
 	var output string
@@ -146,7 +147,7 @@ func execShellCmdTimeout(ctx context.Context,
 			close(timeCh)
 		}()
 
-		output, timeOut, err = fun(ctx, format, logFilter, args...)
+		output, timeOut, err = fun(ctx, format, runHostCmd, logFilter, args...)
 		if !timeOut {
 			done <- "run command done"
 		} else {
@@ -167,21 +168,28 @@ func execShellCmdTimeout(ctx context.Context,
 
 // ExecShellCmd execs the command without filters the result log
 var ExecShellCmd = func(ctx context.Context, format string, args ...interface{}) (string, error) {
-	return execShellCmdTimeout(ctx, execShellCmd, format, false, args...)
+	return execShellCmdTimeout(ctx, execShellCmd, format, false, false, args...)
 }
 
-// ExecShellCmdFilterLog execs the command and filters the result log
-func ExecShellCmdFilterLog(ctx context.Context, format string, args ...interface{}) (string, error) {
-	return execShellCmdTimeout(ctx, execShellCmd, format, true, args...)
+// ExecRawHostCmd execs the command on the host (and not in the container)
+// TODO: ExecShellCmdFilterLog has been repurposed and this needs to be done properly
+func ExecRawHostCmd(ctx context.Context, format string, args ...interface{}) (string, error) {
+	return execShellCmdTimeout(ctx, execShellCmd, format, true, false, args...)
 }
 
-func execShellCmd(ctx context.Context, format string, logFilter bool, args ...interface{}) (string, bool, error) {
+func execShellCmd(ctx context.Context, format string, runHostCmd bool, logFilter bool, args ...interface{}) (string, bool, error) {
 	cmd := fmt.Sprintf(format, args...)
-	log.AddContext(ctx).Infof("Gonna run shell cmd \"%s\".", MaskSensitiveInfo(cmd))
-
-	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "-u/proc/1/ns/uts", "/bin/sh",
-		"-c", cmd}
+	execCmd := []string{"-i/proc/1/ns/ipc", "-n/proc/1/ns/net", "-u/proc/1/ns/uts"}
+	if runHostCmd {
+		execCmd = append(execCmd, "-m/proc/1/ns/mnt")
+		parts := strings.Fields(cmd)
+		execCmd = append(execCmd, parts...)
+	} else {
+		execCmd = append(execCmd, "/bin/sh", "-c")
+		execCmd = append(execCmd, cmd)
+	}
 	shCmd := exec.Command("nsenter", execCmd...)
+	log.AddContext(ctx).Infof("Gonna run command \"%s\"", shCmd)
 
 	killProcess := true
 	var killProcessAndSubprocess bool

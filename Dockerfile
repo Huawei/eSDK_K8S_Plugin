@@ -1,12 +1,13 @@
 # eg: docker build --target huawei-csi-driver --platform linux/amd64 --build-arg VERSION=${VER} -f Dockerfile -t huawei-csi:${VER} .
 ARG VERSION
 
-FROM busybox:stable-glibc as huawei-csi-driver
+FROM alpine
 
 LABEL version="${VERSION}"
 LABEL maintainers="Huawei eSDK CSI development team"
 LABEL description="Kubernetes CSI Driver for Huawei Storage: $VERSION"
 
+RUN apk update && apk add --no-cache xfsprogs xfsprogs-extra findmnt blkid
 ARG binary=./huawei-csi
 COPY ${binary} huawei-csi
 ENTRYPOINT ["/huawei-csi"]

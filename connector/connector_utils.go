@@ -273,7 +273,7 @@ func reScanNVMe(ctx context.Context, device string) error {
 			return err
 		}
 	} else if match, err = regexp.MatchString(`nvme[0-9]+$`, device); err == nil && match {
-		output, err := utils.ExecShellCmd(ctx, "nvme ns-rescan /dev/%s", device)
+		output, err := utils.ExecRawHostCmd(ctx, "/usr/local/sbin/nvme ns-rescan /dev/%s", device)
 		if err != nil {
 			log.AddContext(ctx).Warningf("rescan nvme path error: %s", output)
 			return err
@@ -555,7 +555,7 @@ func findMultiPathMaps(foundDevices []string) (map[string][]string, string) {
 
 func getSCSIWwnByScsiID(ctx context.Context, hostDevice string) (string, error) {
 	priorityCmd := fmt.Sprintf("/usr/lib/udev/scsi_id --page 0x83 --whitelisted %s", hostDevice)
-	output, err := utils.ExecShellCmd(ctx, priorityCmd)
+	output, err := utils.ExecRawHostCmd(ctx, priorityCmd)
 	if err != nil {
 		// /bin/sh echo "not found"
 		// /bin/bash echo "no such file or directory"
@@ -563,7 +563,7 @@ func getSCSIWwnByScsiID(ctx context.Context, hostDevice string) (string, error) 
 		if strings.Contains(lowerOutput, "no such file or directory") ||
 			strings.Contains(lowerOutput, "not found") {
 			alternateCmd := fmt.Sprintf("/lib/udev/scsi_id --page 0x83 --whitelisted %s", hostDevice)
-			output, err = utils.ExecShellCmd(ctx, alternateCmd)
+			output, err = utils.ExecRawHostCmd(ctx, alternateCmd)
 		}
 		if err != nil {
 			return "", utils.Errorf(ctx, "Failed to get scsi id of device %s, err is %v", hostDevice, err)
@@ -645,8 +645,8 @@ var GetSCSIWwn = func(ctx context.Context, hostDevice string) (string, error) {
 
 // GetNVMeWwn get the unique id of the device
 var GetNVMeWwn = func(ctx context.Context, device string) (string, error) {
-	cmd := fmt.Sprintf("nvme id-ns %s -o json", device)
-	output, err := utils.ExecShellCmdFilterLog(ctx, cmd)
+	cmd := fmt.Sprintf("/usr/local/sbin/nvme id-ns %s -o json", device)
+	output, err := utils.ExecRawHostCmd(ctx, cmd)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Failed to get nvme id of device %s, err is %v", device, err)
 		return "", err
@@ -668,7 +668,7 @@ var GetNVMeWwn = func(ctx context.Context, device string) (string, error) {
 // ReadDevice is to check whether the device is readable
 var ReadDevice = func(ctx context.Context, dev string) ([]byte, error) {
 	log.AddContext(ctx).Infof("Checking to see if %s is readable.", dev)
-	out, err := utils.ExecShellCmdFilterLog(ctx, "dd if=%s bs=1024 count=512 status=none", dev)
+	out, err := utils.ExecShellCmd(ctx, "dd if=%s bs=1024 count=512 status=none", dev)
 	if err != nil {
 		return nil, err
 	}
@@ -1438,7 +1438,7 @@ var IsInFormatting = func(ctx context.Context, sourcePath, fsType string) (bool,
 		return false, utils.Errorf(ctx, "Do not support the type %s.", fsType)
 	}
 
-	cmd = fmt.Sprintf("ps -aux | grep mkfs | grep -w %s | wc -l |awk '{if($1>1) print 1; else print 0}'",
+	cmd = fmt.Sprintf("ps aux | grep mkfs | grep -w %s | wc -l | awk '{if($1>1) print 1; else print 0}'",
 		sourcePath)
 	output, err := utils.ExecShellCmd(ctx, cmd)
 	if err != nil {
