@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package base provide base operations for oceanstor base storage
 package base
 
 import (
@@ -44,9 +45,9 @@ func Test_generateGetRoCEPortalUrlByIP(t *testing.T) {
 		},
 		{
 			name:            "invalid IPv4 test",
-			tgtPortal:       "127.0.0..1",
+			tgtPortal:       "",
 			wantUrl:         "",
-			wantErrContains: "tgtPortal 127.0.0..1 is invalid",
+			wantErrContains: "invalid",
 		},
 	}
 

@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-// Package base provide base operations for oceanstor and oceandisk storage
+// Package base provide base operations for oceanstor base storage
 package base
 
 import (
@@ -27,42 +27,10 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"slices"
-	"time"
 
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
-)
-
-const (
-	// SuccessCode defines error code of success
-	SuccessCode = int64(0)
-
-	// QueryCountPerBatch defines query count for each circle of batch operation
-	QueryCountPerBatch int = 100
-
-	// UserOffline defines error code of user off line
-	UserOffline = 1077949069
-
-	// IPLockErrorCode defines error code of ip lock
-	IPLockErrorCode = 1077949071
-
-	// UserUnauthorized defines error code of user unauthorized
-	UserUnauthorized = -401
-
-	// Unconnected defines the error msg of unconnected
-	Unconnected = "unconnected"
-
-	// LocalUserType defines the user type of local
-	LocalUserType = "0"
-
-	// MaxStorageThreads defines max threads of each storage
-	MaxStorageThreads = 100
-
-	// UninitializedStorage defines uninitialized storage
-	UninitializedStorage = "UninitializedStorage"
-
-	defaultHttpTimeout = 60 * time.Second
 )
 
 var (
@@ -154,21 +122,6 @@ func (resp *Response) getInt64Code() (int64, error) {
 	}
 
 	return code, nil
-}
-
-// RestClientInterface defines interfaces for base restful call
-type RestClientInterface interface {
-	Call(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
-	BaseCall(ctx context.Context, method string, url string, data map[string]interface{}) (Response, error)
-	Get(ctx context.Context, url string, data map[string]interface{}) (Response, error)
-	Post(ctx context.Context, url string, data map[string]interface{}) (Response, error)
-	Put(ctx context.Context, url string, data map[string]interface{}) (Response, error)
-	Delete(ctx context.Context, url string, data map[string]interface{}) (Response, error)
-	GetRequest(ctx context.Context, method string, url string, data map[string]interface{}) (*http.Request, error)
-	Login(ctx context.Context) error
-	Logout(ctx context.Context)
-	ReLogin(ctx context.Context) error
-	GetSystem(ctx context.Context) (map[string]interface{}, error)
 }
 
 // HTTP defines for http request process

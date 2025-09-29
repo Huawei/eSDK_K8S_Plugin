@@ -27,7 +27,7 @@ import (
 
 func Test_CheckHostConnectivity_WithInvalidIP(t *testing.T) {
 	// arrange
-	portal := "127.0..0.1:9090"
+	portal := ""
 
 	// action
 	gotConnectionStatus := CheckHostConnectivity(context.Background(), portal)

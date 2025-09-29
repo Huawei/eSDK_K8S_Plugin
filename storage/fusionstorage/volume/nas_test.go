@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
@@ -57,6 +58,7 @@ func TestPreCreate(t *testing.T) {
 
 		nas := NewNAS(testClient)
 		err := nas.preCreate(context.TODO(), map[string]interface{}{
+			"protocol":   "nfs",
 			"authclient": "*",
 			"name":       "mock-name",
 		})
@@ -66,9 +68,19 @@ func TestPreCreate(t *testing.T) {
 	t.Run("Auth client empty", func(t *testing.T) {
 		nas := NewNAS(testClient)
 		err := nas.preCreate(context.TODO(), map[string]interface{}{
-			"name": "mock-name",
+			"protocol": "nfs",
+			"name":     "mock-name",
 		})
 		require.Error(t, err)
+	})
+
+	t.Run("DPC without auth client", func(t *testing.T) {
+		nas := NewNAS(testClient)
+		err := nas.preCreate(context.TODO(), map[string]interface{}{
+			"name":     "mock-name",
+			"protocol": "dpc",
+		})
+		require.NoError(t, err)
 	})
 
 	t.Run("Name is empty", func(t *testing.T) {
@@ -81,6 +93,7 @@ func TestPreCreate(t *testing.T) {
 
 		nas := NewNAS(testClient)
 		err := nas.preCreate(context.TODO(), map[string]interface{}{
+			"protocol":   "nfs",
 			"authclient": "*",
 		})
 		require.Error(t, err)
@@ -391,4 +404,51 @@ func TestNAS_setSize(t *testing.T) {
 			require.Equal(t, int64(tt.wantSize), got.GetSize())
 		})
 	}
+}
+
+func TestNAS_allowShareAccess_Success(t *testing.T) {
+	// arrange
+	nas := NewNAS(testClient)
+	params := map[string]interface{}{
+		"authclient": "client",
+	}
+	taskResult := map[string]interface{}{
+		"shareID": "1",
+	}
+
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyMethodReturn(testClient, "AllowNfsShareAccess", nil)
+
+	// act
+	got, err := nas.allowShareAccess(ctx, params, taskResult)
+
+	// assert
+	assert.Nil(t, got)
+	assert.Nil(t, err)
+}
+
+func TestNAS_allowShareAccess_Error(t *testing.T) {
+	// arrange
+	nas := NewNAS(testClient)
+	params := map[string]interface{}{
+		"authclient": "client",
+	}
+	taskResult := map[string]interface{}{
+		"shareID": "1",
+	}
+	wantErr := errors.New("mock error")
+
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyMethodReturn(testClient, "AllowNfsShareAccess", wantErr)
+
+	// act
+	got, err := nas.allowShareAccess(ctx, params, taskResult)
+
+	// assert
+	assert.Nil(t, got)
+	assert.Equal(t, wantErr, err)
 }

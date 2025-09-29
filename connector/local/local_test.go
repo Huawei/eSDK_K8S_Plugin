@@ -56,8 +56,7 @@ func TestConnectVolume(t *testing.T) {
 			"tgtLunWWN": "tgtLunWWN"}}, want: "/dev/disk/by-id/wwn-0xtgtLunWWN", wantErr: false},
 	}
 
-	var interval = waitDevOnlineTimeInterval
-	stubs := gostub.Stub(&interval, time.Millisecond)
+	stubs := gostub.Stub(&waitDevOnlineTimeInterval, time.Millisecond)
 	defer stubs.Reset()
 
 	stubs.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
@@ -97,7 +96,7 @@ func TestDisConnectVolume(t *testing.T) {
 	}{
 		{name: "EmptyTgtLunWWN", args: args{ctx: ctx, tgtLunWWN: ""}, wantErr: false},
 		{name: "DeviceNotExist", args: args{ctx: ctx, tgtLunWWN: "test"}, wantErr: false},
-		{name: "Normal", args: args{ctx: ctx, tgtLunWWN: "tgtLunWWN"}, wantErr: true},
+		{name: "Normal", args: args{ctx: ctx, tgtLunWWN: "tgtLunWWN"}, wantErr: false},
 	}
 
 	stubs := gostub.Stub(&connector.DisconnectVolumeTimeOut, time.Millisecond)

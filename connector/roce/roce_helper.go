@@ -68,13 +68,13 @@ func parseRoCEInfo(ctx context.Context, connectionProperties map[string]interfac
 
 	var availablePortals []string
 	for _, portal := range tgtPortals {
-		ipWrapper := iputils.NewIPWrapper(portal)
-		if ipWrapper == nil {
-			log.AddContext(ctx).Errorf("portal [%s] is not a valid ip address", portal)
+		wrapper := iputils.NewIPDomainWrapper(portal)
+		if wrapper == nil {
+			log.AddContext(ctx).Errorf("portal [%s] is invalid", portal)
 			continue
 		}
 
-		_, err = utils.ExecShellCmd(ctx, ipWrapper.GetPingCommand(), portal)
+		_, err = utils.ExecShellCmd(ctx, wrapper.GetPingCommand(), portal)
 		if err != nil {
 			log.AddContext(ctx).Errorf("failed to check the host connectivity. %s", portal)
 			continue

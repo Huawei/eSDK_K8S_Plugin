@@ -136,9 +136,12 @@ func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
 // CreateVolume used to create volume
 func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
 	name string, parameters map[string]interface{}) (utils.Volume, error) {
-	name, err := p.getVolumeNameFromPVNameOrParameters(name, parameters)
-	if err != nil {
-		return nil, err
+	var err error
+	if p.product.IsDoradoV6OrV7() {
+		name, err = getVolumeNameFromPVNameOrParameters(name, parameters)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	params := getParams(ctx, name, parameters)

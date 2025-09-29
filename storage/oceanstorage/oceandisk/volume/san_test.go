@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -43,7 +44,7 @@ func TestMain(m *testing.M) {
 func TestSAN_Create_Success(t *testing.T) {
 	// arrange
 	ctx := context.Background()
-	clientConfig := client.NewClientConfig{
+	clientConfig := base.NewClientConfig{
 		Urls:            []string{"127.0.0.1"},
 		User:            "testUser",
 		SecretName:      "testSecretName",
@@ -90,7 +91,7 @@ func TestSAN_Create_Success(t *testing.T) {
 func TestSAN_Create_PrepareFailed(t *testing.T) {
 	// arrange
 	ctx := context.Background()
-	clientConfig := client.NewClientConfig{
+	clientConfig := base.NewClientConfig{
 		Urls:            []string{"127.0.0.1"},
 		User:            "testUser",
 		SecretName:      "testSecretName",
@@ -133,7 +134,7 @@ func TestSAN_Create_PrepareFailed(t *testing.T) {
 func TestSAN_deleteNamespace_success(t *testing.T) {
 	// arrange
 	ctx := context.Background()
-	clientConfig := client.NewClientConfig{
+	clientConfig := base.NewClientConfig{
 		Urls:            []string{"127.0.0.1"},
 		User:            "testUser",
 		SecretName:      "testSecretName",
@@ -169,7 +170,7 @@ func TestSAN_deleteNamespace_success(t *testing.T) {
 func TestSAN_expandLocalNamespace_poolNotExist(t *testing.T) {
 	// arrange
 	ctx := context.Background()
-	clientConfig := client.NewClientConfig{
+	clientConfig := base.NewClientConfig{
 		Urls:            []string{"127.0.0.1"},
 		User:            "testUser",
 		SecretName:      "testSecretName",

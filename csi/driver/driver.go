@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ package driver
 import (
 	"strings"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
+
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/handler"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 )
@@ -30,6 +32,10 @@ type CsiDriver struct {
 	k8sUtils        k8sutils.Interface
 	nodeName        string
 	backendSelector handler.BackendSelectInterface
+
+	csi.UnimplementedIdentityServer
+	csi.UnimplementedControllerServer
+	csi.UnimplementedNodeServer
 }
 
 // NewServer used to inits a new driver

@@ -352,13 +352,13 @@ func (p *AttachmentManager) getValidISCSIProperties(ctx context.Context) (map[st
 		if len(splitIqn) < splitIqnLength {
 			continue
 		}
-		ipWrapper := iputils.NewIPWrapper(splitIqn[splitIqnLength-1])
-		if ipWrapper == nil {
+		wrapper := iputils.NewIPDomainWrapper(splitIqn[splitIqnLength-1])
+		if wrapper == nil {
 			continue
 		}
 
-		validIPs[ipWrapper.String()] = true
-		validIQNs[ipWrapper.String()] = portIqn
+		validIPs[wrapper.String()] = true
+		validIQNs[wrapper.String()] = portIqn
 	}
 
 	return validIPs, validIQNs, nil
@@ -369,15 +369,15 @@ func (p *AttachmentManager) getTargetISCSIProperties(ctx context.Context, validI
 	var tgtPortals []string
 	var tgtIQNs []string
 	for _, portal := range p.Portals {
-		ipWrapper := iputils.NewIPWrapper(portal)
-		if ipWrapper == nil || !validIPs[ipWrapper.String()] {
+		wrapper := iputils.NewIPDomainWrapper(portal)
+		if wrapper == nil || !validIPs[wrapper.String()] {
 			log.AddContext(ctx).Warningf("ISCSI portal %s is not valid", portal)
 			continue
 		}
 
-		formatIP := fmt.Sprintf("%s:3260", ipWrapper.GetFormatPortalIP())
+		formatIP := fmt.Sprintf("%s:3260", wrapper.GetFormatPortalIP())
 		tgtPortals = append(tgtPortals, formatIP)
-		tgtIQNs = append(tgtIQNs, validIQNs[ipWrapper.String()])
+		tgtIQNs = append(tgtIQNs, validIQNs[wrapper.String()])
 	}
 
 	if len(tgtPortals) == 0 {

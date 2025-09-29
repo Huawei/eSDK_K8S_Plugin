@@ -60,6 +60,7 @@ const (
 	noAllSquash               = 1
 	rootSquash                = 0
 	noRootSquash              = 1
+	defaultAccessValue        = 1
 )
 
 // NAS provides nas storage client
@@ -75,6 +76,10 @@ func NewNAS(cli client.IRestClient) *NAS {
 }
 
 func (p *NAS) checkAuthclient(ctx context.Context, params map[string]interface{}) error {
+	if params["protocol"] != constants.ProtocolNfs && params["protocol"] != constants.ProtocolNfsPlus {
+		return nil
+	}
+
 	authclient, exist := params["authclient"].(string)
 	if !exist || authclient == "" {
 		return pkgUtils.Errorln(ctx, "authclient must be provided for filesystem")
@@ -647,20 +652,35 @@ func (p *NAS) deleteShare(ctx context.Context, shareID, accountId string) error 
 
 func (p *NAS) allowShareAccess(ctx context.Context, params, taskResult map[string]interface{}) (
 	map[string]interface{}, error) {
-
-	allowNfsShareAccessReq := &client.AllowNfsShareAccessRequest{
-		AccessName:  params["authclient"].(string),
-		ShareId:     taskResult["shareID"].(string),
-		AccessValue: 1,
-		AllSquash:   params["allsquash"].(int),
-		RootSquash:  params["rootsquash"].(int),
-		AccountId:   params["accountid"].(string),
+	authClients, ok := utils.GetValue[string](params, "authclient")
+	if !ok {
+		return nil, fmt.Errorf("can not get authclient from params %v", params)
 	}
 
-	err := p.cli.AllowNfsShareAccess(ctx, allowNfsShareAccessReq)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Allow nfs share access %v error: %v", allowNfsShareAccessReq, err)
-		return nil, err
+	shareID, ok := utils.GetValue[string](taskResult, "shareID")
+	if !ok {
+		return nil, fmt.Errorf("can not get shareID from taskResult %v", taskResult)
+	}
+
+	allsquash, _ := utils.GetValue[int](params, "allsquash")
+	rootsquash, _ := utils.GetValue[int](params, "rootsquash")
+	accountid, _ := utils.GetValue[string](params, "accountid")
+
+	for _, clientName := range strings.Split(authClients, ";") {
+		allowNfsShareAccessReq := &client.AllowNfsShareAccessRequest{
+			AccessName:  clientName,
+			ShareId:     shareID,
+			AccessValue: defaultAccessValue,
+			AllSquash:   allsquash,
+			RootSquash:  rootsquash,
+			AccountId:   accountid,
+		}
+
+		err := p.cli.AllowNfsShareAccess(ctx, allowNfsShareAccessReq)
+		if err != nil {
+			log.AddContext(ctx).Errorf("Allow nfs share access %v error: %v", allowNfsShareAccessReq, err)
+			return nil, err
+		}
 	}
 
 	return nil, nil

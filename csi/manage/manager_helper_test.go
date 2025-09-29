@@ -34,6 +34,8 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -466,6 +468,12 @@ func Test_generatePathPrefixByProtocol(t *testing.T) {
 			wantPathPrefix: "[127::1]:/",
 		},
 		{
+			name:           "NFS domain name test",
+			protocol:       plugin.ProtocolNfs,
+			portals:        []string{"domain_name"},
+			wantPathPrefix: "domain_name:/",
+		},
+		{
 			name:           "DPC test",
 			protocol:       plugin.ProtocolDpc,
 			portals:        nil,
@@ -493,25 +501,25 @@ func Test_generatePathPrefixByProtocol_WithErrors(t *testing.T) {
 		name     string
 		protocol string
 		portals  []string
-		wantErr  error
+		wantErr  string
 	}{
 		{
 			name:     "nil portal test",
 			protocol: plugin.ProtocolNfs,
 			portals:  nil,
-			wantErr:  errors.New("no portal provided for NFS or NFS+ protocol"),
+			wantErr:  "no portal provided for NFS or NFS+ protocol",
 		},
 		{
 			name:     "invalid ip test",
 			protocol: plugin.ProtocolNfsPlus,
-			portals:  []string{"127::0:0::1"},
-			wantErr:  errors.New("portal [127::0:0::1] is not a valid ip address"),
+			portals:  []string{""},
+			wantErr:  "is invalid",
 		},
 		{
 			name:     "nil protocol test",
 			protocol: "",
 			portals:  []string{"127::1"},
-			wantErr:  errors.New("protocol [] is not supported"),
+			wantErr:  "protocol [] is not supported",
 		},
 	}
 
@@ -520,7 +528,7 @@ func Test_generatePathPrefixByProtocol_WithErrors(t *testing.T) {
 			// action
 			_, gotErr := generatePathPrefixByProtocol(tt.protocol, tt.portals)
 			// assert
-			assert.Equal(t, gotErr, tt.wantErr, "Test_generatePathPrefixByProtocol_WithErrors() "+
+			assert.ErrorContains(t, gotErr, tt.wantErr, "Test_generatePathPrefixByProtocol_WithErrors() "+
 				"failed, gotErr = %v, wantErr = %v", gotErr, tt.wantErr)
 		})
 	}
@@ -578,4 +586,293 @@ func Test_getDTreeSourcePath(t *testing.T) {
 	t.Cleanup(func() {
 		mock.Reset()
 	})
+}
+
+func Test_GetBackendConfig_BackendConfigMapError(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "test_backend"
+	wantErr := "mock config error"
+
+	// mock
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyFunc(getBackendConfigMap, func(_ context.Context, _ string) (map[string]interface{}, error) {
+		return nil, errors.New(wantErr)
+	})
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.ErrorContains(t, gotErr, wantErr)
+	assert.Nil(t, gotCfg)
+}
+
+func Test_GetBackendConfig_InvalidParameters(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "invalid_params_backend"
+	wantErr := "get backend info"
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyFunc(getBackendConfigMap, func(_ context.Context, _ string) (map[string]interface{}, error) {
+		return map[string]interface{}{"invalid": "data"}, nil
+	})
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.ErrorContains(t, gotErr, wantErr)
+	assert.Nil(t, gotCfg)
+}
+
+func Test_GetBackendConfig_MissingProtocol(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "missing_protocol_backend"
+	wantErr := "protocol in parameters"
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyFunc(getBackendConfigMap, func(_ context.Context, _ string) (map[string]interface{}, error) {
+		return map[string]interface{}{"parameters": map[string]interface{}{}}, nil
+	})
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.ErrorContains(t, gotErr, wantErr)
+	assert.Nil(t, gotCfg)
+}
+
+func Test_GetBackendConfig_DtfsMissingDeviceWWN(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "dtfs_backend"
+	wantErr := "get empty DeviceWWN"
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyFunc(getBackendConfigMap, func(_ context.Context, _ string) (map[string]interface{}, error) {
+		return map[string]interface{}{
+			"parameters": map[string]interface{}{
+				"protocol": constants.ProtocolDtfs,
+			},
+		}, nil
+	}).ApplyFuncReturn(utils.GetSBCTSpecificationByClaim, map[string]string{}, nil)
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.ErrorContains(t, gotErr, wantErr)
+	assert.Nil(t, gotCfg)
+}
+
+func Test_GetBackendConfig_NfsInvalidPortalCount(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "nfs_backend"
+	wantErr := "just support one portal"
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyFunc(getBackendConfigMap, func(_ context.Context, _ string) (map[string]interface{}, error) {
+		return map[string]interface{}{
+			"parameters": map[string]interface{}{
+				"protocol": constants.ProtocolNfs,
+				"portals":  []interface{}{"portal1", "portal2"},
+			},
+		}, nil
+	})
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.ErrorContains(t, gotErr, wantErr)
+	assert.Nil(t, gotCfg)
+}
+
+func Test_GetBackendConfig_MetroBackendError(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "metro_backend"
+	wantErr := "metro backend error"
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyFuncSeq(getBackendConfigMap, []gomonkey.OutputCell{
+		{Values: gomonkey.Params{
+			map[string]interface{}{
+				"parameters": map[string]interface{}{
+					"protocol": constants.ProtocolNfsPlus,
+					"portals":  []interface{}{"portal1"},
+				},
+				"metroBackend": "invalid_metro",
+			}, nil,
+		}},
+		{Values: gomonkey.Params{nil, errors.New("metro backend error")}},
+	})
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.ErrorContains(t, gotErr, wantErr)
+	assert.Nil(t, gotCfg)
+}
+
+func Test_GetBackendConfig_InvalidStorage(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "invalid_storage_backend"
+	wantErr := "storage in parameters"
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyFunc(getBackendConfigMap, func(_ context.Context, _ string) (map[string]interface{}, error) {
+		return map[string]interface{}{
+			"parameters": map[string]interface{}{
+				"protocol": constants.ProtocolNfs,
+				"portals":  []interface{}{"portal1"},
+			},
+		}, nil
+	})
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.ErrorContains(t, gotErr, wantErr)
+	assert.Nil(t, gotCfg)
+}
+
+func Test_GetBackendConfig_SuccessNfsProtocol(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "success_nfs_backend"
+	expectedStorage := "nfs_storage1"
+	expectedPortal := []string{"nfs-portal.example.com"}
+	wantCfg := &BackendConfig{
+		storage:  expectedStorage,
+		protocol: constants.ProtocolNfs,
+		portals:  expectedPortal,
+	}
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyFunc(getBackendConfigMap, func(_ context.Context, _ string) (map[string]interface{}, error) {
+		return map[string]interface{}{
+			"storage": expectedStorage,
+			"parameters": map[string]interface{}{
+				"protocol": constants.ProtocolNfs,
+				"portals":  []interface{}{expectedPortal[0]},
+			},
+		}, nil
+	})
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.Equal(t, wantCfg.storage, gotCfg.storage)
+	assert.Equal(t, wantCfg.protocol, gotCfg.protocol)
+	assert.Equal(t, wantCfg.portals, gotCfg.portals)
+}
+
+func Test_GetBackendConfig_SuccessNfsPlusWithMetro(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "success_metro_backend"
+	expectedStorage := "metro_storage"
+	expectedPortals := []string{"primary-portal"}
+	expectedMetroPortals := []string{"metro-portal"}
+	wantCfg := &BackendConfig{
+		storage:      expectedStorage,
+		protocol:     constants.ProtocolNfsPlus,
+		portals:      expectedPortals,
+		metroPortals: expectedMetroPortals,
+	}
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyFuncSeq(getBackendConfigMap, []gomonkey.OutputCell{
+		{ // Main backend
+			Values: gomonkey.Params{
+				map[string]interface{}{
+					"storage": expectedStorage,
+					"parameters": map[string]interface{}{
+						"protocol": constants.ProtocolNfsPlus,
+						"portals":  []interface{}{expectedPortals[0]},
+					},
+					"metroBackend": "metro_backend",
+				}, nil,
+			},
+		},
+		{ // Metro backend
+			Values: gomonkey.Params{
+				map[string]interface{}{
+					"parameters": map[string]interface{}{
+						"portals": []interface{}{expectedMetroPortals[0]},
+					},
+				}, nil,
+			},
+		},
+	})
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.Equal(t, wantCfg.storage, gotCfg.storage)
+	assert.Equal(t, wantCfg.portals, gotCfg.portals)
+	assert.Equal(t, wantCfg.metroPortals, gotCfg.metroPortals)
+}
+
+func Test_GetBackendConfig_SuccessDtfsProtocol(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	backendName := "success_dtfs_backend"
+	expectedStorage := "dtfs_storage"
+	expectedWWN := "wwn-123456"
+	wantCfg := &BackendConfig{
+		storage:   expectedStorage,
+		protocol:  constants.ProtocolDtfs,
+		deviceWWN: expectedWWN,
+	}
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyFunc(getBackendConfigMap, func(_ context.Context, _ string) (map[string]interface{}, error) {
+		return map[string]interface{}{
+			"storage": expectedStorage,
+			"parameters": map[string]interface{}{
+				"protocol": constants.ProtocolDtfs,
+			},
+		}, nil
+	}).ApplyFuncReturn(utils.GetSBCTSpecificationByClaim, map[string]string{"DeviceWWN": expectedWWN}, nil)
+
+	// act
+	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.Equal(t, wantCfg.protocol, gotCfg.protocol)
+	assert.Equal(t, wantCfg.deviceWWN, gotCfg.deviceWWN)
 }

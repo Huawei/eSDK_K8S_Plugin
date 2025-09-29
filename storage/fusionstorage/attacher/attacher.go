@@ -24,7 +24,6 @@ import (
 	"net"
 	"strings"
 
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
 	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/iscsi"
 	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/local"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
@@ -35,22 +34,24 @@ import (
 
 // VolumeAttacher defines attacher client
 type VolumeAttacher struct {
-	cli      client.IRestClient
-	protocol string
-	invoker  string
-	portals  []string
-	hosts    map[string]string
-	alua     map[string]interface{}
+	cli        client.IRestClient
+	protocol   string
+	invoker    string
+	portals    []string
+	iscsiLinks int
+	hosts      map[string]string
+	alua       map[string]interface{}
 }
 
 // VolumeAttacherConfig defines configurations of VolumeAttacher
 type VolumeAttacherConfig struct {
-	Cli      client.IRestClient
-	Protocol string
-	Invoker  string
-	Portals  []string
-	Hosts    map[string]string
-	Alua     map[string]interface{}
+	Cli        client.IRestClient
+	Protocol   string
+	Invoker    string
+	Portals    []string
+	IscsiLinks int
+	Hosts      map[string]string
+	Alua       map[string]interface{}
 }
 
 const (
@@ -63,12 +64,13 @@ const (
 // NewAttacher used to init a new attacher
 func NewAttacher(config VolumeAttacherConfig) *VolumeAttacher {
 	return &VolumeAttacher{
-		cli:      config.Cli,
-		protocol: config.Protocol,
-		invoker:  config.Invoker,
-		portals:  config.Portals,
-		hosts:    config.Hosts,
-		alua:     config.Alua,
+		cli:        config.Cli,
+		protocol:   config.Protocol,
+		invoker:    config.Invoker,
+		portals:    config.Portals,
+		iscsiLinks: config.IscsiLinks,
+		hosts:      config.Hosts,
+		alua:       config.Alua,
 	}
 }
 
@@ -146,15 +148,19 @@ func (p *VolumeAttacher) createIscsiHost(ctx context.Context, hostName string) e
 	return err
 }
 
-func (p *VolumeAttacher) getTargetPortals(ctx context.Context) ([]string, []string, error) {
+func (p *VolumeAttacher) getTargetPortalsStatic(ctx context.Context) ([]string, []string, error) {
 	nodeResultList, err := p.cli.QueryIscsiPortal(ctx)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get ISCSI portals error: %v", err)
 		return nil, nil, err
 	}
 
+	// IP map
 	validIPs := make(map[string]bool)
+	// IP-IQN map
 	validIQNs := make(map[string]string)
+
+	// filter port and fill ip map
 	for _, i := range nodeResultList {
 		if i["status"] != "successful" {
 			continue
@@ -172,6 +178,7 @@ func (p *VolumeAttacher) getTargetPortals(ctx context.Context) ([]string, []stri
 		}
 	}
 
+	// compare port in backend and storage
 	var tgtPortals []string
 	var tgtIQNs []string
 	for _, portal := range p.portals {
@@ -190,6 +197,32 @@ func (p *VolumeAttacher) getTargetPortals(ctx context.Context) ([]string, []stri
 		msg := fmt.Sprintf("All config portal %s is not valid", p.portals)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, nil, errors.New(msg)
+	}
+
+	return tgtPortals, tgtIQNs, nil
+}
+
+func (p *VolumeAttacher) getTargetPortalsDynamic(ctx context.Context,
+	hostName, poolName string) ([]string, []string, error) {
+	supportDynamic, err := p.cli.IsSupportDynamicLinks(ctx, hostName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !supportDynamic {
+		return nil, nil, errors.New("the storage does not support query portals dynamically")
+	}
+
+	iscsiPortalList, err := p.cli.QueryDynamicLinks(ctx, poolName, hostName, p.iscsiLinks)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var tgtPortals []string
+	var tgtIQNs []string
+	for _, portal := range iscsiPortalList {
+		tgtPortals = append(tgtPortals, portal.IscsiPortal)
+		tgtIQNs = append(tgtIQNs, portal.TargetName)
 	}
 
 	return tgtPortals, tgtIQNs, nil
@@ -247,7 +280,7 @@ func (p *VolumeAttacher) attachIscsiInitiatorToHost(ctx context.Context, hostNam
 		if len(host) == 0 {
 			addInitiator = true
 		} else if host != hostName {
-			return fmt.Errorf("Connector initiator %s is already associated to another host %s", initiatorName, host)
+			return fmt.Errorf("connector initiator %s is already associated to another host %s", initiatorName, host)
 		}
 	}
 
@@ -303,7 +336,7 @@ func (p *VolumeAttacher) doMapping(ctx context.Context, lunName, hostName string
 	} else {
 		manageIP, exist := p.hosts[hostName]
 		if !exist {
-			return "", fmt.Errorf("No manage IP configured for host %s", hostName)
+			return "", fmt.Errorf("no manage IP configured for host %s", hostName)
 		}
 
 		err := p.cli.AttachVolume(ctx, lunName, manageIP)
@@ -336,7 +369,7 @@ func (p *VolumeAttacher) doUnmapping(ctx context.Context, lunName, hostName stri
 	} else {
 		manageIP, exist := p.hosts[hostName]
 		if !exist {
-			return "", fmt.Errorf("No manage IP configured for host %s", hostName)
+			return "", fmt.Errorf("no manage IP configured for host %s", hostName)
 		}
 
 		err := p.cli.DetachVolume(ctx, lunName, manageIP)
@@ -345,14 +378,24 @@ func (p *VolumeAttacher) doUnmapping(ctx context.Context, lunName, hostName stri
 		}
 	}
 
-	return lun["wwn"].(string), nil
+	return lun.wwn, nil
 }
 
-func (p *VolumeAttacher) getMappingProperties(ctx context.Context,
-	wwn, hostLunId string, parameters map[string]interface{}) (map[string]interface{}, error) {
-	tgtPortals, tgtIQNs, err := p.getTargetPortals(ctx)
-	if err != nil {
-		return nil, err
+func (p *VolumeAttacher) getMappingProperties(ctx context.Context, lun *lunInfo,
+	hostLunId, hostName string) (map[string]interface{}, error) {
+	var tgtPortals, tgtIQNs []string
+	var err error
+
+	if len(p.portals) > 0 {
+		tgtPortals, tgtIQNs, err = p.getTargetPortalsStatic(ctx)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		tgtPortals, tgtIQNs, err = p.getTargetPortalsDynamic(ctx, hostName, lun.poolName)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	lenPortals := len(tgtPortals)
@@ -362,7 +405,7 @@ func (p *VolumeAttacher) getMappingProperties(ctx context.Context,
 	}
 
 	connectInfo := map[string]interface{}{
-		"tgtLunWWN":   wwn,
+		"tgtLunWWN":   lun.wwn,
 		"tgtPortals":  tgtPortals,
 		"tgtIQNs":     tgtIQNs,
 		"tgtHostLUNs": tgtHostLUNs}
@@ -370,53 +413,51 @@ func (p *VolumeAttacher) getMappingProperties(ctx context.Context,
 	return connectInfo, nil
 }
 
-func (p *VolumeAttacher) iSCSIControllerAttach(ctx context.Context, lunInfo utils.Volume,
-	parameters map[string]interface{}) (
-	map[string]interface{}, error) {
+func (p *VolumeAttacher) iSCSIControllerAttach(ctx context.Context, lun *lunInfo,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
 	hostName, err := p.getHostName(ctx, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get host name error: %v", err)
 		return nil, err
 	}
 
+	// create host with alua
 	err = p.createIscsiHost(ctx, hostName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create iSCSI host %s error: %v", hostName, err)
 		return nil, err
 	}
 
+	// add initiator to host
 	err = p.attachIscsiInitiatorToHost(ctx, hostName)
 	if err != nil {
 		return nil, err
 	}
 
-	isAdded, err := p.isVolumeAddToHost(ctx, lunInfo.GetVolumeName(), hostName)
+	// add lun to host
+	isAdded, err := p.isVolumeAddToHost(ctx, lun.name, hostName)
 	if err != nil {
 		return nil, err
 	}
 
 	if !isAdded {
-		err := p.cli.AddLunToHost(ctx, lunInfo.GetVolumeName(), hostName)
+		err := p.cli.AddLunToHost(ctx, lun.name, hostName)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	hostLunId, err := p.cli.GetHostLunId(ctx, hostName, lunInfo.GetVolumeName())
+	// get host lun id
+	hostLunId, err := p.cli.GetHostLunId(ctx, hostName, lun.name)
 	if err != nil {
 		return nil, err
 	}
 
-	lunWWN, err := lunInfo.GetLunWWN()
-	if err != nil {
-		return nil, err
-	}
-	return p.getMappingProperties(ctx, lunWWN, hostLunId, parameters)
+	return p.getMappingProperties(ctx, lun, hostLunId, hostName)
 }
 
 // SCSIControllerAttach used to attach volume to host
-func (p *VolumeAttacher) SCSIControllerAttach(ctx context.Context,
-	lunInfo utils.Volume,
+func (p *VolumeAttacher) SCSIControllerAttach(ctx context.Context, lun *lunInfo,
 	parameters map[string]interface{}) (string, error) {
 	hostName, err := p.getHostName(ctx, parameters)
 	if err != nil {
@@ -426,20 +467,15 @@ func (p *VolumeAttacher) SCSIControllerAttach(ctx context.Context,
 
 	manageIP, exist := p.hosts[hostName]
 	if !exist {
-		return "", fmt.Errorf("No manage IP configured for host %s", hostName)
+		return "", fmt.Errorf("no manage IP configured for host %s", hostName)
 	}
 
-	err = p.cli.AttachVolume(ctx, lunInfo.GetVolumeName(), manageIP)
+	err = p.cli.AttachVolume(ctx, lun.name, manageIP)
 	if err != nil {
 		return "", err
 	}
 
-	lunWWN, err := lunInfo.GetLunWWN()
-	if err != nil {
-		return "", err
-	}
-
-	return lunWWN, nil
+	return lun.wwn, nil
 }
 
 // ControllerDetach used to detach volume from host
@@ -473,18 +509,17 @@ func (p *VolumeAttacher) ControllerAttach(ctx context.Context,
 	var mappingInfo map[string]interface{}
 
 	lun, err := p.getLunInfo(ctx, lunName)
-	lunInfo := utils.NewVolume(lunName)
-	if wwn, ok := lun["wwn"].(string); ok {
-		lunInfo.SetLunWWN(wwn)
+	if err != nil {
+		return nil, err
 	}
 
 	if p.protocol == "iscsi" {
-		mappingInfo, err = p.iSCSIControllerAttach(ctx, lunInfo, parameters)
+		mappingInfo, err = p.iSCSIControllerAttach(ctx, lun, parameters)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		tgtLunWWN, err := p.SCSIControllerAttach(ctx, lunInfo, parameters)
+		tgtLunWWN, err := p.SCSIControllerAttach(ctx, lun, parameters)
 		if err != nil {
 			return nil, err
 		}
@@ -494,72 +529,42 @@ func (p *VolumeAttacher) ControllerAttach(ctx context.Context,
 	return mappingInfo, nil
 }
 
-// NodeStage used to stage node
-func (p *VolumeAttacher) NodeStage(ctx context.Context,
-	lunInfo utils.Volume,
-	parameters map[string]interface{}) (*connector.ConnectInfo, error) {
-	var conn connector.VolumeConnector
-	var mappingInfo map[string]interface{}
-	var err error
-	if p.protocol == "iscsi" {
-		mappingInfo, err = p.iSCSIControllerAttach(ctx, lunInfo, parameters)
-		if err != nil {
-			return &connector.ConnectInfo{}, err
-		}
-
-		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
-	} else {
-		tgtLunWWN, err := p.SCSIControllerAttach(ctx, lunInfo, parameters)
-		if err != nil {
-			return &connector.ConnectInfo{}, err
-		}
-
-		mappingInfo = map[string]interface{}{"tgtLunWWN": tgtLunWWN}
-		conn = connector.GetConnector(ctx, connector.LocalDriver)
-	}
-
-	return &connector.ConnectInfo{
-		Conn:        conn,
-		MappingInfo: mappingInfo,
-	}, nil
+type lunInfo struct {
+	name     string
+	wwn      string
+	poolName string
 }
 
-// NodeUnstage used to unstage node
-func (p *VolumeAttacher) NodeUnstage(ctx context.Context,
-	lunName string,
-	parameters map[string]interface{}) (*connector.DisConnectInfo, error) {
-	lun, err := p.getLunInfo(ctx, lunName)
-	if lun == nil {
-		return nil, err
-	}
-
-	var conn connector.VolumeConnector
-	if p.protocol == "iscsi" {
-		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
-	} else {
-		conn = connector.GetConnector(ctx, connector.LocalDriver)
-	}
-
-	tgtLunWWN, ok := lun["wwn"].(string)
-	if !ok {
-		return nil, errors.New("there is no wwn in lun info")
-	}
-
-	return &connector.DisConnectInfo{
-		Conn:   conn,
-		TgtLun: tgtLunWWN,
-	}, nil
-}
-
-func (p *VolumeAttacher) getLunInfo(ctx context.Context, lunName string) (map[string]interface{}, error) {
+func (p *VolumeAttacher) getLunInfo(ctx context.Context, lunName string) (*lunInfo, error) {
 	lun, err := p.cli.GetVolumeByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)
 		return nil, err
 	}
 	if lun == nil {
-		log.AddContext(ctx).Infof("LUN %s doesn't exist while detaching", lunName)
+		log.AddContext(ctx).Infof("LUN %s doesn't exist", lunName)
 		return nil, nil
 	}
-	return lun, nil
+
+	wwn, ok := utils.GetValue[string](lun, "wwn")
+	if !ok {
+		return nil, fmt.Errorf("can not find wwn in lun %v", lun)
+	}
+
+	poolId, ok := utils.GetValue[float64](lun, "poolId")
+	if !ok {
+		return nil, fmt.Errorf("can not find poolId in lun %v", lun)
+	}
+
+	pool, err := p.cli.GetPoolById(ctx, int64(poolId))
+	if err != nil {
+		return nil, err
+	}
+
+	poolName, ok := utils.GetValue[string](pool, "poolName")
+	if !ok {
+		return nil, fmt.Errorf("can not find poolName in pool %v", pool)
+	}
+
+	return &lunInfo{name: lunName, wwn: wwn, poolName: poolName}, nil
 }

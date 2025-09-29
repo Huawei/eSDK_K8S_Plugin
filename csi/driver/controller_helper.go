@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -144,8 +145,7 @@ func verifySectorSize(ctx context.Context, volumeId string, backend *model.Backe
 
 func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest, b *model.Backend) (
 	bool, error) {
-	if b.Storage == constants.OceanStorNas || b.Storage == constants.OceanStorDtree ||
-		b.Storage == constants.FusionNas || b.Storage == constants.FusionDTree {
+	if slices.Contains(constants.NasStorageTypes, b.Storage) {
 		log.AddContext(ctx).Debugf("Storage is [%s], support expand volume.", b.Storage)
 		return true, nil
 	}

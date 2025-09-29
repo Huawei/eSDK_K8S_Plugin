@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -37,10 +39,11 @@ import (
 // FusionStorageSanPlugin implements storage StoragePlugin interface
 type FusionStorageSanPlugin struct {
 	FusionStoragePlugin
-	hosts    map[string]string
-	protocol string
-	portals  []string
-	alua     map[string]interface{}
+	hosts      map[string]string
+	protocol   string
+	portals    []string
+	iscsiLinks int
+	alua       map[string]interface{}
 
 	storageOnline bool
 	clientCount   int
@@ -61,50 +64,28 @@ func (p *FusionStorageSanPlugin) NewPlugin() StoragePlugin {
 // Init used to init the plugin
 func (p *FusionStorageSanPlugin) Init(ctx context.Context, config map[string]interface{},
 	parameters map[string]interface{}, keepLogin bool) error {
-	protocol, exist := parameters["protocol"].(string)
-	if !exist {
-		log.AddContext(ctx).Errorf("protocol must be configured in backend %v", parameters)
-		return errors.New("protocol must be configured")
+	protocol, ok := utils.GetValue[string](parameters, "protocol")
+	if !ok {
+		return fmt.Errorf("protocol must be configured in parameters %v", parameters)
 	}
 
-	portals, exist := parameters["portals"].([]interface{})
-	if !exist || len(portals) == 0 {
-		log.AddContext(ctx).Errorf("portals must be configured in backend %v", parameters)
-		return errors.New("portals must be configured")
+	if !slices.Contains(constants.FusionstorageProtocol, protocol) {
+		return fmt.Errorf("protocol %s configured is invalid. Just support iscsi and scsi", protocol)
 	}
 
-	if strings.ToLower(protocol) == "scsi" {
-		scsi, ok := portals[0].(map[string]interface{})
-		if !ok {
-			return errors.New("scsi portals convert to map[string]interface{} failed")
-		}
-		for k, v := range scsi {
-			manageIP, ok := v.(string)
-			if !ok {
-				continue
-			}
-			ip := net.ParseIP(manageIP)
-			if ip == nil {
-				return fmt.Errorf("Manage IP %s of host %s is invalid", manageIP, k)
-			}
-
-			p.hosts[k] = manageIP
-		}
-
-		p.protocol = "scsi"
-	} else if strings.ToLower(protocol) == "iscsi" {
-		portals, err := proto.VerifyIscsiPortals(ctx, portals)
+	portals, _ := utils.GetValue[[]interface{}](parameters, "portals")
+	if protocol == constants.ProtocolScsi {
+		err := p.fillScsiParams(portals, parameters)
 		if err != nil {
 			return err
 		}
+	}
 
-		p.portals = portals
-		p.protocol = "iscsi"
-		p.alua, _ = parameters["ALUA"].(map[string]interface{})
-	} else {
-		msg := fmt.Sprintf("protocol %s configured is error. Just support iscsi and scsi", protocol)
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
+	if protocol == constants.ProtocolIscsi {
+		err := p.fillIscsiParams(ctx, portals, parameters)
+		if err != nil {
+			return err
+		}
 	}
 
 	err := p.init(ctx, config, keepLogin)
@@ -112,6 +93,65 @@ func (p *FusionStorageSanPlugin) Init(ctx context.Context, config map[string]int
 		return err
 	}
 
+	return nil
+}
+
+func (p *FusionStorageSanPlugin) fillIscsiParams(ctx context.Context,
+	portals []interface{}, parameters map[string]interface{}) error {
+	var err error
+	var validPortals []string
+	if len(portals) > 0 {
+		validPortals, err = proto.VerifyIscsiPortals(ctx, portals)
+		if err != nil {
+			return err
+		}
+	} else {
+		iscsiLinksStr, ok := utils.GetValue[string](parameters, "iscsiLinks")
+		if !ok {
+			return fmt.Errorf("one of portals or iscsiLinks must be provided in parameters %v", parameters)
+		}
+
+		iscsiLinks, err := strconv.Atoi(iscsiLinksStr)
+		if err != nil {
+			return fmt.Errorf("iscsiLinks %s can not convert to int", iscsiLinksStr)
+		}
+
+		if iscsiLinks <= 0 {
+			return fmt.Errorf("iscsiLinks must be greater than zero, now is %d", iscsiLinks)
+		}
+
+		p.iscsiLinks = iscsiLinks
+	}
+
+	p.portals = validPortals
+	p.protocol = constants.ProtocolIscsi
+	p.alua, _ = utils.GetValue[map[string]interface{}](parameters, "ALUA")
+	return nil
+}
+
+func (p *FusionStorageSanPlugin) fillScsiParams(portals []interface{}, parameters map[string]interface{}) error {
+	if len(portals) == 0 {
+		return fmt.Errorf("portals must be configured in parameters %v while protocol is scsi", parameters)
+	}
+
+	scsi, ok := portals[0].(map[string]interface{})
+	if !ok {
+		return errors.New("scsi portals convert to map[string]interface{} failed")
+	}
+	for k, v := range scsi {
+		manageIP, ok := v.(string)
+		if !ok {
+			continue
+		}
+		ip := net.ParseIP(manageIP)
+		if ip == nil {
+			return fmt.Errorf("manage IP %s of host %s is invalid", manageIP, k)
+		}
+
+		p.hosts[k] = manageIP
+	}
+
+	p.protocol = constants.ProtocolScsi
 	return nil
 }
 
@@ -181,12 +221,13 @@ func (p *FusionStorageSanPlugin) ExpandVolume(ctx context.Context, name string, 
 func (p *FusionStorageSanPlugin) AttachVolume(ctx context.Context, name string,
 	parameters map[string]interface{}) (map[string]interface{}, error) {
 	localAttacher := attacher.NewAttacher(attacher.VolumeAttacherConfig{
-		Cli:      p.cli,
-		Protocol: p.protocol,
-		Invoker:  "csi",
-		Portals:  p.portals,
-		Hosts:    p.hosts,
-		Alua:     p.alua,
+		Cli:        p.cli,
+		Protocol:   p.protocol,
+		Invoker:    "csi",
+		Portals:    p.portals,
+		IscsiLinks: p.iscsiLinks,
+		Hosts:      p.hosts,
+		Alua:       p.alua,
 	})
 	mappingInfo, err := localAttacher.ControllerAttach(ctx, name, parameters)
 	if err != nil {
@@ -291,7 +332,7 @@ func (p *FusionStorageSanPlugin) UpdatePoolCapabilities(ctx context.Context,
 func (p *FusionStorageSanPlugin) Validate(ctx context.Context, param map[string]interface{}) error {
 	log.AddContext(ctx).Infoln("Start to validate FusionStorageSanPlugin parameters.")
 
-	err := p.verifyFusionStorageSanParam(ctx, param)
+	err := p.verifyFusionStorageSanParam(param)
 	if err != nil {
 		return err
 	}
@@ -312,28 +353,42 @@ func (p *FusionStorageSanPlugin) Validate(ctx context.Context, param map[string]
 	return nil
 }
 
-func (p *FusionStorageSanPlugin) verifyFusionStorageSanParam(ctx context.Context, config map[string]interface{}) error {
-	parameters, exist := config["parameters"].(map[string]interface{})
-	if !exist {
-		msg := fmt.Sprintf("Verify parameters: [%v] failed. \nparameters must be provided", config["parameters"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
+func (p *FusionStorageSanPlugin) verifyFusionStorageSanParam(config map[string]interface{}) error {
+	parameters, ok := utils.GetValue[map[string]interface{}](config, "parameters")
+	if !ok {
+		return errors.New("parameters in config must be provided")
 	}
 
-	protocol, exist := parameters["protocol"].(string)
-	if !exist || (protocol != "scsi" && protocol != "iscsi") {
-		msg := fmt.Sprintf("Verify protocol: [%v] failed. \nprotocol must be provided and be \"scsi\" or \"iscsi\" "+
-			"for fusionstorage-san backend\n", parameters["protocol"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
+	protocol, ok := utils.GetValue[string](parameters, "protocol")
+	if !ok || !slices.Contains(constants.FusionstorageProtocol, protocol) {
+		return fmt.Errorf("verify protocol: [%v] failed, protocol must be provided and "+
+			"be one of \"scsi\" or \"iscsi\" for fusionstorage-san backend", parameters["protocol"])
 	}
 
-	portals, exist := parameters["portals"].([]interface{})
-	if !exist || len(portals) == 0 {
-		msg := fmt.Sprintf("Verify portals: [%v] failed. \nportals must be configured in fusionstorage-san "+
-			"backend\n", parameters["portals"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
+	portals, _ := utils.GetValue[[]interface{}](parameters, "portals")
+	if protocol == constants.ProtocolScsi && len(portals) == 0 {
+		return fmt.Errorf("verify parameters [%v] failed, "+
+			"portals must be provided while protocol is scsi", parameters)
+	}
+
+	if protocol == constants.ProtocolIscsi {
+		iscsiLinksStr, linkOk := utils.GetValue[string](parameters, "iscsiLinks")
+		if len(portals) == 0 && !linkOk {
+			return fmt.Errorf("verify parameters [%v] failed, "+
+				"one of portals or iscsiLinks must be provided while protocol is iscsi", parameters)
+		}
+
+		if linkOk {
+			iscsiLinks, err := strconv.Atoi(iscsiLinksStr)
+			if err != nil {
+				return fmt.Errorf("iscsiLinks %s can not convert to int", iscsiLinksStr)
+			}
+
+			if iscsiLinks <= 0 {
+				return fmt.Errorf("verify iscsiLinks [%d] failed, "+
+					"iscsiLinks value must be greater than zero", iscsiLinks)
+			}
+		}
 	}
 
 	return nil

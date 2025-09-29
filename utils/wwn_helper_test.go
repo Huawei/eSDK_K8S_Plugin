@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,13 +22,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
-
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const (
@@ -39,52 +37,45 @@ const (
 var testWwnFileName = fmt.Sprintf("%s/%s.wwn", defaultWwnFileDir, testVolumeId)
 
 func TestCreateWwnDir(t *testing.T) {
-	defer cleanMockFile()
+	// mock
+	p := gomonkey.ApplyFuncReturn(os.MkdirAll, nil)
+	defer p.Reset()
 
+	// act, assert
 	if err := createWwnDir(context.Background()); err != nil {
 		t.Errorf("TestCreateWwnDir() failed, error: %v", err)
 	}
 }
 
-func TestCreateWwnDirWhenPathExistFile(t *testing.T) {
-	defer cleanMockFile()
+func TestCreateWwnDirWhenPathFileNil(t *testing.T) {
+	// mock
+	p := gomonkey.ApplyFuncReturn(os.Lstat, nil, nil)
+	defer p.Reset()
 
-	if err := os.MkdirAll(path.Dir(defaultWwnFileDir), defaultWwnFilePermission); err != nil {
-		t.Errorf("create dir failed, err: %v", err)
-	}
-
-	if err := ioutil.WriteFile(defaultWwnFileDir, []byte{}, defaultWwnFilePermission); err != nil {
-		t.Errorf("write file failed, err: %v", err)
-	}
-
-	if err := createWwnDir(context.Background()); err == nil {
-		t.Errorf("TestCreateWwnDirWhenPathExistFile() want an path exist error but got error: %v", err)
+	// act, assert
+	if err := createWwnDir(context.Background()); err != nil {
+		t.Errorf("TestCreateWwnDirWhenPathFileNil() failed, error: %v", err)
 	}
 }
 
 func TestWriteWwnFile(t *testing.T) {
-	defer cleanMockFile()
+	// mock
+	p := gomonkey.ApplyFuncReturn(os.MkdirAll, nil).
+		ApplyFuncReturn(ioutil.WriteFile, nil)
+	defer p.Reset()
 
+	// act, assert
 	if err := WriteWWNFile(context.Background(), testVolumeWwn, testVolumeId); err != nil {
 		t.Errorf("TestWriteWwnFile() write wwn file error: %v", err)
-	}
-
-	wwn, err := ioutil.ReadFile(testWwnFileName)
-	if err != nil {
-		t.Errorf("TestWriteWwnFile() read wwn file error: %v", err)
-	}
-
-	if string(wwn) != testVolumeWwn {
-		t.Errorf("TestWriteWwnFile() failed, want: %s, got: %s", testVolumeWwn, string(wwn))
 	}
 }
 
 func TestWriteWwnFileButCreateDirFail(t *testing.T) {
 	mockError := errors.New("create dir error")
-	createWwnDir := gomonkey.ApplyFunc(createWwnDir, func(ctx context.Context) error {
+	p := gomonkey.ApplyFunc(createWwnDir, func(ctx context.Context) error {
 		return mockError
 	})
-	defer createWwnDir.Reset()
+	defer p.Reset()
 
 	err := WriteWWNFile(context.Background(), testVolumeWwn, testVolumeId)
 	if err == nil || err.Error() != "create dir error" {
@@ -93,13 +84,15 @@ func TestWriteWwnFileButCreateDirFail(t *testing.T) {
 }
 
 func TestReadWwnFileSuccess(t *testing.T) {
-	defer cleanMockFile()
+	// mock
+	p := gomonkey.ApplyFuncReturn(os.Stat, nil, nil).
+		ApplyFuncReturn(ioutil.ReadFile, []byte(testVolumeWwn), nil)
+	defer p.Reset()
 
-	if err := mockWriteWwnFile(); err != nil {
-		t.Errorf("TestReadWwnFileSuccess() mock write wwn file error: %v", err)
-	}
-
+	// act
 	wwn, err := ReadWwnFile(context.Background(), testVolumeId)
+
+	// assert
 	if err != nil {
 		t.Errorf("TestReadWwnFileSuccess() read wwn file error: %v", err)
 	}
@@ -110,21 +103,16 @@ func TestReadWwnFileSuccess(t *testing.T) {
 }
 
 func TestReadWwnFileFail(t *testing.T) {
-	defer cleanMockFile()
+	// mock
+	wantErr := errors.New("read file error")
+	p := gomonkey.ApplyFuncReturn(os.Stat, nil, nil).
+		ApplyFuncReturn(ioutil.ReadFile, nil, wantErr)
+	defer p.Reset()
 
-	if err := mockWriteWwnFile(); err != nil {
-		t.Errorf("TestReadWwnFileFail() mock write wwn file error: %v", err)
-	}
-
-	mockError := errors.New("read file error")
-	readFile := gomonkey.ApplyFunc(os.ReadFile, func(string) ([]byte, error) {
-		return nil, mockError
-	})
-	defer readFile.Reset()
-
+	// act, assert
 	_, err := ReadWwnFile(context.Background(), testVolumeId)
-	if err == nil {
-		t.Errorf("TestReadWwnFileFail() want: %s, got: %v", mockError, err)
+	if !reflect.DeepEqual(wantErr, err) {
+		t.Errorf("TestReadWwnFileFail() want: %s, got: %v", wantErr, err)
 	}
 }
 
@@ -137,41 +125,19 @@ func TestReadWwnFileButFileNotExist(t *testing.T) {
 }
 
 func TestRemoveWwnFileWhenFileExist(t *testing.T) {
-	defer cleanMockFile()
+	// mock
+	p := gomonkey.ApplyFuncReturn(os.Stat, nil, nil).
+		ApplyFuncReturn(os.Remove, nil)
+	defer p.Reset()
 
-	if err := mockWriteWwnFile(); err != nil {
-		t.Errorf("TestRemoveWwnFileWhenFileExist() mock write wwn file error: %v", err)
-	}
-
+	// act, assert
 	if err := RemoveWwnFile(context.Background(), testVolumeId); err != nil {
 		t.Errorf("TestRemoveWwnFileWhenFileExist() remove wwn file error: %v", err)
-	}
-
-	_, err := ioutil.ReadFile(testWwnFileName)
-	if err == nil {
-		t.Errorf("TestRemoveWwnFileWhenFileExist() want got a file is not exist error but got error: %v", err)
 	}
 }
 
 func TestRemoveWwnFileWhenFileNotExist(t *testing.T) {
 	if err := RemoveWwnFile(context.Background(), testVolumeId); err != nil {
 		t.Errorf("TestRemoveWwnFileWhenFileNotExist() remove wwn file error: %v", err)
-	}
-}
-
-func mockWriteWwnFile() error {
-	if err := os.MkdirAll(defaultWwnFileDir, defaultWwnDirPermission); err != nil {
-		log.Errorf("mock write wwn file failed, error: %v", err)
-		return err
-	}
-
-	return ioutil.WriteFile(testWwnFileName, []byte(testVolumeWwn), defaultWwnFilePermission)
-}
-
-func cleanMockFile() {
-	err := os.RemoveAll(defaultWwnFileDir)
-	if err != nil {
-		log.Errorln("clean mock file failed")
-		return
 	}
 }

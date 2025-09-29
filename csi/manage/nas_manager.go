@@ -18,6 +18,7 @@ package manage
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
@@ -29,12 +30,41 @@ import (
 
 // NasManager implements VolumeManager interface
 type NasManager struct {
-	storage         string
-	protocol        string
+	storage  string
+	protocol string
+	// When using the dtfs protocol to connect to the local file system, the mount option "cid=deviceWWN" is required.
+	deviceWWN       string
 	portals         []string
 	metroPortals    []string
 	dTreeParentName string
 	Conn            connector.VolumeConnector
+}
+
+// NewNasManager build a nas manager instance according to the config
+func NewNasManager(ctx context.Context, backendConfig *BackendConfig) (VolumeManager, error) {
+	manager := &NasManager{
+		storage:         backendConfig.storage,
+		protocol:        backendConfig.protocol,
+		deviceWWN:       backendConfig.deviceWWN,
+		dTreeParentName: backendConfig.dTreeParentName,
+		Conn:            getConnectorByProtocol(ctx, backendConfig.protocol),
+	}
+
+	switch backendConfig.protocol {
+	case constants.ProtocolNfs:
+		manager.portals = backendConfig.portals[0:1]
+		manager.metroPortals = []string{}
+	case constants.ProtocolNfsPlus:
+		manager.portals = backendConfig.portals
+		manager.metroPortals = backendConfig.metroPortals
+	case constants.ProtocolDpc, constants.ProtocolDtfs:
+		manager.portals = []string{}
+		manager.metroPortals = []string{}
+	default:
+		return nil, fmt.Errorf("unsupported nas protocol %s", backendConfig.protocol)
+	}
+
+	return manager, nil
 }
 
 // StageVolume stage volume
@@ -48,6 +78,7 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		WithProtocol(m.protocol),
 		WithPortals(req.PublishContext, m.protocol, m.portals, m.metroPortals),
 		WithVolumeCapability(ctx, req),
+		WithDeviceWWN(m.protocol, m.deviceWWN),
 	)
 	if err != nil {
 		return utils.Errorf(ctx, "build nas parameters failed, error: %v", err)

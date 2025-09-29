@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package plugin provide storage function
 package plugin
 
 import (
@@ -88,9 +89,12 @@ func (p *OceanstorDTreePlugin) CreateVolume(ctx context.Context, name string, pa
 		return nil, errors.New("empty parameters")
 	}
 
-	name, err := p.getVolumeNameFromPVNameOrParameters(name, parameters)
-	if err != nil {
-		return nil, err
+	var err error
+	if p.product.IsDoradoV6OrV7() {
+		name, err = getVolumeNameFromPVNameOrParameters(name, parameters)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	parentname := p.parentName
@@ -264,25 +268,8 @@ func (p *OceanstorDTreePlugin) updateNFS4Capability(ctx context.Context, capabil
 	if err != nil {
 		return err
 	}
-	// NFS3 is enabled by default.
-	capabilities["SupportNFS3"] = true
-	capabilities["SupportNFS4"] = false
-	capabilities["SupportNFS41"] = false
-	capabilities["SupportNFS42"] = false
 
-	if !nfsServiceSetting["SupportNFS3"] {
-		capabilities["SupportNFS3"] = false
-	}
-	if nfsServiceSetting["SupportNFS4"] {
-		capabilities["SupportNFS4"] = true
-	}
-	if nfsServiceSetting["SupportNFS41"] {
-		capabilities["SupportNFS41"] = true
-	}
-	if nfsServiceSetting["SupportNFS42"] {
-		capabilities["SupportNFS42"] = true
-	}
-
+	updateCapabilityByNfsServiceSetting(capabilities, nfsServiceSetting)
 	return nil
 }
 

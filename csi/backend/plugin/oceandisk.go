@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package plugin provide storage function
 package plugin
 
 import (
@@ -32,7 +33,7 @@ type OceandiskPlugin struct {
 }
 
 func (p *OceandiskPlugin) init(ctx context.Context, config map[string]interface{}, keepLogin bool) error {
-	backendClientConfig, err := formatOceandiskInitParam(config)
+	backendClientConfig, err := formatBaseClientConfig(config)
 	if err != nil {
 		return err
 	}

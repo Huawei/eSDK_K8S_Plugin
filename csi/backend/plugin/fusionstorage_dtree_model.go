@@ -44,7 +44,7 @@ type CreateDTreeVolumeParameter struct {
 
 func (param *CreateDTreeVolumeParameter) genCreateDTreeModel(dtreeName, backendParentName string,
 	protocol string) (*dtree.CreateDTreeModel, error) {
-	if err := param.validate(); err != nil {
+	if err := param.validate(protocol); err != nil {
 		return nil, err
 	}
 
@@ -76,14 +76,14 @@ func (param *CreateDTreeVolumeParameter) genCreateDTreeModel(dtreeName, backendP
 	return model, nil
 }
 
-func (param *CreateDTreeVolumeParameter) validate() error {
+func (param *CreateDTreeVolumeParameter) validate(protocol string) error {
 	if param.VolumeType != dtreeVolumeType {
 		return fmt.Errorf("volumeType must be %q when create %s type volume", dtreeVolumeType, constants.FusionDTree)
 	}
 
-	if param.AuthClient == "" {
-		return fmt.Errorf("authClient field in StorageClass cannot be empty when create %s type volume",
-			constants.FusionDTree)
+	if (protocol == constants.ProtocolNfs || protocol == constants.ProtocolNfsPlus) && param.AuthClient == "" {
+		return fmt.Errorf("authClient field in StorageClass cannot be empty "+
+			"when create %s type volume with %s protocol", constants.FusionDTree, protocol)
 	}
 
 	if param.AllSquash != "" &&

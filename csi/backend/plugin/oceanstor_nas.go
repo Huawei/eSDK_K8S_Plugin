@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package plugin provide storage function
 package plugin
 
 import (
@@ -150,9 +151,13 @@ func (p *OceanstorNasPlugin) CreateVolume(ctx context.Context, name string, para
 		}
 	}
 
-	volumeName, err := p.getVolumeNameFromPVNameOrParameters(name, parameters)
-	if err != nil {
-		return nil, err
+	volumeName := name
+	var err error
+	if p.product.IsDoradoV6OrV7() {
+		volumeName, err = getVolumeNameFromPVNameOrParameters(name, parameters)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	params := getParams(ctx, volumeName, parameters)
@@ -443,28 +448,7 @@ func (p *OceanstorNasPlugin) updateNFS4Capability(ctx context.Context, capabilit
 		return err
 	}
 
-	// NFS3 is enabled by default.
-	capabilities["SupportNFS3"] = true
-	capabilities["SupportNFS4"] = false
-	capabilities["SupportNFS41"] = false
-	capabilities["SupportNFS42"] = false
-
-	if !nfsServiceSetting["SupportNFS3"] {
-		capabilities["SupportNFS3"] = false
-	}
-
-	if nfsServiceSetting["SupportNFS4"] {
-		capabilities["SupportNFS4"] = true
-	}
-
-	if nfsServiceSetting["SupportNFS41"] {
-		capabilities["SupportNFS41"] = true
-	}
-
-	if nfsServiceSetting["SupportNFS42"] {
-		capabilities["SupportNFS42"] = true
-	}
-
+	updateCapabilityByNfsServiceSetting(capabilities, nfsServiceSetting)
 	return nil
 }
 
@@ -538,12 +522,12 @@ func (p *OceanstorNasPlugin) Validate(ctx context.Context, param map[string]inte
 
 // DeleteDTreeVolume used to delete DTree volume
 func (p *OceanstorNasPlugin) DeleteDTreeVolume(_ context.Context, _ string, _ string) error {
-	return errors.New("fusion storage does not support DTree feature")
+	return fmt.Errorf("%s storage does not support DTree feature", constants.OceanStorNas)
 }
 
 // ExpandDTreeVolume used to expand DTree volume
 func (p *OceanstorNasPlugin) ExpandDTreeVolume(context.Context, string, string, int64) (bool, error) {
-	return false, errors.New("fusion storage does not support DTree feature")
+	return false, fmt.Errorf("%s storage does not support DTree feature", constants.OceanStorNas)
 }
 
 // ModifyVolume used to modify volume hyperMetro status

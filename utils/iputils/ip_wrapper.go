@@ -22,44 +22,63 @@ import (
 )
 
 const (
-	pingIPv4Command = "ping -c 3 -i 0.001 -w 1 %s"
+	pingCommand     = "ping -c 3 -i 0.001 -w 1 %s"
 	pingIPv6Command = "ping -6 -c 3 -i 0.001 -w 1 %s"
 )
 
-// IPWrapper is a struct that represents an IP address
-type IPWrapper struct {
-	net.IP
+// IPDomainWrapper is a struct that represents an IP address
+type IPDomainWrapper struct {
+	ip  net.IP
+	raw string
 }
 
-// NewIPWrapper used to create a new IPWrapper instance
-func NewIPWrapper(rawIP string) *IPWrapper {
-	ip := net.ParseIP(rawIP)
-	if ip == nil {
+// NewIPDomainWrapper used to create a new IPDomainWrapper instance
+func NewIPDomainWrapper(rawIP string) *IPDomainWrapper {
+	if rawIP == "" {
 		return nil
 	}
 
-	return &IPWrapper{IP: ip}
+	ip := net.ParseIP(rawIP)
+	return &IPDomainWrapper{ip: ip, raw: rawIP}
 }
 
 // IsIPv4 used to check if the IP address is IPv4
-func (ip *IPWrapper) IsIPv4() bool {
-	return ip.To4() != nil
+func (w *IPDomainWrapper) IsIPv4() bool {
+	return w.ip != nil && w.ip.To4() != nil
+}
+
+// IsDN used to check if the IP address is domain name
+func (w *IPDomainWrapper) IsDN() bool {
+	return w.ip == nil
 }
 
 // GetPingCommand used to get ping command according to IP type
-func (ip *IPWrapper) GetPingCommand() string {
-	if ip.IsIPv4() {
-		return pingIPv4Command
+func (w *IPDomainWrapper) GetPingCommand() string {
+	if w.IsDN() || w.IsIPv4() {
+		return pingCommand
 	}
 
 	return pingIPv6Command
 }
 
 // GetFormatPortalIP used to get format portal ip according to IP type
-func (ip *IPWrapper) GetFormatPortalIP() string {
-	if ip.IsIPv4() {
-		return ip.String()
+func (w *IPDomainWrapper) GetFormatPortalIP() string {
+	if w.IsDN() {
+		return w.raw
 	}
 
-	return "[" + ip.String() + "]"
+	if w.IsIPv4() {
+		return w.ip.String()
+	}
+
+	return "[" + w.ip.String() + "]"
+}
+
+// String used to get ip string
+func (w *IPDomainWrapper) String() string {
+	if w.IsDN() {
+		return w.raw
+	}
+
+	return w.ip.String()
 }

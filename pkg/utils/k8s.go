@@ -278,8 +278,7 @@ func GetSBCTCapabilitiesByClaim(ctx context.Context, backendID string) (map[stri
 	}
 
 	if content == nil {
-		msg := fmt.Sprintf("StorageBackendContent: [%s] content is nil, GetSBCTOnlineStatusByClaim failed.",
-			content.Name)
+		msg := fmt.Sprintf("get backend [%s] capabilities with nil content", backendID)
 		return nil, Errorln(ctx, msg)
 	}
 	if content.Status == nil {
@@ -289,6 +288,24 @@ func GetSBCTCapabilitiesByClaim(ctx context.Context, backendID string) (map[stri
 	}
 
 	return content.Status.Capabilities, nil
+}
+
+// GetSBCTSpecificationByClaim get backend specifications
+func GetSBCTSpecificationByClaim(ctx context.Context, backendID string) (map[string]string, error) {
+	content, err := GetContentByClaimMeta(ctx, backendID)
+	if err != nil {
+		return nil, fmt.Errorf("GetContentByClaimMeta: [%s] failed, err: [%v]", backendID, err)
+	}
+
+	if content == nil {
+		return nil, fmt.Errorf("get backend [%s] specifications with nil content", backendID)
+	}
+	if content.Status == nil {
+		return nil, fmt.Errorf("storageBackendContent: [%s] content.status is nil, "+
+			"GetSBCTOnlineStatusByClaim failed", content.Name)
+	}
+
+	return content.Status.Specification, nil
 }
 
 // IsBackendCapabilitySupport valid backend capability

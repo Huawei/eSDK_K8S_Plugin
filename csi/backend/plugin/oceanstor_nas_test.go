@@ -106,9 +106,9 @@ func TestValidate(t *testing.T) {
 			"authenticationMode": "ldap",
 		}
 
-		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.OceanstorClient{}),
+		m := gomonkey.ApplyMethod(reflect.TypeOf(&client.RestClient{}),
 			"ValidateLogin",
-			func(_ *client.OceanstorClient, _ context.Context) error { return nil },
+			func(_ *client.RestClient, _ context.Context) error { return nil },
 		)
 		defer m.Reset()
 

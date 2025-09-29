@@ -17,7 +17,6 @@
 package plugin
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -95,64 +94,4 @@ func Test_newExtraCreateMetadataFromParameters(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
-}
-
-func TestOceanstorPlugin_getVolumeNameFromPVNameOrParameters(t *testing.T) {
-	// arrange
-	p := &OceanstorPlugin{}
-	uid := "c2fd3f46-bf17-4a7d-b88e-2e3232bae434"
-
-	type args struct {
-		product      constants.OceanstorVersion
-		volumePrefix string
-		pvName       string
-		parameters   map[string]any
-	}
-
-	tests := []struct {
-		name       string
-		args       args
-		want       string
-		wantErrMsg string
-	}{
-		{name: "not dorado v6 or v7",
-			args: args{product: constants.OceanStorV3, volumePrefix: "pvc", pvName: "pvc-" + uid, parameters: nil},
-			want: "pvc-" + uid, wantErrMsg: ""},
-		{name: "not configure volumeName",
-			args: args{product: constants.OceanStorDoradoV6, volumePrefix: "pvc", pvName: "pvc-" + uid,
-				parameters: nil}, want: "pvc-" + uid, wantErrMsg: ""},
-		{name: "validate volume name failed",
-			args: args{product: constants.OceanStorDoradoV6, volumePrefix: "pvc", pvName: "pvc-" + uid,
-				parameters: map[string]any{"volumeName": "{{.PVCNamespace}}"}}, want: "" + uid,
-			wantErrMsg: "{{.PVCNamespace}} or {{." +
-				"PVCName}} must be configured in the volumeName parameter at the same time"},
-		{name: "metadata key not found",
-			args: args{product: constants.OceanStorDoradoV6, volumePrefix: "pvc", pvName: "pvc-" + uid,
-				parameters: map[string]any{"volumeName": "{{.PVCNamespace}}{{.PVCName}}"}}, want: "" + uid,
-			wantErrMsg: "not found"},
-		{name: "success", args: args{product: constants.OceanStorDoradoV6, volumePrefix: "pvc", pvName: "pvc-" + uid,
-			parameters: map[string]any{"volumeName": "{{.PVCNamespace}}-{{.PVCName}}", constants.PVCNameKey: "test-pvc",
-				constants.PVCNamespaceKey: "test-namespace", constants.PVNameKey: "pvc-" + uid}},
-			want: "test-namespace-test-pvc-" + strings.Replace(uid, "-", "", -1), wantErrMsg: ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// mock
-			p.product = tt.args.product
-			app.GetGlobalConfig().VolumeNamePrefix = tt.args.volumePrefix
-
-			// action
-			got, err := p.getVolumeNameFromPVNameOrParameters(tt.args.pvName, tt.args.parameters)
-
-			// assert
-			if tt.wantErrMsg != "" {
-				require.ErrorContains(t, err, tt.wantErrMsg)
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, tt.want, got)
-		})
-	}
-
 }

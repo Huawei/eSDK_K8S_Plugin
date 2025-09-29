@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -32,10 +33,9 @@ import (
 	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -106,7 +106,7 @@ func WithPortals(publishContext map[string]string, protocol string, portals, met
 ) BuildParameterOption {
 	return func(parameters map[string]interface{}) error {
 		if filesystemMode, ok := publishContext["filesystemMode"]; ok &&
-			filesystemMode == client.HyperMetroFilesystemMode && protocol == plugin.ProtocolNfsPlus {
+			filesystemMode == base.HyperMetroFilesystemMode && protocol == constants.ProtocolNfsPlus {
 			newPortals := append(portals, metroPortals...)
 			parameters["portals"] = newPortals
 			return nil
@@ -121,6 +121,25 @@ func WithPortals(publishContext map[string]string, protocol string, portals, met
 func WithConnector(conn connector.VolumeConnector) BuildParameterOption {
 	return func(parameters map[string]interface{}) error {
 		parameters["connector"] = conn
+		return nil
+	}
+}
+
+// WithDeviceWWN build cid mount options for the request parameters
+func WithDeviceWWN(protocol, wwn string) BuildParameterOption {
+	return func(parameters map[string]interface{}) error {
+		if protocol != constants.ProtocolDtfs {
+			return nil
+		}
+
+		mountFlags, _ := utils.GetValue[string](parameters, "mountFlags")
+		var opts []string
+		if mountFlags != "" {
+			opts = strings.Split(mountFlags, ",")
+		}
+
+		opts = append(opts, fmt.Sprintf("cid=%s", wwn))
+		parameters["mountFlags"] = strings.Join(opts, ",")
 		return nil
 	}
 }
@@ -214,7 +233,7 @@ func ExtractWwn(parameters map[string]interface{}) (string, error) {
 // Mount use nfs protocol to mount
 func Mount(ctx context.Context, parameters map[string]interface{}) error {
 	conn := connector.GetConnector(ctx, connector.NFSDriver)
-	if protocol, exist := parameters["protocol"]; exist && protocol == plugin.ProtocolNfsPlus {
+	if protocol, exist := parameters["protocol"]; exist && protocol == constants.ProtocolNfsPlus {
 		conn = connector.GetConnector(ctx, connector.NFSPlusDriver)
 	}
 
@@ -235,107 +254,107 @@ func Unmount(ctx context.Context, targetPath string) error {
 
 // NewManager build a manager instance, such as NasManager, SanManager
 func NewManager(ctx context.Context, backendName string) (VolumeManager, error) {
-	backend, err := GetBackendConfig(ctx, backendName)
+	backendConfig, err := GetBackendConfig(ctx, backendName)
 	if err != nil {
-		log.AddContext(ctx).Errorf("nas manager get backend failed, backendName: %s err: %v", backendName, err)
-		return nil, err
+		return nil, fmt.Errorf("nas manager get backendConfig failed, backendName: %s err: %w", backendName, err)
 	}
 
-	switch backend.protocol {
-	case plugin.ProtocolNfs:
-		if len(backend.portals) != 1 {
-			return nil, utils.Errorf(ctx, "portals must be one when protocol is %s", plugin.ProtocolNfs)
-		}
-
-		return &NasManager{
-			storage:         backend.storage,
-			protocol:        backend.protocol,
-			portals:         backend.portals[0:1],
-			metroPortals:    []string{},
-			dTreeParentName: backend.dTreeParentName,
-			Conn:            getConnectorByProtocol(ctx, backend.protocol),
-		}, nil
-	case plugin.ProtocolNfsPlus:
-		if len(backend.portals) == 0 {
-			return nil, utils.Errorf(ctx, "portals can not be blank when protocol is %s", plugin.ProtocolNfsPlus)
-		}
-		return &NasManager{
-			storage:         backend.storage,
-			protocol:        backend.protocol,
-			portals:         backend.portals,
-			metroPortals:    backend.metroPortals,
-			dTreeParentName: backend.dTreeParentName,
-			Conn:            getConnectorByProtocol(ctx, backend.protocol),
-		}, nil
-	case plugin.ProtocolDpc:
-		return &NasManager{
-			storage:         backend.storage,
-			protocol:        backend.protocol,
-			portals:         []string{},
-			metroPortals:    []string{},
-			dTreeParentName: backend.dTreeParentName,
-			Conn:            getConnectorByProtocol(ctx, backend.protocol),
-		}, nil
-	default:
-		return NewSanManager(ctx, backend.protocol)
+	var nasProtocolList = []string{constants.ProtocolNfs, constants.ProtocolNfsPlus,
+		constants.ProtocolDpc, constants.ProtocolDtfs}
+	if slices.Contains(nasProtocolList, backendConfig.protocol) {
+		return NewNasManager(ctx, backendConfig)
 	}
+
+	return NewSanManager(ctx, backendConfig.protocol)
 }
 
 // GetBackendConfig returns a BackendConfig if specified backendName exists in configmap.
 // If backend doesn't exist in configmap, returns an error from call backend.GetBackendConfigmapByClaimName().
 // If parameters and protocol doesn't exist, a custom error will be returned.
 // If protocol exist and equal to nfs or nfs+, portals in parameters must exist, otherwise an error will be returned.
+// If protocol is dtfs, deviceWWN must exist.
 func GetBackendConfig(ctx context.Context, backendName string) (*BackendConfig, error) {
 	backendInfo, err := getBackendConfigMap(ctx, backendName)
 	if err != nil {
 		return nil, err
 	}
 
-	parameters, ok := backendInfo["parameters"].(map[string]interface{})
+	parameters, ok := utils.GetValue[map[string]interface{}](backendInfo, "parameters")
 	if !ok {
-		return nil, utils.Errorln(ctx, "convert parameters to map failed")
+		return nil, fmt.Errorf("get backend info %v with invalid parameters", backendInfo)
 	}
-	protocol, ok := parameters["protocol"].(string)
+
+	protocol, ok := utils.GetValue[string](parameters, "protocol")
 	if !ok {
-		return nil, fmt.Errorf("protocol can not be empty, parameters:%v", parameters)
+		return nil, fmt.Errorf("protocol in parameters %v is invalid", parameters)
 	}
-	portalList, ok := parameters["portals"].([]interface{})
-	// portals can't be empty when protocol is nfs or nfs+
-	if (!ok || len(portalList) == 0) && (protocol == plugin.ProtocolNfs || protocol == plugin.ProtocolNfsPlus) {
-		return nil, errors.New("portals can't be empty")
-	}
-	if protocol == plugin.ProtocolNfs && len(portalList) != 1 {
-		return nil, fmt.Errorf("%s just support one portal", protocol)
-	}
-	portals := pkgUtils.ConvertToStringSlice(portalList)
-	metroPortals := make([]string, 0)
-	if metroBackendName, ok := backendInfo["metroBackend"].(string); ok && protocol == plugin.ProtocolNfsPlus {
-		metroBackendInfo, err := getBackendConfigMap(ctx, metroBackendName)
+
+	var deviceWWN string
+	if protocol == constants.ProtocolDtfs {
+		specifications, err := pkgUtils.GetSBCTSpecificationByClaim(ctx,
+			pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backendName))
 		if err != nil {
 			return nil, err
 		}
-		metroParameters, ok := metroBackendInfo["parameters"].(map[string]interface{})
+
+		deviceWWN, ok = specifications["DeviceWWN"]
 		if !ok {
-			return nil, utils.Errorln(ctx, "convert metro parameters to map failed")
+			return nil, fmt.Errorf("get empty DeviceWWN while use %s protocol", constants.ProtocolDtfs)
 		}
-		metroPortalList, ok := metroParameters["portals"].([]interface{})
-		if !ok {
-			return nil, errors.New("convert metro portals to slice failed")
-		}
-		if len(metroPortalList) == 0 {
-			return nil, errors.New("metro portals can't be empty")
-		}
-		metroPortals = pkgUtils.ConvertToStringSlice(metroPortalList)
 	}
 
-	storage, ok := backendInfo["storage"].(string)
-	var dTreeParentName string
-	if ok && (storage == constants.OceanStorDtree || storage == constants.FusionDTree) {
-		dTreeParentName, _ = utils.ToStringWithFlag(parameters["parentname"])
+	portalList, ok := utils.GetValue[[]interface{}](parameters, "portals")
+	// portals can't be empty when protocol is nfs or nfs+
+	if (!ok || len(portalList) == 0) && (protocol == constants.ProtocolNfs || protocol == constants.ProtocolNfsPlus) {
+		return nil, fmt.Errorf("portals can't be empty when protocol is %s or %s",
+			constants.ProtocolNfs, constants.ProtocolNfsPlus)
 	}
 
+	if protocol == constants.ProtocolNfs && len(portalList) != 1 {
+		return nil, fmt.Errorf("%s just support one portal", protocol)
+	}
+
+	portals := pkgUtils.ConvertToStringSlice(portalList)
+	metroPortals := make([]string, 0)
+	metroBackendName, ok := utils.GetValue[string](backendInfo, "metroBackend")
+	if ok && protocol == constants.ProtocolNfsPlus {
+		metroPortals, err = getMetroPortals(ctx, metroBackendName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	storage, ok := utils.GetValue[string](backendInfo, "storage")
+	if !ok {
+		return nil, fmt.Errorf("storage in parameters %v is invalid", parameters)
+	}
+
+	dTreeParentName, _ := utils.GetValue[string](parameters, "parentname")
 	return &BackendConfig{storage: storage, protocol: protocol, portals: portals, metroPortals: metroPortals,
-		dTreeParentName: dTreeParentName}, nil
+		dTreeParentName: dTreeParentName, deviceWWN: deviceWWN}, nil
+}
+
+func getMetroPortals(ctx context.Context, metroBackendName string) ([]string, error) {
+	metroBackendInfo, err := getBackendConfigMap(ctx, metroBackendName)
+	if err != nil {
+		return nil, err
+	}
+
+	metroParameters, ok := utils.GetValue[map[string]interface{}](metroBackendInfo, "parameters")
+	if !ok {
+		return nil, fmt.Errorf("get metro backend info %v with invalid parameters", metroBackendInfo)
+	}
+
+	metroPortalList, ok := utils.GetValue[[]interface{}](metroParameters, "portals")
+	if !ok {
+		return nil, errors.New("convert metro portals to slice failed")
+	}
+
+	if len(metroPortalList) == 0 {
+		return nil, errors.New("metro portals can't be empty")
+	}
+
+	return pkgUtils.ConvertToStringSlice(metroPortalList), nil
 }
 
 func getBackendConfigMap(ctx context.Context, backendName string) (map[string]interface{}, error) {
@@ -472,16 +491,16 @@ func getDTreeSourcePath(bk *BackendConfig, req *csi.NodePublishVolumeRequest,
 //   - For unsupported protocols, it returns an error
 func generatePathPrefixByProtocol(protocol string, portals []string) (string, error) {
 	switch protocol {
-	case plugin.ProtocolNfs, plugin.ProtocolNfsPlus:
+	case constants.ProtocolNfs, constants.ProtocolNfsPlus:
 		if len(portals) == 0 {
 			return "", fmt.Errorf("no portal provided for NFS or NFS+ protocol")
 		}
-		ipWrapper := iputils.NewIPWrapper(portals[0])
-		if ipWrapper == nil {
-			return "", fmt.Errorf("portal [%s] is not a valid ip address", portals[0])
+		wrapper := iputils.NewIPDomainWrapper(portals[0])
+		if wrapper == nil {
+			return "", fmt.Errorf("portal [%s] is invalid", portals[0])
 		}
-		return ipWrapper.GetFormatPortalIP() + ":/", nil
-	case plugin.ProtocolDpc:
+		return wrapper.GetFormatPortalIP() + ":/", nil
+	case constants.ProtocolDpc, constants.ProtocolDtfs:
 		return "/", nil
 	default:
 		return "", fmt.Errorf("protocol [%s] is not supported", protocol)
@@ -490,8 +509,9 @@ func generatePathPrefixByProtocol(protocol string, portals []string) (string, er
 
 func getConnectorByProtocol(ctx context.Context, protocol string) connector.VolumeConnector {
 	return map[string]connector.VolumeConnector{
-		plugin.ProtocolNfs:     connector.GetConnector(ctx, connector.NFSDriver),
-		plugin.ProtocolDpc:     connector.GetConnector(ctx, connector.NFSDriver),
-		plugin.ProtocolNfsPlus: connector.GetConnector(ctx, connector.NFSPlusDriver),
+		constants.ProtocolNfs:     connector.GetConnector(ctx, connector.NFSDriver),
+		constants.ProtocolDpc:     connector.GetConnector(ctx, connector.NFSDriver),
+		constants.ProtocolDtfs:    connector.GetConnector(ctx, connector.NFSDriver),
+		constants.ProtocolNfsPlus: connector.GetConnector(ctx, connector.NFSPlusDriver),
 	}[protocol]
 }

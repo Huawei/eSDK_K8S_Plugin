@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_Success(t *testing.T) {
 	// arrange
 	objType := 11
 	objID := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -58,7 +58,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -82,7 +82,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_CodeError(t *testing.T) {
 	// arrange
 	objType := 11
 	objID := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -101,7 +101,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_CodeError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -125,7 +125,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_RespNil(t *testing.T) {
 	// arrange
 	objType := 11
 	objID := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -140,7 +140,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_RespNil(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -164,7 +164,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_RespFormatError(t *testing.T) {
 	// arrange
 	objType := 11
 	objID := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -180,7 +180,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_RespFormatError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -203,7 +203,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_RespFormatError(t *testing.T) {
 func TestBaseClient_GetNamespaceByName_Success(t *testing.T) {
 	// arrange
 	name := "namespace1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -225,7 +225,7 @@ func TestBaseClient_GetNamespaceByName_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -248,7 +248,7 @@ func TestBaseClient_GetNamespaceByName_Success(t *testing.T) {
 func TestBaseClient_GetNamespaceByName_NamespaceFormatError(t *testing.T) {
 	// arrange
 	name := "namespace1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -271,7 +271,7 @@ func TestBaseClient_GetNamespaceByName_NamespaceFormatError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -294,7 +294,7 @@ func TestBaseClient_GetNamespaceByName_NamespaceFormatError(t *testing.T) {
 func TestBaseClient_GetNamespaceByID_Success(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -313,7 +313,7 @@ func TestBaseClient_GetNamespaceByID_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -336,7 +336,7 @@ func TestBaseClient_GetNamespaceByID_Success(t *testing.T) {
 func TestBaseClient_GetNamespaceByID_FormatNamespaceError(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -353,7 +353,7 @@ func TestBaseClient_GetNamespaceByID_FormatNamespaceError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -377,7 +377,7 @@ func TestBaseClient_AddNamespaceToGroup_Success(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	groupID := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -391,7 +391,7 @@ func TestBaseClient_AddNamespaceToGroup_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Post", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Post", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -414,7 +414,7 @@ func TestBaseClient_AddNamespaceToGroup_CodeError(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	groupID := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -432,7 +432,7 @@ func TestBaseClient_AddNamespaceToGroup_CodeError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Post", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Post", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -455,7 +455,7 @@ func TestBaseClient_RemoveNamespaceFromGroup_Success(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	groupID := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -469,7 +469,7 @@ func TestBaseClient_RemoveNamespaceFromGroup_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Delete", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Delete", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -492,7 +492,7 @@ func TestBaseClient_RemoveNamespaceFromGroup_CodeError(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	groupID := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -510,7 +510,7 @@ func TestBaseClient_RemoveNamespaceFromGroup_CodeError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Delete", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Delete", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -533,7 +533,7 @@ func TestBaseClient_RemoveNamespaceFromGroup_CodeError(t *testing.T) {
 func TestBaseClient_GetNamespaceGroupByName_Success(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -555,7 +555,7 @@ func TestBaseClient_GetNamespaceGroupByName_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -578,7 +578,7 @@ func TestBaseClient_GetNamespaceGroupByName_Success(t *testing.T) {
 func TestBaseClient_GetNamespaceGroupByName_RespFormatError(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -594,7 +594,7 @@ func TestBaseClient_GetNamespaceGroupByName_RespFormatError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -617,7 +617,7 @@ func TestBaseClient_GetNamespaceGroupByName_RespFormatError(t *testing.T) {
 func TestBaseClient_GetNamespaceGroupByName_GroupFormatError(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -637,7 +637,7 @@ func TestBaseClient_GetNamespaceGroupByName_GroupFormatError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Get", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Get", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -660,7 +660,7 @@ func TestBaseClient_GetNamespaceGroupByName_GroupFormatError(t *testing.T) {
 func TestBaseClient_CreateNamespaceGroup_Success(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -680,7 +680,7 @@ func TestBaseClient_CreateNamespaceGroup_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Post", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Post", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -703,7 +703,7 @@ func TestBaseClient_CreateNamespaceGroup_Success(t *testing.T) {
 func TestBaseClient_CreateNamespaceGroup_ExistSuccess(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -723,7 +723,7 @@ func TestBaseClient_CreateNamespaceGroup_ExistSuccess(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Post", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Post", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	}).ApplyMethodFunc(client, "GetNamespaceGroupByName", func(ctx context.Context,
@@ -749,7 +749,7 @@ func TestBaseClient_CreateNamespaceGroup_ExistSuccess(t *testing.T) {
 func TestBaseClient_CreateNamespaceGroup_CodeError(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -768,7 +768,7 @@ func TestBaseClient_CreateNamespaceGroup_CodeError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Post", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Post", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -791,7 +791,7 @@ func TestBaseClient_CreateNamespaceGroup_CodeError(t *testing.T) {
 func TestBaseClient_CreateNamespaceGroup_GroupFormatError(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -807,7 +807,7 @@ func TestBaseClient_CreateNamespaceGroup_GroupFormatError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodFunc(&RestClient{}, "Post", func(ctx context.Context,
+	mock.ApplyMethodFunc(&base.RestClient{}, "Post", func(ctx context.Context,
 		url string, data map[string]interface{}) (base.Response, error) {
 		return mockResponse, nil
 	})
@@ -830,7 +830,7 @@ func TestBaseClient_CreateNamespaceGroup_GroupFormatError(t *testing.T) {
 func TestBaseClient_DeleteNamespaceGroup_Success(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -844,7 +844,7 @@ func TestBaseClient_DeleteNamespaceGroup_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Delete", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Delete", mockResponse, nil)
 
 	// action
 	getErr := client.DeleteNamespaceGroup(context.Background(), id)
@@ -863,7 +863,7 @@ func TestBaseClient_DeleteNamespaceGroup_Success(t *testing.T) {
 func TestBaseClient_DeleteNamespaceGroup_NotExistSuccess(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -877,7 +877,7 @@ func TestBaseClient_DeleteNamespaceGroup_NotExistSuccess(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Delete", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Delete", mockResponse, nil)
 
 	// action
 	getErr := client.DeleteNamespaceGroup(context.Background(), id)
@@ -897,7 +897,7 @@ func TestBaseClient_DeleteNamespaceGroup_NotExistSuccess(t *testing.T) {
 func TestBaseClient_DeleteNamespaceGroup_CodeError(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -914,7 +914,7 @@ func TestBaseClient_DeleteNamespaceGroup_CodeError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Delete", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Delete", mockResponse, nil)
 
 	// action
 	getErr := client.DeleteNamespaceGroup(context.Background(), id)
@@ -935,7 +935,7 @@ func TestBaseClient_ExtendNamespace_Success(t *testing.T) {
 	// arrange
 	namespaceId := "1"
 	capacity := int64(10)
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -949,7 +949,7 @@ func TestBaseClient_ExtendNamespace_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Put", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Put", mockResponse, nil)
 
 	// action
 	getErr := client.ExtendNamespace(context.Background(), namespaceId, capacity)
@@ -970,7 +970,7 @@ func TestBaseClient_ExtendNamespace_CodeFormatError(t *testing.T) {
 	namespaceId := "1"
 	capacity := int64(10)
 	errorCode := 0
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -985,7 +985,7 @@ func TestBaseClient_ExtendNamespace_CodeFormatError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Put", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Put", mockResponse, nil)
 
 	// action
 	getErr := client.ExtendNamespace(context.Background(), namespaceId, capacity)
@@ -1005,7 +1005,7 @@ func TestBaseClient_ExtendNamespace_CodeFormatError(t *testing.T) {
 func TestBaseClient_CreateNamespace_Success(t *testing.T) {
 	// arrange
 	params := CreateNamespaceParams{}
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1024,7 +1024,7 @@ func TestBaseClient_CreateNamespace_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Post", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Post", mockResponse, nil)
 
 	// action
 	getRes, getErr := client.CreateNamespace(context.Background(), params)
@@ -1050,7 +1050,7 @@ func TestBaseClient_CreateNamespace_InvalidParamsError(t *testing.T) {
 		"CAPACITY":    params.Capacity,
 		"DESCRIPTION": params.Description,
 	}
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1067,7 +1067,7 @@ func TestBaseClient_CreateNamespace_InvalidParamsError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Post", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Post", mockResponse, nil)
 
 	// action
 	getRes, getErr := client.CreateNamespace(context.Background(), params)
@@ -1087,7 +1087,7 @@ func TestBaseClient_CreateNamespace_InvalidParamsError(t *testing.T) {
 func TestBaseClient_DeleteNamespace_Success(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1101,7 +1101,7 @@ func TestBaseClient_DeleteNamespace_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Delete", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Delete", mockResponse, nil)
 
 	// action
 	getErr := client.DeleteNamespace(context.Background(), id)
@@ -1120,7 +1120,7 @@ func TestBaseClient_DeleteNamespace_Success(t *testing.T) {
 func TestBaseClient_DeleteNamespace_NotExistSuccess(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1134,7 +1134,7 @@ func TestBaseClient_DeleteNamespace_NotExistSuccess(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Delete", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Delete", mockResponse, nil)
 
 	// action
 	getErr := client.DeleteNamespace(context.Background(), id)
@@ -1154,7 +1154,7 @@ func TestBaseClient_DeleteNamespace_NotExistSuccess(t *testing.T) {
 func TestBaseClient_DeleteNamespace_CodeError(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1171,7 +1171,7 @@ func TestBaseClient_DeleteNamespace_CodeError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Delete", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Delete", mockResponse, nil)
 
 	// action
 	getErr := client.DeleteNamespace(context.Background(), id)
@@ -1192,7 +1192,7 @@ func TestBaseClient_GetNamespaceCountOfMapping_Success(t *testing.T) {
 	// arrange
 	mappingId := "1"
 	countStr := "10"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1211,7 +1211,7 @@ func TestBaseClient_GetNamespaceCountOfMapping_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Get", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Get", mockResponse, nil)
 
 	// action
 	getCount, getErr := client.GetNamespaceCountOfMapping(context.Background(), mappingId)
@@ -1232,7 +1232,7 @@ func TestBaseClient_GetNamespaceCountOfMapping_CountFormatError(t *testing.T) {
 	// arrange
 	mappingId := "1"
 	countStr := float64(10)
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1251,7 +1251,7 @@ func TestBaseClient_GetNamespaceCountOfMapping_CountFormatError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Get", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Get", mockResponse, nil)
 
 	// action
 	getCount, getErr := client.GetNamespaceCountOfMapping(context.Background(), mappingId)
@@ -1272,7 +1272,7 @@ func TestBaseClient_GetNamespaceCountOfHost_Success(t *testing.T) {
 	// arrange
 	mappingId := "1"
 	countStr := "10"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1291,7 +1291,7 @@ func TestBaseClient_GetNamespaceCountOfHost_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Get", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Get", mockResponse, nil)
 
 	// action
 	getCount, getErr := client.GetNamespaceCountOfHost(context.Background(), mappingId)
@@ -1312,7 +1312,7 @@ func TestBaseClient_GetNamespaceCountOfHost_CountFormatError(t *testing.T) {
 	// arrange
 	mappingId := "1"
 	countStr := float64(10)
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1331,7 +1331,7 @@ func TestBaseClient_GetNamespaceCountOfHost_CountFormatError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Get", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Get", mockResponse, nil)
 
 	// action
 	getCount, getErr := client.GetNamespaceCountOfHost(context.Background(), mappingId)
@@ -1352,7 +1352,7 @@ func TestBaseClient_GetHostNamespaceId_Success(t *testing.T) {
 	// arrange
 	hostId := "1"
 	namespaceId := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1374,7 +1374,7 @@ func TestBaseClient_GetHostNamespaceId_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Get", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Get", mockResponse, nil)
 
 	// action
 	getId, getErr := client.GetHostNamespaceId(context.Background(), hostId, namespaceId)
@@ -1395,7 +1395,7 @@ func TestBaseClient_GetHostNamespaceId_NotExistIdError(t *testing.T) {
 	// arrange
 	hostId := "1"
 	namespaceId := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1412,7 +1412,7 @@ func TestBaseClient_GetHostNamespaceId_NotExistIdError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Get", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Get", mockResponse, nil)
 
 	// action
 	getId, getErr := client.GetHostNamespaceId(context.Background(), hostId, namespaceId)
@@ -1433,7 +1433,7 @@ func TestBaseClient_GetHostNamespaceId_JsonUnmarshalError(t *testing.T) {
 	// arrange
 	hostId := "1"
 	namespaceId := "1"
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1458,7 +1458,7 @@ func TestBaseClient_GetHostNamespaceId_JsonUnmarshalError(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Get", mockResponse, nil).
+	mock.ApplyMethodReturn(&base.RestClient{}, "Get", mockResponse, nil).
 		ApplyFunc(json.Unmarshal, func(data []byte, v any) error {
 			return mockErr
 		})
@@ -1482,7 +1482,7 @@ func TestBaseClient_UpdateNamespace_Success(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	params := map[string]interface{}{}
-	client, err := NewClient(context.Background(), &NewClientConfig{})
+	client, err := NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1496,7 +1496,7 @@ func TestBaseClient_UpdateNamespace_Success(t *testing.T) {
 
 	// mock
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(&RestClient{}, "Put", mockResponse, nil)
+	mock.ApplyMethodReturn(&base.RestClient{}, "Put", mockResponse, nil)
 
 	// action
 	getErr := client.UpdateNamespace(context.Background(), namespaceID, params)

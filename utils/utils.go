@@ -331,6 +331,7 @@ func MergeMap(args ...map[string]interface{}) map[string]interface{} {
 	return newMap
 }
 
+// WaitUntil executes the func until timeout, it also breaks while the func return true or an err.
 func WaitUntil(f func() (bool, error), timeout time.Duration, interval time.Duration) error {
 	done := make(chan error)
 	defer close(done)
@@ -583,8 +584,8 @@ func IsCapacityAvailable(volumeSizeBytes, allocationUnitBytes int64, parameters 
 		return errors.New("IsCapacityAvailable.allocationUnitBytes is invalid, can't be zero")
 	}
 
-	disableVerifyCapacity := GetValueOrFallback(parameters, constants.DisableVerifyCapacityKey, "false")
-	var disableVerify bool
+	disableVerifyCapacity := GetValueOrFallback(parameters, constants.DisableVerifyCapacityKey, "true")
+	disableVerify := true
 	if disableVerifyCapacity != "" {
 		var err error
 		disableVerify, err = strconv.ParseBool(disableVerifyCapacity)

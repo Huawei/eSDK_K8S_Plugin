@@ -343,16 +343,16 @@ func (cli *RestClient) setDataFromRespData(ctx context.Context, resp base.Respon
 	vStoreID, idExist := respData["vstoreId"].(string)
 	if !exist && !idExist {
 		log.AddContext(ctx).Infof("storage client login response vstoreName is empty, set it to default %s",
-			defaultVStore)
-		cli.VStoreName = defaultVStore
+			base.DefaultVStore)
+		cli.VStoreName = base.DefaultVStore
 	} else if exist {
 		cli.VStoreName = vStoreName
 	}
 
 	if !idExist {
 		log.AddContext(ctx).Infof("storage client login response vstoreID is empty, set it to default %s",
-			defaultVStoreID)
-		cli.VStoreID = defaultVStoreID
+			base.DefaultVStoreID)
+		cli.VStoreID = base.DefaultVStoreID
 	} else {
 		cli.VStoreID = vStoreID
 	}
@@ -415,7 +415,7 @@ func (cli *RestClient) getRequestParams(ctx context.Context, backendID string) (
 	}
 	params.Password = ""
 
-	if len(cli.VStoreName) > 0 && cli.VStoreName != defaultVStore {
+	if len(cli.VStoreName) > 0 && cli.VStoreName != base.DefaultVStore {
 		data["vstorename"] = cli.VStoreName
 	}
 
@@ -569,4 +569,83 @@ func (cli *RestClient) GetLogicPort(ctx context.Context, addr string) (*Lif, err
 	}
 
 	return lifs[0], nil
+}
+
+// ValidateLogin validates the login info
+func (cli *RestClient) ValidateLogin(ctx context.Context) error {
+	var resp base.Response
+	var err error
+
+	params, err := pkgUtils.GetAuthInfoFromSecret(ctx, cli.SecretName, cli.SecretNamespace)
+	if err != nil {
+		return err
+	}
+
+	data := map[string]interface{}{
+		"username": cli.User,
+		"password": params.Password,
+		"scope":    params.Scope,
+	}
+	params.Password = ""
+
+	if len(cli.VStoreName) > 0 && cli.VStoreName != base.DefaultVStore {
+		data["vstorename"] = cli.VStoreName
+	}
+
+	cli.DeviceId = ""
+	cli.Token = ""
+	for i, url := range cli.Urls {
+		cli.Url = url + "/deviceManager/rest"
+
+		log.AddContext(ctx).Infof("Try to login %s", cli.Url)
+		resp, err = cli.BaseCall(ctx, "POST", "/xx/sessions", data)
+		if err == nil {
+			/* Sort the login Url to the last slot of san addresses, so that
+			   if this connection error, next time will try other Url first. */
+			cli.Urls[i], cli.Urls[len(cli.Urls)-1] = cli.Urls[len(cli.Urls)-1], cli.Urls[i]
+			break
+		} else if err.Error() != base.Unconnected {
+			log.AddContext(ctx).Errorf("Login %s error", cli.Url)
+			break
+		}
+
+		log.AddContext(ctx).Warningf("Login %s error due to connection failure, gonna try another Url",
+			cli.Url)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	code := int64(resp.Error["code"].(float64))
+	if code != 0 {
+		return fmt.Errorf("validate login %s error: %+v", cli.Url, resp)
+	}
+
+	cli.setDeviceIdFromRespData(ctx, resp)
+
+	log.AddContext(ctx).Infof("Validate login %s success", cli.Url)
+	return nil
+}
+
+func (cli *RestClient) setDeviceIdFromRespData(ctx context.Context, resp base.Response) {
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		log.AddContext(ctx).Warningf("convert response data to map[string]interface{} failed, data type: [%T]",
+			resp.Data)
+	}
+
+	cli.DeviceId, ok = respData["deviceid"].(string)
+	if !ok {
+		log.AddContext(ctx).Warningf("not found deviceId, response data is: [%v]", respData["deviceid"])
+	}
+
+	if _, exists := respData["iBaseToken"]; !exists {
+		log.AddContext(ctx).Warningf("not found iBaseToken, response data is: [%v]", resp.Data)
+	}
+	cli.Token, ok = respData["iBaseToken"].(string)
+	if !ok {
+		log.AddContext(ctx).Warningf("convert iBaseToken to string error, data type: [%T]",
+			respData["iBaseToken"])
+	}
 }

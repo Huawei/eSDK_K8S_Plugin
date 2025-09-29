@@ -340,14 +340,14 @@ func CombineMap[K comparable, V any](dst map[K]V, src map[K]V) map[K]V {
 }
 
 // CheckAuthenticationMode used to check authenticationMode
-func CheckAuthenticationMode(authMode string) bool {
+func CheckAuthenticationMode(authMode string) error {
 	authModes := []string{constants.AuthModeLocal, constants.AuthModeLDAP}
 	authMode = strings.ToLower(strings.TrimSpace(authMode))
 	if len(authMode) > 0 && !slices.Contains(authModes, authMode) {
-		return false
+		return fmt.Errorf("authenticationMode must be one of %v, the actual value is %s", authModes, authMode)
 	}
 
-	return true
+	return nil
 }
 
 // ConvertAuthenticationToScope used to convert authentication to scope

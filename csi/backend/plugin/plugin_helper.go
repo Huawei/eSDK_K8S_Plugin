@@ -14,6 +14,7 @@
  *  limitations under the License.
  */
 
+// Package plugin provide storage function
 package plugin
 
 import (
@@ -22,11 +23,13 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
+	"text/template"
 
 	xuanwuV1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
-	oceandisk "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	oceanstor "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -141,15 +144,19 @@ func formatOceanstorInitParam(config map[string]interface{}) (res *oceanstor.New
 	return
 }
 
-func formatOceandiskInitParam(config map[string]interface{}) (*oceandisk.NewClientConfig, error) {
-	res := &oceandisk.NewClientConfig{}
-
+func formatBaseClientConfig(config map[string]interface{}) (*base.NewClientConfig, error) {
+	res := &base.NewClientConfig{}
 	configUrls, ok := utils.GetValue[[]interface{}](config, "urls")
 	if !ok || len(configUrls) <= 0 {
 		return nil, fmt.Errorf("urls is not provided in config, or it is invalid, config: %v", config)
 	}
-	for _, i := range configUrls {
-		res.Urls = append(res.Urls, i.(string))
+
+	for _, configUrl := range configUrls {
+		url, ok := configUrl.(string)
+		if !ok {
+			return nil, fmt.Errorf("url %s convert to string failed", configUrl)
+		}
+		res.Urls = append(res.Urls, url)
 	}
 
 	res.User, ok = utils.GetValue[string](config, "user")
@@ -212,7 +219,7 @@ func analyzePoolsCapacity(ctx context.Context, pools []map[string]interface{},
 		poolCapacityMap := map[string]interface{}{
 			string(xuanwuV1.FreeCapacity):  freeCapacity * constants.AllocationUnitBytes,
 			string(xuanwuV1.TotalCapacity): totalCapacity * constants.AllocationUnitBytes,
-			string(xuanwuV1.UsedCapacity):  totalCapacity - freeCapacity,
+			string(xuanwuV1.UsedCapacity):  (totalCapacity - freeCapacity) * constants.AllocationUnitBytes,
 		}
 		if len(vStoreQuotaMap) == 0 {
 			capacities[name] = poolCapacityMap
@@ -300,4 +307,56 @@ func attachDTreeVolume(parameters map[string]any) (map[string]any, error) {
 	}
 
 	return map[string]any{}, nil
+}
+
+func updateCapabilityByNfsServiceSetting(capabilities map[string]interface{}, nfsServiceSetting map[string]bool) {
+	// NFS3 is enabled by default.
+	capabilities["SupportNFS3"] = true
+	capabilities["SupportNFS4"] = false
+	capabilities["SupportNFS41"] = false
+	capabilities["SupportNFS42"] = false
+
+	if !nfsServiceSetting["SupportNFS3"] {
+		capabilities["SupportNFS3"] = false
+	}
+
+	if nfsServiceSetting["SupportNFS4"] {
+		capabilities["SupportNFS4"] = true
+	}
+
+	if nfsServiceSetting["SupportNFS41"] {
+		capabilities["SupportNFS41"] = true
+	}
+
+	if nfsServiceSetting["SupportNFS42"] {
+		capabilities["SupportNFS42"] = true
+	}
+}
+
+func getVolumeNameFromPVNameOrParameters(pvName string, parameters map[string]any) (string, error) {
+	volumeNameTpl, _ := utils.GetValue[string](parameters, constants.ScVolumeNameKey)
+	if volumeNameTpl == "" {
+		return pvName, nil
+	}
+
+	if err := validateVolumeName(volumeNameTpl); err != nil {
+		return "", err
+	}
+
+	metadata, err := newExtraCreateMetadataFromParameters(parameters)
+	if err != nil {
+		return "", err
+	}
+
+	tpl, err := template.New(constants.ScVolumeNameKey).Parse(volumeNameTpl + volumeNameSuffix)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse volume name template %s: %w", volumeNameTpl, err)
+	}
+
+	var volumeName strings.Builder
+	if err := tpl.Execute(&volumeName, metadata); err != nil {
+		return "", fmt.Errorf("failed to excute template: %w", err)
+	}
+
+	return volumeName.String(), nil
 }

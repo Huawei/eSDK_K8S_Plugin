@@ -30,6 +30,7 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
 	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -82,8 +83,12 @@ func parseNFSInfo(ctx context.Context,
 	mntDashO, _ := connectionProperties["mountFlags"].(string)
 	protocol, _ := connectionProperties["protocol"].(string)
 	var mntDashT string
-	if protocol == "dpc" {
-		mntDashT = "dpc"
+	if protocol == constants.ProtocolDpc {
+		mntDashT = constants.ProtocolDpc
+	}
+
+	if protocol == constants.ProtocolDtfs {
+		mntDashT = constants.ProtocolDtfs
 	}
 
 	con.srcType = srcType

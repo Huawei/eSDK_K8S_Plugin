@@ -27,6 +27,7 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/smartx"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume/creator"
@@ -1172,7 +1173,7 @@ func (p *NAS) GetStandbyHyperMetroCli() client.OceanstorClientInterface {
 }
 
 func (p *NAS) getFilesystemByName(ctx context.Context,
-	cli client.OceanstorClientInterface, name string) (*client.FilesystemResponse, error) {
+	cli client.OceanstorClientInterface, name string) (*base.FilesystemResponse, error) {
 	fsMap, err := cli.GetFileSystemByName(ctx, name)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get filesystem by name %s error: %v", name, err)
@@ -1184,7 +1185,7 @@ func (p *NAS) getFilesystemByName(ctx context.Context,
 		return nil, errors.New(msg)
 	}
 
-	fs, err := utils.ConvertMapToStruct[client.FilesystemResponse](fsMap)
+	fs, err := utils.ConvertMapToStruct[base.FilesystemResponse](fsMap)
 	if err != nil {
 		return nil, fmt.Errorf("ConvertMapToStruct %v error: %w", fsMap, err)
 	}
@@ -1201,7 +1202,7 @@ func (p *NAS) getFilesystemByName(ctx context.Context,
 }
 
 func (p *NAS) getFilesystemByID(ctx context.Context,
-	cli client.OceanstorClientInterface, id string) (*client.FilesystemResponse, error) {
+	cli client.OceanstorClientInterface, id string) (*base.FilesystemResponse, error) {
 	fsMap, err := cli.GetFileSystemByID(ctx, id)
 	if err != nil {
 		log.AddContext(ctx).Errorf("get filesystem by id %s error: %v", id, err)
@@ -1213,7 +1214,7 @@ func (p *NAS) getFilesystemByID(ctx context.Context,
 		return nil, errors.New(msg)
 	}
 
-	fs, err := utils.ConvertMapToStruct[client.FilesystemResponse](fsMap)
+	fs, err := utils.ConvertMapToStruct[base.FilesystemResponse](fsMap)
 	if err != nil {
 		return nil, fmt.Errorf("convertMapToStruct %v error: %w", fsMap, err)
 	}

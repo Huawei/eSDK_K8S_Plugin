@@ -375,7 +375,7 @@ func (cli *RestClient) doCall(ctx context.Context, method string, url string, da
 	cli.setRequestHeader(ctx, req, url)
 
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
-		fmt.Sprintf("Request method: %s, url: %s, body: %v", method, req.URL, data))
+		fmt.Sprintf("Request method: %s, url: %s, body: %+v", method, req.URL, data))
 
 	cli.RequestSemaphore.Acquire()
 	defer cli.RequestSemaphore.Release()

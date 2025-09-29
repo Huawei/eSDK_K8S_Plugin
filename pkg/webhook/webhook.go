@@ -288,9 +288,9 @@ func (c *Controller) Start(ctx context.Context, webHookCfg Config, admissionWebh
 	}
 
 	wrapperWebHookAddr := webHookCfg.WebHookAddress
-	ipWrapper := iputils.NewIPWrapper(webHookCfg.WebHookAddress)
-	if ipWrapper != nil {
-		wrapperWebHookAddr = ipWrapper.GetFormatPortalIP()
+	wrapper := iputils.NewIPDomainWrapper(webHookCfg.WebHookAddress)
+	if wrapper != nil {
+		wrapperWebHookAddr = wrapper.GetFormatPortalIP()
 	}
 
 	c.srv = &http.Server{Addr: fmt.Sprintf("%s:%d", wrapperWebHookAddr, webHookCfg.WebHookPort),

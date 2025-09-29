@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package local
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -29,7 +28,9 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
-const waitDevOnlineTimeInterval = 2 * time.Second
+const waitDevOnlineSeconds = 2
+
+var waitDevOnlineTimeInterval = waitDevOnlineSeconds * time.Second
 
 func waitDevOnline(ctx context.Context, tgtLunWWN string) string {
 	devPath := fmt.Sprintf("/dev/disk/by-id/wwn-0x%s", tgtLunWWN)
@@ -66,26 +67,5 @@ func tryConnectVolume(ctx context.Context, conn map[string]interface{}) (string,
 }
 
 func tryDisConnectVolume(ctx context.Context, tgtLunWWN string) error {
-	return connector.DisConnectVolume(ctx, tgtLunWWN, tryToDisConnectVolume)
-}
-
-func tryToDisConnectVolume(ctx context.Context, tgtLunWWN string) error {
-	virtualDevice, devType, err := connector.GetVirtualDevice(ctx, tgtLunWWN)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get device of WWN %s error: %v", tgtLunWWN, err)
-		return err
-	}
-
-	if virtualDevice == "" {
-		log.AddContext(ctx).Infof("The device of WWN %s does not exist on host", tgtLunWWN)
-		return errors.New("FindNoDevice")
-	}
-
-	phyDevices, err := connector.GetPhysicalDevices(ctx, virtualDevice, devType)
-	if err != nil {
-		return err
-	}
-
-	_, err = connector.RemoveAllDevice(ctx, virtualDevice, phyDevices, devType)
-	return err
+	return nil
 }

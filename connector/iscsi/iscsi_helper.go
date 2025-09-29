@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -54,6 +54,7 @@ const (
 	scanSingleInterval        = 2 * time.Second
 	iscsiSessionLoginInterval = 2 * time.Second
 	iscsiSessionLoginTimes    = 60
+	ultrapathScanningTimeout  = 15 * time.Second
 )
 
 var singleGroup = concurrent.NewSingleGroup[connectResult]()
@@ -770,17 +771,25 @@ func scanMultiDevice(ctx context.Context,
 
 func findDiskOfUltraPath(ctx context.Context, lenIndex int, iSCSIShareData *shareData, upType, lunWWN string) string {
 	var diskName string
-	var err error
-	for !((int64(lenIndex) == iSCSIShareData.stoppedThreads.Load() && iSCSIShareData.foundDevices.Len() == 0) ||
-		(diskName != "" && int64(lenIndex) == iSCSIShareData.numLogin.Load()+iSCSIShareData.failedLogin.Load())) {
-
-		diskName, err = connector.GetDiskNameByWWN(ctx, upType, lunWWN)
-		if err == nil {
-			break
+	err := utils.WaitUntil(func() (bool, error) {
+		if (int64(lenIndex) == iSCSIShareData.stoppedThreads.Load() && iSCSIShareData.foundDevices.Len() == 0) ||
+			(diskName != "" && int64(lenIndex) == iSCSIShareData.numLogin.Load()+iSCSIShareData.failedLogin.Load()) {
+			return true, nil
 		}
 
-		time.Sleep(time.Second)
+		var err error
+		diskName, err = connector.GetDiskNameByWWN(ctx, upType, lunWWN)
+		if err != nil {
+			return false, nil
+		}
+
+		return true, nil
+	}, ultrapathScanningTimeout, time.Second)
+
+	if err != nil {
+		log.AddContext(ctx).Errorf("failed to find disk of ultrapath, err: %v", err)
 	}
+
 	return diskName
 }
 

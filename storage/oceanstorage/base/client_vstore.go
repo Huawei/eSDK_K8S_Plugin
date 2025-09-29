@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
  *  limitations under the License.
  */
 
-package client
+// Package base provide base operations for oceanstor base storage
+package base
 
 import (
 	"context"
@@ -38,18 +39,13 @@ type VStore interface {
 	GetVStorePairs(ctx context.Context) ([]interface{}, error)
 }
 
-// GetvStoreName used for get vstore name in oceanstor client
-func (cli *OceanstorClient) GetvStoreName() string {
-	return cli.VStoreName
-}
-
-// GetvStoreID used for get vstore ID in oceanstor client
-func (cli *OceanstorClient) GetvStoreID() string {
-	return cli.VStoreID
+// VStoreClient defines client implements the VStore interface
+type VStoreClient struct {
+	RestClientInterface
 }
 
 // GetvStoreByName used for get vstore info by vstore name
-func (cli *OceanstorClient) GetvStoreByName(ctx context.Context, name string) (map[string]interface{}, error) {
+func (cli *VStoreClient) GetvStoreByName(ctx context.Context, name string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/vstore?filter=NAME::%s", name)
 	resp, err := cli.Get(ctx, url, nil)
 	if err != nil {
@@ -82,7 +78,7 @@ func (cli *OceanstorClient) GetvStoreByName(ctx context.Context, name string) (m
 }
 
 // GetVStorePairs used for get vStore pairs
-func (cli *OceanstorClient) GetVStorePairs(ctx context.Context) ([]interface{}, error) {
+func (cli *VStoreClient) GetVStorePairs(ctx context.Context) ([]interface{}, error) {
 	resp, err := cli.Get(ctx, "/vstore_pair?REPTYPE=1", nil)
 	if err != nil {
 		return nil, err
@@ -106,7 +102,7 @@ func (cli *OceanstorClient) GetVStorePairs(ctx context.Context) ([]interface{}, 
 }
 
 // GetvStorePairByID used for get vstore pair by pair id
-func (cli *OceanstorClient) GetvStorePairByID(ctx context.Context, pairID string) (map[string]interface{}, error) {
+func (cli *VStoreClient) GetvStorePairByID(ctx context.Context, pairID string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/vstore_pair?filter=ID::%s", pairID)
 	resp, err := cli.Get(ctx, url, nil)
 	if err != nil {
@@ -136,4 +132,14 @@ func (cli *OceanstorClient) GetvStorePairByID(ctx context.Context, pairID string
 		return nil, pkgUtils.Errorf(ctx, "convert respData[0] to map failed, data: %v", respData[0])
 	}
 	return pair, nil
+}
+
+// GetvStoreName used for get vstore name in oceanstor client
+func (cli *VStoreClient) GetvStoreName() string {
+	return DefaultVStore
+}
+
+// GetvStoreID used for get vstore ID in oceanstor client
+func (cli *VStoreClient) GetvStoreID() string {
+	return DefaultVStoreID
 }

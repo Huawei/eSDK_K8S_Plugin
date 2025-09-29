@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 )
 
 func mockNasStageVolumeRequest() *csi.NodeStageVolumeRequest {
@@ -104,5 +105,39 @@ func TestNasManagerStageDpcVolume(t *testing.T) {
 	err := manager.StageVolume(context.Background(), mockNasStageVolumeRequest())
 	if err != nil {
 		t.Errorf("TestNasManagerStageDpcVolume() want error = nil, got error = %v", err)
+	}
+}
+
+func TestNasManagerStageDtfsVolume(t *testing.T) {
+	// arrange
+	manager := &NasManager{
+		protocol:  constants.ProtocolDtfs,
+		Conn:      connector.GetConnector(context.Background(), connector.NFSDriver),
+		deviceWWN: "wwn001",
+		portals:   []string{},
+	}
+
+	// mock
+	mockMountShare := gomonkey.ApplyFunc(Mount, func(ctx context.Context, parameters map[string]interface{}) error {
+		expectedConnectInfo := mockExpectedConnectInfo()
+		expectedConnectInfo["sourcePath"] = "/pvc-nas-xxx"
+		expectedConnectInfo["protocol"] = constants.ProtocolDtfs
+		expectedConnectInfo["mountFlags"] = "bound,cid=wwn001"
+		expectedConnectInfo["portals"] = []string{}
+
+		if !reflect.DeepEqual(parameters, expectedConnectInfo) {
+			return fmt.Errorf("stage dtfs volume error, parameter: %+v, expectConnectInfo: %+v", parameters,
+				expectedConnectInfo)
+		}
+		return nil
+	})
+	defer mockMountShare.Reset()
+
+	// act
+	err := manager.StageVolume(context.Background(), mockNasStageVolumeRequest())
+
+	// assert
+	if err != nil {
+		t.Errorf("TestNasManagerStageDtfsVolume() want error = nil, got error = %v", err)
 	}
 }

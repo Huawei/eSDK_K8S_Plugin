@@ -502,7 +502,7 @@ func filterByVolumeType(ctx context.Context, volumeType string, candidatePools [
 			}
 		} else if volumeType == "fs" {
 			if pool.Storage == constants.OceanStorNas || pool.Storage == constants.OceanStor9000 ||
-				pool.Storage == constants.FusionNas {
+				pool.Storage == constants.FusionNas || pool.Storage == constants.OceanStorASeriesNas {
 				filterPools = append(filterPools, pool)
 			}
 		} else if volumeType == "dtree" {

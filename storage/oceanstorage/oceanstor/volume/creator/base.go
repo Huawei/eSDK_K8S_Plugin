@@ -20,10 +20,12 @@ package creator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/smartx"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
@@ -288,7 +290,7 @@ func (c *BaseCreator) addNfsShareTransactionStep(
 		Then(
 			func() error {
 				if fsId == nil {
-					return fmt.Errorf("create nfs share failed. filesystem id is nil")
+					return errors.New("create nfs share failed. filesystem id is nil")
 				}
 				var err error
 				shareId, err = c.CreateNfsShare(ctx, fsName, *fsId, description, vStoreId)
@@ -320,7 +322,7 @@ func (c *BaseCreator) addQoSTransactionStep(ctx context.Context, fsId *string, v
 		Then(
 			func() error {
 				if fsId == nil {
-					return fmt.Errorf("create qos share failed. filesystem id is nil")
+					return errors.New("create qos share failed. filesystem id is nil")
 				}
 				qosId, err = c.CreateQoS(ctx, *fsId, vStoreId)
 				return err
@@ -334,7 +336,7 @@ func (c *BaseCreator) addQoSTransactionStep(ctx context.Context, fsId *string, v
 
 func (c *BaseCreator) createAuthClients(ctx context.Context, params ShareAccessParams) error {
 	for _, i := range strings.Split(params.authClient, ";") {
-		req := &client.AllowNfsShareAccessRequest{
+		req := &base.AllowNfsShareAccessRequest{
 			Name:        i,
 			ParentID:    params.shareId,
 			AccessVal:   1,
@@ -347,7 +349,7 @@ func (c *BaseCreator) createAuthClients(ctx context.Context, params ShareAccessP
 			AccessKrb5p: params.accessKrb5p,
 		}
 		if err := c.cli.AllowNfsShareAccess(ctx, req); err != nil {
-			return fmt.Errorf("Allow nfs share access %v failed. error: %w", req, err)
+			return fmt.Errorf("allow nfs share access %v failed. error: %w", req, err)
 		}
 	}
 

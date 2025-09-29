@@ -186,7 +186,7 @@ var GetVirtualDevice = func(ctx context.Context, tgtLunGUID string) (string, int
 		if err != nil {
 			return "", 0, utils.Errorf(ctx, "check device: %s is a partition device failed. error: %v", device, err)
 		} else if partitionDev {
-			log.AddContext(ctx).Infof("Device: %s is a partition device，skip", device)
+			log.AddContext(ctx).Infof("Device: %s is a partition device, skip", device)
 			continue
 		}
 
@@ -474,7 +474,8 @@ func WatchDMDevice(ctx context.Context, lunWWN string, expectPathNumber int) (DM
 				return dm, nil
 			}
 			log.AddContext(ctx).Warningf("Querying DM Disk Path Information. "+
-				"lunWWN: %s, Sysfs: %s, Devices:%v, expectPathNumber:%d", lunWWN, dm.Sysfs, dm.Devices, expectPathNumber)
+				"lunWWN: %s, Sysfs: %s, Devices:%v, expectPathNumber:%d", lunWWN, dm.Sysfs, dm.Devices,
+				expectPathNumber)
 			err = errors.New(VolumePathIncomplete)
 		} else {
 			log.AddContext(ctx).Warningf("Failed to query the DM disk. lunWWN: %s error: %v", lunWWN, err)
@@ -1267,6 +1268,8 @@ var IsDeviceAvailable = func(ctx context.Context, device, lunWWN string) (bool, 
 
 // DisConnectVolume delete all devices which match to lunWWN
 func DisConnectVolume(ctx context.Context, tgtLunWWN string, f func(context.Context, string) error) error {
+	// To prevent scenarios which multiple path are partially aggregated,
+	// it is necessary to perform multiple cleanup operations until no devices found.
 	return utils.WaitUntil(func() (bool, error) {
 		err := f(ctx, tgtLunWWN)
 		if err != nil {
@@ -1661,7 +1664,7 @@ func getDevicesInfosByGUID(ctx context.Context, tgtLunGUID string) ([]*deviceInf
 		if err != nil {
 			return nil, utils.Errorf(ctx, "check device: %s is a partition device failed. error: %v", device, err)
 		} else if partitionDev {
-			log.AddContext(ctx).Infof("Device: %s is a partition device，skip", device)
+			log.AddContext(ctx).Infof("Device: %s is a partition device, skip", device)
 			continue
 		}
 

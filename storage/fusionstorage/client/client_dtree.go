@@ -59,7 +59,7 @@ func (cli *RestClient) GetDTreeByName(ctx context.Context, parentName, name stri
 		return nil, fmt.Errorf("failed to encode path and queries: %w", err)
 	}
 
-	resp, err := gracefulGet[[]*DTreeResponse](ctx, cli, encodedPath)
+	resp, err := gracefulNasGet[[]*DTreeResponse](ctx, cli, encodedPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dtree by name: %w", err)
 	}
@@ -95,7 +95,7 @@ func (cli *RestClient) CreateDTree(ctx context.Context, parentName, name, unixPe
 		AccountId:      cli.accountId,
 	}
 
-	resp, err := gracefulPost[*DTreeResponse](ctx, cli, manageDtreePath, req)
+	resp, err := gracefulNasPost[*DTreeResponse](ctx, cli, manageDtreePath, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dtree: %w", err)
 	}
@@ -117,7 +117,7 @@ func (cli *RestClient) DeleteDTree(ctx context.Context, dtreeId string) error {
 		return fmt.Errorf("failed to encode path and queries: %w", err)
 	}
 
-	resp, err := gracefulDelete[any](ctx, cli, encodedPath, nil)
+	resp, err := gracefulNasDelete[any](ctx, cli, encodedPath, nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete dtree: %w", err)
 	}
@@ -146,7 +146,7 @@ func (cli *RestClient) GetDTreeNfsShareByPath(ctx context.Context, sharePath str
 		return nil, fmt.Errorf("failed to encode path and queries: %w", err)
 	}
 
-	resp, err := gracefulGet[[]*GetDTreeNfsShareResponse](ctx, cli, encodedPath)
+	resp, err := gracefulNasGet[[]*GetDTreeNfsShareResponse](ctx, cli, encodedPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dtree nfs share by path: %w", err)
 	}
@@ -182,7 +182,7 @@ type CreateDTreeNfsShareResponse struct {
 func (cli *RestClient) CreateDTreeNfsShare(ctx context.Context,
 	req *CreateDTreeNfsShareRequest) (*CreateDTreeNfsShareResponse, error) {
 	req.AccountId = cli.accountId
-	resp, err := gracefulPost[*CreateDTreeNfsShareResponse](ctx, cli, manageNfsSharePath, req)
+	resp, err := gracefulNasPost[*CreateDTreeNfsShareResponse](ctx, cli, manageNfsSharePath, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dtree nfs share: %w", err)
 	}
@@ -197,7 +197,7 @@ func (cli *RestClient) CreateDTreeNfsShare(ctx context.Context,
 // DeleteDTreeNfsShare deletes dtree nfs share by its id
 func (cli *RestClient) DeleteDTreeNfsShare(ctx context.Context, shareId string) error {
 	req := map[string]string{"account_id": strconv.Itoa(cli.accountId), "id": shareId}
-	resp, err := gracefulDelete[any](ctx, cli, manageNfsSharePath, req)
+	resp, err := gracefulNasDelete[any](ctx, cli, manageNfsSharePath, req)
 	if err != nil {
 		return fmt.Errorf("failed to delete dtree nfs share: %w", err)
 	}
@@ -223,7 +223,7 @@ type AddNfsShareAuthClientRequest struct {
 // AddNfsShareAuthClient adds nfs share auth client
 func (cli *RestClient) AddNfsShareAuthClient(ctx context.Context, req *AddNfsShareAuthClientRequest) error {
 	req.AccountId = cli.accountId
-	resp, err := gracefulPost[any](ctx, cli, addAuthClientPath, req)
+	resp, err := gracefulNasPost[any](ctx, cli, addAuthClientPath, req)
 	if err != nil {
 		return fmt.Errorf("failed to add nfs share auth client: %w", err)
 	}

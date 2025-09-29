@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -55,12 +55,24 @@ var GetSubSysInfo = func(ctx context.Context) (map[string]interface{}, error) {
 		return nil, errors.New("get nvme connect port failed")
 	}
 
-	var nvmeConnectInfo map[string]interface{}
+	if len(output) == 0 {
+		return nil, errors.New("get nvme connect info with empty return")
+	}
+
+	if output[0] == '{' {
+		output = fmt.Sprintf("[%s]", output)
+	}
+
+	var nvmeConnectInfo []map[string]interface{}
 	if err = json.Unmarshal([]byte(output), &nvmeConnectInfo); err != nil {
 		return nil, errors.New("unmarshal nvme connect info failed")
 	}
 
-	return nvmeConnectInfo, nil
+	if len(nvmeConnectInfo) == 0 {
+		return nil, fmt.Errorf("nvme connect info is empty, origin: %s", output)
+	}
+
+	return nvmeConnectInfo[0], nil
 }
 
 func checkNVMeVersion(ctx context.Context) error {

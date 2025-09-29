@@ -47,7 +47,7 @@ func TestMain(m *testing.M) {
 func Test_parseRoCEInfo(t *testing.T) {
 	// arrange
 	connectionProperties := map[string]interface{}{
-		"tgtPortals":         []string{"127.0.0.1", "127::1", "127.0.0..1"},
+		"tgtPortals":         []string{"127.0.0.1", "127::1"},
 		"tgtLunGuid":         "lun_guid",
 		"volumeUseMultiPath": true,
 		"multiPathType":      "type",

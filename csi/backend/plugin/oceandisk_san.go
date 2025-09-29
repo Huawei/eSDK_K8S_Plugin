@@ -23,6 +23,7 @@ import (
 
 	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/proto"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/attacher"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/volume"
@@ -206,8 +207,8 @@ func (p *OceandiskSanPlugin) Validate(ctx context.Context, param map[string]inte
 }
 
 func (p *OceandiskSanPlugin) getNewClientConfig(ctx context.Context,
-	param map[string]interface{}) (*client.NewClientConfig, error) {
-	data := &client.NewClientConfig{}
+	param map[string]interface{}) (*base.NewClientConfig, error) {
+	data := &base.NewClientConfig{}
 	configUrls, ok := utils.GetValue[[]interface{}](param, "urls")
 	if !ok || len(configUrls) <= 0 {
 		return data, fmt.Errorf("verify urls: [%v] failed. urls must be provided", param["urls"])

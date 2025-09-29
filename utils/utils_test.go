@@ -250,35 +250,38 @@ func TestIsCapacityAvailable_Success(t *testing.T) {
 		params   map[string]any
 		hasError bool
 	}{
+		{name: "Empty_Map1", size: validSize, params: map[string]any{}, hasError: false},
+		{name: "Empty_Map2", size: notValidSize, params: map[string]any{}, hasError: false},
 		{
-			name:     "Empty_Map",
-			size:     validSize,
-			params:   map[string]any{},
-			hasError: false,
-		},
-		{
-			name:     "Empty_Value",
+			name:     "Empty_Value1",
 			size:     validSize,
 			params:   map[string]any{constants.DisableVerifyCapacityKey: ""},
 			hasError: false,
-		},
-		{
-			name:     "False",
+		}, {
+			name:     "Empty_Value2",
+			size:     notValidSize,
+			params:   map[string]any{constants.DisableVerifyCapacityKey: ""},
+			hasError: false,
+		}, {
+			name:     "False_Value1",
 			size:     validSize,
 			params:   map[string]any{constants.DisableVerifyCapacityKey: "false"},
 			hasError: false,
-		},
-		{
-			name:     "True_Valid",
-			size:     validSize,
-			params:   map[string]any{constants.DisableVerifyCapacityKey: "false"},
-			hasError: false,
-		},
-		{
-			name:     "True_Not_Valid",
+		}, {
+			name:     "False_Value2",
 			size:     notValidSize,
 			params:   map[string]any{constants.DisableVerifyCapacityKey: "false"},
 			hasError: true,
+		}, {
+			name:     "True_Value1",
+			size:     validSize,
+			params:   map[string]any{constants.DisableVerifyCapacityKey: "true"},
+			hasError: false,
+		}, {
+			name:     "True_Value2",
+			size:     notValidSize,
+			params:   map[string]any{constants.DisableVerifyCapacityKey: "true"},
+			hasError: false,
 		},
 	}
 

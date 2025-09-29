@@ -329,7 +329,7 @@ func (b *Backend) Create() error {
 		return helper.LogErrorf("load backend failed: error: %v", err)
 	}
 
-	err = b.checkBackendConfig(creatingBackends)
+	err = validateBackends(creatingBackends)
 	if err != nil {
 		return helper.LogErrorf("failed to verify the backend file, error: %v", err)
 	}
@@ -591,19 +591,29 @@ func printBackendsStatusTable(statusList []*BackendConfiguration) {
 	helper.PrintWithTable(shows)
 }
 
-// checkBackendConfig is used to check the backend config
-func (b *Backend) checkBackendConfig(backends map[string]*BackendConfiguration) error {
-	var errConfig []string
+func validateBackends(backends map[string]*BackendConfiguration) error {
+	var errs []error
 	for _, configuration := range backends {
-		result := utils.CheckAuthenticationMode(configuration.AuthenticationMode)
-		if !result {
-			errConfig = append(errConfig, configuration.Name)
+		err := validateBackend(configuration)
+		if err != nil {
+			errs = append(errs, err)
 		}
 	}
-	if len(errConfig) > 0 {
-		return fmt.Errorf("the authentication mode is not supported. "+
-			"currently, only [%s,%s] authentication is supported. Check the [%s] configuration",
-			constants.AuthModeLocal, constants.AuthModeLDAP, strings.Join(errConfig, ", "))
+
+	return errors.Join(errs...)
+}
+
+func validateBackend(backend *BackendConfiguration) error {
+	var errs []error
+	if backend.AuthenticationMode != "" {
+		err := utils.CheckAuthenticationMode(backend.AuthenticationMode)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("validate backend %s failed, err: %w", backend.Name, errors.Join(errs...))
 	}
 
 	return nil

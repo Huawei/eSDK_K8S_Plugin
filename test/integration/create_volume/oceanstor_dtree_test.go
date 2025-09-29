@@ -36,6 +36,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/test/mocks/mock_client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/test/utils"
@@ -468,8 +469,8 @@ func (dtree *oceanstorDTree) expectedCreateQuotaParam() map[string]any {
 	return res
 }
 
-func (dtree *oceanstorDTree) expectedAllowNfsShareRequest() *client.AllowNfsShareAccessRequest {
-	return &client.AllowNfsShareAccessRequest{
+func (dtree *oceanstorDTree) expectedAllowNfsShareRequest() *base.AllowNfsShareAccessRequest {
+	return &base.AllowNfsShareAccessRequest{
 		Name:        dtree.AuthClient,
 		ParentID:    dtree.FakeShareID,
 		AccessVal:   1,

@@ -340,28 +340,32 @@ func TestCombineMap(t *testing.T) {
 func TestCheckAuthenticationMode(t *testing.T) {
 	//arrange
 	type testCase struct {
-		name         string
-		input        string
-		expectations bool
+		name     string
+		input    string
+		checkRes bool
 	}
 
 	testCases := []testCase{
-		{name: "Test normal local case", input: "local", expectations: true},
-		{name: "Test normal ldap case", input: "ldap", expectations: true},
-		{name: "Test Upper local case", input: "LOCAL", expectations: true},
-		{name: "Test Upper ldap case", input: "LDAP", expectations: true},
-		{name: "Test containing spaces local case", input: " local ", expectations: true},
-		{name: "Test containing spaces ldap case", input: " ldap ", expectations: true},
-		{name: "Test no value case", input: "", expectations: true},
-		{name: "Test error case", input: "invalid", expectations: false},
+		{name: "Test normal local case", input: "local", checkRes: true},
+		{name: "Test normal ldap case", input: "ldap", checkRes: true},
+		{name: "Test Upper local case", input: "LOCAL", checkRes: true},
+		{name: "Test Upper ldap case", input: "LDAP", checkRes: true},
+		{name: "Test containing spaces local case", input: " local ", checkRes: true},
+		{name: "Test containing spaces ldap case", input: " ldap ", checkRes: true},
+		{name: "Test no value case", input: "", checkRes: true},
+		{name: "Test error case", input: "invalid", checkRes: false},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			//active
-			result := CheckAuthenticationMode(tc.input)
+			gotErr := CheckAuthenticationMode(tc.input)
 			//assert
-			assert.Equal(t, tc.expectations, result)
+			if tc.checkRes {
+				assert.Nil(t, gotErr)
+			} else {
+				assert.ErrorContains(t, gotErr, "must be one of")
+			}
 		})
 	}
 }

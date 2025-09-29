@@ -141,7 +141,7 @@ type QueryQuotaResponse struct {
 func (cli *RestClient) QueryQuotaByFsId(ctx context.Context, fsID string) (*QueryQuotaResponse, error) {
 	url := "/api/v2/file_service/fs_quota?parent_type=40&parent_id=" +
 		fsID + "&range=%7B%22offset%22%3A0%2C%22limit%22%3A100%7D"
-	resp, err := gracefulGet[[]QueryQuotaResponse](ctx, cli, url)
+	resp, err := gracefulNasGet[[]QueryQuotaResponse](ctx, cli, url)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (cli *RestClient) GetQuotaByDTreeId(ctx context.Context, dTreeId string) (*
 		return nil, fmt.Errorf("failed to encode path and queries: %w", err)
 	}
 
-	resp, err := gracefulGet[[]*DTreeQuotaResponse](ctx, cli, encodedPath)
+	resp, err := gracefulNasGet[[]*DTreeQuotaResponse](ctx, cli, encodedPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get quota by dtree id: %w", err)
 	}
@@ -229,7 +229,7 @@ func (cli *RestClient) CreateDTreeQuota(ctx context.Context, dtreeId string, cap
 		"space_unit_type":  quotaSpaceUnitTypeBytes,
 		"parent_type":      dtreeQuotaParentType,
 	}
-	resp, err := gracefulPost[*DTreeQuotaResponse](ctx, cli, manageQuotaPath, req)
+	resp, err := gracefulNasPost[*DTreeQuotaResponse](ctx, cli, manageQuotaPath, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create dtree quota: %w", err)
 	}
@@ -243,7 +243,7 @@ func (cli *RestClient) CreateDTreeQuota(ctx context.Context, dtreeId string, cap
 // DeleteDTreeQuota deletes quota of dtree
 func (cli *RestClient) DeleteDTreeQuota(ctx context.Context, quotaId string) error {
 	req := map[string]any{"id": quotaId}
-	resp, err := gracefulDelete[any](ctx, cli, manageQuotaPath, req)
+	resp, err := gracefulNasDelete[any](ctx, cli, manageQuotaPath, req)
 	if err != nil {
 		return fmt.Errorf("failed to delete dtree quota: %w", err)
 	}
@@ -260,7 +260,7 @@ func (cli *RestClient) UpdateDTreeQuota(ctx context.Context, quotaId string, cap
 		"space_hard_quota": capacity,
 		"space_unit_type":  quotaSpaceUnitTypeBytes,
 	}
-	resp, err := gracefulPut[any](ctx, cli, manageQuotaPath, req)
+	resp, err := gracefulNasPut[any](ctx, cli, manageQuotaPath, req)
 	if err != nil {
 		return fmt.Errorf("failed to update dtree quota: %w", err)
 	}

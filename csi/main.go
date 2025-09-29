@@ -196,12 +196,12 @@ func runCsiControllerOnService(ctx context.Context, csiDriver *driver.CsiDriver)
 		return
 	}
 
-	ipWrapper := iputils.NewIPWrapper(app.GetGlobalConfig().ExportCsiServerAddress)
-	if ipWrapper == nil {
-		notify.Stop("ExportCsiServerAddress [%s] is not a valid ip", app.GetGlobalConfig().ExportCsiServerAddress)
+	wrapper := iputils.NewIPDomainWrapper(app.GetGlobalConfig().ExportCsiServerAddress)
+	if wrapper == nil {
+		notify.Stop("ExportCsiServerAddress [%s] is invalid", app.GetGlobalConfig().ExportCsiServerAddress)
 	}
 
-	address := fmt.Sprintf("%s:%d", ipWrapper.GetFormatPortalIP(), app.GetGlobalConfig().ExportCsiServerPort)
+	address := fmt.Sprintf("%s:%d", wrapper.GetFormatPortalIP(), app.GetGlobalConfig().ExportCsiServerPort)
 	listen, err := net.Listen("tcp", address)
 	if err != nil {
 		notify.Stop("listen on %s error: %v", address, err)

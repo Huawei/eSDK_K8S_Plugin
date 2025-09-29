@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2022-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
  *  limitations under the License.
  */
 
-package client
+// Package base provide base operations for oceanstor base storage
+package base
 
 import (
 	"context"
@@ -29,29 +30,11 @@ import (
 )
 
 const (
-	filesystemNotExist    int64 = 1073752065
-	shareNotExist         int64 = 1077939717
-	sharePathInvalid      int64 = 1077939729
-	shareAlreadyExist     int64 = 1077939724
-	sharePathAlreadyExist int64 = 1077940500
-	systemBusy            int64 = 1077949006
-	msgTimeOut            int64 = 1077949001
-	exceedFSCapacityUpper int64 = 1073844377
-	lessFSCapacityLower   int64 = 1073844376
-	queryNfsSharePerPage  int64 = 100
-)
-
-const (
-	// LocalFilesystemMode normal volume
-	LocalFilesystemMode string = "0"
-	// HyperMetroFilesystemMode hyper metro volume
-	HyperMetroFilesystemMode string = "1"
+	queryNfsSharePerPage int64 = 100
 )
 
 // Filesystem defines interfaces for file system operations
 type Filesystem interface {
-	// GetFileSystemByName used for get file system by name
-	GetFileSystemByName(ctx context.Context, name string) (map[string]interface{}, error)
 	// GetFileSystemByID used for get file system by id
 	GetFileSystemByID(ctx context.Context, id string) (map[string]interface{}, error)
 	// GetNfsShareByPath used for get nfs share by path
@@ -62,8 +45,6 @@ type Filesystem interface {
 	GetNfsShareAccessCount(ctx context.Context, parentID, vStoreID string) (int64, error)
 	// GetNfsShareAccessRange used for get nfs share access
 	GetNfsShareAccessRange(ctx context.Context, parentID, vStoreID string, startRange, endRange int64) ([]any, error)
-	// CreateFileSystem used for create file system
-	CreateFileSystem(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error)
 	// UpdateFileSystem used for update file system
 	UpdateFileSystem(ctx context.Context, fsID string, params map[string]interface{}) error
 	// ExtendFileSystem used for extend file system by new capacity
@@ -74,27 +55,28 @@ type Filesystem interface {
 	CreateNfsShare(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error)
 	// DeleteFileSystem used for delete file system
 	DeleteFileSystem(ctx context.Context, params map[string]interface{}) error
-	// SafeDeleteFileSystem used for delete file system
-	SafeDeleteFileSystem(ctx context.Context, params map[string]interface{}) error
 	// DeleteNfsShareAccess used for delete nfs share access
 	DeleteNfsShareAccess(ctx context.Context, accessID, vStoreID string) error
 	// DeleteNfsShare used for delete nfs share by id
 	DeleteNfsShare(ctx context.Context, id, vStoreID string) error
-	// SafeDeleteNfsShare used for delete nfs share by id
-	SafeDeleteNfsShare(ctx context.Context, id, vStoreID string) error
 	// GetNFSServiceSetting used for get nfs service setting
 	GetNFSServiceSetting(ctx context.Context) (map[string]bool, error)
 }
 
+// FilesystemClient defines client implements the Filesystem interface
+type FilesystemClient struct {
+	RestClientInterface
+}
+
 // DeleteFileSystem used for delete file system
-func (cli *OceanstorClient) DeleteFileSystem(ctx context.Context, params map[string]interface{}) error {
+func (cli *FilesystemClient) DeleteFileSystem(ctx context.Context, params map[string]interface{}) error {
 	resp, err := cli.Delete(ctx, "/filesystem", params)
 	if err != nil {
 		return err
 	}
 
 	code := int64(resp.Error["code"].(float64))
-	if code == filesystemNotExist {
+	if code == FilesystemNotExist {
 		log.AddContext(ctx).Infof("Filesystem %s does not exist while deleting", params)
 		return nil
 	}
@@ -104,56 +86,10 @@ func (cli *OceanstorClient) DeleteFileSystem(ctx context.Context, params map[str
 	}
 
 	return nil
-}
-
-// SafeDeleteFileSystem used for delete file system
-func (cli *OceanstorClient) SafeDeleteFileSystem(ctx context.Context, params map[string]interface{}) error {
-	resp, err := cli.SafeDelete(ctx, "/filesystem", params)
-	if err != nil {
-		return err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code == filesystemNotExist {
-		log.AddContext(ctx).Infof("Filesystem %s does not exist while deleting", params)
-		return nil
-	}
-
-	if code != 0 {
-		return utils.Errorf(ctx, "Delete filesystem %s error: %d", params, code)
-	}
-
-	return nil
-}
-
-// GetFileSystemByName used for get file system by name
-func (cli *OceanstorClient) GetFileSystemByName(ctx context.Context, name string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/filesystem?filter=NAME::%s&range=[0-100]", name)
-	resp, err := cli.Get(ctx, url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		msg := fmt.Sprintf("Get filesystem %s error: %d", name, code)
-		return nil, errors.New(msg)
-	}
-
-	if resp.Data == nil {
-		log.AddContext(ctx).Infof("Filesystem %s does not exist", name)
-		return nil, nil
-	}
-
-	respData, ok := resp.Data.([]interface{})
-	if !ok {
-		return nil, errors.New("convert resp.Data to []interface{} failed")
-	}
-	return cli.getObjByvStoreName(respData), nil
 }
 
 // GetFileSystemByID used for get file system by id
-func (cli *OceanstorClient) GetFileSystemByID(ctx context.Context, id string) (map[string]interface{}, error) {
+func (cli *FilesystemClient) GetFileSystemByID(ctx context.Context, id string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/filesystem/%s", id)
 	resp, err := cli.Get(ctx, url, nil)
 	if err != nil {
@@ -174,7 +110,7 @@ func (cli *OceanstorClient) GetFileSystemByID(ctx context.Context, id string) (m
 }
 
 // GetNfsShareByPath used for get nfs share by path
-func (cli *OceanstorClient) GetNfsShareByPath(ctx context.Context,
+func (cli *FilesystemClient) GetNfsShareByPath(ctx context.Context,
 	path, vStoreID string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("/NFSHARE?filter=SHAREPATH::%s&range=[0-100]", path)
 	var data = make(map[string]interface{})
@@ -188,7 +124,7 @@ func (cli *OceanstorClient) GetNfsShareByPath(ctx context.Context,
 	}
 
 	code := int64(resp.Error["code"].(float64))
-	if code == sharePathInvalid {
+	if code == SharePathInvalid {
 		log.AddContext(ctx).Infof("Nfs share of path %s does not exist", path)
 		return nil, nil
 	}
@@ -218,7 +154,7 @@ func (cli *OceanstorClient) GetNfsShareByPath(ctx context.Context,
 }
 
 // GetNfsShareAccess used for get nfs share access
-func (cli *OceanstorClient) GetNfsShareAccess(ctx context.Context,
+func (cli *FilesystemClient) GetNfsShareAccess(ctx context.Context,
 	parentID, name, vStoreID string) (map[string]interface{}, error) {
 	count, err := cli.GetNfsShareAccessCount(ctx, parentID, vStoreID)
 	if err != nil {
@@ -252,7 +188,7 @@ func (cli *OceanstorClient) GetNfsShareAccess(ctx context.Context,
 }
 
 // GetNfsShareAccessCount used for get nfs share access count by id
-func (cli *OceanstorClient) GetNfsShareAccessCount(ctx context.Context, parentID, vStoreID string) (int64, error) {
+func (cli *FilesystemClient) GetNfsShareAccessCount(ctx context.Context, parentID, vStoreID string) (int64, error) {
 	url := fmt.Sprintf("/NFS_SHARE_AUTH_CLIENT/count?filter=PARENTID::%s", parentID)
 	var data = make(map[string]interface{})
 	if vStoreID != "" {
@@ -281,7 +217,7 @@ func (cli *OceanstorClient) GetNfsShareAccessCount(ctx context.Context, parentID
 }
 
 // GetNfsShareAccessRange used for get nfs share access
-func (cli *OceanstorClient) GetNfsShareAccessRange(ctx context.Context, parentID, vStoreID string, startRange,
+func (cli *FilesystemClient) GetNfsShareAccessRange(ctx context.Context, parentID, vStoreID string, startRange,
 	endRange int64) ([]interface{}, error) {
 
 	url := fmt.Sprintf("/NFS_SHARE_AUTH_CLIENT?filter=PARENTID::%s&range=[%d-%d]", parentID, startRange, endRange)
@@ -311,7 +247,7 @@ func (cli *OceanstorClient) GetNfsShareAccessRange(ctx context.Context, parentID
 }
 
 // UpdateFileSystem used for update file system
-func (cli *OceanstorClient) UpdateFileSystem(ctx context.Context, fsID string, params map[string]interface{}) error {
+func (cli *FilesystemClient) UpdateFileSystem(ctx context.Context, fsID string, params map[string]interface{}) error {
 	url := fmt.Sprintf("/filesystem/%s", fsID)
 	resp, err := cli.Put(ctx, url, params)
 	if err != nil {
@@ -327,7 +263,7 @@ func (cli *OceanstorClient) UpdateFileSystem(ctx context.Context, fsID string, p
 }
 
 // ExtendFileSystem used for extend file system by new capacity
-func (cli *OceanstorClient) ExtendFileSystem(ctx context.Context, fsID string, newCapacity int64) error {
+func (cli *FilesystemClient) ExtendFileSystem(ctx context.Context, fsID string, newCapacity int64) error {
 	url := fmt.Sprintf("/filesystem/%s", fsID)
 	data := map[string]interface{}{
 		"CAPACITY": newCapacity,
@@ -361,7 +297,7 @@ type AllowNfsShareAccessRequest struct {
 }
 
 // AllowNfsShareAccess used for allow nfs share access
-func (cli *OceanstorClient) AllowNfsShareAccess(ctx context.Context, req *AllowNfsShareAccessRequest) error {
+func (cli *FilesystemClient) AllowNfsShareAccess(ctx context.Context, req *AllowNfsShareAccessRequest) error {
 	data := map[string]interface{}{
 		"NAME":       req.Name,
 		"PARENTID":   req.ParentID,
@@ -397,7 +333,7 @@ func (cli *OceanstorClient) AllowNfsShareAccess(ctx context.Context, req *AllowN
 }
 
 // CreateNfsShare used for create nfs share
-func (cli *OceanstorClient) CreateNfsShare(ctx context.Context,
+func (cli *FilesystemClient) CreateNfsShare(ctx context.Context,
 	params map[string]interface{}) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"SHAREPATH":   params["sharepath"].(string),
@@ -416,7 +352,7 @@ func (cli *OceanstorClient) CreateNfsShare(ctx context.Context,
 	}
 
 	code := int64(resp.Error["code"].(float64))
-	if code == shareAlreadyExist || code == sharePathAlreadyExist {
+	if code == ShareAlreadyExist || code == SharePathAlreadyExist {
 		sharePath, ok := params["sharepath"].(string)
 		if !ok {
 			return nil, errors.New("convert sharepath to string failed")
@@ -427,9 +363,9 @@ func (cli *OceanstorClient) CreateNfsShare(ctx context.Context,
 		return share, err
 	}
 
-	if code == systemBusy || code == msgTimeOut {
+	if code == SystemBusy || code == MsgTimeOut {
 		for i := 0; i < 10; i++ {
-			time.Sleep(time.Second * GetInfoWaitInternal)
+			time.Sleep(GetInfoWaitInternal)
 			log.AddContext(ctx).Infof("Create nfs share timeout, try to Get info. The %d time", i+1)
 			share, err := cli.GetNfsShareByPath(ctx, params["sharepath"].(string), vStoreID)
 			if err != nil || share == nil {
@@ -452,7 +388,7 @@ func (cli *OceanstorClient) CreateNfsShare(ctx context.Context,
 }
 
 // DeleteNfsShareAccess used for delete nfs share access
-func (cli *OceanstorClient) DeleteNfsShareAccess(ctx context.Context, accessID, vStoreID string) error {
+func (cli *FilesystemClient) DeleteNfsShareAccess(ctx context.Context, accessID, vStoreID string) error {
 	url := fmt.Sprintf("/NFS_SHARE_AUTH_CLIENT/%s", accessID)
 	var data = make(map[string]interface{})
 	if vStoreID != "" {
@@ -472,7 +408,7 @@ func (cli *OceanstorClient) DeleteNfsShareAccess(ctx context.Context, accessID, 
 }
 
 // DeleteNfsShare used for delete nfs share by id
-func (cli *OceanstorClient) DeleteNfsShare(ctx context.Context, id, vStoreID string) error {
+func (cli *FilesystemClient) DeleteNfsShare(ctx context.Context, id, vStoreID string) error {
 	url := fmt.Sprintf("/NFSHARE/%s", id)
 	var data = make(map[string]interface{})
 	if vStoreID != "" {
@@ -485,7 +421,7 @@ func (cli *OceanstorClient) DeleteNfsShare(ctx context.Context, id, vStoreID str
 	}
 
 	code := int64(resp.Error["code"].(float64))
-	if code == shareNotExist {
+	if code == ShareNotExist || code == NFSShareNotExist {
 		log.AddContext(ctx).Infof("Nfs share %s does not exist while deleting", id)
 		return nil
 	}
@@ -497,34 +433,8 @@ func (cli *OceanstorClient) DeleteNfsShare(ctx context.Context, id, vStoreID str
 	return nil
 }
 
-// SafeDeleteNfsShare used for delete nfs share by id
-func (cli *OceanstorClient) SafeDeleteNfsShare(ctx context.Context, id, vStoreID string) error {
-	url := fmt.Sprintf("/NFSHARE/%s", id)
-	var data = make(map[string]interface{})
-	if vStoreID != "" {
-		data["vstoreId"] = vStoreID
-	}
-
-	resp, err := cli.SafeDelete(ctx, url, data)
-	if err != nil {
-		return err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code == shareNotExist {
-		log.AddContext(ctx).Infof("Nfs share %s does not exist while deleting", id)
-		return nil
-	}
-
-	if code != 0 {
-		return fmt.Errorf("delete nfs share %s error: %d", id, code)
-	}
-
-	return nil
-}
-
 // GetNFSServiceSetting used for get nfs service setting
-func (cli *OceanstorClient) GetNFSServiceSetting(ctx context.Context) (map[string]bool, error) {
+func (cli *FilesystemClient) GetNFSServiceSetting(ctx context.Context) (map[string]bool, error) {
 	resp, err := cli.Get(ctx, "/nfsservice", nil)
 	if err != nil {
 		// All enterprise storage support this interface.
@@ -571,52 +481,4 @@ func (cli *OceanstorClient) GetNFSServiceSetting(ctx context.Context) (map[strin
 	}
 
 	return setting, nil
-}
-
-// CreateFileSystem used for create file system
-func (cli *OceanstorClient) CreateFileSystem(ctx context.Context, params map[string]interface{}) (
-	map[string]interface{}, error) {
-	resp, err := cli.Post(ctx, "/filesystem", params)
-	if err != nil {
-		return nil, err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code == systemBusy || code == msgTimeOut {
-		for i := 0; i < 10; i++ {
-			time.Sleep(time.Second * GetInfoWaitInternal)
-			log.AddContext(ctx).Infof("Create filesystem timeout, try to get info. The %d time", i+1)
-			fsInfo, err := cli.GetFileSystemByName(ctx, params["name"].(string))
-			if err != nil || fsInfo == nil {
-				log.AddContext(ctx).Warningf("Get filesystem error, fs: %v, error: %v", fsInfo, err)
-				continue
-			}
-			return fsInfo, nil
-		}
-	}
-
-	err = dealCreateFSError(ctx, code)
-	if err != nil {
-		return nil, err
-	}
-	return cli.getResponseDataMap(ctx, resp.Data)
-}
-
-func dealCreateFSError(ctx context.Context, code int64) error {
-	suggestMsg := "Suggestion: Delete current PVC and specify the proper capacity of the file system and try again."
-	if code == exceedFSCapacityUpper {
-		return utils.Errorf(ctx, "create filesystem error. ErrorCode: %d. Reason: the entered capacity is "+
-			"greater than the maximum capacity of the file system. %s", code, suggestMsg)
-	}
-
-	if code == lessFSCapacityLower {
-		return utils.Errorf(ctx, "create filesystem error. ErrorCode: %d. Reason: the entered capacity is "+
-			"less than the minimum capacity of the file system. %s", code, suggestMsg)
-	}
-
-	if code != 0 {
-		return utils.Errorf(ctx, "Create filesystem error. ErrorCode: %d.", code)
-	}
-
-	return nil
 }

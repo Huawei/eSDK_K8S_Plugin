@@ -26,6 +26,7 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgutils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/flow"
@@ -331,7 +332,7 @@ func (p *DTree) allowShareAccess(ctx context.Context, params, taskResult map[str
 			continue
 		}
 
-		req := &client.AllowNfsShareAccessRequest{
+		req := &base.AllowNfsShareAccessRequest{
 			Name:        i,
 			ParentID:    shareID,
 			AccessVal:   1,

@@ -27,7 +27,6 @@ import (
 	"regexp"
 	"sync/atomic"
 
-	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -43,17 +42,12 @@ const (
 	// MinParallelCount defines min parallel count
 	MinParallelCount int = 1
 
-	// GetInfoWaitInternal defines wait internal of getting info
-	GetInfoWaitInternal = 10
-
 	// UrlNotFound defines error msg of url not found
 	UrlNotFound = "404_NotFound"
 )
 
 const (
-	description     string = "Created from huawei-csi for Kubernetes"
-	defaultVStore   string = "System_vStore"
-	defaultVStoreID string = "0"
+	description string = "Created from huawei-csi for Kubernetes"
 )
 
 // OceanstorClientInterface defines interfaces for base client operations
@@ -69,14 +63,14 @@ type OceanstorClientInterface interface {
 	base.System
 
 	Clone
-	Filesystem
+	OceanstorFilesystem
 	FSSnapshot
 	HyperMetro
 	Lun
 	LunCopy
 	LunSnapshot
 	Replication
-	VStore
+	OceanstorVStore
 	DTree
 	OceanStorQuota
 	LIF
@@ -156,6 +150,8 @@ type OceanstorClient struct {
 	*base.QosClient
 	*base.RoCEClient
 	*base.SystemClient
+	*base.FilesystemClient
+	*base.VStoreClient
 
 	*RestClient
 }
@@ -192,6 +188,8 @@ func NewClient(ctx context.Context, param *NewClientConfig) (*OceanstorClient, e
 		QosClient:             &base.QosClient{RestClientInterface: restClient},
 		RoCEClient:            &base.RoCEClient{RestClientInterface: restClient},
 		SystemClient:          &base.SystemClient{RestClientInterface: restClient},
+		FilesystemClient:      &base.FilesystemClient{RestClientInterface: restClient},
+		VStoreClient:          &base.VStoreClient{RestClientInterface: restClient},
 		RestClient:            restClient,
 	}, nil
 }
@@ -276,7 +274,7 @@ func (cli *OceanstorClient) safeDoCall(ctx context.Context,
 	isNotSessionUrl := url != "/xx/sessions" && url != "/sessions"
 	if isNotSessionUrl && cli.CurrentLifWwn != "" {
 		if cli.systemInfoRefreshing() {
-			return base.Response{}, fmt.Errorf("querying lif and system information... Please wait")
+			return base.Response{}, errors.New("querying lif and system information... Please wait")
 		}
 
 		if cli.CurrentLifWwn != cli.CurrentSiteWwn {
@@ -334,85 +332,6 @@ func (cli *OceanstorClient) DuplicateClient() *OceanstorClient {
 	return &dup
 }
 
-// ValidateLogin validates the login info
-func (cli *OceanstorClient) ValidateLogin(ctx context.Context) error {
-	var resp base.Response
-	var err error
-
-	params, err := pkgUtils.GetAuthInfoFromSecret(ctx, cli.SecretName, cli.SecretNamespace)
-	if err != nil {
-		return err
-	}
-
-	data := map[string]interface{}{
-		"username": cli.User,
-		"password": params.Password,
-		"scope":    params.Scope,
-	}
-	params.Password = ""
-
-	if len(cli.VStoreName) > 0 && cli.VStoreName != defaultVStore {
-		data["vstorename"] = cli.VStoreName
-	}
-
-	cli.DeviceId = ""
-	cli.Token = ""
-	for i, url := range cli.Urls {
-		cli.Url = url + "/deviceManager/rest"
-
-		log.AddContext(ctx).Infof("Try to login %s", cli.Url)
-		resp, err = cli.BaseCall(ctx, "POST", "/xx/sessions", data)
-		if err == nil {
-			/* Sort the login Url to the last slot of san addresses, so that
-			   if this connection error, next time will try other Url first. */
-			cli.Urls[i], cli.Urls[len(cli.Urls)-1] = cli.Urls[len(cli.Urls)-1], cli.Urls[i]
-			break
-		} else if err.Error() != base.Unconnected {
-			log.AddContext(ctx).Errorf("Login %s error", cli.Url)
-			break
-		}
-
-		log.AddContext(ctx).Warningf("Login %s error due to connection failure, gonna try another Url",
-			cli.Url)
-	}
-
-	if err != nil {
-		return err
-	}
-
-	code := int64(resp.Error["code"].(float64))
-	if code != 0 {
-		return fmt.Errorf("validate login %s error: %+v", cli.Url, resp)
-	}
-
-	cli.setDeviceIdFromRespData(ctx, resp)
-
-	log.AddContext(ctx).Infof("Validate login %s success", cli.Url)
-	return nil
-}
-
-func (cli *OceanstorClient) setDeviceIdFromRespData(ctx context.Context, resp base.Response) {
-	respData, ok := resp.Data.(map[string]interface{})
-	if !ok {
-		log.AddContext(ctx).Warningf("convert response data to map[string]interface{} failed, data type: [%T]",
-			resp.Data)
-	}
-
-	cli.DeviceId, ok = respData["deviceid"].(string)
-	if !ok {
-		log.AddContext(ctx).Warningf("not found deviceId, response data is: [%v]", respData["deviceid"])
-	}
-
-	if _, exists := respData["iBaseToken"]; !exists {
-		log.AddContext(ctx).Warningf("not found iBaseToken, response data is: [%v]", resp.Data)
-	}
-	cli.Token, ok = respData["iBaseToken"].(string)
-	if !ok {
-		log.AddContext(ctx).Warningf("convert iBaseToken to string error, data type: [%T]",
-			respData["iBaseToken"])
-	}
-}
-
 func (cli *OceanstorClient) getResponseDataMap(ctx context.Context, data interface{}) (map[string]interface{}, error) {
 	respData, ok := data.(map[string]interface{})
 	if !ok {
@@ -443,7 +362,7 @@ func (cli *OceanstorClient) getObjByvStoreName(objList []interface{}) map[string
 
 		vStoreName, ok := obj["vstoreName"].(string)
 		if !ok {
-			vStoreName = defaultVStore
+			vStoreName = base.DefaultVStore
 		}
 
 		if vStoreName == cli.GetvStoreName() {

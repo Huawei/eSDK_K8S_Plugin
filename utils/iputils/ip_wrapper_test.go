@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_GetFormatPortalIP(t *testing.T) {
+func TestIPWrapper_GetFormatPortalIP(t *testing.T) {
 	// arrange
 	ipInfos := []struct {
 		name         string
@@ -39,21 +39,31 @@ func Test_GetFormatPortalIP(t *testing.T) {
 			srcIP:        "127::1",
 			wantFormatIP: "[127::1]",
 		},
+		{
+			name:         "domain test",
+			srcIP:        "domain.name",
+			wantFormatIP: "domain.name",
+		},
+		{
+			name:         "invalid ip str test",
+			srcIP:        "invalid ip",
+			wantFormatIP: "invalid ip",
+		},
 	}
 
 	for _, tt := range ipInfos {
 		t.Run(tt.name, func(t *testing.T) {
 			// action
-			ipWrapper := NewIPWrapper(tt.srcIP)
-			assert.NotEqual(t, ipWrapper, nil)
-			gotFormatIP := ipWrapper.GetFormatPortalIP()
+			wrapper := NewIPDomainWrapper(tt.srcIP)
+			assert.NotEqual(t, wrapper, nil)
+			gotFormatIP := wrapper.GetFormatPortalIP()
 			// assert
 			assert.Equal(t, tt.wantFormatIP, gotFormatIP)
 		})
 	}
 }
 
-func Test_GetPingCommand(t *testing.T) {
+func TestIPWrapper_GetPingCommand(t *testing.T) {
 	// arrange
 	ipInfos := []struct {
 		name        string
@@ -63,23 +73,74 @@ func Test_GetPingCommand(t *testing.T) {
 		{
 			name:        "IPv4 test",
 			srcIP:       "127.0.0.1",
-			wantPingCmd: pingIPv4Command,
+			wantPingCmd: pingCommand,
 		},
 		{
 			name:        "IPv6 test",
 			srcIP:       "127::1",
 			wantPingCmd: pingIPv6Command,
 		},
+		{
+			name:        "invalid ip str test",
+			srcIP:       "invalid ip",
+			wantPingCmd: pingCommand,
+		},
+		{
+			name:        "domain test",
+			srcIP:       "domain.name",
+			wantPingCmd: pingCommand,
+		},
 	}
 
 	for _, tt := range ipInfos {
 		t.Run(tt.name, func(t *testing.T) {
 			// action
-			ipWrapper := NewIPWrapper(tt.srcIP)
-			assert.NotEqual(t, ipWrapper, nil)
-			gotPingCmd := ipWrapper.GetPingCommand()
+			wrapper := NewIPDomainWrapper(tt.srcIP)
+			assert.NotEqual(t, wrapper, nil)
+			gotPingCmd := wrapper.GetPingCommand()
 			// assert
 			assert.Equal(t, tt.wantPingCmd, gotPingCmd)
+		})
+	}
+}
+
+func TestIPWrapper_String(t *testing.T) {
+	// arrange
+	ipInfos := []struct {
+		name       string
+		srcIP      string
+		wantString string
+	}{
+		{
+			name:       "IPv4 test",
+			srcIP:      "127.0.0.1",
+			wantString: "127.0.0.1",
+		},
+		{
+			name:       "IPv6 test",
+			srcIP:      "127::1",
+			wantString: "127::1",
+		},
+		{
+			name:       "invalid ip str test",
+			srcIP:      "invalid ip",
+			wantString: "invalid ip",
+		},
+		{
+			name:       "domain test",
+			srcIP:      "domain.name",
+			wantString: "domain.name",
+		},
+	}
+
+	for _, tt := range ipInfos {
+		t.Run(tt.name, func(t *testing.T) {
+			// action
+			wrapper := NewIPDomainWrapper(tt.srcIP)
+			assert.NotEqual(t, wrapper, nil)
+			gotString := wrapper.String()
+			// assert
+			assert.Equal(t, tt.wantString, gotString)
 		})
 	}
 }

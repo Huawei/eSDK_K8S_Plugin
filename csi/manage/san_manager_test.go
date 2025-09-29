@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -62,6 +63,8 @@ func TestSanManagerStageFileSystemVolume(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			patches := gomonkey.NewPatches()
+			patches.ApplyFuncReturn(os.MkdirAll, nil).
+				ApplyFuncReturn(ioutil.WriteFile, nil)
 			mockClearResidualPath(patches, tt.manager.protocol)
 			tt.connectVolumeFunc(patches, tt.manager.Conn)
 			mockMountShare(patches)
@@ -87,6 +90,8 @@ func TestSanManagerStageBlockVolume(t *testing.T) {
 		Conn:     connector.GetConnector(context.Background(), connector.ISCSIDriver),
 	}
 	patches := gomonkey.NewPatches()
+	patches.ApplyFuncReturn(os.MkdirAll, nil).
+		ApplyFuncReturn(ioutil.WriteFile, nil)
 	mockClearResidualPath(patches, manager.protocol)
 	mockConnectIscsiVolume(patches, manager.Conn)
 	mockBindMount(patches)

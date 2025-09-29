@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"text/template"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
@@ -455,39 +454,6 @@ func (p *OceanstorPlugin) switchClient(ctx context.Context, newClient client.Oce
 	return nil
 }
 
-func (p *OceanstorPlugin) getVolumeNameFromPVNameOrParameters(pvName string, parameters map[string]any) (string,
-	error) {
-	if !p.product.IsDoradoV6OrV7() {
-		return pvName, nil
-	}
-
-	volumeNameTpl, _ := utils.GetValue[string](parameters, constants.ScVolumeNameKey)
-	if volumeNameTpl == "" {
-		return pvName, nil
-	}
-
-	if err := validateVolumeName(volumeNameTpl); err != nil {
-		return "", err
-	}
-
-	metadata, err := newExtraCreateMetadataFromParameters(parameters)
-	if err != nil {
-		return "", err
-	}
-
-	tpl, err := template.New(constants.ScVolumeNameKey).Parse(volumeNameTpl + volumeNameSuffix)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse volume name template %s: %w", volumeNameTpl, err)
-	}
-
-	var volumeName strings.Builder
-	if err := tpl.Execute(&volumeName, metadata); err != nil {
-		return "", fmt.Errorf("failed to excute template: %w", err)
-	}
-
-	return volumeName.String(), nil
-}
-
 var (
 	pvcNamespaceRe = regexp.MustCompile(`\{\{\s*\.PVCNamespace\s*\}\}`)
 	pvcNameRe      = regexp.MustCompile(`\{\{\s*\.PVCName\s*\}\}`)
@@ -585,11 +551,9 @@ func checkClientConfig(param map[string]interface{}, data *client.NewClientConfi
 
 	data.AuthenticationMode, ok = utils.GetValue[string](param, constants.AuthenticationModeKey)
 	if ok {
-		result := pkgUtils.CheckAuthenticationMode(data.AuthenticationMode)
-		if !result {
-			return fmt.Errorf("verify authenticationMode: [%v] failed. "+
-				"authenticationMode must be in [%s,%s]", data.AuthenticationMode, constants.AuthModeLocal,
-				constants.AuthModeLDAP)
+		err := pkgUtils.CheckAuthenticationMode(data.AuthenticationMode)
+		if err != nil {
+			return fmt.Errorf("verify AuthenticationMode: [%s] failed, err: %w", data.AuthenticationMode, err)
 		}
 	}
 

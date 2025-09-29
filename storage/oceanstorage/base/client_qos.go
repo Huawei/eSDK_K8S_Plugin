@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-// Package base provide base operations for oceanstor and oceandisk storage
+// Package base provide base operations for oceanstor base storage
 package base
 
 import (

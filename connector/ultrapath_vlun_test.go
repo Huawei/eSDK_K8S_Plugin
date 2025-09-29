@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/require"
@@ -81,6 +82,10 @@ func TestUltraPathVLun_CleanResidualPath(t *testing.T) {
 			upType: UltraPathCommand,
 		}
 
+		// mock
+		p := gomonkey.ApplyFuncReturn(time.Sleep)
+		defer p.Reset()
+
 		// action
 		err := vLun.CleanResidualPath(context.Background())
 
@@ -103,11 +108,12 @@ func TestUltraPathVLun_CleanResidualPath(t *testing.T) {
 		var actualPhyDevices []string
 
 		// mock
-		gomonkey.ApplyFuncReturn(runUpCommand, vLunDetails, nil)
-		gomonkey.ApplyFunc(deletePhysicalDevice, func(ctx context.Context, phyDevice string) error {
-			actualPhyDevices = append(actualPhyDevices, phyDevice)
-			return nil
-		})
+		p := gomonkey.ApplyFuncReturn(runUpCommand, vLunDetails, nil).
+			ApplyFunc(deletePhysicalDevice, func(ctx context.Context, phyDevice string) error {
+				actualPhyDevices = append(actualPhyDevices, phyDevice)
+				return nil
+			}).ApplyFuncReturn(time.Sleep)
+		defer p.Reset()
 
 		// action
 		err := vLun.CleanResidualPath(context.Background())
@@ -132,11 +138,12 @@ func TestUltraPathVLun_CleanResidualPath(t *testing.T) {
 		var actualPhyDevices []string
 
 		// mock
-		gomonkey.ApplyFuncReturn(runUpCommand, vLunDetails, nil)
-		gomonkey.ApplyFunc(deletePhysicalDevice, func(ctx context.Context, phyDevice string) error {
-			actualPhyDevices = append(actualPhyDevices, phyDevice)
-			return nil
-		})
+		p := gomonkey.ApplyFuncReturn(runUpCommand, vLunDetails, nil).
+			ApplyFunc(deletePhysicalDevice, func(ctx context.Context, phyDevice string) error {
+				actualPhyDevices = append(actualPhyDevices, phyDevice)
+				return nil
+			}).ApplyFuncReturn(time.Sleep)
+		defer p.Reset()
 
 		// action
 		err := vLun.CleanResidualPath(context.Background())

@@ -116,13 +116,13 @@ func CheckHostConnectivity(ctx context.Context, portal string) bool {
 		return false
 	}
 
-	ipWrapper := iputils.NewIPWrapper(hostAddr)
-	if ipWrapper == nil {
-		log.AddContext(ctx).Errorf("hostAddr [%s] is not a valid ip address", hostAddr)
+	wrapper := iputils.NewIPDomainWrapper(hostAddr)
+	if wrapper == nil {
+		log.AddContext(ctx).Errorf("hostAddr [%s] is invalid", hostAddr)
 		return false
 	}
 
-	_, err = utils.ExecShellCmd(ctx, ipWrapper.GetPingCommand(), hostAddr)
+	_, err = utils.ExecShellCmd(ctx, wrapper.GetPingCommand(), hostAddr)
 	return err == nil
 }
 

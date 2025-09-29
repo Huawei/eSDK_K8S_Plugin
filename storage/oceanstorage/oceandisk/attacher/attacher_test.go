@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	baseAttacher "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base/attacher"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -45,7 +46,7 @@ func TestMain(m *testing.M) {
 func TestOceandiskAttacher_addToNamespaceGroupMapping_Success(t *testing.T) {
 	// arrange
 	groupName, groupID, mappingID := "group1", "1", "1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -74,7 +75,7 @@ func TestOceandiskAttacher_addToNamespaceGroupMapping_Success(t *testing.T) {
 func TestOceandiskAttacher_addToNamespaceGroupMapping_AlreadyExistSuccess(t *testing.T) {
 	// arrange
 	groupName, groupID, mappingID := "group1", "1", "1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -108,7 +109,7 @@ func TestOceandiskAttacher_addToNamespaceGroupMapping_AlreadyExistSuccess(t *tes
 func TestOceandiskAttacher_addToNamespaceGroupMapping_QueryGroupError(t *testing.T) {
 	// arrange
 	groupName, groupID, mappingID := "group1", "1", "1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -138,7 +139,7 @@ func TestOceandiskAttacher_addToNamespaceGroupMapping_QueryGroupError(t *testing
 func TestOceandiskAttacher_addToNamespaceGroupMapping_FormatGroupError(t *testing.T) {
 	// arrange
 	groupName, groupID, mappingID := "group1", "1", "1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -172,7 +173,7 @@ func TestOceandiskAttacher_addToNamespaceGroupMapping_FormatGroupError(t *testin
 func TestOceandiskAttacher_addToNamespaceGroupMapping_AddGroupToMappingError(t *testing.T) {
 	// arrange
 	groupName, groupID, mappingID := "group1", "1", "1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -203,7 +204,7 @@ func TestOceandiskAttacher_addToNamespaceGroupMapping_AddGroupToMappingError(t *
 func TestOceandiskAttacher_createNamespaceGroup_Success(t *testing.T) {
 	// arrange
 	namespaceId, hostID, mappingID := "1", "1", "1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -243,7 +244,7 @@ func TestOceandiskAttacher_createNamespaceGroup_Success(t *testing.T) {
 func TestOceandiskAttacher_createNamespaceGroup_GroupAlreadyExistSuccess(t *testing.T) {
 	// arrange
 	namespaceId, hostID, mappingID := "1", "1", "1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -282,7 +283,7 @@ func TestOceandiskAttacher_createNamespaceGroup_GroupAlreadyExistSuccess(t *test
 func TestOceandiskAttacher_createNamespaceGroup_GetGroupError(t *testing.T) {
 	// arrange
 	namespaceId, hostID, mappingID := "1", "1", "1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -315,7 +316,7 @@ func TestOceandiskAttacher_createNamespaceGroup_GetGroupError(t *testing.T) {
 func TestOceandiskAttacher_doMapping_Success(t *testing.T) {
 	// arrange
 	hostID, namespaceName, uniqueId, hostNamespaceId := "1", "namespace1", "uniqueID1", "5"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -357,7 +358,7 @@ func TestOceandiskAttacher_doMapping_Success(t *testing.T) {
 func TestOceandiskAttacher_doMapping_NotExistError(t *testing.T) {
 	// arrange
 	hostID, namespaceName := "1", "namespace1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -388,7 +389,7 @@ func TestOceandiskAttacher_ControllerAttach_Success(t *testing.T) {
 	// arrange
 	namespaceName, hostName := "namespace1", "host1"
 	parameters := map[string]interface{}{}
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -430,7 +431,7 @@ func TestOceandiskAttacher_ControllerAttach_Success(t *testing.T) {
 func TestOceandiskAttacher_doUnmapping_Success(t *testing.T) {
 	// arrange
 	hostID, namespaceName, uniqueId := "1", "namespace1", "uniqueID1"
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -472,7 +473,7 @@ func TestOceandiskAttacher_ControllerDetach_Success(t *testing.T) {
 	// arrange
 	namespaceName := "namespace1"
 	parameters := map[string]interface{}{}
-	newClient, err := client.NewClient(context.Background(), &client.NewClientConfig{})
+	newClient, err := client.NewClient(context.Background(), &base.NewClientConfig{})
 	if err != nil {
 		return
 	}

@@ -61,7 +61,7 @@ var (
 	emptyParentnameCreateDTreeParams = CreateDTreeVolumeParameter{}
 )
 
-func TestCreateDTreeVolumeParameter_validate(t *testing.T) {
+func TestCreateDTreeVolumeParameter_validate_NFS(t *testing.T) {
 	// arrange
 	tests := []struct {
 		name    string
@@ -77,7 +77,7 @@ func TestCreateDTreeVolumeParameter_validate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// action
-			err := tt.param.validate()
+			err := tt.param.validate(constants.ProtocolNfs)
 
 			// assert
 			if tt.wantErr {
@@ -87,6 +87,17 @@ func TestCreateDTreeVolumeParameter_validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCreateDTreeVolumeParameter_validate_DPC(t *testing.T) {
+	// arrange
+	param := &invalidAuthClientCreateDTreeParams
+
+	// act
+	err := param.validate(constants.ProtocolDpc)
+
+	// assert
+	require.NoError(t, err)
 }
 
 func TestCreateDTreeVolumeParameter_setValidParentname(t *testing.T) {

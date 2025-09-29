@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-// Package base provide base operations for oceanstor and oceandisk storage
+// Package base provide base operations for oceanstor base storage
 package base
 
 import (
@@ -149,13 +149,13 @@ func (cli *RoCEClient) AddRoCEInitiatorToHost(ctx context.Context, initiator, ho
 }
 
 func generateGetRoCEPortalUrlByIP(tgtPortal string) (string, error) {
-	ipWrapper := iputils.NewIPWrapper(tgtPortal)
-	if ipWrapper == nil {
+	wrapper := iputils.NewIPDomainWrapper(tgtPortal)
+	if wrapper == nil {
 		return "", fmt.Errorf("tgtPortal %s is invalid", tgtPortal)
 	}
 
 	var url string
-	if ipWrapper.IsIPv4() {
+	if wrapper.IsIPv4() {
 		url = fmt.Sprintf("/lif?filter=IPV4ADDR::%s", tgtPortal)
 	} else {
 		url = fmt.Sprintf("/lif?filter=IPV6ADDR::%s", strings.ReplaceAll(tgtPortal, ":", "\\:"))

@@ -71,9 +71,8 @@ func (m *MockOceandiskClientInterface) ActivateQos(ctx context.Context, qosID, v
 // ActivateQos indicates an expected call of ActivateQos.
 func (mr *MockOceandiskClientInterfaceMockRecorder) ActivateQos(ctx, qosID, vStoreID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "ActivateQos", reflect.TypeOf((*MockOceandiskClientInterface)(nil).ActivateQos), ctx, qosID, vStoreID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ActivateQos",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).ActivateQos), ctx, qosID, vStoreID)
 }
 
 // AddFCInitiatorToHost mocks base method.
@@ -87,16 +86,13 @@ func (m *MockOceandiskClientInterface) AddFCInitiatorToHost(ctx context.Context,
 // AddFCInitiatorToHost indicates an expected call of AddFCInitiatorToHost.
 func (mr *MockOceandiskClientInterfaceMockRecorder) AddFCInitiatorToHost(ctx, initiator, hostID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "AddFCInitiatorToHost", reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddFCInitiatorToHost), ctx,
-		initiator, hostID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddFCInitiatorToHost",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddFCInitiatorToHost), ctx, initiator, hostID)
 }
 
 // AddGroupToMapping mocks base method.
-func (m *MockOceandiskClientInterface) AddGroupToMapping(
-	ctx context.Context, groupType int, groupID, mappingID string,
-) error {
+func (m *MockOceandiskClientInterface) AddGroupToMapping(ctx context.Context, groupType int,
+	groupID, mappingID string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddGroupToMapping", ctx, groupType, groupID, mappingID)
 	ret0, _ := ret[0].(error)
@@ -106,10 +102,8 @@ func (m *MockOceandiskClientInterface) AddGroupToMapping(
 // AddGroupToMapping indicates an expected call of AddGroupToMapping.
 func (mr *MockOceandiskClientInterfaceMockRecorder) AddGroupToMapping(ctx, groupType, groupID, mappingID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "AddGroupToMapping", reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddGroupToMapping), ctx,
-		groupType, groupID, mappingID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGroupToMapping",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddGroupToMapping), ctx, groupType, groupID, mappingID)
 }
 
 // AddHostToGroup mocks base method.
@@ -123,16 +117,13 @@ func (m *MockOceandiskClientInterface) AddHostToGroup(ctx context.Context, hostI
 // AddHostToGroup indicates an expected call of AddHostToGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) AddHostToGroup(ctx, hostID, hostGroupID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "AddHostToGroup", reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddHostToGroup), ctx, hostID,
-		hostGroupID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddHostToGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddHostToGroup), ctx, hostID, hostGroupID)
 }
 
 // AddIscsiInitiator mocks base method.
-func (m *MockOceandiskClientInterface) AddIscsiInitiator(ctx context.Context, initiator string) (
-	map[string]any, error,
-) {
+func (m *MockOceandiskClientInterface) AddIscsiInitiator(ctx context.Context, initiator string) (map[string]any,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddIscsiInitiator", ctx, initiator)
 	ret0, _ := ret[0].(map[string]any)
@@ -143,10 +134,8 @@ func (m *MockOceandiskClientInterface) AddIscsiInitiator(ctx context.Context, in
 // AddIscsiInitiator indicates an expected call of AddIscsiInitiator.
 func (mr *MockOceandiskClientInterfaceMockRecorder) AddIscsiInitiator(ctx, initiator any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "AddIscsiInitiator", reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddIscsiInitiator), ctx,
-		initiator,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddIscsiInitiator",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddIscsiInitiator), ctx, initiator)
 }
 
 // AddIscsiInitiatorToHost mocks base method.
@@ -160,10 +149,8 @@ func (m *MockOceandiskClientInterface) AddIscsiInitiatorToHost(ctx context.Conte
 // AddIscsiInitiatorToHost indicates an expected call of AddIscsiInitiatorToHost.
 func (mr *MockOceandiskClientInterfaceMockRecorder) AddIscsiInitiatorToHost(ctx, initiator, hostID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "AddIscsiInitiatorToHost",
-		reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddIscsiInitiatorToHost), ctx, initiator, hostID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddIscsiInitiatorToHost",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddIscsiInitiatorToHost), ctx, initiator, hostID)
 }
 
 // AddNamespaceToGroup mocks base method.
@@ -177,10 +164,8 @@ func (m *MockOceandiskClientInterface) AddNamespaceToGroup(ctx context.Context, 
 // AddNamespaceToGroup indicates an expected call of AddNamespaceToGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) AddNamespaceToGroup(ctx, namespaceID, groupID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "AddNamespaceToGroup", reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddNamespaceToGroup), ctx,
-		namespaceID, groupID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddNamespaceToGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddNamespaceToGroup), ctx, namespaceID, groupID)
 }
 
 // AddRoCEInitiator mocks base method.
@@ -195,10 +180,8 @@ func (m *MockOceandiskClientInterface) AddRoCEInitiator(ctx context.Context, ini
 // AddRoCEInitiator indicates an expected call of AddRoCEInitiator.
 func (mr *MockOceandiskClientInterfaceMockRecorder) AddRoCEInitiator(ctx, initiator any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "AddRoCEInitiator", reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddRoCEInitiator), ctx,
-		initiator,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddRoCEInitiator",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddRoCEInitiator), ctx, initiator)
 }
 
 // AddRoCEInitiatorToHost mocks base method.
@@ -212,16 +195,13 @@ func (m *MockOceandiskClientInterface) AddRoCEInitiatorToHost(ctx context.Contex
 // AddRoCEInitiatorToHost indicates an expected call of AddRoCEInitiatorToHost.
 func (mr *MockOceandiskClientInterfaceMockRecorder) AddRoCEInitiatorToHost(ctx, initiator, hostID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "AddRoCEInitiatorToHost", reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddRoCEInitiatorToHost),
-		ctx, initiator, hostID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddRoCEInitiatorToHost",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).AddRoCEInitiatorToHost), ctx, initiator, hostID)
 }
 
 // BaseCall mocks base method.
-func (m *MockOceandiskClientInterface) BaseCall(
-	ctx context.Context, method, url string, data map[string]any,
-) (base.Response, error) {
+func (m *MockOceandiskClientInterface) BaseCall(ctx context.Context, method, url string,
+	data map[string]any) (base.Response, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "BaseCall", ctx, method, url, data)
 	ret0, _ := ret[0].(base.Response)
@@ -232,15 +212,13 @@ func (m *MockOceandiskClientInterface) BaseCall(
 // BaseCall indicates an expected call of BaseCall.
 func (mr *MockOceandiskClientInterfaceMockRecorder) BaseCall(ctx, method, url, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "BaseCall", reflect.TypeOf((*MockOceandiskClientInterface)(nil).BaseCall), ctx, method, url, data,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BaseCall",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).BaseCall), ctx, method, url, data)
 }
 
 // Call mocks base method.
-func (m *MockOceandiskClientInterface) Call(
-	ctx context.Context, method, url string, data map[string]any,
-) (base.Response, error) {
+func (m *MockOceandiskClientInterface) Call(ctx context.Context, method, url string,
+	data map[string]any) (base.Response, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Call", ctx, method, url, data)
 	ret0, _ := ret[0].(base.Response)
@@ -251,9 +229,8 @@ func (m *MockOceandiskClientInterface) Call(
 // Call indicates an expected call of Call.
 func (mr *MockOceandiskClientInterfaceMockRecorder) Call(ctx, method, url, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "Call", reflect.TypeOf((*MockOceandiskClientInterface)(nil).Call), ctx, method, url, data,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).Call), ctx, method, url, data)
 }
 
 // CreateHost mocks base method.
@@ -268,9 +245,8 @@ func (m *MockOceandiskClientInterface) CreateHost(ctx context.Context, name stri
 // CreateHost indicates an expected call of CreateHost.
 func (mr *MockOceandiskClientInterfaceMockRecorder) CreateHost(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "CreateHost", reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateHost), ctx, name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHost",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateHost), ctx, name)
 }
 
 // CreateHostGroup mocks base method.
@@ -285,9 +261,8 @@ func (m *MockOceandiskClientInterface) CreateHostGroup(ctx context.Context, name
 // CreateHostGroup indicates an expected call of CreateHostGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) CreateHostGroup(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "CreateHostGroup", reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateHostGroup), ctx, name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHostGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateHostGroup), ctx, name)
 }
 
 // CreateMapping mocks base method.
@@ -302,15 +277,13 @@ func (m *MockOceandiskClientInterface) CreateMapping(ctx context.Context, name s
 // CreateMapping indicates an expected call of CreateMapping.
 func (mr *MockOceandiskClientInterfaceMockRecorder) CreateMapping(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "CreateMapping", reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateMapping), ctx, name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateMapping",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateMapping), ctx, name)
 }
 
 // CreateNamespace mocks base method.
-func (m *MockOceandiskClientInterface) CreateNamespace(
-	ctx context.Context, params client.CreateNamespaceParams,
-) (map[string]any, error) {
+func (m *MockOceandiskClientInterface) CreateNamespace(ctx context.Context,
+	params client.CreateNamespaceParams) (map[string]any, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateNamespace", ctx, params)
 	ret0, _ := ret[0].(map[string]any)
@@ -321,9 +294,8 @@ func (m *MockOceandiskClientInterface) CreateNamespace(
 // CreateNamespace indicates an expected call of CreateNamespace.
 func (mr *MockOceandiskClientInterfaceMockRecorder) CreateNamespace(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "CreateNamespace", reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateNamespace), ctx, params,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNamespace",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateNamespace), ctx, params)
 }
 
 // CreateNamespaceGroup mocks base method.
@@ -338,10 +310,8 @@ func (m *MockOceandiskClientInterface) CreateNamespaceGroup(ctx context.Context,
 // CreateNamespaceGroup indicates an expected call of CreateNamespaceGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) CreateNamespaceGroup(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "CreateNamespaceGroup", reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateNamespaceGroup), ctx,
-		name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateNamespaceGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateNamespaceGroup), ctx, name)
 }
 
 // CreateQos mocks base method.
@@ -356,9 +326,8 @@ func (m *MockOceandiskClientInterface) CreateQos(ctx context.Context, args base.
 // CreateQos indicates an expected call of CreateQos.
 func (mr *MockOceandiskClientInterfaceMockRecorder) CreateQos(ctx, args any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "CreateQos", reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateQos), ctx, args,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateQos",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).CreateQos), ctx, args)
 }
 
 // DeactivateQos mocks base method.
@@ -372,16 +341,13 @@ func (m *MockOceandiskClientInterface) DeactivateQos(ctx context.Context, qosID,
 // DeactivateQos indicates an expected call of DeactivateQos.
 func (mr *MockOceandiskClientInterfaceMockRecorder) DeactivateQos(ctx, qosID, vStoreID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "DeactivateQos", reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeactivateQos), ctx, qosID,
-		vStoreID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeactivateQos",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeactivateQos), ctx, qosID, vStoreID)
 }
 
 // Delete mocks base method.
-func (m *MockOceandiskClientInterface) Delete(ctx context.Context, url string, data map[string]any) (
-	base.Response, error,
-) {
+func (m *MockOceandiskClientInterface) Delete(ctx context.Context, url string, data map[string]any) (base.Response,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", ctx, url, data)
 	ret0, _ := ret[0].(base.Response)
@@ -392,9 +358,8 @@ func (m *MockOceandiskClientInterface) Delete(ctx context.Context, url string, d
 // Delete indicates an expected call of Delete.
 func (mr *MockOceandiskClientInterfaceMockRecorder) Delete(ctx, url, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "Delete", reflect.TypeOf((*MockOceandiskClientInterface)(nil).Delete), ctx, url, data,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).Delete), ctx, url, data)
 }
 
 // DeleteHost mocks base method.
@@ -408,9 +373,8 @@ func (m *MockOceandiskClientInterface) DeleteHost(ctx context.Context, id string
 // DeleteHost indicates an expected call of DeleteHost.
 func (mr *MockOceandiskClientInterfaceMockRecorder) DeleteHost(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "DeleteHost", reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteHost), ctx, id,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHost",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteHost), ctx, id)
 }
 
 // DeleteHostGroup mocks base method.
@@ -424,9 +388,8 @@ func (m *MockOceandiskClientInterface) DeleteHostGroup(ctx context.Context, id s
 // DeleteHostGroup indicates an expected call of DeleteHostGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) DeleteHostGroup(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "DeleteHostGroup", reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteHostGroup), ctx, id,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHostGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteHostGroup), ctx, id)
 }
 
 // DeleteMapping mocks base method.
@@ -440,9 +403,8 @@ func (m *MockOceandiskClientInterface) DeleteMapping(ctx context.Context, id str
 // DeleteMapping indicates an expected call of DeleteMapping.
 func (mr *MockOceandiskClientInterfaceMockRecorder) DeleteMapping(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "DeleteMapping", reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteMapping), ctx, id,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteMapping",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteMapping), ctx, id)
 }
 
 // DeleteNamespace mocks base method.
@@ -456,9 +418,8 @@ func (m *MockOceandiskClientInterface) DeleteNamespace(ctx context.Context, id s
 // DeleteNamespace indicates an expected call of DeleteNamespace.
 func (mr *MockOceandiskClientInterfaceMockRecorder) DeleteNamespace(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "DeleteNamespace", reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteNamespace), ctx, id,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNamespace",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteNamespace), ctx, id)
 }
 
 // DeleteNamespaceGroup mocks base method.
@@ -472,10 +433,8 @@ func (m *MockOceandiskClientInterface) DeleteNamespaceGroup(ctx context.Context,
 // DeleteNamespaceGroup indicates an expected call of DeleteNamespaceGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) DeleteNamespaceGroup(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "DeleteNamespaceGroup", reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteNamespaceGroup), ctx,
-		id,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNamespaceGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteNamespaceGroup), ctx, id)
 }
 
 // DeleteQos mocks base method.
@@ -489,15 +448,13 @@ func (m *MockOceandiskClientInterface) DeleteQos(ctx context.Context, qosID, vSt
 // DeleteQos indicates an expected call of DeleteQos.
 func (mr *MockOceandiskClientInterfaceMockRecorder) DeleteQos(ctx, qosID, vStoreID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "DeleteQos", reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteQos), ctx, qosID, vStoreID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteQos",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).DeleteQos), ctx, qosID, vStoreID)
 }
 
 // ExtendNamespace mocks base method.
-func (m *MockOceandiskClientInterface) ExtendNamespace(
-	ctx context.Context, namespaceID string, newCapacity int64,
-) error {
+func (m *MockOceandiskClientInterface) ExtendNamespace(ctx context.Context, namespaceID string,
+	newCapacity int64) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExtendNamespace", ctx, namespaceID, newCapacity)
 	ret0, _ := ret[0].(error)
@@ -507,16 +464,13 @@ func (m *MockOceandiskClientInterface) ExtendNamespace(
 // ExtendNamespace indicates an expected call of ExtendNamespace.
 func (mr *MockOceandiskClientInterfaceMockRecorder) ExtendNamespace(ctx, namespaceID, newCapacity any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "ExtendNamespace", reflect.TypeOf((*MockOceandiskClientInterface)(nil).ExtendNamespace), ctx,
-		namespaceID, newCapacity,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExtendNamespace",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).ExtendNamespace), ctx, namespaceID, newCapacity)
 }
 
 // Get mocks base method.
-func (m *MockOceandiskClientInterface) Get(ctx context.Context, url string, data map[string]any) (
-	base.Response, error,
-) {
+func (m *MockOceandiskClientInterface) Get(ctx context.Context, url string, data map[string]any) (base.Response,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", ctx, url, data)
 	ret0, _ := ret[0].(base.Response)
@@ -527,9 +481,8 @@ func (m *MockOceandiskClientInterface) Get(ctx context.Context, url string, data
 // Get indicates an expected call of Get.
 func (mr *MockOceandiskClientInterfaceMockRecorder) Get(ctx, url, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "Get", reflect.TypeOf((*MockOceandiskClientInterface)(nil).Get), ctx, url, data,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).Get), ctx, url, data)
 }
 
 // GetAllPools mocks base method.
@@ -544,9 +497,8 @@ func (m *MockOceandiskClientInterface) GetAllPools(ctx context.Context) (map[str
 // GetAllPools indicates an expected call of GetAllPools.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetAllPools(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetAllPools", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetAllPools), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPools",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetAllPools), ctx)
 }
 
 // GetAllQos mocks base method.
@@ -561,9 +513,8 @@ func (m *MockOceandiskClientInterface) GetAllQos(ctx context.Context) ([]map[str
 // GetAllQos indicates an expected call of GetAllQos.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetAllQos(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetAllQos", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetAllQos), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllQos",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetAllQos), ctx)
 }
 
 // GetAllRemoteDevices mocks base method.
@@ -578,9 +529,8 @@ func (m *MockOceandiskClientInterface) GetAllRemoteDevices(ctx context.Context) 
 // GetAllRemoteDevices indicates an expected call of GetAllRemoteDevices.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetAllRemoteDevices(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetAllRemoteDevices", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetAllRemoteDevices), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllRemoteDevices",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetAllRemoteDevices), ctx)
 }
 
 // GetApplicationTypeByName mocks base method.
@@ -595,10 +545,8 @@ func (m *MockOceandiskClientInterface) GetApplicationTypeByName(ctx context.Cont
 // GetApplicationTypeByName indicates an expected call of GetApplicationTypeByName.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetApplicationTypeByName(ctx, appType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetApplicationTypeByName",
-		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetApplicationTypeByName), ctx, appType,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetApplicationTypeByName",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetApplicationTypeByName), ctx, appType)
 }
 
 // GetBackendID mocks base method.
@@ -612,9 +560,8 @@ func (m *MockOceandiskClientInterface) GetBackendID() string {
 // GetBackendID indicates an expected call of GetBackendID.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetBackendID() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetBackendID", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetBackendID),
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBackendID",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetBackendID))
 }
 
 // GetDeviceSN mocks base method.
@@ -628,9 +575,8 @@ func (m *MockOceandiskClientInterface) GetDeviceSN() string {
 // GetDeviceSN indicates an expected call of GetDeviceSN.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetDeviceSN() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetDeviceSN", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetDeviceSN),
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeviceSN",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetDeviceSN))
 }
 
 // GetFCHostLink mocks base method.
@@ -645,9 +591,8 @@ func (m *MockOceandiskClientInterface) GetFCHostLink(ctx context.Context, hostID
 // GetFCHostLink indicates an expected call of GetFCHostLink.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetFCHostLink(ctx, hostID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetFCHostLink", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetFCHostLink), ctx, hostID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFCHostLink",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetFCHostLink), ctx, hostID)
 }
 
 // GetFCInitiator mocks base method.
@@ -662,9 +607,8 @@ func (m *MockOceandiskClientInterface) GetFCInitiator(ctx context.Context, wwn s
 // GetFCInitiator indicates an expected call of GetFCInitiator.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetFCInitiator(ctx, wwn any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetFCInitiator", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetFCInitiator), ctx, wwn,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFCInitiator",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetFCInitiator), ctx, wwn)
 }
 
 // GetFCInitiatorByID mocks base method.
@@ -679,9 +623,8 @@ func (m *MockOceandiskClientInterface) GetFCInitiatorByID(ctx context.Context, w
 // GetFCInitiatorByID indicates an expected call of GetFCInitiatorByID.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetFCInitiatorByID(ctx, wwn any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetFCInitiatorByID", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetFCInitiatorByID), ctx, wwn,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFCInitiatorByID",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetFCInitiatorByID), ctx, wwn)
 }
 
 // GetFCTargetWWNs mocks base method.
@@ -696,10 +639,8 @@ func (m *MockOceandiskClientInterface) GetFCTargetWWNs(ctx context.Context, init
 // GetFCTargetWWNs indicates an expected call of GetFCTargetWWNs.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetFCTargetWWNs(ctx, initiatorWWN any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetFCTargetWWNs", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetFCTargetWWNs), ctx,
-		initiatorWWN,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFCTargetWWNs",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetFCTargetWWNs), ctx, initiatorWWN)
 }
 
 // GetHostByName mocks base method.
@@ -714,9 +655,8 @@ func (m *MockOceandiskClientInterface) GetHostByName(ctx context.Context, name s
 // GetHostByName indicates an expected call of GetHostByName.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetHostByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetHostByName", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetHostByName), ctx, name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHostByName",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetHostByName), ctx, name)
 }
 
 // GetHostGroupByName mocks base method.
@@ -731,16 +671,13 @@ func (m *MockOceandiskClientInterface) GetHostGroupByName(ctx context.Context, n
 // GetHostGroupByName indicates an expected call of GetHostGroupByName.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetHostGroupByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetHostGroupByName", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetHostGroupByName), ctx,
-		name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHostGroupByName",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetHostGroupByName), ctx, name)
 }
 
 // GetHostNamespaceId mocks base method.
-func (m *MockOceandiskClientInterface) GetHostNamespaceId(ctx context.Context, hostID, namespaceID string) (
-	string, error,
-) {
+func (m *MockOceandiskClientInterface) GetHostNamespaceId(ctx context.Context, hostID, namespaceID string) (string,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetHostNamespaceId", ctx, hostID, namespaceID)
 	ret0, _ := ret[0].(string)
@@ -751,10 +688,8 @@ func (m *MockOceandiskClientInterface) GetHostNamespaceId(ctx context.Context, h
 // GetHostNamespaceId indicates an expected call of GetHostNamespaceId.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetHostNamespaceId(ctx, hostID, namespaceID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetHostNamespaceId", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetHostNamespaceId), ctx,
-		hostID, namespaceID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHostNamespaceId",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetHostNamespaceId), ctx, hostID, namespaceID)
 }
 
 // GetISCSIHostLink mocks base method.
@@ -769,15 +704,13 @@ func (m *MockOceandiskClientInterface) GetISCSIHostLink(ctx context.Context, hos
 // GetISCSIHostLink indicates an expected call of GetISCSIHostLink.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetISCSIHostLink(ctx, hostID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetISCSIHostLink", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetISCSIHostLink), ctx, hostID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetISCSIHostLink",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetISCSIHostLink), ctx, hostID)
 }
 
 // GetIscsiInitiator mocks base method.
-func (m *MockOceandiskClientInterface) GetIscsiInitiator(ctx context.Context, initiator string) (
-	map[string]any, error,
-) {
+func (m *MockOceandiskClientInterface) GetIscsiInitiator(ctx context.Context, initiator string) (map[string]any,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetIscsiInitiator", ctx, initiator)
 	ret0, _ := ret[0].(map[string]any)
@@ -788,16 +721,13 @@ func (m *MockOceandiskClientInterface) GetIscsiInitiator(ctx context.Context, in
 // GetIscsiInitiator indicates an expected call of GetIscsiInitiator.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetIscsiInitiator(ctx, initiator any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetIscsiInitiator", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetIscsiInitiator), ctx,
-		initiator,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIscsiInitiator",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetIscsiInitiator), ctx, initiator)
 }
 
 // GetIscsiInitiatorByID mocks base method.
-func (m *MockOceandiskClientInterface) GetIscsiInitiatorByID(ctx context.Context, initiator string) (
-	map[string]any, error,
-) {
+func (m *MockOceandiskClientInterface) GetIscsiInitiatorByID(ctx context.Context, initiator string) (map[string]any,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetIscsiInitiatorByID", ctx, initiator)
 	ret0, _ := ret[0].(map[string]any)
@@ -808,10 +738,8 @@ func (m *MockOceandiskClientInterface) GetIscsiInitiatorByID(ctx context.Context
 // GetIscsiInitiatorByID indicates an expected call of GetIscsiInitiatorByID.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetIscsiInitiatorByID(ctx, initiator any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetIscsiInitiatorByID", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetIscsiInitiatorByID),
-		ctx, initiator,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIscsiInitiatorByID",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetIscsiInitiatorByID), ctx, initiator)
 }
 
 // GetIscsiTgtPort mocks base method.
@@ -826,9 +754,8 @@ func (m *MockOceandiskClientInterface) GetIscsiTgtPort(ctx context.Context) ([]a
 // GetIscsiTgtPort indicates an expected call of GetIscsiTgtPort.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetIscsiTgtPort(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetIscsiTgtPort", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetIscsiTgtPort), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIscsiTgtPort",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetIscsiTgtPort), ctx)
 }
 
 // GetLicenseFeature mocks base method.
@@ -843,9 +770,8 @@ func (m *MockOceandiskClientInterface) GetLicenseFeature(ctx context.Context) (m
 // GetLicenseFeature indicates an expected call of GetLicenseFeature.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetLicenseFeature(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetLicenseFeature", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetLicenseFeature), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLicenseFeature",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetLicenseFeature), ctx)
 }
 
 // GetMappingByName mocks base method.
@@ -860,9 +786,8 @@ func (m *MockOceandiskClientInterface) GetMappingByName(ctx context.Context, nam
 // GetMappingByName indicates an expected call of GetMappingByName.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetMappingByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetMappingByName", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetMappingByName), ctx, name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMappingByName",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetMappingByName), ctx, name)
 }
 
 // GetNamespaceByID mocks base method.
@@ -877,9 +802,8 @@ func (m *MockOceandiskClientInterface) GetNamespaceByID(ctx context.Context, id 
 // GetNamespaceByID indicates an expected call of GetNamespaceByID.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetNamespaceByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetNamespaceByID", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceByID), ctx, id,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNamespaceByID",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceByID), ctx, id)
 }
 
 // GetNamespaceByName mocks base method.
@@ -894,10 +818,8 @@ func (m *MockOceandiskClientInterface) GetNamespaceByName(ctx context.Context, n
 // GetNamespaceByName indicates an expected call of GetNamespaceByName.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetNamespaceByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetNamespaceByName", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceByName), ctx,
-		name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNamespaceByName",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceByName), ctx, name)
 }
 
 // GetNamespaceCountOfHost mocks base method.
@@ -912,16 +834,13 @@ func (m *MockOceandiskClientInterface) GetNamespaceCountOfHost(ctx context.Conte
 // GetNamespaceCountOfHost indicates an expected call of GetNamespaceCountOfHost.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetNamespaceCountOfHost(ctx, hostID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetNamespaceCountOfHost",
-		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceCountOfHost), ctx, hostID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNamespaceCountOfHost",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceCountOfHost), ctx, hostID)
 }
 
 // GetNamespaceCountOfMapping mocks base method.
-func (m *MockOceandiskClientInterface) GetNamespaceCountOfMapping(ctx context.Context, mappingID string) (
-	int64, error,
-) {
+func (m *MockOceandiskClientInterface) GetNamespaceCountOfMapping(ctx context.Context, mappingID string) (int64,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNamespaceCountOfMapping", ctx, mappingID)
 	ret0, _ := ret[0].(int64)
@@ -932,16 +851,13 @@ func (m *MockOceandiskClientInterface) GetNamespaceCountOfMapping(ctx context.Co
 // GetNamespaceCountOfMapping indicates an expected call of GetNamespaceCountOfMapping.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetNamespaceCountOfMapping(ctx, mappingID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetNamespaceCountOfMapping",
-		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceCountOfMapping), ctx, mappingID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNamespaceCountOfMapping",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceCountOfMapping), ctx, mappingID)
 }
 
 // GetNamespaceGroupByName mocks base method.
-func (m *MockOceandiskClientInterface) GetNamespaceGroupByName(ctx context.Context, name string) (
-	map[string]any, error,
-) {
+func (m *MockOceandiskClientInterface) GetNamespaceGroupByName(ctx context.Context, name string) (map[string]any,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNamespaceGroupByName", ctx, name)
 	ret0, _ := ret[0].(map[string]any)
@@ -952,10 +868,8 @@ func (m *MockOceandiskClientInterface) GetNamespaceGroupByName(ctx context.Conte
 // GetNamespaceGroupByName indicates an expected call of GetNamespaceGroupByName.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetNamespaceGroupByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetNamespaceGroupByName",
-		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceGroupByName), ctx, name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNamespaceGroupByName",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetNamespaceGroupByName), ctx, name)
 }
 
 // GetPoolByName mocks base method.
@@ -970,9 +884,8 @@ func (m *MockOceandiskClientInterface) GetPoolByName(ctx context.Context, name s
 // GetPoolByName indicates an expected call of GetPoolByName.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetPoolByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetPoolByName", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetPoolByName), ctx, name,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPoolByName",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetPoolByName), ctx, name)
 }
 
 // GetQosByID mocks base method.
@@ -987,15 +900,13 @@ func (m *MockOceandiskClientInterface) GetQosByID(ctx context.Context, qosID, vS
 // GetQosByID indicates an expected call of GetQosByID.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetQosByID(ctx, qosID, vStoreID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetQosByID", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetQosByID), ctx, qosID, vStoreID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetQosByID",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetQosByID), ctx, qosID, vStoreID)
 }
 
 // GetQosByName mocks base method.
-func (m *MockOceandiskClientInterface) GetQosByName(ctx context.Context, name, vStoreID string) (
-	map[string]any, error,
-) {
+func (m *MockOceandiskClientInterface) GetQosByName(ctx context.Context, name, vStoreID string) (map[string]any,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetQosByName", ctx, name, vStoreID)
 	ret0, _ := ret[0].(map[string]any)
@@ -1006,9 +917,8 @@ func (m *MockOceandiskClientInterface) GetQosByName(ctx context.Context, name, v
 // GetQosByName indicates an expected call of GetQosByName.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetQosByName(ctx, name, vStoreID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetQosByName", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetQosByName), ctx, name, vStoreID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetQosByName",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetQosByName), ctx, name, vStoreID)
 }
 
 // GetRemoteDeviceBySN mocks base method.
@@ -1023,16 +933,13 @@ func (m *MockOceandiskClientInterface) GetRemoteDeviceBySN(ctx context.Context, 
 // GetRemoteDeviceBySN indicates an expected call of GetRemoteDeviceBySN.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetRemoteDeviceBySN(ctx, sn any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetRemoteDeviceBySN", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRemoteDeviceBySN), ctx,
-		sn,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRemoteDeviceBySN",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRemoteDeviceBySN), ctx, sn)
 }
 
 // GetRequest mocks base method.
-func (m *MockOceandiskClientInterface) GetRequest(
-	ctx context.Context, method, url string, data map[string]any,
-) (*http.Request, error) {
+func (m *MockOceandiskClientInterface) GetRequest(ctx context.Context, method, url string,
+	data map[string]any) (*http.Request, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRequest", ctx, method, url, data)
 	ret0, _ := ret[0].(*http.Request)
@@ -1043,9 +950,8 @@ func (m *MockOceandiskClientInterface) GetRequest(
 // GetRequest indicates an expected call of GetRequest.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetRequest(ctx, method, url, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetRequest", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRequest), ctx, method, url, data,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRequest",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRequest), ctx, method, url, data)
 }
 
 // GetRoCEInitiator mocks base method.
@@ -1060,16 +966,13 @@ func (m *MockOceandiskClientInterface) GetRoCEInitiator(ctx context.Context, ini
 // GetRoCEInitiator indicates an expected call of GetRoCEInitiator.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetRoCEInitiator(ctx, initiator any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetRoCEInitiator", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRoCEInitiator), ctx,
-		initiator,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRoCEInitiator",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRoCEInitiator), ctx, initiator)
 }
 
 // GetRoCEInitiatorByID mocks base method.
-func (m *MockOceandiskClientInterface) GetRoCEInitiatorByID(ctx context.Context, initiator string) (
-	map[string]any, error,
-) {
+func (m *MockOceandiskClientInterface) GetRoCEInitiatorByID(ctx context.Context, initiator string) (map[string]any,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRoCEInitiatorByID", ctx, initiator)
 	ret0, _ := ret[0].(map[string]any)
@@ -1080,16 +983,13 @@ func (m *MockOceandiskClientInterface) GetRoCEInitiatorByID(ctx context.Context,
 // GetRoCEInitiatorByID indicates an expected call of GetRoCEInitiatorByID.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetRoCEInitiatorByID(ctx, initiator any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetRoCEInitiatorByID", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRoCEInitiatorByID), ctx,
-		initiator,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRoCEInitiatorByID",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRoCEInitiatorByID), ctx, initiator)
 }
 
 // GetRoCEPortalByIP mocks base method.
-func (m *MockOceandiskClientInterface) GetRoCEPortalByIP(ctx context.Context, tgtPortal string) (
-	map[string]any, error,
-) {
+func (m *MockOceandiskClientInterface) GetRoCEPortalByIP(ctx context.Context, tgtPortal string) (map[string]any,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetRoCEPortalByIP", ctx, tgtPortal)
 	ret0, _ := ret[0].(map[string]any)
@@ -1100,10 +1000,8 @@ func (m *MockOceandiskClientInterface) GetRoCEPortalByIP(ctx context.Context, tg
 // GetRoCEPortalByIP indicates an expected call of GetRoCEPortalByIP.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetRoCEPortalByIP(ctx, tgtPortal any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetRoCEPortalByIP", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRoCEPortalByIP), ctx,
-		tgtPortal,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRoCEPortalByIP",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetRoCEPortalByIP), ctx, tgtPortal)
 }
 
 // GetStorageVersion mocks base method.
@@ -1117,9 +1015,8 @@ func (m *MockOceandiskClientInterface) GetStorageVersion() string {
 // GetStorageVersion indicates an expected call of GetStorageVersion.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetStorageVersion() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetStorageVersion", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetStorageVersion),
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStorageVersion",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetStorageVersion))
 }
 
 // GetSystem mocks base method.
@@ -1134,9 +1031,8 @@ func (m *MockOceandiskClientInterface) GetSystem(ctx context.Context) (map[strin
 // GetSystem indicates an expected call of GetSystem.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetSystem(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetSystem", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetSystem), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSystem",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetSystem), ctx)
 }
 
 // GetSystemUTCTime mocks base method.
@@ -1151,9 +1047,8 @@ func (m *MockOceandiskClientInterface) GetSystemUTCTime(ctx context.Context) (in
 // GetSystemUTCTime indicates an expected call of GetSystemUTCTime.
 func (mr *MockOceandiskClientInterfaceMockRecorder) GetSystemUTCTime(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "GetSystemUTCTime", reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetSystemUTCTime), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSystemUTCTime",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).GetSystemUTCTime), ctx)
 }
 
 // Login mocks base method.
@@ -1167,9 +1062,8 @@ func (m *MockOceandiskClientInterface) Login(ctx context.Context) error {
 // Login indicates an expected call of Login.
 func (mr *MockOceandiskClientInterfaceMockRecorder) Login(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "Login", reflect.TypeOf((*MockOceandiskClientInterface)(nil).Login), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Login",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).Login), ctx)
 }
 
 // Logout mocks base method.
@@ -1181,15 +1075,13 @@ func (m *MockOceandiskClientInterface) Logout(ctx context.Context) {
 // Logout indicates an expected call of Logout.
 func (mr *MockOceandiskClientInterfaceMockRecorder) Logout(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "Logout", reflect.TypeOf((*MockOceandiskClientInterface)(nil).Logout), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Logout",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).Logout), ctx)
 }
 
 // Post mocks base method.
-func (m *MockOceandiskClientInterface) Post(ctx context.Context, url string, data map[string]any) (
-	base.Response, error,
-) {
+func (m *MockOceandiskClientInterface) Post(ctx context.Context, url string, data map[string]any) (base.Response,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Post", ctx, url, data)
 	ret0, _ := ret[0].(base.Response)
@@ -1200,15 +1092,13 @@ func (m *MockOceandiskClientInterface) Post(ctx context.Context, url string, dat
 // Post indicates an expected call of Post.
 func (mr *MockOceandiskClientInterfaceMockRecorder) Post(ctx, url, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "Post", reflect.TypeOf((*MockOceandiskClientInterface)(nil).Post), ctx, url, data,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Post",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).Post), ctx, url, data)
 }
 
 // Put mocks base method.
-func (m *MockOceandiskClientInterface) Put(ctx context.Context, url string, data map[string]any) (
-	base.Response, error,
-) {
+func (m *MockOceandiskClientInterface) Put(ctx context.Context, url string, data map[string]any) (base.Response,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Put", ctx, url, data)
 	ret0, _ := ret[0].(base.Response)
@@ -1219,15 +1109,13 @@ func (m *MockOceandiskClientInterface) Put(ctx context.Context, url string, data
 // Put indicates an expected call of Put.
 func (mr *MockOceandiskClientInterfaceMockRecorder) Put(ctx, url, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "Put", reflect.TypeOf((*MockOceandiskClientInterface)(nil).Put), ctx, url, data,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).Put), ctx, url, data)
 }
 
 // QueryAssociateHostGroup mocks base method.
-func (m *MockOceandiskClientInterface) QueryAssociateHostGroup(ctx context.Context, objType int, objID string) (
-	[]any, error,
-) {
+func (m *MockOceandiskClientInterface) QueryAssociateHostGroup(ctx context.Context, objType int, objID string) ([]any,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "QueryAssociateHostGroup", ctx, objType, objID)
 	ret0, _ := ret[0].([]any)
@@ -1238,16 +1126,13 @@ func (m *MockOceandiskClientInterface) QueryAssociateHostGroup(ctx context.Conte
 // QueryAssociateHostGroup indicates an expected call of QueryAssociateHostGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) QueryAssociateHostGroup(ctx, objType, objID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "QueryAssociateHostGroup",
-		reflect.TypeOf((*MockOceandiskClientInterface)(nil).QueryAssociateHostGroup), ctx, objType, objID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryAssociateHostGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).QueryAssociateHostGroup), ctx, objType, objID)
 }
 
 // QueryAssociateNamespaceGroup mocks base method.
-func (m *MockOceandiskClientInterface) QueryAssociateNamespaceGroup(
-	ctx context.Context, objType int, objID string,
-) ([]any, error) {
+func (m *MockOceandiskClientInterface) QueryAssociateNamespaceGroup(ctx context.Context, objType int,
+	objID string) ([]any, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "QueryAssociateNamespaceGroup", ctx, objType, objID)
 	ret0, _ := ret[0].([]any)
@@ -1258,10 +1143,8 @@ func (m *MockOceandiskClientInterface) QueryAssociateNamespaceGroup(
 // QueryAssociateNamespaceGroup indicates an expected call of QueryAssociateNamespaceGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) QueryAssociateNamespaceGroup(ctx, objType, objID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "QueryAssociateNamespaceGroup",
-		reflect.TypeOf((*MockOceandiskClientInterface)(nil).QueryAssociateNamespaceGroup), ctx, objType, objID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryAssociateNamespaceGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).QueryAssociateNamespaceGroup), ctx, objType, objID)
 }
 
 // QueryFCInitiatorByHost mocks base method.
@@ -1276,10 +1159,8 @@ func (m *MockOceandiskClientInterface) QueryFCInitiatorByHost(ctx context.Contex
 // QueryFCInitiatorByHost indicates an expected call of QueryFCInitiatorByHost.
 func (mr *MockOceandiskClientInterfaceMockRecorder) QueryFCInitiatorByHost(ctx, hostID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "QueryFCInitiatorByHost", reflect.TypeOf((*MockOceandiskClientInterface)(nil).QueryFCInitiatorByHost),
-		ctx, hostID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryFCInitiatorByHost",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).QueryFCInitiatorByHost), ctx, hostID)
 }
 
 // ReLogin mocks base method.
@@ -1293,15 +1174,13 @@ func (m *MockOceandiskClientInterface) ReLogin(ctx context.Context) error {
 // ReLogin indicates an expected call of ReLogin.
 func (mr *MockOceandiskClientInterfaceMockRecorder) ReLogin(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "ReLogin", reflect.TypeOf((*MockOceandiskClientInterface)(nil).ReLogin), ctx,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReLogin",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).ReLogin), ctx)
 }
 
 // RemoveGroupFromMapping mocks base method.
-func (m *MockOceandiskClientInterface) RemoveGroupFromMapping(
-	ctx context.Context, groupType int, groupID, mappingID string,
-) error {
+func (m *MockOceandiskClientInterface) RemoveGroupFromMapping(ctx context.Context, groupType int,
+	groupID, mappingID string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RemoveGroupFromMapping", ctx, groupType, groupID, mappingID)
 	ret0, _ := ret[0].(error)
@@ -1311,10 +1190,8 @@ func (m *MockOceandiskClientInterface) RemoveGroupFromMapping(
 // RemoveGroupFromMapping indicates an expected call of RemoveGroupFromMapping.
 func (mr *MockOceandiskClientInterfaceMockRecorder) RemoveGroupFromMapping(ctx, groupType, groupID, mappingID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "RemoveGroupFromMapping", reflect.TypeOf((*MockOceandiskClientInterface)(nil).RemoveGroupFromMapping),
-		ctx, groupType, groupID, mappingID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveGroupFromMapping",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).RemoveGroupFromMapping), ctx, groupType, groupID, mappingID)
 }
 
 // RemoveHostFromGroup mocks base method.
@@ -1328,16 +1205,13 @@ func (m *MockOceandiskClientInterface) RemoveHostFromGroup(ctx context.Context, 
 // RemoveHostFromGroup indicates an expected call of RemoveHostFromGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) RemoveHostFromGroup(ctx, hostID, hostGroupID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "RemoveHostFromGroup", reflect.TypeOf((*MockOceandiskClientInterface)(nil).RemoveHostFromGroup), ctx,
-		hostID, hostGroupID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveHostFromGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).RemoveHostFromGroup), ctx, hostID, hostGroupID)
 }
 
 // RemoveNamespaceFromGroup mocks base method.
-func (m *MockOceandiskClientInterface) RemoveNamespaceFromGroup(
-	ctx context.Context, namespaceID, groupID string,
-) error {
+func (m *MockOceandiskClientInterface) RemoveNamespaceFromGroup(ctx context.Context,
+	namespaceID, groupID string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RemoveNamespaceFromGroup", ctx, namespaceID, groupID)
 	ret0, _ := ret[0].(error)
@@ -1347,10 +1221,23 @@ func (m *MockOceandiskClientInterface) RemoveNamespaceFromGroup(
 // RemoveNamespaceFromGroup indicates an expected call of RemoveNamespaceFromGroup.
 func (mr *MockOceandiskClientInterfaceMockRecorder) RemoveNamespaceFromGroup(ctx, namespaceID, groupID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "RemoveNamespaceFromGroup",
-		reflect.TypeOf((*MockOceandiskClientInterface)(nil).RemoveNamespaceFromGroup), ctx, namespaceID, groupID,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveNamespaceFromGroup",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).RemoveNamespaceFromGroup), ctx, namespaceID, groupID)
+}
+
+// SetSystemInfo mocks base method.
+func (m *MockOceandiskClientInterface) SetSystemInfo(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetSystemInfo", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetSystemInfo indicates an expected call of SetSystemInfo.
+func (mr *MockOceandiskClientInterfaceMockRecorder) SetSystemInfo(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSystemInfo",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).SetSystemInfo), ctx)
 }
 
 // UpdateFCInitiator mocks base method.
@@ -1364,10 +1251,8 @@ func (m *MockOceandiskClientInterface) UpdateFCInitiator(ctx context.Context, ww
 // UpdateFCInitiator indicates an expected call of UpdateFCInitiator.
 func (mr *MockOceandiskClientInterfaceMockRecorder) UpdateFCInitiator(ctx, wwn, alua any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "UpdateFCInitiator", reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateFCInitiator), ctx, wwn,
-		alua,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateFCInitiator",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateFCInitiator), ctx, wwn, alua)
 }
 
 // UpdateHost mocks base method.
@@ -1381,15 +1266,13 @@ func (m *MockOceandiskClientInterface) UpdateHost(ctx context.Context, id string
 // UpdateHost indicates an expected call of UpdateHost.
 func (mr *MockOceandiskClientInterfaceMockRecorder) UpdateHost(ctx, id, alua any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "UpdateHost", reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateHost), ctx, id, alua,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateHost",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateHost), ctx, id, alua)
 }
 
 // UpdateIscsiInitiator mocks base method.
-func (m *MockOceandiskClientInterface) UpdateIscsiInitiator(
-	ctx context.Context, initiator string, alua map[string]any,
-) error {
+func (m *MockOceandiskClientInterface) UpdateIscsiInitiator(ctx context.Context, initiator string,
+	alua map[string]any) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateIscsiInitiator", ctx, initiator, alua)
 	ret0, _ := ret[0].(error)
@@ -1399,16 +1282,13 @@ func (m *MockOceandiskClientInterface) UpdateIscsiInitiator(
 // UpdateIscsiInitiator indicates an expected call of UpdateIscsiInitiator.
 func (mr *MockOceandiskClientInterfaceMockRecorder) UpdateIscsiInitiator(ctx, initiator, alua any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "UpdateIscsiInitiator", reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateIscsiInitiator), ctx,
-		initiator, alua,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIscsiInitiator",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateIscsiInitiator), ctx, initiator, alua)
 }
 
 // UpdateNamespace mocks base method.
-func (m *MockOceandiskClientInterface) UpdateNamespace(
-	ctx context.Context, namespaceID string, params map[string]any,
-) error {
+func (m *MockOceandiskClientInterface) UpdateNamespace(ctx context.Context, namespaceID string,
+	params map[string]any) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateNamespace", ctx, namespaceID, params)
 	ret0, _ := ret[0].(error)
@@ -1418,16 +1298,13 @@ func (m *MockOceandiskClientInterface) UpdateNamespace(
 // UpdateNamespace indicates an expected call of UpdateNamespace.
 func (mr *MockOceandiskClientInterfaceMockRecorder) UpdateNamespace(ctx, namespaceID, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "UpdateNamespace", reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateNamespace), ctx,
-		namespaceID, params,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateNamespace",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateNamespace), ctx, namespaceID, params)
 }
 
 // UpdateQos mocks base method.
-func (m *MockOceandiskClientInterface) UpdateQos(
-	ctx context.Context, qosID, vStoreID string, params map[string]any,
-) error {
+func (m *MockOceandiskClientInterface) UpdateQos(ctx context.Context, qosID, vStoreID string,
+	params map[string]any) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateQos", ctx, qosID, vStoreID, params)
 	ret0, _ := ret[0].(error)
@@ -1437,8 +1314,21 @@ func (m *MockOceandiskClientInterface) UpdateQos(
 // UpdateQos indicates an expected call of UpdateQos.
 func (mr *MockOceandiskClientInterfaceMockRecorder) UpdateQos(ctx, qosID, vStoreID, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(
-		mr.mock, "UpdateQos", reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateQos), ctx, qosID, vStoreID,
-		params,
-	)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateQos",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).UpdateQos), ctx, qosID, vStoreID, params)
+}
+
+// ValidateLogin mocks base method.
+func (m *MockOceandiskClientInterface) ValidateLogin(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateLogin", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateLogin indicates an expected call of ValidateLogin.
+func (mr *MockOceandiskClientInterfaceMockRecorder) ValidateLogin(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateLogin",
+		reflect.TypeOf((*MockOceandiskClientInterface)(nil).ValidateLogin), ctx)
 }
