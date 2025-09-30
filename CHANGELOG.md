@@ -5,12 +5,12 @@
 ## v4.9.0
 - Support Kubernetes 1.33
 - Support Oceanstor / Oceanstor Dorado V700R001C10
-- Added support for Pacific block storage with iSCSI networking multipath optimization.
+- Added support for Pacific block storage with iSCSI networking multipath optimization
 - Added support for Oceanstor A-series Storage (local filesystem with NFS/DataTurbo protocol)
-- Added support for nvme-cli 2.x.
-- Fixed NFS protocol mount failures when using domain names.
-- Fixed SCSI protocol mount failures during Pod restarts in StatefulSet configurations.
-- Reorganized User Guide structure with dedicated sections for storage and protocol content.
+- Added support for nvme-cli 2.x
+- Fixed NFS protocol mount failures when using domain names
+- Fixed SCSI protocol mount failures during Pod restarts in StatefulSet configurations
+- Reorganized User Guide structure with dedicated sections for storage and protocol content
 
 ## v4.8.0
 
