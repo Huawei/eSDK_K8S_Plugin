@@ -663,6 +663,10 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           args:
             - "--logging-module={{ ((.Values.csiDriver).controllerLogging).module | default "file" }}"
             - "--log-level={{ ((.Values.csiDriver).controllerLogging).level | default "info" }}"
@@ -671,6 +675,8 @@ spec:
             - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
             - "--backend-update-interval={{ .Values.csiDriver.backendUpdateInterval }}"
             - "--dr-endpoint=$(DRCSI_ENDPOINT)"
+            - "--web-hook-port={{ int .Values.controller.webhookPort | default 4433 }}"
+            - "--web-hook-address=$(POD_IP)"
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
