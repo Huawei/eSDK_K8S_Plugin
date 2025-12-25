@@ -4,35 +4,93 @@ on:
   push:
     # Sequence of patterns matched against refs/tags
     tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.1
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout Source
-      uses: actions/checkout@v4
-    - uses: actions/setup-go@v5
-      with:
-        go-version: '1.24.1'
-    - name: Get Version
-      id: branch-names
-      uses: tj-actions/branch-names@v8
-      with:
-        strip_tag_prefix: v
-    - name: Build
-      run: |
-        chmod +x ./build.sh
-        ./build.sh ${{ steps.branch-names.outputs.tag }} X86
-        ./build.sh ${{ steps.branch-names.outputs.tag }} ARM
-        ./build.sh ${{ steps.branch-names.outputs.tag }} PPC64LE
-    - name: Create Release and Upload Release Asset
-      uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        body: TODO New Release.
-        draft: true
-        files: |
-          eSDK_Storage_CSI_V${{ steps.branch-names.outputs.tag }}_X86_64.zip
-          eSDK_Storage_CSI_V${{ steps.branch-names.outputs.tag }}_ARM_64.zip
-          eSDK_Storage_CSI_V${{ steps.branch-names.outputs.tag }}_PPC64LE_64.zip
+      - name: Checkout Source
+        uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+      - name: Get Version
+        id: branch-names
+        uses: tj-actions/branch-names@v8
+        with:
+          strip_tag_prefix: v
+      - name: Login Repo
+        env:
+          SWR_UNAME: ${{ secrets.SWR_UNAME }}
+          SWR_PASSWORD: ${{ secrets.SWR_PASSWORD }}
+        run: |
+          docker login -u "$SWR_UNAME" -p "$SWR_PASSWORD" swr.cn-north-4.myhuaweicloud.com
+      - name: Build_X86
+        run: |
+          chmod +x ./build.sh && ./build.sh ${{ steps.branch-names.outputs.tag }} X86
+          docker tag huawei-csi:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-amd
+          docker tag storage-backend-controller:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-amd
+          docker tag storage-backend-sidecar:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-amd
+          docker tag huawei-csi-extender:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-amd
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-amd
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-amd
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-amd
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-amd
+      - name: Build_ARM
+        run: |
+          chmod +x ./build.sh && ./build.sh ${{ steps.branch-names.outputs.tag }} ARM
+          docker tag huawei-csi:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-arm
+          docker tag storage-backend-controller:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-arm
+          docker tag storage-backend-sidecar:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-arm
+          docker tag huawei-csi-extender:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-arm
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-arm
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-arm
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-arm
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-arm
+      - name: Build_PPC64LE
+        run: |
+          chmod +x ./build.sh && ./build.sh ${{ steps.branch-names.outputs.tag }} PPC64LE
+          docker tag huawei-csi:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker tag storage-backend-controller:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker tag storage-backend-sidecar:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker tag huawei-csi-extender:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker push swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-ppc64le
+      - name: Create Manifest
+        run: |
+          docker manifest create --insecure swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-amd swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-arm swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-amd --os linux --arch amd64
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-arm --os linux --arch arm64
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}-ppc64le --os linux --arch ppc64le
+          docker manifest push --insecure swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi:${{ steps.branch-names.outputs.tag }}
+          
+          docker manifest create --insecure swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-amd swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-arm swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-amd --os linux --arch amd64
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-arm --os linux --arch arm64
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}-ppc64le --os linux --arch ppc64le
+          docker manifest push --insecure swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-controller:${{ steps.branch-names.outputs.tag }}
+          
+          docker manifest create --insecure swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-amd swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-arm swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-amd --os linux --arch amd64
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-arm --os linux --arch arm64
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}-ppc64le --os linux --arch ppc64le
+          docker manifest push --insecure swr.cn-north-4.myhuaweicloud.com/huawei-css/storage-backend-sidecar:${{ steps.branch-names.outputs.tag }}
+
+          docker manifest create --insecure swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-amd swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-arm swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-ppc64le
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-amd --os linux --arch amd64
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-arm --os linux --arch arm64
+          docker manifest annotate swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }} swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}-ppc64le --os linux --arch ppc64le
+          docker manifest push --insecure swr.cn-north-4.myhuaweicloud.com/huawei-css/huawei-csi-extender:${{ steps.branch-names.outputs.tag }}
+      - name: Create Release and Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          body: TODO New Release.
+          draft: true
+          files: |
+            eSDK_Storage_CSI_V${{ steps.branch-names.outputs.tag }}_X86_64.zip
+            eSDK_Storage_CSI_V${{ steps.branch-names.outputs.tag }}_ARM_64.zip
+            eSDK_Storage_CSI_V${{ steps.branch-names.outputs.tag }}_PPC64LE_64.zip
