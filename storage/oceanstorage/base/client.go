@@ -19,16 +19,13 @@ package base
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
-	"net/http"
-	"net/http/cookiejar"
 	"slices"
 
-	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -38,8 +35,6 @@ var (
 	WrongPasswordErrorCodes = []int64{1077987870, 1077949081, 1077949061}
 	// AccountBeenLocked account been locked
 	AccountBeenLocked = []int64{1077949070, 1077987871}
-	// RequestSemaphoreMap stores the total connection num of each storage
-	RequestSemaphoreMap = map[string]*utils.Semaphore{UninitializedStorage: utils.NewSemaphore(MaxStorageThreads)}
 )
 
 // Response defines response of request
@@ -55,7 +50,7 @@ func (resp *Response) AssertErrorCode() error {
 		return err
 	}
 
-	if code != SuccessCode {
+	if code != storage.SuccessCode {
 		return fmt.Errorf("error code %d: [%v]", code, resp.Error["description"])
 	}
 
@@ -75,7 +70,7 @@ func (resp *Response) AssertErrorWithTolerations(ctx context.Context, toleration
 		return err
 	}
 
-	if code != SuccessCode {
+	if code != storage.SuccessCode {
 		tolerantIndex := slices.IndexFunc(tolerations, func(toleration ResponseToleration) bool {
 			return code == toleration.Code
 		})
@@ -124,64 +119,6 @@ func (resp *Response) getInt64Code() (int64, error) {
 	return code, nil
 }
 
-// HTTP defines for http request process
-type HTTP interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
-// NewHTTPClientByBackendID provides a new http client by backend id
-func NewHTTPClientByBackendID(ctx context.Context, backendID string) (HTTP, error) {
-	var defaultUseCert bool
-	client := &http.Client{
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: !defaultUseCert}},
-		Timeout:   defaultHttpTimeout,
-	}
-
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		log.AddContext(ctx).Errorf("create jar failed, error: %v", err)
-		return client, err
-	}
-
-	useCert, certMeta, err := pkgUtils.GetCertSecretFromBackendID(ctx, backendID)
-	if err != nil {
-		log.AddContext(ctx).Errorf("get cert secret from backend [%v] failed, error: %v", backendID, err)
-		return client, err
-	}
-
-	useCert, certPool, err := pkgUtils.GetCertPool(ctx, useCert, certMeta)
-	if err != nil {
-		log.AddContext(ctx).Errorf("get cert pool failed, error: %v", err)
-		return client, err
-	}
-
-	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool}}
-	client.Jar = jar
-	return client, nil
-}
-
-// NewHTTPClientByCertMeta provides a new http client by cert meta
-func NewHTTPClientByCertMeta(ctx context.Context, useCert bool, certMeta string) (HTTP, error) {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		log.AddContext(ctx).Errorf("create jar failed, error: %v", err)
-		return nil, err
-	}
-
-	useCert, certPool, err := pkgUtils.GetCertPool(ctx, useCert, certMeta)
-	if err != nil {
-		return nil, err
-	}
-
-	return &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: !useCert, RootCAs: certPool},
-		},
-		Jar:     jar,
-		Timeout: defaultHttpTimeout,
-	}, nil
-}
-
 // MaskRequestData masks the sensitive data
 func MaskRequestData(data map[string]any) map[string]any {
 	sensitiveKey := []string{"user", "password", "iqn", "tgt", "tgtname", "initiatorname"}
@@ -201,14 +138,14 @@ func MaskRequestData(data map[string]any) map[string]any {
 // NeedReLogin determine if it is necessary to log in to the storage again
 func NeedReLogin(r Response, err error) bool {
 	var unconnected, unauthorized, offline bool
-	if err != nil && err.Error() == Unconnected {
+	if err != nil && err.Error() == storage.Unconnected {
 		unconnected = true
 	}
 
 	if r.Error != nil {
 		if code, ok := r.Error["code"].(float64); ok {
-			unauthorized = int64(code) == UserUnauthorized
-			offline = int64(code) == UserOffline
+			unauthorized = int64(code) == storage.UserUnauthorized
+			offline = int64(code) == storage.UserOffline
 		}
 	}
 	return unconnected || unauthorized || offline
@@ -219,7 +156,7 @@ func GetBatchObjs(ctx context.Context, cli RestClientInterface, url string) ([]m
 	rangeStart := 0
 	var objList []map[string]interface{}
 	for {
-		rangeEnd := rangeStart + QueryCountPerBatch
+		rangeEnd := rangeStart + storage.QueryCountPerBatch
 		objs, err := getObj(ctx, cli, url, rangeStart, rangeEnd)
 		if err != nil {
 			return nil, err
@@ -230,7 +167,7 @@ func GetBatchObjs(ctx context.Context, cli RestClientInterface, url string) ([]m
 		}
 
 		objList = append(objList, objs...)
-		if len(objs) < QueryCountPerBatch {
+		if len(objs) < storage.QueryCountPerBatch {
 			break
 		}
 		rangeStart = rangeEnd

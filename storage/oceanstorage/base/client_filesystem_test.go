@@ -25,6 +25,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 )
 
 func (m *MockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -37,7 +39,7 @@ type MockTransport struct {
 }
 
 func getMockClient(statusCode int, body string) *FilesystemClient {
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	cli.Client = &http.Client{
 		Transport: &MockTransport{
 			Response: &http.Response{

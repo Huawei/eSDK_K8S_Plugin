@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -76,7 +77,7 @@ func (cli *FilesystemClient) DeleteFileSystem(ctx context.Context, params map[st
 	}
 
 	code := int64(resp.Error["code"].(float64))
-	if code == FilesystemNotExist {
+	if code == storage.FilesystemNotExist {
 		log.AddContext(ctx).Infof("Filesystem %s does not exist while deleting", params)
 		return nil
 	}
@@ -124,7 +125,7 @@ func (cli *FilesystemClient) GetNfsShareByPath(ctx context.Context,
 	}
 
 	code := int64(resp.Error["code"].(float64))
-	if code == SharePathInvalid {
+	if code == storage.SharePathInvalid {
 		log.AddContext(ctx).Infof("Nfs share of path %s does not exist", path)
 		return nil, nil
 	}
@@ -352,7 +353,7 @@ func (cli *FilesystemClient) CreateNfsShare(ctx context.Context,
 	}
 
 	code := int64(resp.Error["code"].(float64))
-	if code == ShareAlreadyExist || code == SharePathAlreadyExist {
+	if code == storage.ShareAlreadyExist || code == storage.SharePathAlreadyExist {
 		sharePath, ok := params["sharepath"].(string)
 		if !ok {
 			return nil, errors.New("convert sharepath to string failed")
@@ -363,9 +364,9 @@ func (cli *FilesystemClient) CreateNfsShare(ctx context.Context,
 		return share, err
 	}
 
-	if code == SystemBusy || code == MsgTimeOut {
+	if code == storage.SystemBusy || code == storage.MsgTimeOut {
 		for i := 0; i < 10; i++ {
-			time.Sleep(GetInfoWaitInternal)
+			time.Sleep(storage.GetInfoWaitInternal)
 			log.AddContext(ctx).Infof("Create nfs share timeout, try to Get info. The %d time", i+1)
 			share, err := cli.GetNfsShareByPath(ctx, params["sharepath"].(string), vStoreID)
 			if err != nil || share == nil {
@@ -421,7 +422,7 @@ func (cli *FilesystemClient) DeleteNfsShare(ctx context.Context, id, vStoreID st
 	}
 
 	code := int64(resp.Error["code"].(float64))
-	if code == ShareNotExist || code == NFSShareNotExist {
+	if code == storage.ShareNotExist || code == storage.NFSShareNotExist {
 		log.AddContext(ctx).Infof("Nfs share %s does not exist while deleting", id)
 		return nil
 	}

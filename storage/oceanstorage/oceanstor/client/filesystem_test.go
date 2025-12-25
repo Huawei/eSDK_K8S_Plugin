@@ -19,13 +19,16 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 )
 
 func TestOceanstorClient_SafeDeleteFileSystem_Success(t *testing.T) {
@@ -287,7 +290,7 @@ func TestOceanstorClient_GetFileSystemByName_DefaultVStore(t *testing.T) {
 
 	// Mock
 	mockClient := getMockClient(200, respBody)
-	mockClient.VStoreName = base.DefaultVStore
+	mockClient.VStoreName = storage.DefaultVStore
 
 	// Action
 	result, _ := mockClient.GetFileSystemByName(ctx, name)
@@ -416,4 +419,141 @@ func TestCreateFileSystem_MinimumCapacityNotReached(t *testing.T) {
 	// Assert
 	require.ErrorContains(t, err, "less than the minimum capacity")
 	require.ErrorContains(t, err, "Suggestion: Delete current PVC")
+}
+
+func TestModifyNfsShareAccess_Success(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	accessID := "1"
+	vStoreID := "0"
+	accessVal := constants.AuthClientReadOnly
+
+	successResp := `{"error":{"code":0}}`
+	mockClient := getMockClient(http.StatusOK, successResp)
+
+	// Action
+	err := mockClient.ModifyNfsShareAccess(ctx, accessID, vStoreID, accessVal)
+
+	// Assert
+	assert.NoError(t, err)
+}
+
+func TestModifyNfsShareAccess_APIError(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	accessID := "1"
+	vStoreID := "0"
+	accessVal := constants.AuthClientReadOnly
+
+	errorResp := `{"error":{"code":1077939726}}`
+	mockClient := getMockClient(200, errorResp)
+
+	// Action
+	gotErr := mockClient.ModifyNfsShareAccess(ctx, accessID, vStoreID, accessVal)
+
+	// Assert
+	require.ErrorContains(t, gotErr, "1077939726")
+}
+
+func TestCheckNfsShareAccessStatus_Success_AccessGranted(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	sharePath := "/mnt/nfs"
+	client := "192.168.1.1"
+	vStoreID := "vstore-789"
+	accessVal := constants.AuthClientReadWrite
+
+	successResp := `{ "data": { "status": "0" }, "error": { "code": 0, "description": "0" } }`
+	mockClient := getMockClient(200, successResp)
+
+	// Action
+	granted, err := mockClient.CheckNfsShareAccessStatus(ctx, sharePath, client, vStoreID, accessVal)
+
+	// Assert
+	require.NoError(t, err)
+	require.True(t, granted)
+}
+
+func TestCheckNfsShareAccessStatus_Success_AccessDenied(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	sharePath := "/mnt/nfs"
+	client := "192.168.1.1"
+	vStoreID := "vstore-789"
+	accessVal := constants.AuthClientNoAccess
+
+	successResp := `{ "data": { "status": "1" }, "error": { "code": 0, "description": "0" } }`
+	mockClient := getMockClient(200, successResp)
+
+	// Action
+	granted, err := mockClient.CheckNfsShareAccessStatus(ctx, sharePath, client, vStoreID, accessVal)
+
+	// Assert
+	require.NoError(t, err)
+	require.False(t, granted)
+}
+
+func TestCheckNfsShareAccessStatus_APIError(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	sharePath := "/mnt/nfs"
+	client := "192.168.1.1"
+	vStoreID := "vstore-789"
+	accessVal := constants.AuthClientReadOnly
+
+	errorResp := `{"error":{"code":1077939726}}`
+	mockClient := getMockClient(200, errorResp)
+
+	// Action
+	granted, err := mockClient.CheckNfsShareAccessStatus(ctx, sharePath, client, vStoreID, accessVal)
+
+	// Assert
+	require.Error(t, err)
+	require.False(t, granted)
+	require.Contains(t, err.Error(), "1077939726")
+}
+
+func TestCheckNfsShareAccessStatus_DataTypeError(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	sharePath := "/mnt/nfs"
+	client := "192.168.1.1"
+	vStoreID := "vstore-789"
+	accessVal := constants.AuthClientReadOnly
+
+	invalidDataResp := `{
+		"error": {"code": 0},
+		"data": "invalid-type"
+	}`
+	mockClient := getMockClient(200, invalidDataResp)
+
+	// Action
+	granted, err := mockClient.CheckNfsShareAccessStatus(ctx, sharePath, client, vStoreID, accessVal)
+
+	// Assert
+	require.Error(t, err)
+	require.False(t, granted)
+	require.Contains(t, err.Error(), "failed to convert response data")
+}
+
+func TestCheckNfsShareAccessStatus_StatusMissing(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	sharePath := "/mnt/nfs"
+	client := "192.168.1.1"
+	vStoreID := "vstore-789"
+	accessVal := constants.AuthClientReadOnly
+
+	missingStatusResp := `{
+		"error": {"code": 0},
+		"data": {}
+	}`
+	mockClient := getMockClient(200, missingStatusResp)
+
+	// Action
+	granted, err := mockClient.CheckNfsShareAccessStatus(ctx, sharePath, client, vStoreID, accessVal)
+
+	// Assert
+	require.ErrorContains(t, err, "failed to get status from response data")
+	require.False(t, granted)
 }

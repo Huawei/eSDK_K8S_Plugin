@@ -18,14 +18,19 @@
 package plugin
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/host"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 func Test_formatBaseClientConfig_UrlsMissing(t *testing.T) {
@@ -261,4 +266,147 @@ func Test_getVolumeNameFromPVNameOrParameters(t *testing.T) {
 		})
 	}
 
+}
+
+func Test_ValidateAndNewNfsAutoAuthClient_ProtocolNotNfs(t *testing.T) {
+	// arrange
+	params := map[string]any{
+		"protocol": "dpc",
+	}
+
+	// action
+	got, gotErr := validateAndNewNfsAutoAuthClient(params)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.Empty(t, got)
+}
+
+func Test_validateAndNewNfsAutoAuthClient_nfsAutoAuthClientDisabled(t *testing.T) {
+	// arrange
+	params := map[string]any{
+		"protocol":          constants.ProtocolNfs,
+		"nfsAutoAuthClient": false,
+	}
+	want := &NfsAutoAuthClient{
+		Enabled: false,
+		CIDRs:   nil,
+	}
+
+	// action
+	got, gotErr := validateAndNewNfsAutoAuthClient(params)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.Equal(t, want, got)
+}
+
+func Test_validateAndNewNfsAutoAuthClient_validCIDRs(t *testing.T) {
+	// arrange
+	params := map[string]any{
+		"protocol":               constants.ProtocolNfs,
+		"nfsAutoAuthClient":      true,
+		"nfsAutoAuthClientCIDRs": []any{"192.168.1.0/24", "10.0.0.0/8"},
+	}
+	want := &NfsAutoAuthClient{
+		Enabled: true,
+		CIDRs:   []string{"192.168.1.0/24", "10.0.0.0/8"},
+	}
+
+	// action
+	got, gotErr := validateAndNewNfsAutoAuthClient(params)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.Equal(t, want, got)
+}
+
+func Test_validateAndNewNfsAutoAuthClient_invalidCIDRFormat(t *testing.T) {
+	// arrange
+	params := map[string]any{
+		"protocol":               constants.ProtocolNfs,
+		"nfsAutoAuthClient":      true,
+		"nfsAutoAuthClientCIDRs": []any{"192.168.1.0/24", "invalid-cidr"},
+	}
+	var want *NfsAutoAuthClient = nil
+
+	// action
+	got, gotErr := validateAndNewNfsAutoAuthClient(params)
+
+	// assert
+	assert.Error(t, gotErr)
+	assert.Equal(t, want, got)
+}
+
+func Test_getFilteredIPs_success(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	cidrs := []string{"192.168.130.0/24"}
+	params := map[string]any{"HostName": "test-host"}
+	expectedIPs := []string{"192.168.1.10"}
+
+	// mock
+	patchHost := gomonkey.ApplyFuncReturn(host.GetNodeHostInfosFromSecret,
+		&host.NodeHostInfo{HostIPs: []string{"192.168.130.25", "10.0.0.5", "127.0.0.1"}}, nil).
+		ApplyFuncReturn(utils.FilterIPsByCIDRs, expectedIPs, nil)
+	defer patchHost.Reset()
+
+	// action
+	gotIPs, gotErr := getFilteredIPs(ctx, cidrs, params)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.Equal(t, expectedIPs, gotIPs)
+}
+
+func Test_getFilteredIPs_hostname_missing(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	cidrs := []string{"192.168.1.0/24"}
+	params := map[string]any{"InvalidKey": "test-host"}
+
+	// action
+	gotIPs, gotErr := getFilteredIPs(ctx, cidrs, params)
+
+	// assert
+	assert.ErrorContains(t, gotErr, "failed to get hostname from parameters")
+	assert.Nil(t, gotIPs)
+}
+
+func Test_getFilteredIPs_get_host_info_failure(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	cidrs := []string{"192.168.1.0/24"}
+	params := map[string]any{"HostName": "test-host"}
+
+	// mock
+	patchHost := gomonkey.ApplyFuncReturn(host.GetNodeHostInfosFromSecret, nil, fmt.Errorf("connection error"))
+	defer patchHost.Reset()
+
+	// action
+	gotIPs, gotErr := getFilteredIPs(ctx, cidrs, params)
+
+	// assert
+	assert.Error(t, gotErr)
+	assert.Nil(t, gotIPs)
+}
+
+func Test_getFilteredIPs_filter_ips_failure(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	cidrs := []string{"192.168.1.0/24"}
+	params := map[string]any{"HostName": "test-host"}
+
+	// mock
+	patchHost := gomonkey.ApplyFuncReturn(host.GetNodeHostInfosFromSecret,
+		&host.NodeHostInfo{HostIPs: []string{"192.168.1.10", "10.0.0.5"}}, nil).
+		ApplyFuncReturn(utils.FilterIPsByCIDRs, nil, fmt.Errorf("invalid cidr format"))
+	defer patchHost.Reset()
+
+	// action
+	gotIPs, gotErr := getFilteredIPs(ctx, cidrs, params)
+
+	// assert
+	assert.Error(t, gotErr)
+	assert.Nil(t, gotIPs)
 }

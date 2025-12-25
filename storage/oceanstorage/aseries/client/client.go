@@ -20,6 +20,7 @@ package client
 import (
 	"context"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -54,7 +55,7 @@ type OceanASeriesClient struct {
 }
 
 // NewClient inits a new client of oceanstor A-series client
-func NewClient(ctx context.Context, param *base.NewClientConfig) (*OceanASeriesClient, error) {
+func NewClient(ctx context.Context, param *storage.NewClientConfig) (*OceanASeriesClient, error) {
 	restClient, err := base.NewRestClient(ctx, param)
 	if err != nil {
 		return nil, err

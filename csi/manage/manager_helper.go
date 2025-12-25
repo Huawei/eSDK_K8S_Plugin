@@ -35,7 +35,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -106,7 +106,7 @@ func WithPortals(publishContext map[string]string, protocol string, portals, met
 ) BuildParameterOption {
 	return func(parameters map[string]interface{}) error {
 		if filesystemMode, ok := publishContext["filesystemMode"]; ok &&
-			filesystemMode == base.HyperMetroFilesystemMode && protocol == constants.ProtocolNfsPlus {
+			filesystemMode == storage.HyperMetroFilesystemMode && protocol == constants.ProtocolNfsPlus {
 			newPortals := append(portals, metroPortals...)
 			parameters["portals"] = newPortals
 			return nil
@@ -128,7 +128,7 @@ func WithConnector(conn connector.VolumeConnector) BuildParameterOption {
 // WithDeviceWWN build cid mount options for the request parameters
 func WithDeviceWWN(protocol, wwn string) BuildParameterOption {
 	return func(parameters map[string]interface{}) error {
-		if protocol != constants.ProtocolDtfs {
+		if protocol != constants.ProtocolDtfs || wwn == "" {
 			return nil
 		}
 
@@ -268,11 +268,28 @@ func NewManager(ctx context.Context, backendName string) (VolumeManager, error) 
 	return NewSanManager(ctx, backendConfig.protocol)
 }
 
+func getDeviceWWNForDtfs(ctx context.Context, backendName string, backendInfo map[string]interface{}) (string, error) {
+	_, ok := backendInfo["storageDeviceSN"]
+	if ok {
+		return "", nil
+	}
+	specifications, err := pkgUtils.GetSBCTSpecificationByClaim(ctx,
+		pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backendName))
+	if err != nil {
+		return "", err
+	}
+	deviceWWN, ok := specifications["DeviceWWN"]
+	if !ok {
+		return "", fmt.Errorf("get empty DeviceWWN while use %s protocol", constants.ProtocolDtfs)
+	}
+	return deviceWWN, nil
+}
+
 // GetBackendConfig returns a BackendConfig if specified backendName exists in configmap.
 // If backend doesn't exist in configmap, returns an error from call backend.GetBackendConfigmapByClaimName().
 // If parameters and protocol doesn't exist, a custom error will be returned.
 // If protocol exist and equal to nfs or nfs+, portals in parameters must exist, otherwise an error will be returned.
-// If protocol is dtfs, deviceWWN must exist.
+// If protocol is dtfs when use A-series local fs, deviceWWN must exist.
 func GetBackendConfig(ctx context.Context, backendName string) (*BackendConfig, error) {
 	backendInfo, err := getBackendConfigMap(ctx, backendName)
 	if err != nil {
@@ -283,23 +300,15 @@ func GetBackendConfig(ctx context.Context, backendName string) (*BackendConfig, 
 	if !ok {
 		return nil, fmt.Errorf("get backend info %v with invalid parameters", backendInfo)
 	}
-
 	protocol, ok := utils.GetValue[string](parameters, "protocol")
 	if !ok {
 		return nil, fmt.Errorf("protocol in parameters %v is invalid", parameters)
 	}
-
 	var deviceWWN string
 	if protocol == constants.ProtocolDtfs {
-		specifications, err := pkgUtils.GetSBCTSpecificationByClaim(ctx,
-			pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backendName))
+		deviceWWN, err = getDeviceWWNForDtfs(ctx, backendName, backendInfo)
 		if err != nil {
 			return nil, err
-		}
-
-		deviceWWN, ok = specifications["DeviceWWN"]
-		if !ok {
-			return nil, fmt.Errorf("get empty DeviceWWN while use %s protocol", constants.ProtocolDtfs)
 		}
 	}
 

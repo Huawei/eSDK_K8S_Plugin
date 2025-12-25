@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -117,7 +117,7 @@ func (p *SAN) Create(ctx context.Context, params map[string]interface{}) (utils.
 }
 
 // Query queries volume by name
-func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
+func (p *SAN) Query(ctx context.Context, name string, params map[string]interface{}) (utils.Volume, error) {
 	lun, err := p.cli.GetLunByName(ctx, name)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun by name %s error: %v", name, err)
@@ -126,6 +126,10 @@ func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
 
 	if lun == nil {
 		return nil, utils.Errorf(ctx, "lun [%s] to query does not exist", name)
+	}
+
+	if err = p.validateManageWorkLoadType(ctx, params, lun); err != nil {
+		return nil, err
 	}
 
 	volObj := utils.NewVolume(name)
@@ -139,6 +143,30 @@ func (p *SAN) Query(ctx context.Context, name string) (utils.Volume, error) {
 	}
 
 	return volObj, nil
+}
+
+func (p *SAN) validateManageWorkLoadType(ctx context.Context, params, lun map[string]interface{}) error {
+	err := p.setWorkLoadID(ctx, p.cli, params)
+	if err != nil {
+		return err
+	}
+
+	newWorkloadTypeID, ok := utils.GetValue[string](params, "workloadTypeID")
+	if !ok {
+		return nil
+	}
+
+	oldWorkloadTypeID, ok := utils.GetValue[string](lun, "WORKLOADTYPEID")
+	if !ok {
+		return nil
+	}
+
+	if newWorkloadTypeID != oldWorkloadTypeID {
+		return fmt.Errorf("the workload type is different between new [%s] and old [%s]",
+			newWorkloadTypeID, oldWorkloadTypeID)
+	}
+
+	return nil
 }
 
 // Delete deletes volume by name

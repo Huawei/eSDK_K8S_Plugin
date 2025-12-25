@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 )
 
@@ -55,13 +56,13 @@ func TestRestClient_ValidateLogin_AllUrlUnconnected(t *testing.T) {
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
 	patches.ApplyFuncReturn(pkgUtils.GetAuthInfoFromSecret, &pkgUtils.BackendAuthInfo{}, nil).
-		ApplyMethodReturn(cli, "BaseCall", base.Response{}, errors.New(base.Unconnected))
+		ApplyMethodReturn(cli, "BaseCall", base.Response{}, errors.New(storage.Unconnected))
 
 	// act
 	gotErr := cli.ValidateLogin(context.Background())
 
 	// assert
-	require.ErrorContains(t, gotErr, base.Unconnected)
+	require.ErrorContains(t, gotErr, storage.Unconnected)
 }
 
 func TestRestClient_ValidateLogin_NonConnectionError(t *testing.T) {

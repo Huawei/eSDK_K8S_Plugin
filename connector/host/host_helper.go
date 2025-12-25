@@ -45,6 +45,8 @@ const (
 type NodeHostInfo struct {
 	// HostName the name of host
 	HostName string `json:"hostName"`
+	// HostIPs the IP addresses of host
+	HostIPs []string `json:"hostIPs"`
 	// IscsiInitiator the initiator of ISCSI protocol
 	IscsiInitiator string `json:"iscsiInitiator"`
 	// FCInitiators the initiator of FC protocol
@@ -59,27 +61,33 @@ type NodeHostInfo struct {
 func NewNodeHostInfo(ctx context.Context) (*NodeHostInfo, error) {
 	hostName, err := utils.GetHostName(ctx)
 	if err != nil {
-		log.AddContext(ctx).Errorf("get host name error: [%v]", err)
+		log.AddContext(ctx).Errorf("failed to get host name: [%v]", err)
 		return nil, err
+	}
+
+	hostIPs, err := utils.GetHostIPs(ctx)
+	if err != nil {
+		log.AddContext(ctx).Warningf("failed to get host ips: [%v]", err)
 	}
 
 	iscsiInitiator, err := proto.GetISCSIInitiator(ctx)
 	if err != nil {
-		log.AddContext(ctx).Infof("get ISCSI initiator error: [%v]", err)
+		log.AddContext(ctx).Warningf("failed to get ISCSI initiator: [%v]", err)
 	}
 
 	fcInitiators, err := proto.GetFCInitiator(ctx)
 	if err != nil {
-		log.AddContext(ctx).Infof("get FC initiator error: [%v]", err)
+		log.AddContext(ctx).Warningf("failed to get FC initiator: [%v]", err)
 	}
 
 	roCEInitiator, err := proto.GetRoCEInitiator(ctx)
 	if err != nil {
-		log.AddContext(ctx).Infof("get RoCE initiator error: [%v]", err)
+		log.AddContext(ctx).Warningf("failed to get RoCE initiator: [%v]", err)
 	}
 
 	return &NodeHostInfo{
 		HostName:       strings.Trim(hostName, " "),
+		HostIPs:        hostIPs,
 		IscsiInitiator: iscsiInitiator,
 		FCInitiators:   fcInitiators,
 		RoCEInitiator:  roCEInitiator,

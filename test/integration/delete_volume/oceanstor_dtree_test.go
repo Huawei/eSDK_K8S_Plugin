@@ -46,7 +46,7 @@ func TestDeleteVolume_OceanstorDTree_Success(t *testing.T) {
 
 	// mock
 	p := gomonkey.NewPatches().ApplyMethodReturn(
-		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrByVolumeId",
+		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId",
 		data.fakeVolumeAttributes(), nil)
 	defer p.Reset()
 	cli.EXPECT().GetFileSystemByName(ctx, data.ParentName).Return(map[string]any{"ID": "1"}, nil)
@@ -121,12 +121,12 @@ func (f *oceanstorDTree) fakeDtreeInfo() map[string]any {
 	return map[string]any{"ID": f.FakeDTreeID}
 }
 
-func (f *oceanstorDTree) fakeVolumeAttributes() map[string]string {
-	return map[string]string{
+func (f *oceanstorDTree) fakeVolumeAttributes() []map[string]string {
+	return []map[string]string{{
 		"backend":                f.BackendName,
 		constants.DTreeParentKey: f.ParentName,
 		"name":                   f.DTreeName,
-	}
+	}}
 }
 
 func (f *oceanstorDTree) request() *csi.DeleteVolumeRequest {

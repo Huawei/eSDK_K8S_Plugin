@@ -49,7 +49,8 @@ const (
 	rootSquash   = 0
 	noRootSquash = 1
 
-	queryNfsSharePerPage int64 = 100
+	queryNfsSharePerPage     int64 = 100
+	checkAccessStatusTimeout       = 5 * time.Second
 )
 
 // ErrLogicPortFailOver indicates an error that logic port is fail over.
@@ -1266,6 +1267,17 @@ func (p *NAS) assertExpandSize(ctx context.Context, fsName string, curSize, newS
 	}
 
 	return nil
+}
+
+// AutoManageAuthClient manages auth client for nfs automatically
+func (p *NAS) AutoManageAuthClient(ctx context.Context, volume string, clients []string,
+	accessVal constants.AuthClientAccessVal) error {
+	return p.autoManageAuthClient(ctx, volume, clients, accessVal)
+}
+
+// CheckAllClientsStatus checks all status of each auth client
+func (p *NAS) CheckAllClientsStatus(ctx context.Context, volume string, authClients []string) error {
+	return p.checkAllClientsStatus(ctx, volume, authClients, false)
 }
 
 func isHyperMetroFromParams(params map[string]any) (bool, error) {

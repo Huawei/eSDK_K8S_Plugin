@@ -88,6 +88,10 @@ const (
 	FusionFileCapacityUnit int64 = 1024
 	// FusionDTreeCapacityUnit default is 1 Bytes, it is the capacity unit for FusionStorage DTree quota
 	FusionDTreeCapacityUnit int64 = 1
+	// DmeCapacityUnitGb default is 1GB, it is the capacity unit for Dme
+	DmeCapacityUnitGb int64 = 1024 * 1024 * 1024
+	// DmeCapacityUnitMb default is 1MB, it is the capacity unit for Dme
+	DmeCapacityUnitMb int64 = 1024 * 1024
 
 	// DefaultIntBase is the default value of int base
 	DefaultIntBase = 10
@@ -136,3 +140,15 @@ type DRCSIConfig struct {
 type DRCSISecret struct {
 	Secrets map[string]interface{} `json:"secrets"`
 }
+
+// AuthClientAccessVal is the access value of auth client
+type AuthClientAccessVal int
+
+const (
+	// AuthClientReadOnly means read only access
+	AuthClientReadOnly AuthClientAccessVal = 0
+	// AuthClientReadWrite means read and write access
+	AuthClientReadWrite AuthClientAccessVal = 1
+	// AuthClientNoAccess means no access
+	AuthClientNoAccess AuthClientAccessVal = 5
+)

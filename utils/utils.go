@@ -26,17 +26,14 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"os/exec"
 	"reflect"
 	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -175,73 +172,6 @@ func ExecShellCmdFilterLog(ctx context.Context, format string, args ...interface
 	return execShellCmdTimeout(ctx, execShellCmd, format, true, args...)
 }
 
-func execShellCmd(ctx context.Context, format string, logFilter bool, args ...interface{}) (string, bool, error) {
-	cmd := fmt.Sprintf(format, args...)
-	log.AddContext(ctx).Infof("Gonna run shell cmd \"%s\".", MaskSensitiveInfo(cmd))
-
-	execCmd := []string{"-i/proc/1/ns/ipc", "-m/proc/1/ns/mnt", "-n/proc/1/ns/net", "-u/proc/1/ns/uts", "/bin/sh",
-		"-c", cmd}
-	shCmd := exec.Command("nsenter", execCmd...)
-
-	killProcess := true
-	var killProcessAndSubprocess bool
-	timeoutDuration := time.Duration(app.GetGlobalConfig().ExecCommandTimeout) * time.Second
-	// Processes are not killed when formatting or capacity expansion commands time out.
-	if strings.Contains(cmd, "mkfs") || strings.Contains(cmd, "resize2fs") ||
-		strings.Contains(cmd, "xfs_growfs") {
-		timeoutDuration = longTimeout * time.Second
-		killProcess = false
-	} else if strings.Contains(cmd, "mount") {
-		killProcessAndSubprocess = true
-		shCmd.SysProcAttr = &syscall.SysProcAttr{}
-		shCmd.SysProcAttr.Setpgid = true
-	}
-
-	var timeout bool
-	var commandComplete bool
-	var output []byte
-	var err error
-	time.AfterFunc(timeoutDuration, func() {
-		timeout = true
-		if !killProcess {
-			return
-		}
-
-		// When the mount times out, the process and its subprocesses need to be killed.
-		if killProcessAndSubprocess {
-			if !commandComplete && len(output) == 0 && err == nil {
-				log.AddContext(ctx).Warningf(
-					"Exec mount command: [%s] time out, try to kill this processes and subprocesses. Pid: [%d].",
-					cmd, shCmd.Process.Pid)
-				errKill := syscall.Kill(-shCmd.Process.Pid, syscall.SIGKILL)
-				log.AddContext(ctx).Infof("Kill result: [%v]", errKill)
-			}
-			return
-		}
-
-		// Killing processes after other commands time out
-		if !commandComplete {
-			err = shCmd.Process.Kill()
-		}
-	})
-
-	output, err = shCmd.CombinedOutput()
-	commandComplete = true
-	if err != nil {
-		log.AddContext(ctx).Warningf("Run shell cmd \"%s\" output: [%s], error: [%v]", MaskSensitiveInfo(cmd),
-			MaskSensitiveInfo(output),
-			MaskSensitiveInfo(err))
-		return string(output), timeout, err
-	}
-
-	if !logFilter {
-		log.AddContext(ctx).Infof("Shell cmd \"%s\" result:\n%s", MaskSensitiveInfo(cmd),
-			MaskSensitiveInfo(output))
-	}
-
-	return string(output), timeout, nil
-}
-
 func GetSnapshotName(name string) string {
 	if len(name) <= 31 {
 		return name
@@ -290,15 +220,6 @@ func GetOriginSharePath(name string) string {
 
 func GetFSSharePath(name string) string {
 	return "/" + strings.Replace(name, "-", "_", -1) + "/"
-}
-
-func GetHostName(ctx context.Context) (string, error) {
-	hostname, err := ExecShellCmd(ctx, "hostname | xargs echo -n")
-	if err != nil {
-		return "", err
-	}
-
-	return hostname, nil
 }
 
 func SplitVolumeId(volumeId string) (string, string) {
@@ -487,36 +408,28 @@ func GetAlua(ctx context.Context, alua map[string]interface{}, host string) map[
 	return alua["*"].(map[string]interface{})
 }
 
-func fsInfo(path string) (int64, int64, int64, int64, int64, int64, error) {
-	statfs := &unix.Statfs_t{}
-	err := unix.Statfs(path, statfs)
-	if err != nil {
-		return 0, 0, 0, 0, 0, 0, err
-	}
-
-	capacity := int64(statfs.Blocks) * int64(statfs.Bsize)
-	available := int64(statfs.Bavail) * int64(statfs.Bsize)
-	used := (int64(statfs.Blocks) - int64(statfs.Bfree)) * int64(statfs.Bsize)
-
-	inodes := int64(statfs.Files)
-	inodesFree := int64(statfs.Ffree)
-	inodesUsed := inodes - inodesFree
-	return inodes, inodesFree, inodesUsed, available, capacity, used, nil
+type unixFsInfo struct {
+	inodes     int64
+	inodesFree int64
+	inodesUsed int64
+	available  int64
+	capacity   int64
+	usage      int64
 }
 
 func GetVolumeMetrics(path string) (*VolumeMetrics, error) {
 	volumeMetrics := &VolumeMetrics{}
 
-	inodes, inodesFree, inodesUsed, available, capacity, usage, err := fsInfo(path)
+	unixFsInfo, err := fsInfo(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get FsInfo, error %v", err)
 	}
-	volumeMetrics.Inodes = resource.NewQuantity(inodes, resource.BinarySI)
-	volumeMetrics.InodesFree = resource.NewQuantity(inodesFree, resource.BinarySI)
-	volumeMetrics.InodesUsed = resource.NewQuantity(inodesUsed, resource.BinarySI)
-	volumeMetrics.Available = resource.NewQuantity(available, resource.BinarySI)
-	volumeMetrics.Capacity = resource.NewQuantity(capacity, resource.BinarySI)
-	volumeMetrics.Used = resource.NewQuantity(usage, resource.BinarySI)
+	volumeMetrics.Inodes = resource.NewQuantity(unixFsInfo.inodes, resource.BinarySI)
+	volumeMetrics.InodesFree = resource.NewQuantity(unixFsInfo.inodesFree, resource.BinarySI)
+	volumeMetrics.InodesUsed = resource.NewQuantity(unixFsInfo.inodesUsed, resource.BinarySI)
+	volumeMetrics.Available = resource.NewQuantity(unixFsInfo.available, resource.BinarySI)
+	volumeMetrics.Capacity = resource.NewQuantity(unixFsInfo.capacity, resource.BinarySI)
+	volumeMetrics.Used = resource.NewQuantity(unixFsInfo.usage, resource.BinarySI)
 
 	return volumeMetrics, nil
 }

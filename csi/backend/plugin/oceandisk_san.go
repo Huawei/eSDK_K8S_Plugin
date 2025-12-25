@@ -23,7 +23,7 @@ import (
 
 	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/proto"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/attacher"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/volume"
@@ -104,10 +104,11 @@ func (p *OceandiskSanPlugin) CreateVolume(ctx context.Context, name string,
 }
 
 // QueryVolume used to query volume
-func (p *OceandiskSanPlugin) QueryVolume(ctx context.Context, name string, params map[string]interface{}) (
+func (p *OceandiskSanPlugin) QueryVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
+	params := getParams(ctx, name, parameters)
 	san := p.getSanObj()
-	return san.Query(ctx, name)
+	return san.Query(ctx, name, params)
 }
 
 // DeleteVolume used to delete volume
@@ -207,8 +208,8 @@ func (p *OceandiskSanPlugin) Validate(ctx context.Context, param map[string]inte
 }
 
 func (p *OceandiskSanPlugin) getNewClientConfig(ctx context.Context,
-	param map[string]interface{}) (*base.NewClientConfig, error) {
-	data := &base.NewClientConfig{}
+	param map[string]interface{}) (*storage.NewClientConfig, error) {
+	data := &storage.NewClientConfig{}
 	configUrls, ok := utils.GetValue[[]interface{}](param, "urls")
 	if !ok || len(configUrls) <= 0 {
 		return data, fmt.Errorf("verify urls: [%v] failed. urls must be provided", param["urls"])

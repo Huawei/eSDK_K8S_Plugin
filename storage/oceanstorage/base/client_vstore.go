@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -136,10 +137,10 @@ func (cli *VStoreClient) GetvStorePairByID(ctx context.Context, pairID string) (
 
 // GetvStoreName used for get vstore name in oceanstor client
 func (cli *VStoreClient) GetvStoreName() string {
-	return DefaultVStore
+	return storage.DefaultVStore
 }
 
 // GetvStoreID used for get vstore ID in oceanstor client
 func (cli *VStoreClient) GetvStoreID() string {
-	return DefaultVStoreID
+	return storage.DefaultVStoreID
 }

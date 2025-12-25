@@ -35,8 +35,9 @@ import (
 type OceanstorDTreePlugin struct {
 	OceanstorPlugin
 
-	portals    []string
-	parentName string
+	portals           []string
+	parentName        string
+	nfsAutoAuthClient *NfsAutoAuthClient
 }
 
 func init() {
@@ -62,14 +63,17 @@ func (p *OceanstorDTreePlugin) Init(ctx context.Context, config map[string]inter
 	var err error
 	_, p.portals, err = verifyProtocolAndPortals(parameters, constants.OceanStorDtree)
 	if err != nil {
-		log.Errorf("verify protocol and portals failed, err: %v", err)
-		return err
+		return fmt.Errorf("verify protocol and portals failed: %w", err)
+	}
+
+	p.nfsAutoAuthClient, err = validateAndNewNfsAutoAuthClient(parameters)
+	if err != nil {
+		return fmt.Errorf("validate nfs auto auth client failed: %w", err)
 	}
 
 	err = p.init(ctx, config, keepLogin)
 	if err != nil {
-		log.AddContext(ctx).Errorf("init dtree plugin failed, data:")
-		return err
+		return fmt.Errorf("init dtree plugin failed: %w", err)
 	}
 
 	return nil
@@ -156,9 +160,65 @@ func (p *OceanstorDTreePlugin) ExpandDTreeVolume(ctx context.Context,
 }
 
 // AttachVolume attach volume to node and return storage mapping info.
-func (p *OceanstorDTreePlugin) AttachVolume(_ context.Context, _ string, parameters map[string]any) (map[string]any,
-	error) {
-	return attachDTreeVolume(parameters)
+func (p *OceanstorDTreePlugin) AttachVolume(ctx context.Context, volume string,
+	parameters map[string]any) (map[string]any, error) {
+	res, err := attachDTreeVolume(parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	if !p.nfsAutoAuthClient.Enabled {
+		return res, nil
+	}
+
+	parentName, ok := utils.GetValue[string](res, constants.DTreeParentKey)
+	if !ok {
+		parentName = p.parentName
+	}
+	if parentName == "" {
+		return nil, fmt.Errorf("failed to get parent name of dtree %v", volume)
+	}
+
+	authClients, err := getFilteredIPs(ctx, p.nfsAutoAuthClient.CIDRs, parameters)
+	if err != nil {
+		return nil, fmt.Errorf("failed to attach volume %s: %w", volume, err)
+	}
+
+	return res, p.getDTreeObj().AutoManageAuthClient(ctx, volume, parentName, authClients,
+		constants.AuthClientReadWrite)
+}
+
+// DetachVolume detach volume from node
+func (p *OceanstorDTreePlugin) DetachVolume(ctx context.Context, volume string,
+	parameters map[string]interface{}) error {
+	if !p.nfsAutoAuthClient.Enabled {
+		return nil
+	}
+
+	parentName, ok := utils.GetValue[string](parameters, constants.DTreeParentKey)
+	if !ok {
+		return fmt.Errorf("failed to get parent name of dtree %v", volume)
+	}
+
+	authClients, err := getFilteredIPs(ctx, p.nfsAutoAuthClient.CIDRs, parameters)
+	if err != nil {
+		return fmt.Errorf("failed to detach volume %s: %w", volume, err)
+	}
+
+	dtree := p.getDTreeObj()
+	if err := dtree.AutoManageAuthClient(ctx, volume, parentName, authClients,
+		constants.AuthClientNoAccess); err != nil {
+		return fmt.Errorf("failed to auto manage auth client: %w", err)
+	}
+
+	ioIsolation, _ := utils.GetValue[bool](parameters, "IOIsolation")
+	if ioIsolation {
+		if err := dtree.CheckAllClientsStatus(ctx, volume, parentName, authClients); err != nil {
+			return fmt.Errorf("failed to check i/o isolation: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // DeleteVolume used to delete volume
@@ -299,4 +359,12 @@ func (p *OceanstorDTreePlugin) SetParentName(parentName string) {
 // GetDTreeParentName gets the parent name of dtree plugin
 func (p *OceanstorDTreePlugin) GetDTreeParentName() string {
 	return p.parentName
+}
+
+// SetNfsAutoAuthClient sets the nfsAutoAuthClient of Oceanstor DTree plugin
+func (p *OceanstorDTreePlugin) SetNfsAutoAuthClient(enabled bool, cidrs []string) {
+	p.nfsAutoAuthClient = &NfsAutoAuthClient{
+		Enabled: enabled,
+		CIDRs:   cidrs,
+	}
 }

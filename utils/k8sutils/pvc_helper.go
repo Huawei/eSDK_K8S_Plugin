@@ -53,12 +53,16 @@ func (k *KubeClient) GetVolumeConfiguration(ctx context.Context, pvName string) 
 	log.AddContext(ctx).Infof("Start to get volume %s configuration.", pvName)
 	// Get the PVC corresponding to the new PV being provisioned
 	pvcUID := strings.TrimPrefix(pvName, fmt.Sprintf("%s-", k.volumeNamePrefix))
-	pvc, err := k.pvcAccessor.GetByIndex(uidIndex, pvcUID)
+	pvcs, err := k.pvcAccessor.GetByIndex(uidIndex, pvcUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return pvc.Annotations, nil
+	if len(pvcs) != 1 {
+		return nil, fmt.Errorf("get %d number of pvcs in cache by uid %s", len(pvcs), pvcUID)
+	}
+
+	return pvcs[0].Annotations, nil
 }
 
 func initPVCAccessor(helper *KubeClient) error {

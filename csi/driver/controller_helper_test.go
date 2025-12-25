@@ -268,7 +268,7 @@ func Test_VerifySectorSize_Success(t *testing.T) {
 	// mock
 	patches := gomonkey.ApplyMethodReturn(backend.Plugin,
 		"GetSectorSize", int64(constants.AllocationUnitBytes)).
-		ApplyMethodReturn(app.GetGlobalConfig().K8sUtils, "GetVolumeAttrByVolumeId", nil, nil).
+		ApplyMethodReturn(app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId", nil, nil).
 		ApplyFuncReturn(utils.GetValueOrFallback[string], "true")
 	defer patches.Reset()
 
@@ -291,8 +291,8 @@ func Test_VerifySectorSize_CapacityNotMultiple(t *testing.T) {
 	// mock
 	patches := gomonkey.ApplyMethodReturn(backend.Plugin,
 		"GetSectorSize", int64(constants.AllocationUnitBytes)).
-		ApplyMethodReturn(app.GetGlobalConfig().K8sUtils, "GetVolumeAttrByVolumeId", map[string]string{
-			constants.DisableVerifyCapacityKey: "false"}, nil).
+		ApplyMethodReturn(app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId", []map[string]string{{
+			constants.DisableVerifyCapacityKey: "false"}}, nil).
 		ApplyFuncReturn(utils.GetValueOrFallback[string], "true")
 	defer patches.Reset()
 

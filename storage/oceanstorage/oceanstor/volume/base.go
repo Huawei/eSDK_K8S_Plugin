@@ -21,12 +21,17 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/smartx"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume/creator"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/concurrent"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -186,7 +191,8 @@ func (p *Base) preExpandCheckCapacity(ctx context.Context,
 	// check the local pool
 	localParentName, ok := params["localParentName"].(string)
 	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "convert localParentName to string failed, data: %v", params["localParentName"])
+		return nil, pkgUtils.Errorf(ctx, "convert localParentName to string failed, data: %v",
+			params["localParentName"])
 	}
 
 	pool, err := p.cli.GetPoolByName(ctx, localParentName)
@@ -296,5 +302,161 @@ func (p *Base) getMetroPairSyncSpeed(_ context.Context, params map[string]interf
 		params["metropairsyncspeed"] = speed
 	}
 
+	return nil
+}
+
+func (p *Base) autoManageAuthClient(ctx context.Context, volume string, clients []string,
+	accessVal constants.AuthClientAccessVal) error {
+	sharePath := utils.GetOriginSharePath(volume)
+	vstoreID := p.cli.GetvStoreID()
+	share, err := p.cli.GetNfsShareByPath(ctx, sharePath, vstoreID)
+	if err != nil {
+		return fmt.Errorf("failed to get share %s NFS share by path: %w", sharePath, err)
+	}
+	if share == nil || share["ID"] == "" {
+		if accessVal == constants.AuthClientNoAccess {
+			log.AddContext(ctx).Infof("share %s does not exist, already no access permission", sharePath)
+			return nil
+		}
+		return fmt.Errorf("nfs share %s does not exist", sharePath)
+	}
+	shareID, _ := utils.GetValue[string](share, "ID")
+
+	for _, authClient := range clients {
+		if err := p.createOrUpdateAuthClient(ctx, shareID, authClient, accessVal); err != nil {
+			return fmt.Errorf("failed to create or update auth client of share %s: %w", sharePath, err)
+		}
+	}
+	return nil
+}
+
+func (p *Base) getExistingAuthClientAttr(ctx context.Context, shareID, name string,
+	accessVal int) (*base.AllowNfsShareAccessRequest, error) {
+	// Get existing auth client to copy its attributes
+	clients, err := p.cli.GetNfsShareAccessRange(ctx, shareID, p.cli.GetvStoreID(), 0, 1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get auth client")
+	}
+
+	defaultReq := &base.AllowNfsShareAccessRequest{
+		Name:        name,
+		ParentID:    shareID,
+		VStoreID:    p.cli.GetvStoreID(),
+		AccessVal:   accessVal,
+		AllSquash:   constants.NoAllSquashValue,
+		RootSquash:  constants.NoRootSquashValue,
+		AccessKrb5:  creator.AccessKrb5ReadNoneInt,
+		AccessKrb5i: creator.AccessKrb5ReadNoneInt,
+		AccessKrb5p: creator.AccessKrb5ReadNoneInt,
+	}
+
+	if len(clients) == 0 {
+		return defaultReq, nil
+	}
+
+	authClient, ok := clients[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("convert client %v to map[string]interface{} failed", clients[0])
+	}
+	allSquash, _ := utils.GetValue[string](authClient, "ALLSQUASH")
+	defaultReq.AllSquash, err = strconv.Atoi(allSquash)
+	if err != nil {
+		return nil, fmt.Errorf("convert allSquash %v to int failed", allSquash)
+	}
+
+	rootSquash, _ := utils.GetValue[string](authClient, "ROOTSQUASH")
+	defaultReq.RootSquash, err = strconv.Atoi(rootSquash)
+	if err != nil {
+		return nil, fmt.Errorf("convert rootSquash %v to int failed", rootSquash)
+	}
+
+	accessKrb5, _ := utils.GetValue[string](authClient, "ACCESSKRB5")
+	defaultReq.AccessKrb5, err = strconv.Atoi(accessKrb5)
+	if err != nil {
+		return nil, fmt.Errorf("convert accessKrb5 %v to int failed", accessKrb5)
+	}
+
+	accessKrb5i, _ := utils.GetValue[string](authClient, "ACCESSKRB5I")
+	defaultReq.AccessKrb5i, err = strconv.Atoi(accessKrb5i)
+	if err != nil {
+		return nil, fmt.Errorf("convert accessKrb5i %v to int failed", accessKrb5i)
+	}
+
+	accessKrb5p, _ := utils.GetValue[string](authClient, "ACCESSKRB5P")
+	defaultReq.AccessKrb5p, err = strconv.Atoi(accessKrb5p)
+	if err != nil {
+		return nil, fmt.Errorf("convert accessKrb5p %v to int failed", accessKrb5p)
+	}
+
+	return defaultReq, nil
+}
+
+func (p *Base) createOrUpdateAuthClient(ctx context.Context, shareID, authClientName string,
+	accessVal constants.AuthClientAccessVal) error {
+	vstoreID := p.cli.GetvStoreID()
+	authClient, err := p.cli.GetNfsShareAccess(ctx, shareID, authClientName, vstoreID)
+	if err != nil {
+		return fmt.Errorf("failed to get auth client access: %w", err)
+	}
+
+	if authClient == nil {
+		req, err := p.getExistingAuthClientAttr(ctx, shareID, authClientName, int(accessVal))
+		if err != nil {
+			return fmt.Errorf("failed to get existing auth client attr: %w", err)
+		}
+		if err := p.cli.AllowNfsShareAccess(ctx, req); err != nil {
+			return fmt.Errorf("failed to allow auth client access: %w", err)
+		}
+	} else {
+		authClientID, ok := utils.GetValue[string](authClient, "ID")
+		if !ok {
+			return fmt.Errorf("failed to get ID field from auth client: %v", authClient)
+		}
+		if err := p.cli.ModifyNfsShareAccess(ctx, authClientID, vstoreID, accessVal); err != nil {
+			return fmt.Errorf("failed to modify auth client access: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (p *Base) checkAllClientsStatus(ctx context.Context, volume string, authClients []string, expectStats bool) error {
+	sharePath := "/" + volume
+	// Concurrently check each auth client.
+	results := concurrent.ForEach(ctx, authClients, len(authClients), func(ctx context.Context,
+		authClient string) (bool, error) {
+		var res bool
+		// Wait until the access status is allowed.
+		err := utils.WaitUntil(func() (bool, error) {
+			status, err := p.cli.CheckNfsShareAccessStatus(ctx, sharePath, authClient, p.cli.GetvStoreID(),
+				constants.AuthClientReadWrite)
+			if err != nil && strings.Contains(err.Error(), "invalid character 'S' looking for beginning of value") {
+				log.AddContext(ctx).Warningf(
+					"The current storage version does not support to check the client status.")
+				res = true
+				return res, nil
+			}
+			res = status == expectStats
+			return res, err
+		}, checkAccessStatusTimeout, time.Second)
+
+		return res, err
+	})
+
+	// Collect results.
+	var err error
+	for _, result := range results {
+		if result.Err != nil {
+			err = errors.Join(err, result.Err)
+			continue
+		}
+
+		if !result.Value {
+			err = errors.Join(err, errors.New("check status of clients failed"))
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check all clients status: %w", err)
+	}
 	return nil
 }

@@ -18,44 +18,61 @@
 package k8sutils
 
 import (
-	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
 const volumeIdIndex = "volumeId"
 
-// GetVolumeAttrByVolumeId returns volume attributes of PV by volume id
-func (k *KubeClient) GetVolumeAttrByVolumeId(volumeId string) (map[string]string, error) {
-	volume, err := k.pvAccessor.GetByIndex(volumeIdIndex, volumeId)
+// GetVolumeAttrsByVolumeId returns volume attributes of PV by volume id
+func (k *KubeClient) GetVolumeAttrsByVolumeId(volumeId string) ([]map[string]string, error) {
+	volumes, err := k.pvAccessor.GetByIndex(volumeIdIndex, volumeId)
 	if err != nil {
 		return nil, fmt.Errorf("get pv %s by index failed: %v", volumeId, err)
 	}
 
-	if volume.Spec.CSI == nil {
-		return nil, errors.New("CSI volume attribute missing from PV")
+	res := make([]map[string]string, 0, len(volumes))
+	for _, volume := range volumes {
+		if volume.Spec.CSI == nil || volume.Spec.CSI.VolumeAttributes == nil {
+			log.Warningf("CSI volume attribute missing from PV with volume ID %s", volumeId)
+			continue
+		}
+
+		res = append(res, volume.Spec.CSI.VolumeAttributes)
 	}
 
-	return volume.Spec.CSI.VolumeAttributes, nil
+	return res, nil
 }
 
 // GetDTreeParentNameByVolumeId returns dDTreeParentname field of PV by volume id
 func (k *KubeClient) GetDTreeParentNameByVolumeId(volumeId string) (string, error) {
-	volumeAttrs, err := k.GetVolumeAttrByVolumeId(volumeId)
+	volumeAttrs, err := k.GetVolumeAttrsByVolumeId(volumeId)
 	if err != nil {
 		return "", fmt.Errorf("failed to get volume atrributes by volume id %q: %v", volumeId, err)
 	}
 
-	parentname, ok := volumeAttrs[constants.DTreeParentKey]
+	if len(volumeAttrs) == 0 {
+		return "", fmt.Errorf("volume attrs %q does not exist", volumeId)
+	}
+
+	value, ok := volumeAttrs[0][constants.DTreeParentKey]
 	if !ok {
 		return "", fmt.Errorf("dTreeParentName field of volume %q is not exist", volumeId)
 	}
 
-	return parentname, nil
+	for _, volumeAttr := range volumeAttrs {
+		if value != volumeAttr[constants.DTreeParentKey] {
+			return "", fmt.Errorf("attrs %s in pvs with same volume ID %s is confict",
+				constants.DTreeParentKey, volumeId)
+		}
+	}
+
+	return value, nil
 }
 
 // volumeIdKeyFunc is a default index function that indexes based on volume id

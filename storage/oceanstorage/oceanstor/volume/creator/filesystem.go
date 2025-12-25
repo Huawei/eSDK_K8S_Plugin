@@ -24,7 +24,7 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgutils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -56,7 +56,7 @@ func NewFsCreatorFromParams(cli client.OceanstorClientInterface,
 
 	creator := &FilesystemCreator{
 		BaseCreator:       baseCreator,
-		fileSystemMode:    base.LocalFilesystemMode,
+		fileSystemMode:    storage.LocalFilesystemMode,
 		unixPermissions:   params.FsPermission(),
 		workloadTypeID:    params.WorkloadTypeID(),
 		advancedOptions:   params.AdvancedOptions(),
@@ -65,12 +65,12 @@ func NewFsCreatorFromParams(cli client.OceanstorClientInterface,
 	}
 
 	if params.IsHyperMetro() {
-		creator.fileSystemMode = base.HyperMetroFilesystemMode
+		creator.fileSystemMode = storage.HyperMetroFilesystemMode
 	} else if params.FilesystemMode() != "" {
 		creator.fileSystemMode = params.FilesystemMode()
 	}
 
-	if creator.fileSystemMode == base.HyperMetroFilesystemMode {
+	if creator.fileSystemMode == storage.HyperMetroFilesystemMode {
 		creator.vStoreId = creator.cli.GetvStoreID()
 	}
 
@@ -189,7 +189,7 @@ func (creator *FilesystemCreator) genCreateRequest(ctx context.Context, poolId s
 		}
 	}
 
-	if creator.fileSystemMode == base.HyperMetroFilesystemMode {
+	if creator.fileSystemMode == storage.HyperMetroFilesystemMode {
 		req["vstoreId"] = creator.vStoreId
 	}
 

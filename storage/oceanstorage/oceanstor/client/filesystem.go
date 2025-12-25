@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -47,6 +49,11 @@ type OceanstorFilesystem interface {
 	GetFileSystemByName(ctx context.Context, name string) (map[string]interface{}, error)
 	// CreateFileSystem used for create file system
 	CreateFileSystem(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error)
+	// ModifyNfsShareAccess modifies nfs share auth client access value
+	ModifyNfsShareAccess(ctx context.Context, accessID, vStoreID string, accessVal constants.AuthClientAccessVal) error
+	// CheckNfsShareAccessStatus checks access status of nfs share
+	CheckNfsShareAccessStatus(ctx context.Context, sharePath, client, vStoreID string,
+		accessVal constants.AuthClientAccessVal) (bool, error)
 }
 
 // SafeDeleteFileSystem used for delete file system
@@ -132,7 +139,7 @@ func (cli *OceanstorClient) CreateFileSystem(ctx context.Context, params map[str
 	code := int64(resp.Error["code"].(float64))
 	if code == systemBusy || code == msgTimeOut {
 		for i := 0; i < 10; i++ {
-			time.Sleep(base.GetInfoWaitInternal)
+			time.Sleep(storage.GetInfoWaitInternal)
 			log.AddContext(ctx).Infof("Create filesystem timeout, try to get info. The %d time", i+1)
 			fsInfo, err := cli.GetFileSystemByName(ctx, params["name"].(string))
 			if err != nil || fsInfo == nil {
@@ -148,6 +155,55 @@ func (cli *OceanstorClient) CreateFileSystem(ctx context.Context, params map[str
 		return nil, err
 	}
 	return cli.getResponseDataMap(ctx, resp.Data)
+}
+
+// ModifyNfsShareAccess modifies nfs share auth client access value
+func (cli *OceanstorClient) ModifyNfsShareAccess(ctx context.Context, accessID, vStoreID string,
+	accessVal constants.AuthClientAccessVal) error {
+	req := map[string]any{
+		"ID":        accessID,
+		"vstoreId":  vStoreID,
+		"ACCESSVAL": accessVal,
+	}
+	resp, err := cli.Put(ctx, "/NFS_SHARE_AUTH_CLIENT", req)
+	if err != nil {
+		return err
+	}
+
+	return resp.AssertErrorCode()
+}
+
+// CheckNfsShareAccessStatus checks access status of nfs share
+func (cli *OceanstorClient) CheckNfsShareAccessStatus(ctx context.Context, sharePath, client, vStoreID string,
+	accessVal constants.AuthClientAccessVal) (bool, error) {
+	req := map[string]any{
+		"vstoreId":  vStoreID,
+		"NAME":      client,
+		"SHAREPATH": sharePath,
+	}
+	if accessVal != constants.AuthClientNoAccess {
+		req["ACCESSVAL"] = accessVal
+	}
+
+	resp, err := cli.Get(ctx, "/NFS_SHARE_AUTH_CLIENT/test_effective", req)
+	if err != nil {
+		return false, err
+	}
+
+	if err := resp.AssertErrorCode(); err != nil {
+		return false, err
+	}
+
+	respData, ok := resp.Data.(map[string]any)
+	if !ok {
+		return false, fmt.Errorf("failed to convert response data: %v", resp)
+	}
+	status, ok := utils.GetValue[string](respData, "status")
+	if !ok {
+		return false, fmt.Errorf("failed to get status from response data, response: %v", respData)
+	}
+
+	return status == "0", nil
 }
 
 func dealCreateFSError(ctx context.Context, code int64) error {

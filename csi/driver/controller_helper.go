@@ -135,12 +135,27 @@ func verifyExpandArguments(ctx context.Context, req *csi.ControllerExpandVolumeR
 }
 
 func verifySectorSize(ctx context.Context, volumeId string, backend *model.Backend, minSize int64) error {
-	volumeAttrs, err := app.GetGlobalConfig().K8sUtils.GetVolumeAttrByVolumeId(volumeId)
+	volumeAttrs, err := app.GetGlobalConfig().K8sUtils.GetVolumeAttrsByVolumeId(volumeId)
 	if err != nil {
-		return status.Error(codes.InvalidArgument, fmt.Sprintf("failed to verify expand arguments: %v", err))
+		// skip the verification when get volume attrs failed.
+		log.Warningf("Get volume attrs failed: %v", err)
+		return nil
 	}
 
-	return utils.IsCapacityAvailable(minSize, backend.Plugin.GetSectorSize(), utils.CopyMap(volumeAttrs))
+	if len(volumeAttrs) == 0 {
+		return nil
+	}
+
+	value := volumeAttrs[0][constants.DisableVerifyCapacityKey]
+	for _, volumeAttr := range volumeAttrs {
+		if value != volumeAttr[constants.DisableVerifyCapacityKey] {
+			log.Warningf("Attrs %s in pvs with same volume ID %s is confict",
+				constants.DisableVerifyCapacityKey, volumeId)
+			return nil
+		}
+	}
+
+	return utils.IsCapacityAvailable(minSize, backend.Plugin.GetSectorSize(), utils.CopyMap(volumeAttrs[0]))
 }
 
 func isSupportExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest, b *model.Backend) (

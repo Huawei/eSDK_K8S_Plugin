@@ -37,8 +37,6 @@ func TestResourceAccessor_GetByIndex_Success(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset()
 	factory := informers.NewSharedInformerFactory(fakeClient, 0)
 	FactoryCh := make(chan struct{})
-	go factory.Start(FactoryCh)
-	defer close(FactoryCh)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	testPvcKey := func(obj any) ([]string, error) {
@@ -53,15 +51,18 @@ func TestResourceAccessor_GetByIndex_Success(t *testing.T) {
 	accessor, _ := NewResourceAccessor[*corev1.PersistentVolumeClaim](
 		factory.Core().V1().PersistentVolumeClaims().Informer(),
 		WithIndexers[*corev1.PersistentVolumeClaim](cache.Indexers{"test-index": testPvcKey}))
+	factory.Start(FactoryCh)
+	defer close(FactoryCh)
 	fakeClient.CoreV1().PersistentVolumeClaims(corev1.NamespaceDefault).
 		Create(ctx, genFakePvc("fake-pvc"), metav1.CreateOptions{})
 
 	// action
 	wg.Wait()
-	pvc, err := accessor.GetByIndex("test-index", "fake-pvc")
+	pvcs, err := accessor.GetByIndex("test-index", "fake-pvc")
 
 	// assert
 	assert.NoError(t, err)
-	assert.NotNil(t, pvc)
-	assert.Equal(t, pvc.Name, "fake-pvc")
+	assert.Equal(t, 1, len(pvcs))
+	assert.NotNil(t, pvcs[0])
+	assert.Equal(t, pvcs[0].Name, "fake-pvc")
 }

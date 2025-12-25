@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -338,7 +339,8 @@ func TestXfsResize(t *testing.T) {
 		wantErr bool
 	}{
 		{"Normal", args{context.TODO(), "device path"}, outputs{"normal cmd output", nil}, false},
-		{"ErrorOutput", args{context.TODO(), "device path"}, outputs{"unnormal cmd output", errors.New("test error")}, true},
+		{"ErrorOutput", args{context.TODO(), "device path"}, outputs{"unnormal cmd output", errors.New("test error")},
+			true},
 	}
 
 	stub := utils.ExecShellCmd
@@ -475,7 +477,8 @@ func TestWatchDMDevice(t *testing.T) {
 
 		stubs.Stub(&utils.ExecShellCmd, func(ctx context.Context, format string, args ...interface{}) (string, error) {
 			if time.Now().Sub(startTime) > c.aggregatedTime {
-				return fmt.Sprintf("name    sysfs uuid                             \nmpathja %s  %s", c.lunName, c.lunWWN), nil
+				return fmt.Sprintf("name    sysfs uuid                             \nmpathja %s  %s", c.lunName,
+					c.lunWWN), nil
 			} else {
 				return "", errors.New("err")
 			}
@@ -627,13 +630,13 @@ func TestGetDeviceFromSymLink(t *testing.T) {
 	}{
 		{
 			name:       "test_get_link_device_from_target_path",
-			targetPath: path.Join(tempDir, mockTargetName),
-			want:       path.Join(tempDir, mockDeviceName),
+			targetPath: filepath.Join(tempDir, mockTargetName),
+			want:       filepath.Join(tempDir, mockDeviceName),
 			wantErr:    false,
 		},
 		{
 			name:       "test_target_path_without_link_device",
-			targetPath: path.Join(tempDir, mockTargetNameWithoutLink),
+			targetPath: filepath.Join(tempDir, mockTargetNameWithoutLink),
 			want:       "",
 			wantErr:    true,
 		},

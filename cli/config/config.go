@@ -23,8 +23,11 @@ import (
 )
 
 const (
-	// DefaultMaxClientThreads default max client threads
+	// DefaultMaxClientThreads default max client threads of common backend
 	DefaultMaxClientThreads = "30"
+
+	// DMEDefaultMaxClientThreads default max client threads of DME backend
+	DMEDefaultMaxClientThreads = "5"
 
 	// DefaultUidLength default uid length
 	DefaultUidLength = 10

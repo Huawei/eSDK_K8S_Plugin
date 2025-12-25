@@ -67,3 +67,7 @@ GENERATE:
 	 -destination ./test/mocks/mock_client/fusionstorage.go IRestClient
 	mockgen -source ./storage/oceanstorage/oceandisk/client/client.go -package mock_client \
 	 -destination ./test/mocks/mock_client/oceandisk.go OceandiskClientInterface
+	mockgen -source ./storage/oceanstorage/aseries/client/client.go -package mock_client \
+     -destination ./test/mocks/mock_client/aseries.go OceanASeriesClientInterface
+	mockgen -source ./storage/dme/aseries/client/client.go -package mock_client \
+	  -destination ./test/mocks/mock_client/dme.go DMEASeriesClientInterface

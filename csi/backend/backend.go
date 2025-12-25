@@ -193,7 +193,11 @@ func NewBackend(backendName string, config map[string]interface{}) (*model.Backe
 	if !exist {
 		return nil, errors.New("storage type must be configured for backend")
 	}
-
+	if storage == constants.OceanStorASeriesNas {
+		if _, ok := config["storageDeviceSN"]; ok {
+			storage = constants.OceanStorASeriesNasDme
+		}
+	}
 	targetPlugin := plugin.GetPlugin(storage)
 	if targetPlugin == nil {
 		return nil, fmt.Errorf("cannot get plugin for storage: [%s]", storage)
@@ -502,7 +506,8 @@ func filterByVolumeType(ctx context.Context, volumeType string, candidatePools [
 			}
 		} else if volumeType == "fs" {
 			if pool.Storage == constants.OceanStorNas || pool.Storage == constants.OceanStor9000 ||
-				pool.Storage == constants.FusionNas || pool.Storage == constants.OceanStorASeriesNas {
+				pool.Storage == constants.FusionNas || pool.Storage == constants.OceanStorASeriesNas ||
+				pool.Storage == constants.OceanStorASeriesNasDme {
 				filterPools = append(filterPools, pool)
 			}
 		} else if volumeType == "dtree" {
@@ -835,6 +840,10 @@ func filterByNFSProtocol(ctx context.Context, nfsProtocol string, candidatePools
 
 	var filterPools []*model.StoragePool
 	for _, pool := range candidatePools {
+		if _, ok := pool.Plugin.(*plugin.DMEASeriesPlugin); ok {
+			filterPools = append(filterPools, pool)
+			continue
+		}
 		if nfsProtocol == "nfs3" && pool.Capabilities["SupportNFS3"] {
 			filterPools = append(filterPools, pool)
 		} else if nfsProtocol == "nfs4" && pool.Capabilities["SupportNFS4"] {

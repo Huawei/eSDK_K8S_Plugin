@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -87,6 +87,8 @@ func TestNewNodeHostInfo(t *testing.T) {
 	t.Run("TestNewNodeHostInfoSuccessful", func(t *testing.T) {
 		execShellCmd := gostub.StubFunc(&utils.ExecShellCmd, want.HostName, nil)
 		defer execShellCmd.Reset()
+		patches := gomonkey.ApplyFuncReturn(utils.GetHostIPs, nil, nil)
+		defer patches.Reset()
 		nodeHostInfo, err := NewNodeHostInfo(context.Background())
 		if !reflect.DeepEqual(nodeHostInfo, want) {
 			t.Errorf("NewNodeHostInfo() got = %v, want %v", nodeHostInfo, want)

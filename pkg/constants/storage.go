@@ -58,7 +58,8 @@ const (
 
 var (
 	// NasStorageTypes contains all of nas storage types
-	NasStorageTypes = []string{OceanStorNas, OceanStorDtree, FusionNas, FusionDTree, OceanStorASeriesNas}
+	NasStorageTypes = []string{OceanStorNas, OceanStorDtree, FusionNas, FusionDTree, OceanStorASeriesNas,
+		OceanStorASeriesNasDme}
 
 	// FusionstorageProtocol contains all of fusionstorage protocols supported
 	FusionstorageProtocol = []string{ProtocolIscsi, ProtocolScsi}
@@ -82,6 +83,8 @@ const (
 	OceandiskSan = "oceandisk-san"
 	// OceanStorASeriesNas storage type is "oceanstor-a-series-nas"
 	OceanStorASeriesNas = "oceanstor-a-series-nas"
+	// OceanStorASeriesNasDme storage type is "oceanstor-a-series-nas-dme"
+	OceanStorASeriesNasDme = "oceanstor-a-series-nas-dme"
 	// FusionSan storage type is fusionstorage-san
 	FusionSan = "fusionstorage-san"
 	// FusionNas storage type is fusionstorage-nas

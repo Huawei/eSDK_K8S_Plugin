@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	pkgutils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/api"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/api/rest"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
@@ -71,7 +72,7 @@ func (cli *OceanASeriesClient) GetFileSystemByName(ctx context.Context,
 		return nil, err
 	}
 
-	if code != base.SuccessCode {
+	if code != storage.SuccessCode {
 		return nil, fmt.Errorf("get filesystem %s failed, error code: %d, error msg: %s", name, code, msg)
 	}
 
@@ -144,7 +145,7 @@ func (cli *OceanASeriesClient) CreateFileSystem(ctx context.Context,
 		return nil, err
 	}
 
-	if code != base.SuccessCode {
+	if code != storage.SuccessCode {
 		return nil, fmt.Errorf("create filesystem %v failed, error code: %d, error msg: %s", data, code, msg)
 	}
 
@@ -187,7 +188,7 @@ func (cli *OceanASeriesClient) CreateDataTurboShare(ctx context.Context,
 		return nil, err
 	}
 
-	if code != base.SuccessCode {
+	if code != storage.SuccessCode {
 		return nil, fmt.Errorf("create DataTurbo share %v failed, error code: %d, error msg: %s", data, code, msg)
 	}
 
@@ -221,7 +222,7 @@ func (cli *OceanASeriesClient) GetDataTurboShareByPath(ctx context.Context,
 		return nil, err
 	}
 
-	if code != base.SuccessCode {
+	if code != storage.SuccessCode {
 		return nil, fmt.Errorf("get DataTurbo share %s failed, error code: %d, error msg: %s", path, code, msg)
 	}
 
@@ -275,12 +276,12 @@ func (cli *OceanASeriesClient) DeleteDataTurboShare(ctx context.Context, id, vst
 		return err
 	}
 
-	if code == base.ShareNotExist {
+	if code == storage.ShareNotExist {
 		log.AddContext(ctx).Infof("DataTurbo share %s does not exist while deleting", id)
 		return nil
 	}
 
-	if code != base.SuccessCode {
+	if code != storage.SuccessCode {
 		return fmt.Errorf("delete DataTurbo share %s failed, error code: %d, error msg: %s", id, code, msg)
 	}
 
@@ -317,7 +318,7 @@ func (cli *OceanASeriesClient) AddDataTurboShareUser(ctx context.Context, params
 		return err
 	}
 
-	if code != base.SuccessCode {
+	if code != storage.SuccessCode {
 		return fmt.Errorf("create DataTurbo share %v failed, error code: %d, error msg: %s", data, code, msg)
 	}
 
@@ -342,12 +343,12 @@ func (cli *OceanASeriesClient) RemoveDataTurboShareUser(ctx context.Context, obj
 		return err
 	}
 
-	if code == base.AuthUserNotExist {
+	if code == storage.AuthUserNotExist {
 		log.AddContext(ctx).Infof("DataTurbo share auth user %s does not exist while deleting", objID)
 		return nil
 	}
 
-	if code != base.SuccessCode {
+	if code != storage.SuccessCode {
 		return fmt.Errorf("remove DataTurbo share auth user %s failed, "+
 			"error code: %d, error msg: %s", objID, code, msg)
 	}

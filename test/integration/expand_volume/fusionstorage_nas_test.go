@@ -60,7 +60,7 @@ func TestControllerExpandVolume_FusionStorageNas_Success(t *testing.T) {
 
 			// mock
 			p := gomonkey.NewPatches().ApplyMethodReturn(
-				app.GetGlobalConfig().K8sUtils, "GetVolumeAttrByVolumeId",
+				app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId",
 				data.fakeVolumeAttributes(), nil)
 			defer p.Reset()
 			cli.EXPECT().GetQuotaByFileSystemName(ctx, data.FsName).Return(data.fakeFsQuota(), nil)
@@ -88,7 +88,7 @@ func TestControllerExpandVolume_FusionStorageNas_FailedWithEmptyQuota(t *testing
 
 	// mock
 	p := gomonkey.NewPatches().ApplyMethodReturn(
-		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrByVolumeId",
+		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId",
 		data.fakeVolumeAttributes(), nil)
 	defer p.Reset()
 	cli.EXPECT().GetQuotaByFileSystemName(ctx, data.FsName).Return(nil, nil)
@@ -192,14 +192,14 @@ func (f *fusionStorageNas) expectedUpdateQuotaParams() map[string]any {
 	return res
 }
 
-func (f *fusionStorageNas) fakeVolumeAttributes() map[string]string {
-	return map[string]string{
+func (f *fusionStorageNas) fakeVolumeAttributes() []map[string]string {
+	return []map[string]string{{
 		"backend":                          f.BackendName,
 		constants.DTreeParentKey:           "",
 		constants.DisableVerifyCapacityKey: f.DisableVerifyCapacity,
 		"fsPermission":                     "",
 		"name":                             f.FsName,
-	}
+	}}
 }
 
 func (f *fusionStorageNas) fakeFsQuota() *client.QueryQuotaResponse {

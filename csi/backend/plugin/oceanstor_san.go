@@ -155,10 +155,11 @@ func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
 }
 
 // QueryVolume used to query volume
-func (p *OceanstorSanPlugin) QueryVolume(ctx context.Context, name string, params map[string]interface{}) (
+func (p *OceanstorSanPlugin) QueryVolume(ctx context.Context, name string, parameters map[string]interface{}) (
 	utils.Volume, error) {
+	params := getParams(ctx, name, parameters)
 	san := p.getSanObj()
-	return san.Query(ctx, name)
+	return san.Query(ctx, name, params)
 }
 
 // DeleteVolume used to delete volume

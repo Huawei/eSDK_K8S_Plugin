@@ -60,6 +60,7 @@ type BackendConfiguration struct {
 	VstoreName          string                   `json:"vstoreName,omitempty" yaml:"vstoreName"`
 	AccountName         string                   `json:"accountName,omitempty" yaml:"accountName"`
 	Urls                []string                 `json:"urls,omitempty" yaml:"urls"`
+	StorageDeviceSN     string                   `json:"storageDeviceSN,omitempty" yaml:"storageDeviceSN"`
 	Pools               []string                 `json:"pools,omitempty" yaml:"pools"`
 	MetrovStorePairID   string                   `json:"metrovStorePairID,omitempty" yaml:"metrovStorePairID"`
 	MetroBackend        string                   `json:"metroBackend,omitempty" yaml:"metroBackend"`
@@ -75,6 +76,9 @@ type BackendConfiguration struct {
 		Portals    interface{}                       `json:"portals,omitempty" yaml:"portals"`
 		IscsiLinks string                            `json:"iscsiLinks,omitempty" yaml:"iscsiLinks"`
 		Alua       map[string]map[string]interface{} `json:"ALUA,omitempty" yaml:"ALUA"`
+
+		NfsAutoAuthClient      bool     `json:"nfsAutoAuthClient,omitempty" yaml:"nfsAutoAuthClient"`
+		NfsAutoAuthClientCIDRs []string `json:"nfsAutoAuthClientCIDRs,omitempty" yaml:"nfsAutoAuthClientCIDRs"`
 	} `json:"parameters,omitempty" yaml:"parameters"`
 }
 

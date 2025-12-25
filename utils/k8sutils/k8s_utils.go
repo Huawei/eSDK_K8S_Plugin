@@ -65,8 +65,8 @@ type Interface interface {
 	// GetVolumeAttributes returns volume attributes of PV
 	GetVolumeAttributes(ctx context.Context, pvName string) (map[string]string, error)
 
-	// GetVolumeAttrByVolumeId returns volume attributes of PV from volume id
-	GetVolumeAttrByVolumeId(volumeId string) (map[string]string, error)
+	// GetVolumeAttrsByVolumeId returns volume attributes of PV from volume id
+	GetVolumeAttrsByVolumeId(volumeId string) ([]map[string]string, error)
 
 	// GetDTreeParentNameByVolumeId returns dDTreeParentname field of PV by volume id
 	GetDTreeParentNameByVolumeId(volumeId string) (string, error)

@@ -27,9 +27,10 @@ import (
 	"text/template"
 
 	xuanwuV1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/host"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	oceanstor "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -144,8 +145,8 @@ func formatOceanstorInitParam(config map[string]interface{}) (res *oceanstor.New
 	return
 }
 
-func formatBaseClientConfig(config map[string]interface{}) (*base.NewClientConfig, error) {
-	res := &base.NewClientConfig{}
+func formatBaseClientConfig(config map[string]interface{}) (*storage.NewClientConfig, error) {
+	res := &storage.NewClientConfig{}
 	configUrls, ok := utils.GetValue[[]interface{}](config, "urls")
 	if !ok || len(configUrls) <= 0 {
 		return nil, fmt.Errorf("urls is not provided in config, or it is invalid, config: %v", config)
@@ -359,4 +360,60 @@ func getVolumeNameFromPVNameOrParameters(pvName string, parameters map[string]an
 	}
 
 	return volumeName.String(), nil
+}
+
+// NfsAutoAuthClient represents the nfs auto auth client feature.
+type NfsAutoAuthClient struct {
+	Enabled bool
+	CIDRs   []string
+}
+
+func validateAndNewNfsAutoAuthClient(params map[string]any) (*NfsAutoAuthClient, error) {
+	res := &NfsAutoAuthClient{}
+	protocol, _ := utils.GetValue[string](params, "protocol")
+	if protocol != constants.ProtocolNfs {
+		return res, nil
+	}
+
+	res.Enabled, _ = utils.GetValue[bool](params, "nfsAutoAuthClient")
+	if !res.Enabled {
+		return res, nil
+	}
+
+	cidrs, ok := utils.GetValue[[]any](params, "nfsAutoAuthClientCIDRs")
+	if !ok {
+		return res, nil
+	}
+	for _, item := range cidrs {
+		cidr, ok := item.(string)
+		if !ok {
+			return nil, errors.New("nfsAutoAuthClientCIDRs must be a string array")
+		}
+		_, _, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CIDR format of %s: %w", cidr, err)
+		}
+
+		res.CIDRs = append(res.CIDRs, cidr)
+	}
+
+	return res, nil
+}
+
+func getFilteredIPs(ctx context.Context, cidrs []string, params map[string]any) ([]string, error) {
+	hostName, ok := params["HostName"].(string)
+	if !ok {
+		return nil, fmt.Errorf("failed to get hostname from parameters %v", params)
+	}
+	hostInfo, err := host.GetNodeHostInfosFromSecret(ctx, hostName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node host infos from secret: %w", err)
+	}
+
+	authClients, err := utils.FilterIPsByCIDRs(ctx, hostInfo.HostIPs, cidrs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to filter ips by cidrs: %w", err)
+	}
+
+	return authClients, nil
 }

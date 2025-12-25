@@ -33,6 +33,7 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -40,7 +41,7 @@ import (
 
 // RestClient defines client implements the rest interface
 type RestClient struct {
-	Client base.HTTP
+	Client storage.HTTP
 	Url    string
 	Urls   []string
 
@@ -78,7 +79,7 @@ func NewRestClient(ctx context.Context, param *NewClientConfig) (*RestClient, er
 	}
 
 	log.AddContext(ctx).Infof("Init parallel count is %d", parallelCount)
-	httpClient, err := base.NewHTTPClientByCertMeta(ctx, param.UseCert, param.CertSecretMeta)
+	httpClient, err := storage.NewHTTPClientByCertMeta(ctx, param.UseCert, param.CertSecretMeta)
 	if err != nil {
 		log.AddContext(ctx).Errorf("new http client by cert meta failed, err is %v", err)
 		return nil, err
@@ -161,18 +162,18 @@ func (cli *RestClient) BaseCall(ctx context.Context, method string, url string,
 	cli.RequestSemaphore.Acquire()
 	defer cli.RequestSemaphore.Release()
 
-	if base.RequestSemaphoreMap[cli.GetDeviceSN()] != nil {
-		base.RequestSemaphoreMap[cli.GetDeviceSN()].Acquire()
-		defer base.RequestSemaphoreMap[cli.GetDeviceSN()].Release()
+	if storage.RequestSemaphoreMap[cli.GetDeviceSN()] != nil {
+		storage.RequestSemaphoreMap[cli.GetDeviceSN()].Acquire()
+		defer storage.RequestSemaphoreMap[cli.GetDeviceSN()].Release()
 	} else {
-		base.RequestSemaphoreMap[base.UninitializedStorage].Acquire()
-		defer base.RequestSemaphoreMap[base.UninitializedStorage].Release()
+		storage.RequestSemaphoreMap[storage.UninitializedStorage].Acquire()
+		defer storage.RequestSemaphoreMap[storage.UninitializedStorage].Release()
 	}
 
 	resp, err := cli.Client.Do(req)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Send request method: %s, Url: %s, error: %v", method, req.URL, err)
-		return base.Response{}, errors.New(base.Unconnected)
+		return base.Response{}, errors.New(storage.Unconnected)
 	}
 	defer resp.Body.Close()
 
@@ -259,7 +260,7 @@ func (cli *RestClient) Login(ctx context.Context) error {
 	var resp base.Response
 	var err error
 
-	cli.Client, err = base.NewHTTPClientByBackendID(ctx, cli.BackendID)
+	cli.Client, err = storage.NewHTTPClientByBackendID(ctx, cli.BackendID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("new http client by backend %s failed, err is %v", cli.BackendID, err)
 		return err
@@ -282,7 +283,7 @@ func (cli *RestClient) Login(ctx context.Context) error {
 			   if this connection error, next time will try other Url first. */
 			cli.Urls[i], cli.Urls[len(cli.Urls)-1] = cli.Urls[len(cli.Urls)-1], cli.Urls[i]
 			break
-		} else if err.Error() != base.Unconnected {
+		} else if err.Error() != storage.Unconnected {
 			log.AddContext(ctx).Errorf("Login %s error", cli.Url)
 			break
 		}
@@ -298,7 +299,7 @@ func (cli *RestClient) Login(ctx context.Context) error {
 	if code := int64(errCode); code != 0 {
 		msg := fmt.Sprintf("Login %s error: %+v", cli.Url, resp)
 		if utils.Contains(base.WrongPasswordErrorCodes, code) || utils.Contains(base.AccountBeenLocked, code) ||
-			code == base.IPLockErrorCode {
+			code == storage.IPLockErrorCode {
 			if err := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.BackendID, false); err != nil {
 				msg = msg + fmt.Sprintf("\nSetStorageBackendContentOffline [%s] failed. error: %v", cli.BackendID, err)
 			}
@@ -329,8 +330,8 @@ func (cli *RestClient) setDataFromRespData(ctx context.Context, resp base.Respon
 			respData["deviceid"]))
 	}
 
-	if base.RequestSemaphoreMap[cli.DeviceId] == nil {
-		base.RequestSemaphoreMap[cli.DeviceId] = utils.NewSemaphore(base.MaxStorageThreads)
+	if storage.RequestSemaphoreMap[cli.DeviceId] == nil {
+		storage.RequestSemaphoreMap[cli.DeviceId] = utils.NewSemaphore(storage.MaxStorageThreads)
 	}
 
 	cli.Token, ok = respData["iBaseToken"].(string)
@@ -343,16 +344,16 @@ func (cli *RestClient) setDataFromRespData(ctx context.Context, resp base.Respon
 	vStoreID, idExist := respData["vstoreId"].(string)
 	if !exist && !idExist {
 		log.AddContext(ctx).Infof("storage client login response vstoreName is empty, set it to default %s",
-			base.DefaultVStore)
-		cli.VStoreName = base.DefaultVStore
+			storage.DefaultVStore)
+		cli.VStoreName = storage.DefaultVStore
 	} else if exist {
 		cli.VStoreName = vStoreName
 	}
 
 	if !idExist {
 		log.AddContext(ctx).Infof("storage client login response vstoreID is empty, set it to default %s",
-			base.DefaultVStoreID)
-		cli.VStoreID = base.DefaultVStoreID
+			storage.DefaultVStoreID)
+		cli.VStoreID = storage.DefaultVStoreID
 	} else {
 		cli.VStoreID = vStoreID
 	}
@@ -415,7 +416,7 @@ func (cli *RestClient) getRequestParams(ctx context.Context, backendID string) (
 	}
 	params.Password = ""
 
-	if len(cli.VStoreName) > 0 && cli.VStoreName != base.DefaultVStore {
+	if len(cli.VStoreName) > 0 && cli.VStoreName != storage.DefaultVStore {
 		data["vstorename"] = cli.VStoreName
 	}
 
@@ -588,7 +589,7 @@ func (cli *RestClient) ValidateLogin(ctx context.Context) error {
 	}
 	params.Password = ""
 
-	if len(cli.VStoreName) > 0 && cli.VStoreName != base.DefaultVStore {
+	if len(cli.VStoreName) > 0 && cli.VStoreName != storage.DefaultVStore {
 		data["vstorename"] = cli.VStoreName
 	}
 
@@ -604,7 +605,7 @@ func (cli *RestClient) ValidateLogin(ctx context.Context) error {
 			   if this connection error, next time will try other Url first. */
 			cli.Urls[i], cli.Urls[len(cli.Urls)-1] = cli.Urls[len(cli.Urls)-1], cli.Urls[i]
 			break
-		} else if err.Error() != base.Unconnected {
+		} else if err.Error() != storage.Unconnected {
 			log.AddContext(ctx).Errorf("Login %s error", cli.Url)
 			break
 		}

@@ -28,6 +28,7 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
@@ -36,7 +37,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_Success(t *testing.T) {
 	// arrange
 	objType := 11
 	objID := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -82,7 +83,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_CodeError(t *testing.T) {
 	// arrange
 	objType := 11
 	objID := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -125,7 +126,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_RespNil(t *testing.T) {
 	// arrange
 	objType := 11
 	objID := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -164,7 +165,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_RespFormatError(t *testing.T) {
 	// arrange
 	objType := 11
 	objID := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -203,7 +204,7 @@ func TestBaseClient_QueryAssociateNamespaceGroup_RespFormatError(t *testing.T) {
 func TestBaseClient_GetNamespaceByName_Success(t *testing.T) {
 	// arrange
 	name := "namespace1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -248,7 +249,7 @@ func TestBaseClient_GetNamespaceByName_Success(t *testing.T) {
 func TestBaseClient_GetNamespaceByName_NamespaceFormatError(t *testing.T) {
 	// arrange
 	name := "namespace1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -294,7 +295,7 @@ func TestBaseClient_GetNamespaceByName_NamespaceFormatError(t *testing.T) {
 func TestBaseClient_GetNamespaceByID_Success(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -336,7 +337,7 @@ func TestBaseClient_GetNamespaceByID_Success(t *testing.T) {
 func TestBaseClient_GetNamespaceByID_FormatNamespaceError(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -377,7 +378,7 @@ func TestBaseClient_AddNamespaceToGroup_Success(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	groupID := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -414,7 +415,7 @@ func TestBaseClient_AddNamespaceToGroup_CodeError(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	groupID := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -455,7 +456,7 @@ func TestBaseClient_RemoveNamespaceFromGroup_Success(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	groupID := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -492,7 +493,7 @@ func TestBaseClient_RemoveNamespaceFromGroup_CodeError(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	groupID := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -533,7 +534,7 @@ func TestBaseClient_RemoveNamespaceFromGroup_CodeError(t *testing.T) {
 func TestBaseClient_GetNamespaceGroupByName_Success(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -578,7 +579,7 @@ func TestBaseClient_GetNamespaceGroupByName_Success(t *testing.T) {
 func TestBaseClient_GetNamespaceGroupByName_RespFormatError(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -617,7 +618,7 @@ func TestBaseClient_GetNamespaceGroupByName_RespFormatError(t *testing.T) {
 func TestBaseClient_GetNamespaceGroupByName_GroupFormatError(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -660,7 +661,7 @@ func TestBaseClient_GetNamespaceGroupByName_GroupFormatError(t *testing.T) {
 func TestBaseClient_CreateNamespaceGroup_Success(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -703,7 +704,7 @@ func TestBaseClient_CreateNamespaceGroup_Success(t *testing.T) {
 func TestBaseClient_CreateNamespaceGroup_ExistSuccess(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -749,7 +750,7 @@ func TestBaseClient_CreateNamespaceGroup_ExistSuccess(t *testing.T) {
 func TestBaseClient_CreateNamespaceGroup_CodeError(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -791,7 +792,7 @@ func TestBaseClient_CreateNamespaceGroup_CodeError(t *testing.T) {
 func TestBaseClient_CreateNamespaceGroup_GroupFormatError(t *testing.T) {
 	// arrange
 	name := "group1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -830,7 +831,7 @@ func TestBaseClient_CreateNamespaceGroup_GroupFormatError(t *testing.T) {
 func TestBaseClient_DeleteNamespaceGroup_Success(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -863,7 +864,7 @@ func TestBaseClient_DeleteNamespaceGroup_Success(t *testing.T) {
 func TestBaseClient_DeleteNamespaceGroup_NotExistSuccess(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -897,7 +898,7 @@ func TestBaseClient_DeleteNamespaceGroup_NotExistSuccess(t *testing.T) {
 func TestBaseClient_DeleteNamespaceGroup_CodeError(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -935,7 +936,7 @@ func TestBaseClient_ExtendNamespace_Success(t *testing.T) {
 	// arrange
 	namespaceId := "1"
 	capacity := int64(10)
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -970,7 +971,7 @@ func TestBaseClient_ExtendNamespace_CodeFormatError(t *testing.T) {
 	namespaceId := "1"
 	capacity := int64(10)
 	errorCode := 0
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1005,7 +1006,7 @@ func TestBaseClient_ExtendNamespace_CodeFormatError(t *testing.T) {
 func TestBaseClient_CreateNamespace_Success(t *testing.T) {
 	// arrange
 	params := CreateNamespaceParams{}
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1050,7 +1051,7 @@ func TestBaseClient_CreateNamespace_InvalidParamsError(t *testing.T) {
 		"CAPACITY":    params.Capacity,
 		"DESCRIPTION": params.Description,
 	}
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1087,7 +1088,7 @@ func TestBaseClient_CreateNamespace_InvalidParamsError(t *testing.T) {
 func TestBaseClient_DeleteNamespace_Success(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1120,7 +1121,7 @@ func TestBaseClient_DeleteNamespace_Success(t *testing.T) {
 func TestBaseClient_DeleteNamespace_NotExistSuccess(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1154,7 +1155,7 @@ func TestBaseClient_DeleteNamespace_NotExistSuccess(t *testing.T) {
 func TestBaseClient_DeleteNamespace_CodeError(t *testing.T) {
 	// arrange
 	id := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1192,7 +1193,7 @@ func TestBaseClient_GetNamespaceCountOfMapping_Success(t *testing.T) {
 	// arrange
 	mappingId := "1"
 	countStr := "10"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1232,7 +1233,7 @@ func TestBaseClient_GetNamespaceCountOfMapping_CountFormatError(t *testing.T) {
 	// arrange
 	mappingId := "1"
 	countStr := float64(10)
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1272,7 +1273,7 @@ func TestBaseClient_GetNamespaceCountOfHost_Success(t *testing.T) {
 	// arrange
 	mappingId := "1"
 	countStr := "10"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1312,7 +1313,7 @@ func TestBaseClient_GetNamespaceCountOfHost_CountFormatError(t *testing.T) {
 	// arrange
 	mappingId := "1"
 	countStr := float64(10)
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1352,7 +1353,7 @@ func TestBaseClient_GetHostNamespaceId_Success(t *testing.T) {
 	// arrange
 	hostId := "1"
 	namespaceId := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1395,7 +1396,7 @@ func TestBaseClient_GetHostNamespaceId_NotExistIdError(t *testing.T) {
 	// arrange
 	hostId := "1"
 	namespaceId := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1433,7 +1434,7 @@ func TestBaseClient_GetHostNamespaceId_JsonUnmarshalError(t *testing.T) {
 	// arrange
 	hostId := "1"
 	namespaceId := "1"
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}
@@ -1482,7 +1483,7 @@ func TestBaseClient_UpdateNamespace_Success(t *testing.T) {
 	// arrange
 	namespaceID := "1"
 	params := map[string]interface{}{}
-	client, err := NewClient(context.Background(), &base.NewClientConfig{})
+	client, err := NewClient(context.Background(), &storage.NewClientConfig{})
 	if err != nil {
 		return
 	}

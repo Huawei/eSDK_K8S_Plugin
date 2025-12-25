@@ -57,9 +57,10 @@ var supportConsistentSnapshotsMinVersion = "6.1.6"
 // OceanstorNasPlugin implements storage StoragePlugin interface
 type OceanstorNasPlugin struct {
 	OceanstorPlugin
-	portals       []string
-	vStorePairID  string
-	metroDomainID string
+	portals           []string
+	vStorePairID      string
+	metroDomainID     string
+	nfsAutoAuthClient *NfsAutoAuthClient
 
 	nasHyperMetro       volume.NASHyperMetro
 	metroRemotePlugin   *OceanstorNasPlugin
@@ -88,15 +89,17 @@ func (p *OceanstorNasPlugin) Init(ctx context.Context, config map[string]interfa
 	var err error
 	protocol, p.portals, err = verifyProtocolAndPortals(parameters, constants.OceanStorNas)
 	if err != nil {
-		log.AddContext(ctx).Errorf("check parameter failed, err: %v", err)
-		return err
+		return fmt.Errorf("check protocol and portals failed: %w", err)
+	}
+
+	p.nfsAutoAuthClient, err = validateAndNewNfsAutoAuthClient(parameters)
+	if err != nil {
+		return fmt.Errorf("check NFS auto auth client failed: %w", err)
 	}
 
 	err = p.init(ctx, config, keepLogin)
 	if err != nil {
-		log.AddContext(ctx).Errorf("init oceanstor nas failed, config: %+v, parameters: %+v err: %v",
-			config, parameters, err)
-		return err
+		return fmt.Errorf("init oceanstor nas failed, config: %+v, parameters: %+v err: %w", config, parameters, err)
 	}
 
 	// only Dorado V6 6.1.7 and later versions support this nfs+ feature.
@@ -347,6 +350,50 @@ func (p *OceanstorNasPlugin) UpdateBackendCapabilities(ctx context.Context) (map
 	}
 
 	return capabilities, specifications, nil
+}
+
+// AttachVolume establishes the mapping relationship between the host and storage.
+func (p *OceanstorNasPlugin) AttachVolume(ctx context.Context, volume string, params map[string]any) (map[string]any,
+	error) {
+	res := make(map[string]any)
+	if !p.nfsAutoAuthClient.Enabled {
+		return res, nil
+	}
+
+	authClients, err := getFilteredIPs(ctx, p.nfsAutoAuthClient.CIDRs, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to attach volume %s when get filtered IPs: %w", volume, err)
+	}
+	if err = p.getNasObj().AutoManageAuthClient(ctx, volume, authClients, constants.AuthClientReadWrite); err != nil {
+		return nil, fmt.Errorf("failed to attach volume %s when auto manage auth client: %w", volume, err)
+	}
+
+	return res, nil
+}
+
+// DetachVolume cancels the mapping relationship between the host and storage.
+func (p *OceanstorNasPlugin) DetachVolume(ctx context.Context, volume string, params map[string]any) error {
+	if !p.nfsAutoAuthClient.Enabled {
+		return nil
+	}
+
+	authClients, err := getFilteredIPs(ctx, p.nfsAutoAuthClient.CIDRs, params)
+	if err != nil {
+		return fmt.Errorf("failed to detach volume %s: %w", volume, err)
+	}
+	nas := p.getNasObj()
+	if err = p.getNasObj().AutoManageAuthClient(ctx, volume, authClients, constants.AuthClientNoAccess); err != nil {
+		return fmt.Errorf("failed to detach volume %s: %w", volume, err)
+	}
+
+	ioIsolation, _ := utils.GetValue[bool](params, "IOIsolation")
+	if ioIsolation {
+		if err := nas.CheckAllClientsStatus(ctx, volume, authClients); err != nil {
+			return fmt.Errorf("failed to check i/o isolation: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (p *OceanstorNasPlugin) updateHyperMetroCapability(ctx context.Context, capabilities map[string]any) error {
@@ -750,4 +797,12 @@ func (p *OceanstorNasPlugin) isLogicPortRunningOnOwnSite() bool {
 	}
 
 	return p.cli.GetCurrentLifWwn() == p.cli.GetCurrentSiteWwn()
+}
+
+// SetNfsAutoAuthClient sets the nfsAutoAuthClient of Oceanstor nas plugin
+func (p *OceanstorNasPlugin) SetNfsAutoAuthClient(enabled bool, cidrs []string) {
+	p.nfsAutoAuthClient = &NfsAutoAuthClient{
+		Enabled: enabled,
+		CIDRs:   cidrs,
+	}
 }

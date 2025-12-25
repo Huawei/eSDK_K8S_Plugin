@@ -146,19 +146,6 @@ func TestGetFSSharePath(t *testing.T) {
 	assert.Equal(t, "/pvc_331a3fcd_6380_4de5_9bc0_be95c801edeb/", replaceName)
 }
 
-func TestGetHostName(t *testing.T) {
-	temp := ExecShellCmd
-	defer func() { ExecShellCmd = temp }()
-
-	ExecShellCmd = func(_ context.Context, _ string, _ ...interface{}) (string, error) {
-		return "worker-node1", nil
-	}
-
-	expectedHost, err := GetHostName(context.Background())
-	assert.Equal(t, "worker-node1", expectedHost,
-		"case name is testGetHostName, result: %v, error: %v", expectedHost, err)
-}
-
 func mockGetSecret(data map[string][]byte, err error) *gomonkey.Patches {
 	return gomonkey.ApplyMethod(reflect.TypeOf(app.GetGlobalConfig().K8sUtils),
 		"GetSecret",

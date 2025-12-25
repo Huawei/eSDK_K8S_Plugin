@@ -392,13 +392,6 @@ func validateUpdate(ctx context.Context, newClaim, oldClaim *xuanwuv1.StorageBac
 		return errors.New(msg)
 	}
 
-	if newClaim.Spec.ConfigMapMeta != oldClaim.Spec.ConfigMapMeta {
-		msg := fmt.Sprintf("[configmapMeta] is forbidden changed with StorageBackendClaim %s",
-			utils.StorageBackendClaimKey(newClaim))
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
-	}
-
 	return validateCommon(ctx, newClaim)
 }
 

@@ -39,6 +39,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -58,7 +59,7 @@ func TestMain(m *testing.M) {
 
 func TestRestClient_Call_BaseCallError(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	ctx := context.Background()
 	method := "GET"
 	url := "/test"
@@ -85,7 +86,7 @@ func TestRestClient_Call_BaseCallError(t *testing.T) {
 
 func TestRestClient_Call_ReLoginFailure(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	ctx := context.Background()
 	method := "GET"
 	url := "/test"
@@ -94,7 +95,7 @@ func TestRestClient_Call_ReLoginFailure(t *testing.T) {
 	// mock
 	wantErr := fmt.Errorf("relogin failed")
 	mock := gomonkey.NewPatches()
-	mock.ApplyMethodReturn(cli, "BaseCall", Response{}, errors.New(Unconnected)).
+	mock.ApplyMethodReturn(cli, "BaseCall", Response{}, errors.New(storage.Unconnected)).
 		ApplyMethodReturn(cli, "ReLogin", wantErr)
 
 	// act
@@ -113,7 +114,7 @@ func TestRestClient_Call_ReLoginFailure(t *testing.T) {
 
 func TestRestClient_Call_Success(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	ctx := context.Background()
 	method := "GET"
 	url := "/test"
@@ -139,7 +140,7 @@ func TestRestClient_Call_Success(t *testing.T) {
 
 func TestRestClient_Call_RetrySuccess(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	ctx := context.Background()
 	method := "GET"
 	url := "/test"
@@ -148,7 +149,7 @@ func TestRestClient_Call_RetrySuccess(t *testing.T) {
 	// mock first basecall returns 401, second success
 	mock := gomonkey.NewPatches()
 	mock.ApplyMethodSeq(cli, "BaseCall", []gomonkey.OutputCell{
-		{Values: gomonkey.Params{Response{}, errors.New(Unconnected)}},
+		{Values: gomonkey.Params{Response{}, errors.New(storage.Unconnected)}},
 		{Values: gomonkey.Params{Response{}, nil}},
 	}).ApplyMethodReturn(cli, "ReLogin", nil)
 
@@ -169,7 +170,7 @@ func TestBaseClient_GetRequest_Success(t *testing.T) {
 	method := "GET"
 	url := "/mockUrl"
 	data := map[string]interface{}{}
-	client, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	client, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 
 	// act
 	getRequest, getErr := client.GetRequest(context.TODO(), method, url, data)
@@ -186,7 +187,7 @@ func TestBaseClient_GetRequest_JsonMarshalFailed(t *testing.T) {
 	method := "GET"
 	url := "/mockUrl"
 	data := map[string]interface{}{}
-	client, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	client, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	wantErr := errors.New("json error")
 
 	// mock
@@ -215,7 +216,7 @@ func TestBaseClient_GetRequest_newRequestFailed(t *testing.T) {
 	method := "GET"
 	url := "/mockUrl"
 	data := map[string]interface{}{}
-	client, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	client, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	wantErr := errors.New("new request error")
 
 	// mock
@@ -243,7 +244,7 @@ func TestBaseClient_BaseCall_Success(t *testing.T) {
 	// arrange
 	method := "GET"
 	data := map[string]interface{}{}
-	mockClient, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	mockClient, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	wantResponse := Response{
 		Error: make(map[string]interface{}),
 		Data:  "",
@@ -281,7 +282,7 @@ func TestRestClient_BaseCall_Concurrency(t *testing.T) {
 	// arrange
 	method := "GET"
 	data := map[string]interface{}{}
-	client, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	client, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	wantResponse := Response{
 		Error: make(map[string]interface{}),
 		Data:  "",
@@ -293,7 +294,7 @@ func TestRestClient_BaseCall_Concurrency(t *testing.T) {
 	}
 
 	requestTime := 10
-	wantAvailablePermits := MaxStorageThreads - requestTime
+	wantAvailablePermits := storage.MaxStorageThreads - requestTime
 	wg := sync.WaitGroup{}
 	wg.Add(requestTime)
 
@@ -317,7 +318,7 @@ func TestRestClient_BaseCall_Concurrency(t *testing.T) {
 	wg.Wait()
 
 	// assert
-	getAvailablePermits := RequestSemaphoreMap[UninitializedStorage].AvailablePermits()
+	getAvailablePermits := storage.RequestSemaphoreMap[storage.UninitializedStorage].AvailablePermits()
 	if getAvailablePermits != wantAvailablePermits {
 		t.Errorf("TestRestClient_BaseCall_Concurrency failed, "+
 			"wantAvailablePermits = %d, getAvailablePermits = %d", wantAvailablePermits, getAvailablePermits)
@@ -350,7 +351,7 @@ func TestRestClient_BaseCall_ExceedMaxConcurrency(t *testing.T) {
 	mockServer1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer wg.Done()
 		cur := currentConcurrent.Add(1)
-		if cur > int32(MaxStorageThreads) {
+		if cur > int32(storage.MaxStorageThreads) {
 			errCount.Add(1)
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -366,7 +367,7 @@ func TestRestClient_BaseCall_ExceedMaxConcurrency(t *testing.T) {
 	// action
 	for num := 0; num < 100; num++ {
 		go func() {
-			client, _ := NewRestClient(context.Background(), &NewClientConfig{})
+			client, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 			for i := 0; i < DefaultParallelCount; i++ {
 				go func() {
 					_, _ = client.BaseCall(context.TODO(), "GET",
@@ -408,7 +409,7 @@ func TestRestClient_BaseCall_IsReachMaxConcurrency(t *testing.T) {
 	mockServer1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer wg.Done()
 		cur := currentConcurrent.Add(1)
-		if cur > int32(MaxStorageThreads-1) {
+		if cur > int32(storage.MaxStorageThreads-1) {
 			errCount.Add(1)
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -424,7 +425,7 @@ func TestRestClient_BaseCall_IsReachMaxConcurrency(t *testing.T) {
 	// action
 	for num := 0; num < 100; num++ {
 		go func() {
-			client, _ := NewRestClient(context.Background(), &NewClientConfig{})
+			client, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 			for i := 0; i < DefaultParallelCount; i++ {
 				go func() {
 					_, _ = client.BaseCall(context.TODO(), "GET",
@@ -452,7 +453,8 @@ func TestRestClient_BaseCall_ExceedMaxBackendConcurrency(t *testing.T) {
 	var currentConcurrent atomic.Int32
 	var errCount atomic.Int32
 	maxConcurrent := 10
-	client, _ := NewRestClient(context.Background(), &NewClientConfig{ParallelNum: strconv.Itoa(int(maxConcurrent))})
+	client, _ := NewRestClient(context.Background(),
+		&storage.NewClientConfig{ParallelNum: strconv.Itoa(maxConcurrent)})
 	wantResponse := Response{
 		Error: make(map[string]interface{}),
 		Data:  "",
@@ -506,7 +508,8 @@ func TestRestClient_BaseCall_IsReachMaxBackendConcurrency(t *testing.T) {
 	var currentConcurrent atomic.Int32
 	var errCount atomic.Int32
 	maxConcurrent := 10
-	client, _ := NewRestClient(context.Background(), &NewClientConfig{ParallelNum: strconv.Itoa(int(maxConcurrent))})
+	client, _ := NewRestClient(context.Background(),
+		&storage.NewClientConfig{ParallelNum: strconv.Itoa(maxConcurrent)})
 	wantResponse := Response{
 		Error: make(map[string]interface{}),
 		Data:  "",
@@ -610,8 +613,8 @@ func TestRestClient_loginCall_AllUrlsUnconnected(t *testing.T) {
 
 	mock := gomonkey.NewPatches()
 	mock.ApplyMethodSeq(cli, "BaseCall", []gomonkey.OutputCell{
-		{Values: gomonkey.Params{Response{}, errors.New(Unconnected)}},
-		{Values: gomonkey.Params{Response{}, errors.New(Unconnected)}},
+		{Values: gomonkey.Params{Response{}, errors.New(storage.Unconnected)}},
+		{Values: gomonkey.Params{Response{}, errors.New(storage.Unconnected)}},
 	})
 
 	originalUrls := cli.Urls
@@ -621,7 +624,7 @@ func TestRestClient_loginCall_AllUrlsUnconnected(t *testing.T) {
 
 	// assert
 	assert.Error(t, gotErr)
-	assert.Contains(t, gotErr.Error(), Unconnected)
+	assert.Contains(t, gotErr.Error(), storage.Unconnected)
 	assert.Equal(t, originalUrls, cli.Urls)
 	assert.Empty(t, gotResp)
 
@@ -641,7 +644,7 @@ func TestRestClient_loginCall_NonConnectionError(t *testing.T) {
 
 	mock := gomonkey.NewPatches()
 	mock.ApplyMethodSeq(cli, "BaseCall", []gomonkey.OutputCell{
-		{Values: gomonkey.Params{Response{}, errors.New(Unconnected)}},
+		{Values: gomonkey.Params{Response{}, errors.New(storage.Unconnected)}},
 		{Values: gomonkey.Params{Response{}, errors.New("auth failed")}},
 	})
 
@@ -672,7 +675,7 @@ func TestRestClient_loginCall_SuccessOnSecondUrl(t *testing.T) {
 	mock := gomonkey.NewPatches()
 	defer mock.Reset()
 	mock.ApplyMethodSeq(cli, "BaseCall", []gomonkey.OutputCell{
-		{Values: gomonkey.Params{Response{}, errors.New(Unconnected)}},
+		{Values: gomonkey.Params{Response{}, errors.New(storage.Unconnected)}},
 		{Values: gomonkey.Params{successResp, nil}},
 	})
 
@@ -689,7 +692,7 @@ func TestRestClient_loginCall_SuccessOnSecondUrl(t *testing.T) {
 
 func TestRestClient_ValidateLogin_GetPasswordError(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	wantErr := errors.New("password error")
 
 	// mock
@@ -706,25 +709,25 @@ func TestRestClient_ValidateLogin_GetPasswordError(t *testing.T) {
 
 func TestRestClient_ValidateLogin_AllUrlUnconnected(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	cli.Urls = []string{"url1", "url2"}
 
 	// mock
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
 	patches.ApplyFuncReturn(pkgUtils.GetAuthInfoFromSecret, &pkgUtils.BackendAuthInfo{}, nil).
-		ApplyMethodReturn(cli, "BaseCall", Response{}, errors.New(Unconnected))
+		ApplyMethodReturn(cli, "BaseCall", Response{}, errors.New(storage.Unconnected))
 
 	// act
 	gotErr := cli.ValidateLogin(context.Background())
 
 	// assert
-	assert.ErrorContains(t, gotErr, Unconnected)
+	assert.ErrorContains(t, gotErr, storage.Unconnected)
 }
 
 func TestRestClient_ValidateLogin_ResponseFormatError(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 
 	// mock
 	patches := gomonkey.NewPatches()
@@ -741,7 +744,7 @@ func TestRestClient_ValidateLogin_ResponseFormatError(t *testing.T) {
 
 func TestRestClient_ValidateLogin_NonConnectionError(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	cli.Urls = []string{"url1", "url2"}
 	wantErr := errors.New("login error")
 
@@ -760,7 +763,7 @@ func TestRestClient_ValidateLogin_NonConnectionError(t *testing.T) {
 
 func TestRestClient_ValidateLogin_StatusCodeError(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	cli.Urls = []string{"url1", "url2"}
 	wantCode := float64(1)
 	wantMsg := "internal error"
@@ -785,7 +788,7 @@ func TestRestClient_ValidateLogin_StatusCodeError(t *testing.T) {
 
 func TestRestClient_setDeviceIdFromRespData_TypeConversionError(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	resp := Response{
 		Data: map[string]interface{}{
 			"deviceid":   123,
@@ -803,7 +806,7 @@ func TestRestClient_setDeviceIdFromRespData_TypeConversionError(t *testing.T) {
 
 func TestRestClient_getRequestParams(t *testing.T) {
 	// arrange
-	cli, _ := NewRestClient(context.Background(), &NewClientConfig{})
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
 	vstore := "test"
 	cli.VStoreName = vstore
 	password := "pwd"

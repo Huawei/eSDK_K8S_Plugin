@@ -230,6 +230,16 @@ func (d *CsiDriver) ControllerUnpublishVolume(ctx context.Context, req *csi.Cont
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	if backend.Storage == constants.OceanStorDtree {
+		parentName, err := app.GetGlobalConfig().K8sUtils.GetDTreeParentNameByVolumeId(volumeId)
+		if err != nil {
+			log.AddContext(ctx).Errorf("Failed to get DTree parent name by volumd id: %v", err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if parameters != nil {
+			parameters[constants.DTreeParentKey] = parentName
+		}
+	}
 	err = backend.Plugin.DetachVolume(ctx, volName, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Unpublish volume %s from node %s error: %v", volName, nodeInfo, err)

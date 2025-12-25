@@ -106,11 +106,3 @@ func TestValidateUpdate(t *testing.T) {
 		t.Error("TestValidateUpdate failed")
 	}
 }
-
-func TestValidateUpdateConfigmapChanged(t *testing.T) {
-	if err := validateUpdate(context.TODO(), newFakeClaim(
-		"provider-1", "configmap-1", "secret-1"), newFakeClaim(
-		"provider-1", "configmap-2", "secret-1")); err == nil {
-		t.Error("TestValidateUpdate failed")
-	}
-}

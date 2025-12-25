@@ -14,8 +14,8 @@
  *  limitations under the License.
  */
 
-// Package base provide base operations for oceanstor base storage
-package base
+// Package storage provide base operations for  storage
+package storage
 
 import "time"
 
@@ -94,4 +94,7 @@ const (
 	GetInfoWaitInternal = 10 * time.Second
 
 	defaultHttpTimeout = 60 * time.Second
+
+	// CharsetUtf8 defines a constant representing the UTF-8 character set
+	CharsetUtf8 = "UTF_8"
 )

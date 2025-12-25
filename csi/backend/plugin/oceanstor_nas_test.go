@@ -19,14 +19,17 @@ package plugin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
 )
 
 func TestInit(t *testing.T) {
@@ -129,7 +132,7 @@ func TestDeleteRemoteFilesystem_EmptyCli(t *testing.T) {
 	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
 
 	// assert
-	require.Contains(t, err.Error(), want.Error())
+	require.ErrorContains(t, err, want.Error())
 }
 
 func TestDeleteRemoteFilesystem_GetFsFailed(t *testing.T) {
@@ -150,7 +153,7 @@ func TestDeleteRemoteFilesystem_GetFsFailed(t *testing.T) {
 	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
 
 	// assert
-	require.Contains(t, err.Error(), want.Error())
+	require.ErrorContains(t, err, want.Error())
 }
 
 func TestDeleteRemoteFilesystem_GetNfsShareByPathFailed(t *testing.T) {
@@ -177,7 +180,7 @@ func TestDeleteRemoteFilesystem_GetNfsShareByPathFailed(t *testing.T) {
 	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
 
 	// assert
-	require.Contains(t, err.Error(), want.Error())
+	require.ErrorContains(t, err, want.Error())
 }
 
 func TestDeleteRemoteFilesystem_DeleteNfsShareFailed(t *testing.T) {
@@ -210,7 +213,7 @@ func TestDeleteRemoteFilesystem_DeleteNfsShareFailed(t *testing.T) {
 	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
 
 	// assert
-	require.Contains(t, err.Error(), want.Error())
+	require.ErrorContains(t, err, want.Error())
 }
 
 func TestDeleteRemoteFilesystem_DeleteFsFailed(t *testing.T) {
@@ -247,7 +250,7 @@ func TestDeleteRemoteFilesystem_DeleteFsFailed(t *testing.T) {
 	err := p.deleteRemoteFilesystem(ctx, "pvc-test")
 
 	// assert
-	require.Contains(t, err.Error(), want.Error())
+	require.ErrorContains(t, err, want.Error())
 }
 
 func TestGetLocal2HyperMetroParameters_EmptyParam(t *testing.T) {
@@ -311,4 +314,207 @@ func TestOceanstorNasPluginUpdateConsistentSnapshotCapability(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, c.supported, capabilities["SupportConsistentSnapshot"])
 	}
+}
+
+func Test_OceanstorNasPlugin_AttachVolume_Scenario(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: false,
+		},
+	}
+
+	// action
+	gotRes, gotErr := p.AttachVolume(context.Background(), "test-volume", nil)
+
+	// assert
+	assert.Equal(t, map[string]any{}, gotRes)
+	assert.NoError(t, gotErr)
+}
+
+func Test_OceanstorNasPlugin_AttachVolume_WithNFSDisabled(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: false,
+		},
+	}
+
+	// action
+	gotRes, gotErr := p.AttachVolume(context.Background(), "test-volume", nil)
+
+	// assert
+	assert.Equal(t, map[string]any{}, gotRes)
+	assert.NoError(t, gotErr)
+}
+
+func Test_OceanstorNasPlugin_AttachVolume_Success(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: true,
+		},
+	}
+	mockRes := make(map[string]any)
+
+	// mock
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
+		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", nil)
+	defer patches.Reset()
+
+	// action
+	gotRes, gotErr := p.AttachVolume(context.Background(), "test-volume", nil)
+
+	// assert
+	assert.Equal(t, mockRes, gotRes)
+	assert.NoError(t, gotErr)
+}
+
+func Test_OceanstorNasPlugin_AttachVolume_GetFilteredIPsError(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: true,
+		},
+	}
+	wantErr := fmt.Errorf("get filtered IPs error")
+
+	// mock
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string(nil), wantErr)
+	defer patches.Reset()
+
+	// action
+	gotRes, gotErr := p.AttachVolume(context.Background(), "test-volume", nil)
+
+	// assert
+	assert.ErrorContains(t, gotErr, "failed to attach volume")
+	assert.Nil(t, gotRes)
+}
+
+func Test_OceanstorNasPlugin_AttachVolume_AutoManageAuthClientError(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: true,
+		},
+	}
+	wantErr := fmt.Errorf("auto manage auth client error")
+
+	// mock
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
+		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", wantErr)
+	defer patches.Reset()
+
+	// action
+	gotRes, gotErr := p.AttachVolume(context.Background(), "test-volume", nil)
+
+	// assert
+	assert.ErrorContains(t, gotErr, "failed to attach volume")
+	assert.Nil(t, gotRes)
+}
+
+func Test_OceanstorNasPlugin_DetachVolume_Scenario(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: false,
+		},
+	}
+
+	// action
+	gotErr := p.DetachVolume(context.Background(), "test-volume", nil)
+
+	// assert
+	assert.NoError(t, gotErr)
+}
+
+func Test_OceanstorNasPlugin_DetachVolume_GetFilteredIPsError(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: true,
+		},
+	}
+	wantErr := fmt.Errorf("get filtered IPs error")
+
+	// mock
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string(nil), wantErr)
+	defer patches.Reset()
+
+	// action
+	gotErr := p.DetachVolume(context.Background(), "test-volume", nil)
+
+	// assert
+	assert.ErrorContains(t, gotErr, "failed to detach volume")
+	assert.EqualError(t, gotErr, fmt.Sprintf("failed to detach volume test-volume: %v", wantErr))
+}
+
+func Test_OceanstorNasPlugin_DetachVolume_AutoManageAuthClientError(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: true,
+		},
+	}
+	wantErr := fmt.Errorf("auto manage auth client error")
+
+	// mock
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
+		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", wantErr)
+	defer patches.Reset()
+
+	// action
+	gotErr := p.DetachVolume(context.Background(), "test-volume", nil)
+
+	// assert
+	assert.ErrorContains(t, gotErr, "failed to detach volume")
+}
+
+func Test_OceanstorNasPlugin_DetachVolume_IOIsolation(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: true,
+		},
+	}
+	parameters := map[string]interface{}{
+		"IOIsolation": true,
+	}
+
+	// mock
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
+		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", nil).
+		ApplyMethodReturn(&volume.NAS{}, "CheckAllClientsStatus", nil)
+	defer patches.Reset()
+
+	// action
+	gotErr := p.DetachVolume(context.Background(), "test-volume", parameters)
+
+	// assert
+	assert.NoError(t, gotErr)
+}
+
+func Test_OceanstorNasPlugin_DetachVolume_CheckAllClientsStatusError(t *testing.T) {
+	// arrange
+	p := &OceanstorNasPlugin{
+		nfsAutoAuthClient: &NfsAutoAuthClient{
+			Enabled: true,
+		},
+	}
+	parameters := map[string]interface{}{
+		"IOIsolation": true,
+	}
+	wantErr := errors.New("fake error")
+
+	// mock
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
+		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", nil).
+		ApplyMethodReturn(&volume.NAS{}, "CheckAllClientsStatus", wantErr)
+	defer patches.Reset()
+
+	// action
+	gotErr := p.DetachVolume(context.Background(), "test-volume", parameters)
+
+	// assert
+	assert.ErrorIs(t, gotErr, wantErr)
 }

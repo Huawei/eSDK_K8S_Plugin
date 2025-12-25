@@ -79,7 +79,7 @@ func NewResourceAccessor[T runtime.Object](informer cache.SharedIndexInformer,
 
 // GetByIndex gets resource by index.
 // To use this method, you must add the indexer first.
-func (rw *ResourceAccessor[T]) GetByIndex(indexName, indexValue string) (T, error) {
+func (rw *ResourceAccessor[T]) GetByIndex(indexName, indexValue string) ([]T, error) {
 	value, err := rw.getByIndex(indexName, indexValue)
 	if err != nil {
 		if err = rw.informer.GetIndexer().Resync(); err != nil {
@@ -95,20 +95,26 @@ func (rw *ResourceAccessor[T]) GetByIndex(indexName, indexValue string) (T, erro
 	return value, nil
 }
 
-func (rw *ResourceAccessor[T]) getByIndex(indexName, indexValue string) (T, error) {
+func (rw *ResourceAccessor[T]) getByIndex(indexName, indexValue string) ([]T, error) {
 	var value T
 	items, err := rw.informer.GetIndexer().ByIndex(indexName, indexValue)
 	if err != nil {
-		return value, fmt.Errorf("could not search cache for %T by index %s", value, indexValue)
-	} else if len(items) == 0 {
-		return value, fmt.Errorf("%T object not found in cache by index %s", value, indexValue)
-	} else if len(items) > 1 {
-		return value, fmt.Errorf("multiple cached %T objects found by index %s", value, indexValue)
+		return nil, fmt.Errorf("could not search cache for %T by index %s", value, indexValue)
 	}
 
-	value, ok := items[0].(T)
-	if !ok {
-		return value, fmt.Errorf("convert %v to %T error", items[0], value)
+	res := make([]T, 0, len(items))
+	var ok bool
+	for _, item := range items {
+		value, ok = item.(T)
+		if !ok {
+			return nil, fmt.Errorf("convert %v to %T error", item, value)
+		}
+		res = append(res, value)
 	}
-	return value, nil
+
+	if len(res) == 0 {
+		return nil, fmt.Errorf("%T object not found in cache by index %s", value, indexValue)
+	}
+
+	return res, nil
 }

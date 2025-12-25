@@ -24,8 +24,9 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/assert"
 
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -44,7 +45,7 @@ func TestMain(m *testing.M) {
 func TestSAN_Create_Success(t *testing.T) {
 	// arrange
 	ctx := context.Background()
-	clientConfig := base.NewClientConfig{
+	clientConfig := storage.NewClientConfig{
 		Urls:            []string{"127.0.0.1"},
 		User:            "testUser",
 		SecretName:      "testSecretName",
@@ -91,7 +92,7 @@ func TestSAN_Create_Success(t *testing.T) {
 func TestSAN_Create_PrepareFailed(t *testing.T) {
 	// arrange
 	ctx := context.Background()
-	clientConfig := base.NewClientConfig{
+	clientConfig := storage.NewClientConfig{
 		Urls:            []string{"127.0.0.1"},
 		User:            "testUser",
 		SecretName:      "testSecretName",
@@ -134,7 +135,7 @@ func TestSAN_Create_PrepareFailed(t *testing.T) {
 func TestSAN_deleteNamespace_success(t *testing.T) {
 	// arrange
 	ctx := context.Background()
-	clientConfig := base.NewClientConfig{
+	clientConfig := storage.NewClientConfig{
 		Urls:            []string{"127.0.0.1"},
 		User:            "testUser",
 		SecretName:      "testSecretName",
@@ -170,7 +171,7 @@ func TestSAN_deleteNamespace_success(t *testing.T) {
 func TestSAN_expandLocalNamespace_poolNotExist(t *testing.T) {
 	// arrange
 	ctx := context.Background()
-	clientConfig := base.NewClientConfig{
+	clientConfig := storage.NewClientConfig{
 		Urls:            []string{"127.0.0.1"},
 		User:            "testUser",
 		SecretName:      "testSecretName",
@@ -203,4 +204,60 @@ func TestSAN_expandLocalNamespace_poolNotExist(t *testing.T) {
 	if !reflect.DeepEqual(gotErr, wantErr) {
 		t.Errorf("TestSAN_expandLocalNamespace_poolNotExist failed, gotErr = %v, wantErr = %v.", gotErr, wantErr)
 	}
+}
+
+func TestSAN_Query_success(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	cli, _ := client.NewClient(ctx, &storage.NewClientConfig{})
+	san := NewSAN(cli)
+	param := map[string]interface{}{
+		"applicationtype": "testApp",
+	}
+
+	namespace := map[string]interface{}{
+		"WORKLOADTYPEID": "1",
+		"CAPACITY":       "1024",
+	}
+
+	// mock
+	m := gomonkey.NewPatches()
+	defer m.Reset()
+	m.ApplyMethodReturn(&client.OceandiskClient{}, "GetNamespaceByName", namespace, nil).
+		ApplyMethodReturn(&client.OceandiskClient{}, "GetApplicationTypeByName", "1", nil)
+
+	// action
+	gotVolume, gotErr := san.Query(ctx, "testName", param)
+
+	// assert
+	assert.Nil(t, gotErr)
+	assert.Equal(t, "testName", gotVolume.GetVolumeName())
+}
+
+func TestSAN_Query_WorkLoadTypeUnmatched(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	cli, _ := client.NewClient(ctx, &storage.NewClientConfig{})
+	san := NewSAN(cli)
+	param := map[string]interface{}{
+		"applicationtype": "testApp",
+	}
+
+	namespace := map[string]interface{}{
+		"WORKLOADTYPEID": "1",
+		"CAPACITY":       "1024",
+	}
+
+	// mock
+	m := gomonkey.NewPatches()
+	defer m.Reset()
+	m.ApplyMethodReturn(&client.OceandiskClient{}, "GetNamespaceByName", namespace, nil).
+		ApplyMethodReturn(&client.OceandiskClient{}, "GetApplicationTypeByName", "2", nil)
+
+	// action
+	gotVolume, gotErr := san.Query(ctx, "testName", param)
+
+	// assert
+	assert.Nil(t, gotVolume)
+	assert.ErrorContains(t, gotErr, "the workload type is different between")
 }

@@ -58,7 +58,7 @@ func TestControllerExpandVolume_OceanstorDTree_Success(t *testing.T) {
 
 			// mock
 			p := gomonkey.NewPatches().ApplyMethodReturn(
-				app.GetGlobalConfig().K8sUtils, "GetVolumeAttrByVolumeId",
+				app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId",
 				data.fakeVolumeAttributes(), nil)
 			defer p.Reset()
 			cli.EXPECT().GetDTreeByName(ctx, "", data.ParentName, data.FakeVstoreID,
@@ -89,7 +89,7 @@ func TestControllerExpandVolume_OceanstorNas_FailedWithWrongCapacity(t *testing.
 
 	// mock
 	p := gomonkey.NewPatches().ApplyMethodReturn(
-		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrByVolumeId",
+		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId",
 		data.fakeVolumeAttributes(), nil)
 	defer p.Reset()
 	cli.EXPECT().GetDTreeByName(ctx, "", data.ParentName, data.FakeVstoreID,
@@ -195,14 +195,14 @@ func (f *oceanstorDTree) fakeDtreeInfo() map[string]any {
 	return map[string]any{"ID": f.FakeDTreeID}
 }
 
-func (f *oceanstorDTree) fakeVolumeAttributes() map[string]string {
-	return map[string]string{
+func (f *oceanstorDTree) fakeVolumeAttributes() []map[string]string {
+	return []map[string]string{{
 		"backend":                          f.BackendName,
 		constants.DTreeParentKey:           f.ParentName,
 		constants.DisableVerifyCapacityKey: f.DisableVerifyCapacity,
 		"fsPermission":                     "",
 		"name":                             f.DTreeName,
-	}
+	}}
 }
 
 func (f *oceanstorDTree) request() *csi.ControllerExpandVolumeRequest {

@@ -19,6 +19,7 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"net"
 	"path"
 	"reflect"
 	"strconv"
@@ -316,7 +317,7 @@ func FetchBackendConfig(namespace string, names ...string) (map[string]*BackendC
 		}
 		for _, configuration := range backendConfig {
 			configuration.Configured = true
-			result[configuration.Name] = configuration
+			result[configMap.Name] = configuration
 		}
 	}
 	return result, nil
@@ -559,7 +560,11 @@ func (b *Backend) setBackendNamespace(configuration *BackendConfiguration) {
 func (b *Backend) setMaxClients(configuration *BackendConfiguration) {
 	// If not set, use the default max clients num
 	if configuration.MaxClientThreads == "" {
-		configuration.MaxClientThreads = config.DefaultMaxClientThreads
+		if configuration.Storage == constants.OceanStorASeriesNas && configuration.StorageDeviceSN != "" {
+			configuration.MaxClientThreads = config.DMEDefaultMaxClientThreads
+		} else {
+			configuration.MaxClientThreads = config.DefaultMaxClientThreads
+		}
 	}
 }
 
@@ -609,6 +614,15 @@ func validateBackend(backend *BackendConfiguration) error {
 		err := utils.CheckAuthenticationMode(backend.AuthenticationMode)
 		if err != nil {
 			errs = append(errs, err)
+		}
+	}
+
+	if backend.Parameters.NfsAutoAuthClient {
+		for _, cidr := range backend.Parameters.NfsAutoAuthClientCIDRs {
+			_, _, err := net.ParseCIDR(cidr)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("validate cidr %s failed: %w", cidr, err))
+			}
 		}
 	}
 

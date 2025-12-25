@@ -642,6 +642,19 @@ func (p *DTree) getDtreeID(ctx context.Context, parentName, vstoreID, dTreeName 
 	return dTreeID, nil
 }
 
+// AutoManageAuthClient manages auth client for nfs automatically
+func (p *DTree) AutoManageAuthClient(ctx context.Context, volume, parentName string, ips []string,
+	accessVal constants.AuthClientAccessVal) error {
+	dtreeShare := parentName + "/" + volume
+	return p.autoManageAuthClient(ctx, dtreeShare, ips, accessVal)
+}
+
+// CheckAllClientsStatus checks all status of each auth client
+func (p *DTree) CheckAllClientsStatus(ctx context.Context, volume, parentName string, authClients []string) error {
+	dtreeShare := parentName + "/" + volume
+	return p.checkAllClientsStatus(ctx, dtreeShare, authClients, false)
+}
+
 func formatKerberosParam(data interface{}) int {
 	if data == nil {
 		return accessKrb5Default

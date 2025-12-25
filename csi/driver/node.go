@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -162,7 +162,7 @@ func (d *CsiDriver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest
 	defer utils.RecoverPanic(ctx)
 	hostname, err := utils.GetHostName(ctx)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Cannot get current host's hostname")
+		log.AddContext(ctx).Errorln("Cannot get current host's hostname")
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 

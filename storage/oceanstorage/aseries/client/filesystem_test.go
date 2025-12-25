@@ -31,7 +31,7 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -65,7 +65,7 @@ type MockTransport struct {
 }
 
 func getMockClientWithResponse(statusCode int, body string) *OceanASeriesClient {
-	testClient, _ = NewClient(context.Background(), &base.NewClientConfig{
+	testClient, _ = NewClient(context.Background(), &storage.NewClientConfig{
 		Urls:            []string{"https://127.0.0.1:8088"},
 		User:            "dev-account",
 		SecretName:      "mock-sec-name",
@@ -640,7 +640,7 @@ func TestOceanASeriesClient_DeleteDataTurboShare_NotExist(t *testing.T) {
         "error": {
             "code": %d
         }
-    }`, base.ShareNotExist)
+    }`, storage.ShareNotExist)
 
 	// mock
 	mockClient := getMockClientWithResponse(200, notExistRespBody)
@@ -701,7 +701,7 @@ func TestOceanASeriesClient_RemoveDataTurboShareUser_NotExist(t *testing.T) {
         "error": {
             "code": %d
         }
-    }`, base.AuthUserNotExist)
+    }`, storage.AuthUserNotExist)
 
 	// mock
 	mockClient := getMockClientWithResponse(200, notExistRespBody)

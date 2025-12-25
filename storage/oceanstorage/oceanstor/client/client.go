@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"sync/atomic"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -259,9 +260,9 @@ func (cli *OceanstorClient) SafeBaseCall(ctx context.Context,
 		defer cli.RequestSemaphore.Release()
 	}
 
-	if base.RequestSemaphoreMap[cli.GetDeviceSN()] != nil {
-		base.RequestSemaphoreMap[cli.GetDeviceSN()].Acquire()
-		defer base.RequestSemaphoreMap[cli.GetDeviceSN()].Release()
+	if storage.RequestSemaphoreMap[cli.GetDeviceSN()] != nil {
+		storage.RequestSemaphoreMap[cli.GetDeviceSN()].Acquire()
+		defer storage.RequestSemaphoreMap[cli.GetDeviceSN()].Release()
 	}
 
 	return cli.safeDoCall(ctx, method, url, req)
@@ -288,7 +289,7 @@ func (cli *OceanstorClient) safeDoCall(ctx context.Context,
 	resp, err := cli.Client.Do(req)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Send request method: %s, Url: %s, error: %v", method, req.URL, err)
-		return base.Response{}, errors.New(base.Unconnected)
+		return base.Response{}, errors.New(storage.Unconnected)
 	}
 
 	defer func() {
@@ -362,7 +363,7 @@ func (cli *OceanstorClient) getObjByvStoreName(objList []interface{}) map[string
 
 		vStoreName, ok := obj["vstoreName"].(string)
 		if !ok {
-			vStoreName = base.DefaultVStore
+			vStoreName = storage.DefaultVStore
 		}
 
 		if vStoreName == cli.GetvStoreName() {
