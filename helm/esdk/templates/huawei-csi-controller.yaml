@@ -610,6 +610,8 @@ spec:
           image: {{ required "Must provide the .Values.images.storageBackendController" .Values.images.storageBackendController }}
           imagePullPolicy: {{ .Values.huaweiImagePullPolicy }}
           env:
+            - name: DRCSI_ENDPOINT
+              value: {{ .Values.csiDriver.drEndpoint }}
             - name: CSI_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -627,6 +629,7 @@ spec:
             - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
             - "--web-hook-port={{ int .Values.controller.webhookPort | default 4433 }}"
             - "--web-hook-address=$(POD_IP)"
+            - "--dr-endpoint=$(DRCSI_ENDPOINT)"
             {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
             - "--enable-leader-election=true"
             {{ else }}
@@ -644,6 +647,8 @@ spec:
           ports:
             - containerPort: {{ int .Values.controller.webhookPort | default 4433 }}
           volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
             - mountPath: /var/log
               name: log
             - mountPath: /etc/localtime
@@ -663,6 +668,10 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           args:
             - "--logging-module={{ ((.Values.csiDriver).controllerLogging).module | default "file" }}"
             - "--log-level={{ ((.Values.csiDriver).controllerLogging).level | default "info" }}"
@@ -671,6 +680,8 @@ spec:
             - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
             - "--backend-update-interval={{ .Values.csiDriver.backendUpdateInterval }}"
             - "--dr-endpoint=$(DRCSI_ENDPOINT)"
+            - "--web-hook-port={{ int .Values.controller.webhookPort | default 4433 }}"
+            - "--web-hook-address=$(POD_IP)"
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
