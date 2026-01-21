@@ -66,6 +66,7 @@ type serviceOptions struct {
 	timeout             time.Duration
 
 	kubeletVolumeDevicesDirName string
+	reportNodeIP                bool
 }
 
 // NewServiceOptions returns service configurations
@@ -119,6 +120,7 @@ func (opt *serviceOptions) AddFlags(ff *flag.FlagSet) {
 		"The port of exported csi server")
 	ff.StringVar(&opt.exportCsiServerAddress, "export-csi-service-address", "",
 		"The address of exported csi server")
+	ff.BoolVar(&opt.reportNodeIP, "report-node-ip", false, "Whether to report node IP")
 }
 
 // ApplyFlags assign the service flags
@@ -145,6 +147,7 @@ func (opt *serviceOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.KubeletVolumeDevicesDirName = opt.kubeletVolumeDevicesDirName
 	cfg.ExportCsiServerAddress = opt.exportCsiServerAddress
 	cfg.ExportCsiServerPort = opt.exportCsiServerPort
+	cfg.ReportNodeIP = opt.reportNodeIP
 }
 
 // ValidateFlags validate the service flags

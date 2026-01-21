@@ -65,11 +65,6 @@ func NewNodeHostInfo(ctx context.Context) (*NodeHostInfo, error) {
 		return nil, err
 	}
 
-	hostIPs, err := utils.GetHostIPs(ctx)
-	if err != nil {
-		log.AddContext(ctx).Warningf("failed to get host ips: [%v]", err)
-	}
-
 	iscsiInitiator, err := proto.GetISCSIInitiator(ctx)
 	if err != nil {
 		log.AddContext(ctx).Warningf("failed to get ISCSI initiator: [%v]", err)
@@ -85,13 +80,22 @@ func NewNodeHostInfo(ctx context.Context) (*NodeHostInfo, error) {
 		log.AddContext(ctx).Warningf("failed to get RoCE initiator: [%v]", err)
 	}
 
-	return &NodeHostInfo{
+	hostInfo := &NodeHostInfo{
 		HostName:       strings.Trim(hostName, " "),
-		HostIPs:        hostIPs,
 		IscsiInitiator: iscsiInitiator,
 		FCInitiators:   fcInitiators,
 		RoCEInitiator:  roCEInitiator,
-	}, nil
+	}
+
+	if app.GetGlobalConfig().ReportNodeIP {
+		if hostIPs, err := utils.GetHostIPs(ctx); err != nil {
+			log.AddContext(ctx).Warningf("failed to get host ips: [%v]", err)
+		} else {
+			hostInfo.HostIPs = hostIPs
+		}
+	}
+
+	return hostInfo, nil
 }
 
 // SaveNodeHostInfoToSecret save the current node host information to secret.

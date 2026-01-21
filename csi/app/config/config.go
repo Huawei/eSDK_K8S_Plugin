@@ -64,6 +64,7 @@ type serviceConfig struct {
 
 	// kubeletVolumeDevicesDirName, default is /volumeDevices/
 	KubeletVolumeDevicesDirName string
+	ReportNodeIP                bool
 }
 
 type connectorConfig struct {

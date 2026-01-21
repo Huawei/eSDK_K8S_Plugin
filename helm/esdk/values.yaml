@@ -265,6 +265,8 @@ csiDriver:
     fileSize: 20M
     # Maximum number of log files that can be backed up.
     maxBackups: 9
+  # Whether to report node IP
+  reportNodeIP: false
 
 # leaderElection configuration
 leaderElection:

@@ -180,6 +180,7 @@ spec:
             {{ if .Values.node.maxVolumesPerNode }}
             - "--max-volumes-per-node={{ .Values.node.maxVolumesPerNode }}"
             {{ end }}
+            - "-report-node-ip={{ .Values.csiDriver.reportNodeIP | default false }}"
           env:
             - name: CSI_NODENAME
               valueFrom:
