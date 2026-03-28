@@ -29,13 +29,17 @@ import (
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
 
+	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/fcnvme"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -71,7 +75,7 @@ func mockControllerPublishInfo() *ControllerPublishInfo {
 		TgtWWNs:            []string{"mock_wwn_1"},
 		VolumeUseMultiPath: true,
 		MultiPathType:      "mock_type_1",
-		PortWWNList: []nvme.PortWWNPair{
+		PortWWNList: []fcnvme.PortWWNPair{
 			{InitiatorPortWWN: "mock_initiator_port_wwn_1", TargetPortWWN: "mock_target_port_wwn_1"},
 		},
 	}
@@ -120,6 +124,37 @@ func TestWithControllerPublishInfo(t *testing.T) {
 	}
 }
 
+func Test_WithControllerPublishInfo_NeedPublishVolume(t *testing.T) {
+	// arrange
+	parameters := map[string]interface{}{}
+	request := &csi.NodeStageVolumeRequest{
+		VolumeId: "backend1.volume1",
+	}
+
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(pkgUtils.GetContentByClaimMeta,
+		&xuanwuv1.StorageBackendContent{Status: &xuanwuv1.StorageBackendContentStatus{Online: true}}, nil).
+		ApplyFuncReturn(backend.BuildBackend, &model.Backend{Plugin: &plugin.OceanstorSanPlugin{}}, nil).
+		ApplyFuncReturn(utils.GetHostName, "host1", nil).
+		ApplyMethodReturn(&plugin.OceanstorSanPlugin{}, "AttachVolume", map[string]interface{}{
+			"tgtLunWWN":   "wwn1",
+			"tgtPortals":  []string{"portal1"},
+			"tgtIQNs":     []string{"iqn1"},
+			"tgtHostLUNs": []string{"1"},
+		}, nil).ApplyMethodReturn(&plugin.OceanstorSanPlugin{}, "Logout")
+
+	// action
+	err := WithControllerPublishInfo(context.Background(), request)(parameters)
+
+	// assert
+	assert.NoError(t, err)
+	publishInfo, ok := parameters["publishInfo"].(*ControllerPublishInfo)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, "wwn1", publishInfo.TgtLunWWN)
+}
+
 func TestWithMultiPathType(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -139,6 +174,11 @@ func TestWithMultiPathType(t *testing.T) {
 		{
 			name:              "test_multiPath_type_for_roce",
 			protocol:          "roce",
+			wantMultiPathType: app.GetGlobalConfig().NvmeMultiPathType,
+		},
+		{
+			name:              "test_multiPath_type_for_nvme_roce",
+			protocol:          "roce-nvme",
 			wantMultiPathType: app.GetGlobalConfig().NvmeMultiPathType,
 		},
 		{
@@ -191,6 +231,11 @@ func TestExtractWwn(t *testing.T) {
 			want:     "mock_lun_guid_1",
 		},
 		{
+			name:     "test_extract_wwn_for_nvme_roce",
+			protocol: "roce-nvme",
+			want:     "mock_lun_guid_1",
+		},
+		{
 			name:     "test_extract_wwn_for_fc_nvme",
 			protocol: "fc-nvme",
 			want:     "mock_lun_guid_1",
@@ -224,7 +269,7 @@ func TestControllerPublishInfoReflectToMap(t *testing.T) {
 		"tgtWWNs":            []string{"mock_wwn_1"},
 		"volumeUseMultiPath": true,
 		"multiPathType":      "mock_type_1",
-		"portWWNList": []nvme.PortWWNPair{
+		"portWWNList": []fcnvme.PortWWNPair{
 			{InitiatorPortWWN: "mock_initiator_port_wwn_1", TargetPortWWN: "mock_target_port_wwn_1"},
 		},
 	}
@@ -364,7 +409,21 @@ func TestNewManagerForRoce(t *testing.T) {
 		backendName: "test_backend_name",
 		want: &SanManager{
 			protocol: "roce",
-			Conn:     connector.GetConnector(context.Background(), connector.RoCEDriver),
+			Conn:     connector.GetConnector(context.Background(), connector.NVMeDriver),
+		},
+		wantErr: false,
+	}
+	newManagerTest(t, testCase)
+}
+
+func TestNewManagerForNVMeRoce(t *testing.T) {
+	testCase := testCaseStructForNewManager{
+		name:        "test_new_manager_for_nvme_roce",
+		protocol:    "roce-nvme",
+		backendName: "test_backend_name",
+		want: &SanManager{
+			protocol: "roce-nvme",
+			Conn:     connector.GetConnector(context.Background(), connector.NVMeDriver),
 		},
 		wantErr: false,
 	}
@@ -588,6 +647,22 @@ func Test_getDTreeSourcePath(t *testing.T) {
 	})
 }
 
+func Test_getDTreeMountOptions(t *testing.T) {
+	// arrange
+	backendConfig := &BackendConfig{
+		deviceWWN: "fakeWWN",
+		storage:   constants.OceanStorASeriesDtree,
+		protocol:  constants.ProtocolDtfs,
+	}
+	req := &csi.NodePublishVolumeRequest{}
+
+	// action
+	result := getDTreeMountOptions(req, backendConfig)
+
+	// assert
+	assert.Contains(t, result, "cid=fakeWWN")
+}
+
 func Test_GetBackendConfig_BackendConfigMapError(t *testing.T) {
 	// arrange
 	ctx := context.Background()
@@ -666,7 +741,7 @@ func Test_GetBackendConfig_DtfsMissingDeviceWWN(t *testing.T) {
 				"protocol": constants.ProtocolDtfs,
 			},
 		}, nil
-	}).ApplyFuncReturn(utils.GetSBCTSpecificationByClaim, map[string]string{}, nil)
+	}).ApplyFuncReturn(pkgUtils.GetSBCTSpecificationByClaim, map[string]string{}, nil)
 
 	// act
 	gotCfg, gotErr := GetBackendConfig(ctx, backendName)
@@ -866,7 +941,7 @@ func Test_GetBackendConfig_SuccessDtfsProtocol(t *testing.T) {
 				"protocol": constants.ProtocolDtfs,
 			},
 		}, nil
-	}).ApplyFuncReturn(utils.GetSBCTSpecificationByClaim, map[string]string{"DeviceWWN": expectedWWN}, nil)
+	}).ApplyFuncReturn(pkgUtils.GetSBCTSpecificationByClaim, map[string]string{"DeviceWWN": expectedWWN}, nil)
 
 	// act
 	gotCfg, gotErr := GetBackendConfig(ctx, backendName)

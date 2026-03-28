@@ -175,6 +175,23 @@ func (mr *MockOceanASeriesClientInterfaceMockRecorder) CreateFileSystem(ctx, par
 		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).CreateFileSystem), ctx, params, advancedOptions)
 }
 
+// CreateKVCache mocks base method.
+func (m *MockOceanASeriesClientInterface) CreateKVCache(ctx context.Context,
+	params *client.CreateKVCacheParams) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateKVCache", ctx, params)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateKVCache indicates an expected call of CreateKVCache.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) CreateKVCache(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateKVCache",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).CreateKVCache), ctx, params)
+}
+
 // CreateNfsShare mocks base method.
 func (m *MockOceanASeriesClientInterface) CreateNfsShare(ctx context.Context, params map[string]any) (map[string]any,
 	error) {
@@ -269,6 +286,21 @@ func (mr *MockOceanASeriesClientInterfaceMockRecorder) DeleteFileSystem(ctx, par
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFileSystem",
 		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).DeleteFileSystem), ctx, params)
+}
+
+// DeleteKVCache mocks base method.
+func (m *MockOceanASeriesClientInterface) DeleteKVCache(ctx context.Context, kvcacheStoreId string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteKVCache", ctx, kvcacheStoreId)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteKVCache indicates an expected call of DeleteKVCache.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) DeleteKVCache(ctx, kvcacheStoreId any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteKVCache",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).DeleteKVCache), ctx, kvcacheStoreId)
 }
 
 // DeleteNfsShare mocks base method.
@@ -863,6 +895,23 @@ func (mr *MockOceanASeriesClientInterfaceMockRecorder) Put(ctx, url, data any) *
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put",
 		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).Put), ctx, url, data)
+}
+
+// QueryKVCache mocks base method.
+func (m *MockOceanASeriesClientInterface) QueryKVCache(ctx context.Context,
+	params *client.QueryKVCacheParams) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryKVCache", ctx, params)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryKVCache indicates an expected call of QueryKVCache.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) QueryKVCache(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryKVCache",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).QueryKVCache), ctx, params)
 }
 
 // ReLogin mocks base method.

@@ -58,21 +58,69 @@ func BuildParameters(opts ...BuildParameterOption) (map[string]interface{}, erro
 // WithControllerPublishInfo build publishInfo for the request parameters
 func WithControllerPublishInfo(ctx context.Context, req *csi.NodeStageVolumeRequest) BuildParameterOption {
 	return func(parameters map[string]interface{}) error {
+		var publishInfoByte []byte
+		var err error
 		publishInfoJson, ok := req.PublishContext["publishInfo"]
-		if !ok {
-			return fmt.Errorf("publishInfo doesn't exist, PublishContext:%v", req.PublishContext)
+		if ok {
+			publishInfoByte = []byte(publishInfoJson)
+		} else {
+			log.AddContext(ctx).Infof("Volume %s need to be published", req.GetVolumeId())
+			publishInfoByte, err = attachVolume(ctx, req)
+			if err != nil {
+				return fmt.Errorf("publish volume %s failed, err: %w", req.GetVolumeId(), err)
+			}
 		}
 
 		publishInfo := &ControllerPublishInfo{}
-		err := json.Unmarshal([]byte(publishInfoJson), publishInfo)
+		err = json.Unmarshal(publishInfoByte, publishInfo)
 		if err != nil {
-			log.AddContext(ctx).Errorf("publishInfo unmarshal fail, error:%v", err)
-			return err
+			return fmt.Errorf("publishInfo unmarshal fail, err: %w", err)
 		}
 
 		parameters["publishInfo"] = publishInfo
 		return nil
 	}
+}
+
+func attachVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) ([]byte, error) {
+	backendName, volumeName := utils.SplitVolumeId(req.GetVolumeId())
+	claimNameMeta := pkgUtils.MakeMetaWithNamespace(app.GetGlobalConfig().Namespace, backendName)
+	content, err := pkgUtils.GetContentByClaimMeta(ctx, claimNameMeta)
+	if err != nil {
+		return nil, fmt.Errorf("attach volume failed while getting sbct, backend name: %s, err: %w", backendName, err)
+	}
+
+	if content.Status == nil || !content.Status.Online {
+		return nil, fmt.Errorf("attach volume failed cause backend offline, backend name: %s", backendName)
+	}
+
+	buildBackend, err := backend.BuildBackend(ctx, *content)
+	if err != nil {
+		return nil, fmt.Errorf("attach volume failed while building backend, "+
+			"backend name: %s, err: %w", backendName, err)
+	}
+	defer buildBackend.Plugin.Logout(ctx)
+
+	hostName, err := utils.GetHostName(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("attach volume failed while getting hostname, err: %w", err)
+	}
+
+	parameters := map[string]interface{}{"HostName": hostName}
+	parameters["volumeContext"] = req.GetVolumeContext()
+	mappingInfo, err := buildBackend.Plugin.AttachVolume(ctx, volumeName, parameters)
+	if err != nil {
+		return nil, fmt.Errorf("attach volume failed while attaching volume, "+
+			"volume name: %s, err: %w", volumeName, err)
+	}
+
+	publishInfo, err := json.Marshal(mappingInfo)
+	if err != nil {
+		return nil, fmt.Errorf("attach volume failed while marshalling mappingInfo, "+
+			"volume name: %s, err: %w", volumeName, err)
+	}
+
+	return publishInfo, nil
 }
 
 // WithMultiPathType build multiPathType for the request parameters
@@ -86,7 +134,7 @@ func WithMultiPathType(protocol string) BuildParameterOption {
 		publishInfo.VolumeUseMultiPath = app.GetGlobalConfig().VolumeUseMultiPath
 		if protocol == "iscsi" || protocol == "fc" {
 			publishInfo.MultiPathType = app.GetGlobalConfig().ScsiMultiPathType
-		} else if protocol == "roce" || protocol == "fc-nvme" {
+		} else if constants.IsNVMeProtocol(protocol) {
 			publishInfo.MultiPathType = app.GetGlobalConfig().NvmeMultiPathType
 		}
 		return nil
@@ -213,18 +261,18 @@ func (c *ControllerPublishInfo) ReflectToMap() map[string]interface{} {
 
 // ExtractWwn extract wwn from the request parameters
 func ExtractWwn(parameters map[string]interface{}) (string, error) {
-	publishInfo, exist := parameters["publishInfo"].(*ControllerPublishInfo)
+	publishInfo, exist := utils.GetValue[*ControllerPublishInfo](parameters, "publishInfo")
 	if !exist {
-		return "", errors.New("extract wwn failed, caused by publishInfo does not exist")
+		return "", errors.New("extract wwn failed, caused by publishInfo is invalid or not existed")
 	}
 
-	protocol, exist := parameters["protocol"]
+	protocol, exist := utils.GetValue[string](parameters, "protocol")
 	if !exist {
-		return "", errors.New("extract wwn failed, caused by protocol does not exist")
+		return "", errors.New("extract wwn failed, caused by protocol is invalid or not existed")
 	}
 
 	wwn := publishInfo.TgtLunWWN
-	if protocol == "roce" || protocol == "fc-nvme" {
+	if constants.IsNVMeProtocol(protocol) {
 		wwn = publishInfo.TgtLunGuid
 	}
 	return wwn, nil
@@ -415,13 +463,12 @@ func PublishFilesystem(ctx context.Context, req *csi.NodePublishVolumeRequest) e
 
 	var opts []string
 	// process volume with type is dTree
-	if bk.storage == constants.OceanStorDtree || bk.storage == constants.FusionDTree {
+	if constants.IsDtreeStorage(bk.storage) {
 		sourcePath, err = getDTreeSourcePath(bk, req, volumeName)
 		if err != nil {
 			return err
 		}
-
-		opts = getDTreeMountOptions(req)
+		opts = getDTreeMountOptions(req, bk)
 	} else {
 		opts = append(opts, "bind")
 		if req.GetReadonly() {
@@ -447,7 +494,7 @@ func PublishFilesystem(ctx context.Context, req *csi.NodePublishVolumeRequest) e
 	return nil
 }
 
-func getDTreeMountOptions(req *csi.NodePublishVolumeRequest) []string {
+func getDTreeMountOptions(req *csi.NodePublishVolumeRequest, bk *BackendConfig) []string {
 	var opts []string
 	if req.GetVolumeCapability() != nil && req.GetVolumeCapability().GetMount() != nil &&
 		req.GetVolumeCapability().GetMount().GetMountFlags() != nil {
@@ -458,6 +505,10 @@ func getDTreeMountOptions(req *csi.NodePublishVolumeRequest) []string {
 	accessMode := utils.GetAccessModeType(volumeAccessMode)
 	if accessMode == "ReadOnly" {
 		opts = append(opts, "ro")
+	}
+
+	if bk.storage == constants.OceanStorASeriesDtree && bk.protocol == constants.ProtocolDtfs && bk.deviceWWN != "" {
+		opts = append(opts, fmt.Sprintf("cid=%s", bk.deviceWWN))
 	}
 
 	return opts

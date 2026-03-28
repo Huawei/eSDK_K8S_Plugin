@@ -48,6 +48,12 @@ type ASeriesFilesystem interface {
 	AddDataTurboShareUser(ctx context.Context, params *AddDataTurboShareUserParams) error
 	// RemoveDataTurboShareUser used for delete DataTurbo share user
 	RemoveDataTurboShareUser(ctx context.Context, objID, vstoreId string) error
+	// QueryKVCache is used to query a KVCache by QueryKVCacheParams
+	QueryKVCache(ctx context.Context, params *QueryKVCacheParams) (map[string]interface{}, error)
+	// DeleteKVCache is used to delete a KVCache by kvcacheStoreId
+	DeleteKVCache(ctx context.Context, kvcacheStoreId string) error
+	// CreateKVCache is used to create a KVCache by CreateKVCacheParams
+	CreateKVCache(ctx context.Context, params *CreateKVCacheParams) (map[string]interface{}, error)
 }
 
 // GetFileSystemByName used for get filesystem list by name
@@ -84,6 +90,7 @@ func (cli *OceanASeriesClient) GetFileSystemByName(ctx context.Context,
 	if !ok {
 		return nil, fmt.Errorf("convert respData to array failed, data: %v", resp.Data)
 	}
+
 	if len(respData) == 0 {
 		return map[string]interface{}{}, nil
 	}
@@ -354,4 +361,155 @@ func (cli *OceanASeriesClient) RemoveDataTurboShareUser(ctx context.Context, obj
 	}
 
 	return nil
+}
+
+// QueryKVCacheParams defines query KVCache params
+type QueryKVCacheParams struct {
+	// VstoreId is the id of the vstore
+	VstoreId string
+	// KvcacheStoreName is the kvcacheStoreName of the KVCache
+	KvcacheStoreName string
+}
+
+// QueryKVCache is used to query a KVCache by QueryKVCacheParams
+func (cli *OceanASeriesClient) QueryKVCache(ctx context.Context,
+	params *QueryKVCacheParams) (map[string]interface{}, error) {
+	path := rest.NewRequestPath(api.QueryKVCachePath)
+	path.SetQuery("vstoreId", params.VstoreId)
+	path.AddFilter("kvcacheStoreName", params.KvcacheStoreName)
+	path.SetDefaultListRange()
+	encodePath, err := path.Encode()
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode path and queries: %w", err)
+	}
+
+	resp, err := cli.Get(ctx, encodePath, nil)
+	if err != nil {
+		return nil, err
+	}
+	code, msg, err := utils.FormatRespErr(resp.Error)
+	if err != nil {
+		return nil, err
+	}
+
+	if code != storage.SuccessCode {
+		return nil, fmt.Errorf("get kvCache %s failed, error code: %d, error msg: %s",
+			params.KvcacheStoreName, code, msg)
+	}
+
+	if resp.Data == nil {
+		return map[string]interface{}{}, nil
+	}
+
+	respData, ok := resp.Data.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("convert respData to array failed, data: %v", resp.Data)
+	}
+
+	for _, item := range respData {
+		kVCache, ok := item.(map[string]interface{})
+		if !ok {
+			log.AddContext(ctx).Infof("convert kVCache to map failed, data: %v", item)
+			continue
+		}
+		kvcacheStoreName, ok := utils.GetValue[string](kVCache, "kvcacheStoreName")
+		if !ok {
+			log.AddContext(ctx).Infof("kvcacheStoreName must be provided for KVCache， data： %v", item)
+			continue
+		}
+		if kvcacheStoreName == params.KvcacheStoreName {
+			return kVCache, nil
+		}
+	}
+	return map[string]interface{}{}, nil
+}
+
+// DeleteKVCache is used to delete a KVCache by kvcacheStoreId
+func (cli *OceanASeriesClient) DeleteKVCache(ctx context.Context, kvcacheStoreId string) error {
+	if kvcacheStoreId == "" {
+		return fmt.Errorf("kvcacheStoreId must not be empty")
+	}
+
+	data := map[string]interface{}{
+		"kvcacheStoreId": kvcacheStoreId,
+	}
+
+	resp, err := cli.Delete(ctx, api.ManageKVCachePath, data)
+	if err != nil {
+		return err
+	}
+
+	code, msg, err := utils.FormatRespErr(resp.Error)
+	if err != nil {
+		return err
+	}
+
+	if code == storage.ObjectNotExist {
+		log.AddContext(ctx).Infof("kvCache %s does not exist, skip deleting", kvcacheStoreId)
+		return nil
+	}
+
+	if code != storage.SuccessCode {
+		return fmt.Errorf("delete kvCache %s failed, error code: %d, error msg: %s", kvcacheStoreId, code, msg)
+	}
+	return nil
+}
+
+// CreateKVCacheParams defines parameters for creating a KV cache store
+type CreateKVCacheParams struct {
+	KVCacheStoreName  string
+	PoolID            string
+	Capacity          int64
+	EnableTimeAwareGC bool
+	GCTimeThreshold   int64
+	VStoreID          string
+	FSName            string
+	FsID              string
+	Description       string
+	NfsId             string
+}
+
+// CreateKVCache is used to create a KVCache by CreateKVCacheParams
+func (cli *OceanASeriesClient) CreateKVCache(ctx context.Context,
+	params *CreateKVCacheParams) (map[string]interface{}, error) {
+	data := map[string]interface{}{
+		"kvcacheStoreName": params.KVCacheStoreName,
+		"poolId":           params.PoolID,
+		"capacity":         params.Capacity,
+		"vstoreId":         params.VStoreID,
+		"fsName":           params.FSName,
+		"fsId":             params.FsID,
+	}
+	if params.EnableTimeAwareGC {
+		data["enableTimeAwareGc"] = params.EnableTimeAwareGC
+		data["gcTimeThreshold"] = params.GCTimeThreshold
+	}
+
+	if params.Description != "" {
+		data["description"] = params.Description
+	}
+
+	if params.NfsId != "" {
+		data["nfsId"] = params.NfsId
+	}
+
+	resp, err := cli.Post(ctx, api.ManageKVCachePath, data)
+	if err != nil {
+		return nil, err
+	}
+
+	code, msg, err := utils.FormatRespErr(resp.Error)
+	if err != nil {
+		return nil, err
+	}
+	if code != storage.SuccessCode {
+		return nil, fmt.Errorf("create kvcache failed, error code: %d, error msg: %s", code, msg)
+	}
+
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("convert kvcache to map failed, data:  %v", resp.Data)
+	}
+
+	return respData, nil
 }

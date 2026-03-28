@@ -75,6 +75,22 @@ func (k *KubeClient) GetDTreeParentNameByVolumeId(volumeId string) (string, erro
 	return value, nil
 }
 
+// GetKvCacheStoreIdByVolumeId returns kvCacheStoreId field of PV by volume id
+func (k *KubeClient) GetKvCacheStoreIdByVolumeId(volumeId string) (string, error) {
+	volumeAttrs, err := k.GetVolumeAttrsByVolumeId(volumeId)
+	if err != nil {
+		return "", fmt.Errorf("failed to get volume attributes by volume id %q: %w", volumeId, err)
+	}
+
+	if len(volumeAttrs) == 0 {
+		return "", fmt.Errorf("volume attrs %q does not exist", volumeId)
+	}
+
+	value, _ := volumeAttrs[0][constants.KvCacheStoreId]
+
+	return value, nil
+}
+
 // volumeIdKeyFunc is a default index function that indexes based on volume id
 func volumeIdKeyFunc(obj any) ([]string, error) {
 	volume, ok := obj.(*corev1.PersistentVolume)

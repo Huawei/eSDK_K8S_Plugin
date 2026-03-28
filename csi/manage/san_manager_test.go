@@ -29,10 +29,10 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/fcnvme"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/fibrechannel"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/iscsi"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/roce"
 	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
@@ -53,8 +53,12 @@ func TestSanManagerStageFileSystemVolume(t *testing.T) {
 			connectVolumeFunc: mockConnectFcVolume},
 		{name: "TestSanManagerStageRoceFileSystemVolume", manager: &SanManager{
 			protocol: "roce",
-			Conn:     connector.GetConnector(context.Background(), connector.RoCEDriver)},
-			connectVolumeFunc: mockConnectRoceVolume},
+			Conn:     connector.GetConnector(context.Background(), connector.NVMeDriver)},
+			connectVolumeFunc: mockConnectNVMeVolume},
+		{name: "TestSanManagerStageNVMeRoceFileSystemVolume", manager: &SanManager{
+			protocol: "roce-nvme",
+			Conn:     connector.GetConnector(context.Background(), connector.NVMeDriver)},
+			connectVolumeFunc: mockConnectNVMeVolume},
 		{name: "TestSanManagerStageFcNvmeFileSystemVolume", manager: &SanManager{
 			protocol: "fc-nvme",
 			Conn:     connector.GetConnector(context.Background(), connector.FCNVMeDriver)},
@@ -114,7 +118,7 @@ func mockClearResidualPath(patch *gomonkey.Patches, protocol string) {
 		lunWWN string, volumeMode interface{}) error {
 
 		wwn := "mock_tgt_lun_wwn_1"
-		if protocol == "roce" || protocol == "fc-nvme" {
+		if protocol == "roce" || protocol == "roce-nvme" || protocol == "fc-nvme" {
 			wwn = "mock_lun_guid_1"
 		}
 
@@ -167,9 +171,9 @@ func mockConnectFcVolume(patch *gomonkey.Patches, conn connector.VolumeConnector
 		})
 }
 
-func mockConnectRoceVolume(patch *gomonkey.Patches, conn connector.VolumeConnector) {
+func mockConnectNVMeVolume(patch *gomonkey.Patches, conn connector.VolumeConnector) {
 	patch.ApplyMethod(reflect.TypeOf(conn), "ConnectVolume",
-		func(_ *roce.Connector, ctx context.Context, params map[string]interface{}) (string, error) {
+		func(_ *nvme.Connector, ctx context.Context, params map[string]interface{}) (string, error) {
 			want := map[string]interface{}{
 				"tgtPortals":         []string{"mock_tgt_portal_1"},
 				"tgtLunGuid":         "mock_lun_guid_1",
@@ -188,12 +192,12 @@ func mockConnectRoceVolume(patch *gomonkey.Patches, conn connector.VolumeConnect
 
 func mockConnectFcNvmeVolume(patch *gomonkey.Patches, conn connector.VolumeConnector) {
 	patch.ApplyMethod(reflect.TypeOf(conn), "ConnectVolume",
-		func(_ *nvme.FCNVMe, ctx context.Context, params map[string]interface{}) (string, error) {
+		func(_ *fcnvme.Conn, ctx context.Context, params map[string]interface{}) (string, error) {
 			want := map[string]interface{}{
 				"tgtLunGuid":         "mock_lun_guid_1",
 				"volumeUseMultiPath": app.GetGlobalConfig().VolumeUseMultiPath,
 				"multiPathType":      app.GetGlobalConfig().ScsiMultiPathType,
-				"portWWNList": []nvme.PortWWNPair{{InitiatorPortWWN: "mock_initiator_port_wwn_1",
+				"portWWNList": []fcnvme.PortWWNPair{{InitiatorPortWWN: "mock_initiator_port_wwn_1",
 					TargetPortWWN: "mock_target_port_wwn_1"},
 				},
 			}
@@ -256,7 +260,7 @@ func mockSanStageVolumeRequest(t *testing.T, volumeType string) *csi.NodeStageVo
 		TgtWWNs:            []string{"mock_wwn_1"},
 		VolumeUseMultiPath: true,
 		MultiPathType:      "mock_type_1",
-		PortWWNList: []nvme.PortWWNPair{
+		PortWWNList: []fcnvme.PortWWNPair{
 			{InitiatorPortWWN: "mock_initiator_port_wwn_1", TargetPortWWN: "mock_target_port_wwn_1"},
 		},
 	}

@@ -55,6 +55,7 @@ const (
 	iscsiSessionLoginInterval = 2 * time.Second
 	iscsiSessionLoginTimes    = 60
 	ultrapathScanningTimeout  = 15 * time.Second
+	ultrapathDevicePrefix     = "up"
 )
 
 var singleGroup = concurrent.NewSingleGroup[connectResult]()
@@ -415,6 +416,11 @@ func getDeviceByHCTL(session string, hostChannelTargetLun []string) string {
 	if devices != nil {
 		sort.Strings(devices)
 		_, device = filepath.Split(devices[0])
+	}
+
+	// Devices with the "up" prefix are managed by Ultrapath, should be masked
+	if strings.HasPrefix(device, ultrapathDevicePrefix) {
+		return ""
 	}
 
 	return device

@@ -173,9 +173,10 @@ func (p *DTree) Expand(ctx context.Context, parentName string, dTreeName string,
 	}
 	if len(quotaInfos) == 0 {
 		log.AddContext(ctx).Infof("get empty quota arrays params: %+v", req)
-		data := map[string]any{"PARENTTYPE": client.ParentTypeDTree, "PARENTNAME": dTreeName,
+		data := map[string]any{"PARENTTYPE": client.ParentTypeDTree, "PARENTID": dTreeID,
 			"QUOTATYPE": client.QuotaTypeDir, "SPACEUNITTYPE": client.SpaceUnitTypeBytes,
 			"SPACEHARDQUOTA": spaceHardQuota, "vstoreId": vstoreID}
+
 		_, err = p.cli.CreateQuota(ctx, data)
 		if err != nil {
 			return fmt.Errorf("create dtree quota failed, params: %+v, error: %v", data, err)
@@ -653,6 +654,61 @@ func (p *DTree) AutoManageAuthClient(ctx context.Context, volume, parentName str
 func (p *DTree) CheckAllClientsStatus(ctx context.Context, volume, parentName string, authClients []string) error {
 	dtreeShare := parentName + "/" + volume
 	return p.checkAllClientsStatus(ctx, dtreeShare, authClients, false)
+}
+
+// Query queries volume by name and parentName and vstoreID
+func (p *DTree) Query(ctx context.Context, name, parentName, vstoreID string) (utils.Volume, error) {
+	dtree, err := p.cli.GetDTreeByName(ctx, "", parentName, vstoreID, name)
+	if err != nil {
+		log.AddContext(ctx).Errorf("query dtree failed, dtree:%q parentName:%q vstoreID:%q error: %v",
+			name, parentName, vstoreID, err)
+		return nil, err
+	}
+
+	if dtree == nil {
+		return nil, utils.Errorf(ctx, "dtree to query does not exist, dtree:%q parentName:%q vstoreID:%q ",
+			name, parentName, vstoreID)
+	}
+
+	batchQueryParam := map[string]interface{}{
+		"PARENTTYPE":    client.ParentTypeDTree,
+		"PARENTID":      dtree["ID"].(string),
+		"range":         "[0-100]",
+		"vstoreId":      vstoreID,
+		"QUERYTYPE":     "2",
+		"SPACEUNITTYPE": client.SpaceUnitTypeBytes,
+	}
+	quotaList, err := p.cli.BatchGetQuota(ctx, batchQueryParam)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Query quota failed, dtree:%q parentName:%q vstoreID:%q error: %v",
+			name, parentName, vstoreID, err)
+		return nil, err
+	}
+	if len(quotaList) == 0 {
+		return nil, utils.Errorf(ctx, "quota to query does not exist, dtree:%q parentName:%q vstoreID:%q",
+			name, parentName, vstoreID)
+	}
+	quota, ok := quotaList[0].(map[string]interface{})
+	if !ok {
+		return nil, utils.Errorf(ctx, "quota to query is not the expect type, dtree:%q parentName:%q vstoreID:%q",
+			name, parentName, vstoreID)
+	}
+
+	vol := utils.NewVolume(name)
+	vol.SetID(dtree["ID"].(string))
+	vol.SetDTreeParentName(parentName)
+	if hardQuotaStr, ok := quota["SPACEHARDQUOTA"]; !ok {
+		return nil, utils.Errorf(ctx, "quota to query does not contain hard quota, dtree:%q parentName:%q vstoreID:%q",
+			name, parentName, vstoreID)
+	} else if capacity, err := strconv.ParseInt(
+		hardQuotaStr.(string), constants.DefaultIntBase, constants.DefaultIntBitSize); err != nil {
+		return nil, utils.Errorf(ctx, "parse hard quota failed, dtree:%q parentName:%q vstoreID:%q hardQuota:%q",
+			name, parentName, vstoreID, hardQuotaStr)
+	} else {
+		vol.SetSize(capacity)
+	}
+
+	return vol, nil
 }
 
 func formatKerberosParam(data interface{}) int {

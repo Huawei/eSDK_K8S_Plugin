@@ -406,7 +406,7 @@ func TestOceandiskAttacher_ControllerAttach_Success(t *testing.T) {
 	mock.ApplyMethodReturn(&baseAttacher.AttachmentManager{},
 		"GetHost", map[string]interface{}{"ID": "1", "NAME": hostName}, nil).
 		ApplyMethodReturn(newClient, "UpdateHost", nil).
-		ApplyMethodReturn(&baseAttacher.AttachmentManager{}, "AttachRoCE", map[string]interface{}{}, nil).
+		ApplyMethodReturn(&baseAttacher.AttachmentManager{}, "AttachNVMe", map[string]interface{}{}, nil).
 		ApplyPrivateMethod(attacher, "doMapping",
 			func(ctx context.Context, hostID, namespaceName string) (string, string, error) {
 				return "", "", nil

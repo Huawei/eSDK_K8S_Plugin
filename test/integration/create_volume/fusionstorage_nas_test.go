@@ -57,7 +57,6 @@ func TestCreateVolume_FusionStorageNas_FullFeaturesSuccess(t *testing.T) {
 		map[string]string{}, nil,
 	)
 	defer p.Reset()
-	cli.EXPECT().GetAccountIdByName(ctx, data.AccountName).Return(data.FakeAccountID, nil)
 	cli.EXPECT().GetPoolByName(ctx, data.PoolName).Return(map[string]any{"poolId": data.FakePoolID}, nil)
 	firstGetFs := cli.EXPECT().GetFileSystemByName(ctx, data.ExpectedFsName).Return(nil, nil)
 	cli.EXPECT().GetFileSystemByName(ctx, data.ExpectedFsName).
@@ -69,7 +68,7 @@ func TestCreateVolume_FusionStorageNas_FullFeaturesSuccess(t *testing.T) {
 	cli.EXPECT().GetQoSPolicyIdByFsName(ctx, data.ExpectedFsName).Return(types.NoQoSPolicyId, nil)
 	cli.EXPECT().CreateConvergedQoS(ctx, data.expectedCreateQosRequest()).Return(data.FakeQoSID, nil)
 	cli.EXPECT().AssociateConvergedQoSWithVolume(ctx, data.expectedAssociateQoSRequest()).Return(nil)
-	cli.EXPECT().GetNfsShareByPath(ctx, data.ExpectedSharePath, data.FakeAccountID).Return(nil, nil)
+	cli.EXPECT().GetNfsShareByPath(ctx, data.ExpectedSharePath).Return(nil, nil)
 	cli.EXPECT().CreateNfsShare(ctx, data.expectedCreateNfsShareParams()).
 		Return(map[string]any{"id": data.FakeShareID}, nil)
 	cli.EXPECT().AllowNfsShareAccess(ctx, data.expectedAllowNfsShareRequest()).Return(nil)
@@ -189,7 +188,6 @@ func fakeFusionNasDataWithFullFeaturesSuccess() *fusionStorageNas {
 		ExpectedQoSMaxMbps:      999,
 		ExpectedQoSMaxIops:      999,
 
-		FakeAccountID:  "fake-account-id",
 		FakePoolID:     10,
 		FakeFsID:       11,
 		FakeFsIDString: "11",
@@ -229,7 +227,6 @@ type fusionStorageNas struct {
 	ExpectedQoSMaxMbps      int
 	ExpectedQoSMaxIops      int
 
-	FakeAccountID  string
 	FakePoolID     float64
 	FakeFsID       float64
 	FakeFsIDString string
@@ -334,7 +331,6 @@ func (data *fusionStorageNas) expectedCreateFsParams() map[string]any {
 	return map[string]any{
 		"name":          data.ExpectedFsName,
 		"poolId":        int64(data.FakePoolID),
-		"accountid":     data.FakeAccountID,
 		"fspermission":  data.Permission,
 		"isshowsnapdir": data.ExpectedShowSnapshotDir,
 	}
@@ -381,7 +377,6 @@ func (data *fusionStorageNas) expectedCreateNfsShareParams() map[string]any {
 		"sharepath":   data.ExpectedSharePath,
 		"fsid":        data.FakeFsIDString,
 		"description": "Created from Kubernetes Provisioner",
-		"accountid":   data.FakeAccountID,
 	}
 }
 
@@ -392,6 +387,5 @@ func (data *fusionStorageNas) expectedAllowNfsShareRequest() *client.AllowNfsSha
 		AccessValue: 1,
 		AllSquash:   data.ExpectedAllSquashParam,
 		RootSquash:  data.ExpectedRootSquashParam,
-		AccountId:   data.FakeAccountID,
 	}
 }

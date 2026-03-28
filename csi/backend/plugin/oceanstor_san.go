@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 
@@ -42,14 +43,25 @@ const (
 	hyperMetroPairRunningStatusPause  = "41"
 	reflectResultLength               = 2
 	csiInvoker                        = "csi"
+
+	hyperMetroDomain                    = "hyperMetroDomain"
+	hyperMetroDomainRunningStatusNormal = "1"
+)
+
+var (
+	oceanStorSanProtocols = []string{constants.ProtocolIscsi, constants.ProtocolFC, constants.ProtocolFCNVMe,
+		constants.ProtocolRoce, constants.ProtocolRoceNVMe, constants.ProtocolTCPNVMe}
+	oceanStorSanProtocolsWithPortals = []string{constants.ProtocolIscsi,
+		constants.ProtocolRoce, constants.ProtocolRoceNVMe, constants.ProtocolTCPNVMe}
 )
 
 // OceanstorSanPlugin implements storage StoragePlugin interface
 type OceanstorSanPlugin struct {
 	OceanstorPlugin
-	protocol string
-	portals  []string
-	alua     map[string]interface{}
+	protocol    string
+	portals     []string
+	alua        map[string]interface{}
+	metroDomain string
 
 	replicaRemotePlugin *OceanstorSanPlugin
 	metroRemotePlugin   *OceanstorSanPlugin
@@ -79,20 +91,26 @@ func (p *OceanstorSanPlugin) NewPlugin() StoragePlugin {
 func (p *OceanstorSanPlugin) Init(ctx context.Context, config map[string]interface{},
 	parameters map[string]interface{}, keepLogin bool) error {
 	protocol, exist := parameters["protocol"].(string)
-	if !exist || (protocol != "iscsi" && protocol != "fc" && protocol != "roce" && protocol != "fc-nvme") {
-		return errors.New("protocol must be provided as 'iscsi', 'fc', " +
-			"'roce' or 'fc-nvme' for oceanstor-san backend")
+	if !exist || !isOceanstorSanProtocol(protocol) {
+		return fmt.Errorf("protocol must be provided as one of %v for oceanstor-san backend", oceanStorSanProtocols)
 	}
 
+	if metroDomainStr, exist := config[hyperMetroDomain]; exist {
+		if metroDomain, ok := metroDomainStr.(string); ok {
+			p.metroDomain = metroDomain
+		} else {
+			return fmt.Errorf("the %s convert to string failed", metroDomainStr)
+		}
+	}
 	p.alua, _ = parameters["ALUA"].(map[string]interface{})
 
-	if protocol == "iscsi" || protocol == "roce" {
+	if isOceanstorSanProtocolWithPortals(protocol) {
 		portals, exist := parameters["portals"].([]interface{})
 		if !exist {
-			return errors.New("portals are required to configure for iSCSI or RoCE backend")
+			return fmt.Errorf("portals are required to configure for %s backend", protocol)
 		}
 
-		IPs, err := proto.VerifyIscsiPortals(ctx, portals)
+		IPs, err := proto.VerifySanPortals(ctx, portals)
 		if err != nil {
 			return err
 		}
@@ -100,12 +118,15 @@ func (p *OceanstorSanPlugin) Init(ctx context.Context, config map[string]interfa
 		p.portals = IPs
 	}
 
+	if config != nil {
+		config["protocol"] = protocol
+	}
 	err := p.init(ctx, config, keepLogin)
 	if err != nil {
 		return err
 	}
 
-	if (protocol == "roce" || protocol == "fc-nvme") && !p.product.IsDoradoV6OrV7() {
+	if constants.IsNVMeProtocol(protocol) && !p.product.IsDoradoV6OrV7() {
 		p.Logout(ctx)
 
 		msg := fmt.Sprintf("The storage backend %s does not support NVME protocol", p.product)
@@ -117,6 +138,14 @@ func (p *OceanstorSanPlugin) Init(ctx context.Context, config map[string]interfa
 	p.storageOnline = true
 
 	return nil
+}
+
+func isOceanstorSanProtocol(protocol string) bool {
+	return slices.Contains(oceanStorSanProtocols, protocol)
+}
+
+func isOceanstorSanProtocolWithPortals(protocol string) bool {
+	return slices.Contains(oceanStorSanProtocolsWithPortals, protocol)
 }
 
 func (p *OceanstorSanPlugin) getSanObj() *volume.SAN {
@@ -163,7 +192,7 @@ func (p *OceanstorSanPlugin) QueryVolume(ctx context.Context, name string, param
 }
 
 // DeleteVolume used to delete volume
-func (p *OceanstorSanPlugin) DeleteVolume(ctx context.Context, name string) error {
+func (p *OceanstorSanPlugin) DeleteVolume(ctx context.Context, name string, params map[string]interface{}) error {
 	san := p.getSanObj()
 	return san.Delete(ctx, name)
 }
@@ -456,12 +485,12 @@ func (p *OceanstorSanPlugin) UpdateMetroRemotePlugin(ctx context.Context, remote
 }
 
 // CreateSnapshot used to create snapshot
-func (p *OceanstorSanPlugin) CreateSnapshot(ctx context.Context,
-	lunName, snapshotName string) (map[string]interface{}, error) {
+func (p *OceanstorSanPlugin) CreateSnapshot(ctx context.Context, lunName, snapshotName string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
 	san := p.getSanObj()
 
 	snapshotName = utils.GetSnapshotName(snapshotName)
-	snapshot, err := san.CreateSnapshot(ctx, lunName, snapshotName)
+	snapshot, err := san.CreateSnapshot(ctx, lunName, snapshotName, parameters)
 	if err != nil {
 		return nil, err
 	}
@@ -543,17 +572,45 @@ func (p *OceanstorSanPlugin) UpdateBackendCapabilities(ctx context.Context) (map
 	}
 
 	p.storageOnline = true
-	p.updateHyperMetroCapability(capabilities)
+	p.updateHyperMetroCapability(ctx, capabilities)
 	p.updateReplicaCapability(capabilities)
 	return capabilities, specifications, nil
 }
 
-func (p *OceanstorSanPlugin) updateHyperMetroCapability(capabilities map[string]interface{}) {
+func (p *OceanstorSanPlugin) updateHyperMetroCapability(ctx context.Context,
+	capabilities map[string]interface{}) {
+	if capabilities == nil {
+		return
+	}
+
 	if metroSupport, exist := capabilities["SupportMetro"]; !exist || metroSupport == false {
 		return
 	}
 
-	if capabilities == nil {
+	delete(capabilities, "SupportMetroNAS")
+
+	if p.metroDomain == "" {
+		capabilities["SupportMetro"] = false
+		return
+	}
+
+	domain, err := p.cli.GetHyperMetroDomainByName(ctx, p.metroDomain)
+	if err != nil || domain == nil {
+		log.AddContext(ctx).Warningf("cannot get hypermetro domain by name, name: %s", p.metroDomain)
+		capabilities["SupportMetro"] = false
+		return
+	}
+
+	status, ok := utils.GetValue[string](domain, "RUNNINGSTATUS")
+	if !ok {
+		log.AddContext(ctx).Warningf("hypermetro domain status convert to string failed, "+
+			"data: %v", domain["RUNNINGSTATUS"])
+		capabilities["SupportMetro"] = false
+		return
+	}
+	if status != hyperMetroDomainRunningStatusNormal {
+		log.AddContext(ctx).Warningf("hypermetro domain status is not normal, status: %s", p.metroDomain)
+		capabilities["SupportMetro"] = false
 		return
 	}
 
@@ -606,29 +663,23 @@ func (p *OceanstorSanPlugin) Validate(ctx context.Context, param map[string]inte
 func (p *OceanstorSanPlugin) verifyOceanstorSanParam(ctx context.Context, config map[string]interface{}) error {
 	parameters, exist := config["parameters"].(map[string]interface{})
 	if !exist {
-		msg := fmt.Sprintf("Verify parameters: [%v] failed. \nparameters must be provided", config["parameters"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
+		return fmt.Errorf("verify parameters: [%v] failed. parameters must be provided", config["parameters"])
 	}
 
 	protocol, exist := parameters["protocol"].(string)
-	if !exist || (protocol != "iscsi" && protocol != "fc" && protocol != "roce" && protocol != "fc-nvme") {
-		msg := fmt.Sprintf("Verify protocol: [%v] failed. \nprotocol must be provided and be one of "+
-			"[iscsi, fc, roce, fc-nvme] for oceanstor-san backend\n", parameters["protocol"])
-		log.AddContext(ctx).Errorln(msg)
-		return errors.New(msg)
+	if !exist || !isOceanstorSanProtocol(protocol) {
+		return fmt.Errorf("verify protocol: [%v] failed. protocol must be provided and be one of "+
+			"%v for oceanstor-san backend", parameters["protocol"], oceanStorSanProtocols)
 	}
 
-	if protocol == "iscsi" || protocol == "roce" {
+	if isOceanstorSanProtocolWithPortals(protocol) {
 		portals, exist := parameters["portals"].([]interface{})
 		if !exist {
-			msg := fmt.Sprintf("Verify portals: [%v] failed. \nportals are required to configure for "+
-				"iscsi or roce for oceanstor-san backend\n", parameters["portals"])
-			log.AddContext(ctx).Errorln(msg)
-			return errors.New(msg)
+			return fmt.Errorf("verify portals: [%v] failed. portals are required to configure for "+
+				"%s for oceanstor-san backend", parameters["portals"], protocol)
 		}
 
-		_, err := proto.VerifyIscsiPortals(ctx, portals)
+		_, err := proto.VerifySanPortals(ctx, portals)
 		if err != nil {
 			return err
 		}
@@ -651,4 +702,9 @@ func (p *OceanstorSanPlugin) ExpandDTreeVolume(context.Context, string, string, 
 func (p *OceanstorSanPlugin) ModifyVolume(ctx context.Context, volumeName string,
 	modifyType pkgVolume.ModifyVolumeType, param map[string]string) error {
 	return errors.New("fusion storage does not support modify volume feature")
+}
+
+// SetStorageOnline sets the online status of plugin
+func (p *OceanstorSanPlugin) SetStorageOnline(online bool) {
+	p.storageOnline = online
 }

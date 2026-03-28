@@ -36,11 +36,22 @@ import (
 const (
 	waitUntilTimeout  = 6 * time.Hour
 	waitUntilInterval = 5 * time.Second
+
+	enableHyperMetroSnap = "enableHyperMetroSnap"
+	invalidSpeed         = 0
 )
 
 // SAN provides base san client
 type SAN struct {
 	Base
+}
+
+type hyperMetroPairParam struct {
+	domainID    string
+	localLunID  string
+	remoteLunID string
+	pair        map[string]interface{}
+	speed       int
 }
 
 // NewSAN inits a new san client
@@ -1061,6 +1072,30 @@ func (p *SAN) revertRemoteQoS(ctx context.Context, taskResult map[string]interfa
 
 func (p *SAN) createHyperMetro(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	pairParam, err := p.getHyperMetroParam(ctx, params, taskResult)
+	if err != nil {
+		return nil, err
+	}
+
+	pairID, err := p.createHyperMetroPair(ctx, params, pairParam)
+	if err != nil {
+		return nil, err
+	}
+
+	err = p.waitHyperMetroSyncFinish(ctx, pairID)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Wait hypermetro pair %s sync done error: %v", pairID, err)
+		p.cli.DeleteHyperMetroPair(ctx, pairID, true)
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"hyperMetroPairID": pairID,
+	}, nil
+}
+
+func (p *SAN) getHyperMetroParam(ctx context.Context,
+	params, taskResult map[string]interface{}) (*hyperMetroPairParam, error) {
 	domainID, ok := taskResult["metroDomainID"].(string)
 	if !ok {
 		return nil, pkgUtils.Errorf(ctx, "domainID convert to string failed, data: %v", taskResult["metroDomainID"])
@@ -1081,56 +1116,68 @@ func (p *SAN) createHyperMetro(ctx context.Context,
 		return nil, err
 	}
 
+	var speed int
+	if v, ok := utils.GetValue[int](params, "metropairsyncspeed"); ok {
+		speed = v
+	}
+
+	return &hyperMetroPairParam{
+		domainID:    domainID,
+		localLunID:  localLunID,
+		remoteLunID: remoteLunID,
+		pair:        pair,
+		speed:       speed,
+	}, nil
+}
+
+func (p *SAN) createHyperMetroPair(ctx context.Context, params map[string]interface{},
+	pairParam *hyperMetroPairParam) (string, error) {
 	var pairID string
-	if pair == nil {
+	var ok bool
+	if pairParam.pair == nil {
 		_, needFirstSync1 := params["clonefrom"]
 		_, needFirstSync2 := params["fromSnapshot"]
 		needFirstSync := needFirstSync1 || needFirstSync2
 		data := map[string]interface{}{
-			"DOMAINID":       domainID,
+			"DOMAINID":       pairParam.domainID,
 			"HCRESOURCETYPE": 1,
 			"ISFIRSTSYNC":    needFirstSync,
-			"LOCALOBJID":     localLunID,
-			"REMOTEOBJID":    remoteLunID,
-			"SPEED":          4,
+			"LOCALOBJID":     pairParam.localLunID,
+			"REMOTEOBJID":    pairParam.remoteLunID,
+		}
+
+		if pairParam.speed != invalidSpeed {
+			data["SPEED"] = pairParam.speed
 		}
 
 		pair, err := p.cli.CreateHyperMetroPair(ctx, data)
 		if err != nil {
-			log.AddContext(ctx).Errorf("Create hypermetro pair between lun (%s-%s) error: %v",
-				localLunID, remoteLunID, err)
-			return nil, err
+			log.AddContext(ctx).Errorf("create hypermetro pair between lun (%s-%s) error: %v",
+				pairParam.localLunID, pairParam.remoteLunID, err)
+			return "", err
 		}
 
-		pairID, ok = pair["ID"].(string)
+		pairID, ok = utils.GetValue[string](pair, "ID")
 		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "pairID convert to string failed, data: %v", pair["ID"])
+			return "", fmt.Errorf("pairID convert to string failed, data: %v", pair["ID"])
 		}
 		if needFirstSync {
 			err := p.cli.SyncHyperMetroPair(ctx, pairID)
 			if err != nil {
-				log.AddContext(ctx).Errorf("Sync hypermetro pair %s error: %v", pairID, err)
+				log.AddContext(ctx).Errorf("sync hypermetro pair %s error: %v", pairID, err)
 				p.cli.DeleteHyperMetroPair(ctx, pairID, true)
-				return nil, err
+				return "", err
 			}
 		}
 	} else {
-		pairID, ok = pair["ID"].(string)
+		pairID, ok = utils.GetValue[string](pairParam.pair, "ID")
 		if !ok {
-			return nil, pkgUtils.Errorf(ctx, "pairID convert to string failed, data: %v", pair["ID"])
+			return "", fmt.Errorf("pairID convert to string failed, data: %v",
+				pairParam.pair["ID"])
 		}
 	}
 
-	err = p.waitHyperMetroSyncFinish(ctx, pairID)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Wait hypermetro pair %s sync done error: %v", pairID, err)
-		p.cli.DeleteHyperMetroPair(ctx, pairID, true)
-		return nil, err
-	}
-
-	return map[string]interface{}{
-		"hyperMetroPairID": pairID,
-	}, nil
+	return pairID, nil
 }
 
 func (p *SAN) waitHyperMetroSyncFinish(ctx context.Context, pairID string) error {
@@ -1158,10 +1205,11 @@ func (p *SAN) waitHyperMetroSyncFinish(ctx context.Context, pairID string) error
 			return false, pkgUtils.Errorf(ctx, "runningStatus convert to string failed, data: %v", pair["RUNNINGSTATUS"])
 		}
 		if runningStatus == hyperMetroPairRunningStatusToSync ||
+			runningStatus == hyperMetroPairRunningStatusPause ||
 			runningStatus == hyperMetroPairRunningStatusSyncing {
+			log.AddContext(ctx).Infof("Hypermetro pair %s is at running status %s", pairID, runningStatus)
 			return false, nil
 		} else if runningStatus == hyperMetroPairRunningStatusUnknown ||
-			runningStatus == hyperMetroPairRunningStatusPause ||
 			runningStatus == hyperMetroPairRunningStatusError ||
 			runningStatus == hyperMetroPairRunningStatusInvalid {
 			return false, fmt.Errorf("Hypermetro pair %s is at running status %s", pairID, runningStatus)
@@ -1503,8 +1551,8 @@ func (p *SAN) expandLocalLun(ctx context.Context,
 }
 
 // CreateSnapshot creates lun snapshot
-func (p *SAN) CreateSnapshot(ctx context.Context,
-	lunName, snapshotName string) (map[string]interface{}, error) {
+func (p *SAN) CreateSnapshot(ctx context.Context, lunName, snapshotName string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
 	lun, err := p.cli.GetLunByName(ctx, lunName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun by name %s error: %v", lunName, err)
@@ -1535,10 +1583,77 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 			log.AddContext(ctx).Errorln(msg)
 			return nil, errors.New(msg)
 		} else {
-			snapshotSize := utils.ParseIntWithDefault(snapshot["USERCAPACITY"].(string), 10, 64, 0)
+			userCapacity, ok := utils.GetValue[string](snapshot, "USERCAPACITY")
+			if !ok {
+				return nil, errors.New("get userCapacity from snapshot failed, " +
+					"the USERCAPACITY is nil or invalid")
+			}
+			snapshotSize := utils.ParseIntWithDefault(userCapacity,
+				constants.DefaultIntBase, constants.DefaultIntBitSize, 0)
 			return p.getSnapshotReturnInfo(snapshot, snapshotSize), nil
 		}
 	}
+
+	err = p.createSANSnapshot(ctx, lunId, snapshotName, parameters)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshotInfo, err := p.getCreateSnapshotReturnInfo(ctx, snapshotName)
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshotInfo, nil
+}
+
+func (p *SAN) getCreateSnapshotReturnInfo(ctx context.Context, snapshotName string) (
+	map[string]interface{}, error) {
+	snapshot, err := p.cli.GetLunSnapshotByName(ctx, snapshotName)
+	if err != nil {
+		return nil, fmt.Errorf("get lun snapshot by name %s error: %w", snapshotName, err)
+	}
+
+	userCapacity, ok := utils.GetValue[string](snapshot, "USERCAPACITY")
+	if !ok {
+		return nil, errors.New("get userCapacity from snapshot failed, " +
+			"the USERCAPACITY is nil or invalid")
+	}
+	snapshotSize := utils.ParseIntWithDefault(userCapacity,
+		constants.DefaultIntBase, constants.DefaultIntBitSize, 0)
+
+	return p.getSnapshotReturnInfo(snapshot, snapshotSize), nil
+}
+
+func (p *SAN) createSANSnapshot(ctx context.Context, lunId, snapshotName string,
+	parameters map[string]interface{}) error {
+	var enable bool
+	var err error
+
+	enableStr, ok := utils.GetValue[string](parameters, enableHyperMetroSnap)
+	if ok {
+		enable, err = strconv.ParseBool(enableStr)
+		if err != nil {
+			return fmt.Errorf("failed to convert %s from string to bool: %w", enableStr, err)
+		}
+	}
+
+	if enable {
+		_, err = p.createHyperMetroSnap(ctx, lunId, snapshotName)
+		if err != nil {
+			return fmt.Errorf("excute create hyper metro snapshot task error: %w", err)
+		}
+	} else {
+		err = p.executeCreateSnapshotTask(ctx, lunId, snapshotName)
+		if err != nil {
+			return fmt.Errorf("excute create snapshot task error: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (p *SAN) executeCreateSnapshotTask(ctx context.Context, lunId, snapshotName string) error {
 
 	taskflow := flow.NewTaskFlow(ctx, "Create-LUN-Snapshot")
 	taskflow.AddTask("Create-Snapshot", p.createSnapshot, p.revertSnapshot)
@@ -1549,20 +1664,13 @@ func (p *SAN) CreateSnapshot(ctx context.Context,
 		"snapshotName": snapshotName,
 	}
 
-	result, err := taskflow.Run(params)
+	_, err := taskflow.Run(params)
 	if err != nil {
 		taskflow.Revert()
-		return nil, err
+		return err
 	}
 
-	snapshot, err = p.cli.GetLunSnapshotByName(ctx, snapshotName)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get lun snapshot by name %s error: %v", snapshotName, err)
-		return nil, err
-	}
-
-	snapshotSize := utils.ParseIntWithDefault(result["snapshotSize"].(string), 10, 64, 0)
-	return p.getSnapshotReturnInfo(snapshot, snapshotSize), nil
+	return nil
 }
 
 // DeleteSnapshot deletes lun snapshot
@@ -1573,19 +1681,36 @@ func (p *SAN) DeleteSnapshot(ctx context.Context, snapshotName string) error {
 		return err
 	}
 
-	if snapshot == nil {
+	if len(snapshot) == 0 {
 		log.AddContext(ctx).Infof("Lun snapshot %s to delete does not exist", snapshotName)
 		return nil
 	}
-
-	taskflow := flow.NewTaskFlow(ctx, "Delete-LUN-Snapshot")
-	taskflow.AddTask("Deactivate-Snapshot", p.deactivateSnapshot, nil)
-	taskflow.AddTask("Delete-Snapshot", p.deleteSnapshot, nil)
 
 	params := map[string]interface{}{
 		"snapshotId": snapshot["ID"].(string),
 	}
 
+	var needDeleteRemote bool
+	if p.metroRemoteCli != nil {
+		remoteSnapshot, err := p.metroRemoteCli.GetLunSnapshotByName(ctx, snapshotName)
+		if err != nil {
+			log.AddContext(ctx).Errorf("Get remote lun snapshot by name %s error: %v", snapshotName, err)
+			return err
+		}
+
+		if len(remoteSnapshot) != 0 {
+			needDeleteRemote = true
+			params["remoteSnapshotId"] = remoteSnapshot["ID"]
+		}
+	}
+
+	taskflow := flow.NewTaskFlow(ctx, "Delete-LUN-Snapshot")
+	if needDeleteRemote {
+		taskflow.AddTask("Deactivate-HyperMetro-Remote-Snapshot", p.deactivateHyperMetroRemoteSnapshot, nil)
+		taskflow.AddTask("Delete-HyperMetro-Remote-Snapshot", p.deleteHyperMetroRemoteSnapshot, nil)
+	}
+	taskflow.AddTask("Deactivate-Snapshot", p.deactivateLocalSnapshot, nil)
+	taskflow.AddTask("Delete-Snapshot", p.deleteLocalSnapshot, nil)
 	_, err = taskflow.Run(params)
 	return err
 }
@@ -1618,6 +1743,51 @@ func (p *SAN) createSnapshot(ctx context.Context,
 	return map[string]interface{}{
 		"snapshotId":   snapshot["ID"].(string),
 		"snapshotSize": snapshot["USERCAPACITY"].(string),
+	}, nil
+}
+
+func (p *SAN) createHyperMetroSnap(ctx context.Context,
+	lunID, snapshotName string) (map[string]interface{}, error) {
+
+	pair, err := p.cli.GetHyperMetroPairByLocalObjID(ctx, lunID)
+	if err != nil {
+		return nil, fmt.Errorf("get pair by lunID %s error: %v", lunID, err)
+	}
+
+	pairID, ok := utils.GetValue[string](pair, "ID")
+	if !ok {
+		return nil, errors.New("get pairID from pair, the pairID is nil or invalid")
+	}
+
+	snapshot, err := p.cli.CreateHyperMetroSnap(ctx, snapshotName, pairID)
+	if err != nil {
+		return nil, fmt.Errorf("create snapshot %s for lun %s error: %v", snapshotName, lunID, err)
+	}
+
+	err = waitHyperMetroSnapReady(ctx, snapshotName, p.cli)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Wait snapshot ready by name %s error: %v", snapshotName, err)
+		return nil, err
+	}
+	err = waitHyperMetroSnapReady(ctx, snapshotName, p.metroRemoteCli)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Wait remote snapshot ready by name %s error: %v", snapshotName, err)
+		return nil, err
+	}
+
+	snapshotId, ok := utils.GetValue[string](snapshot, "localSnapId")
+	if !ok {
+		return nil, errors.New("get localSnapId from snapshot, the localSnapId is nil or invalid")
+	}
+
+	remoteSnapId, ok := utils.GetValue[string](snapshot, "remoteSnapId")
+	if !ok {
+		return nil, errors.New("get remoteSnapId from snapshot, the remoteSnapId is nil or invalid")
+	}
+
+	return map[string]interface{}{
+		"snapshotId":   snapshotId,
+		"remoteSnapId": remoteSnapId,
 	}, nil
 }
 
@@ -1682,33 +1852,63 @@ func (p *SAN) activateSnapshot(ctx context.Context,
 	return nil, nil
 }
 
-func (p *SAN) deleteSnapshot(ctx context.Context,
+func (p *SAN) deleteLocalSnapshot(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-
-	snapshotID, ok := params["snapshotId"].(string)
+	id, ok := utils.GetValue[string](params, "snapshotId")
 	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "format snapshotID to string failed, data: %v", params["snapshotId"])
+		return nil, fmt.Errorf("format snapshotID to string failed, params: %v", params)
 	}
-	err := p.cli.DeleteLunSnapshot(ctx, snapshotID)
+
+	err := p.cli.DeleteLunSnapshot(ctx, id)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Delete snapshot %s error: %v", snapshotID, err)
-		return nil, err
+		return nil, fmt.Errorf("delete snapshot %s error: %w", id, err)
 	}
 
 	return nil, nil
 }
 
-func (p *SAN) deactivateSnapshot(ctx context.Context,
+func (p *SAN) deleteHyperMetroRemoteSnapshot(ctx context.Context,
 	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
-	snapshotID, ok := params["snapshotId"].(string)
+	id, ok := utils.GetValue[string](params, "remoteSnapshotId")
 	if !ok {
-		return nil, pkgUtils.Errorf(ctx, "format snapshotID to string failed, data: %v", params["snapshotId"])
+		return nil, fmt.Errorf("format remoteSnapshotId to string failed, params: %v", params)
 	}
-	err := p.cli.DeactivateLunSnapshot(ctx, snapshotID)
+
+	err := p.metroRemoteCli.DeleteLunSnapshot(ctx, id)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Deactivate snapshot %s error: %v", snapshotID, err)
-		return nil, err
+		return nil, fmt.Errorf("delete hyperMetro remote snapshot %s error: %w", id, err)
 	}
+
+	return nil, nil
+}
+
+func (p *SAN) deactivateLocalSnapshot(ctx context.Context,
+	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	id, ok := utils.GetValue[string](params, "snapshotId")
+	if !ok {
+		return nil, fmt.Errorf("format snapshotID to string failed, params: %v", params)
+	}
+
+	err := p.cli.DeactivateLunSnapshot(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("deactivate snapshot %s error: %w", id, err)
+	}
+
+	return nil, nil
+}
+
+func (p *SAN) deactivateHyperMetroRemoteSnapshot(ctx context.Context,
+	params, taskResult map[string]interface{}) (map[string]interface{}, error) {
+	id, ok := utils.GetValue[string](params, "remoteSnapshotId")
+	if !ok {
+		return nil, fmt.Errorf("format remoteSnapshotId to string failed, params: %v", params)
+	}
+
+	err := p.metroRemoteCli.DeactivateLunSnapshot(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("deactivate hyperMetro remote snapshot %s error: %w", id, err)
+	}
+
 	return nil, nil
 }
 
@@ -1743,5 +1943,39 @@ func (p *SAN) deleteLun(ctx context.Context, name string, cli client.OceanstorCl
 		return err
 	}
 
+	return nil
+}
+
+// waitHyperMetroSnapReady is used to wait a hyper metro snapshot ready.
+// The created snapshot cannot be queried immediately.
+// Therefore, need to wait in a loop until the snapshot can be queried.
+func waitHyperMetroSnapReady(ctx context.Context, snapshotName string,
+	cli client.OceanstorClientInterface) error {
+	err := utils.WaitUntil(func() (bool, error) {
+		snapshot, err := cli.GetLunSnapshotByName(ctx, snapshotName)
+		if err != nil {
+			return false, err
+		}
+		if len(snapshot) == 0 {
+			msg := fmt.Sprintf("snapshot %s not found", snapshotName)
+			log.AddContext(ctx).Infoln(msg)
+			return false, nil
+		}
+
+		runningStatus, ok := utils.GetValue[string](snapshot, "RUNNINGSTATUS")
+		if !ok {
+			return false, pkgUtils.Errorln(ctx, "format runningStatus to string failed")
+		}
+
+		if runningStatus == snapshotRunningStatusActive {
+			return true, nil
+		} else {
+			return false, nil
+		}
+	}, waitUntilTimeout, waitUntilInterval)
+
+	if err != nil {
+		return err
+	}
 	return nil
 }

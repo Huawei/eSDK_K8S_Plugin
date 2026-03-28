@@ -313,9 +313,12 @@ func getAttributes(req *csi.CreateVolumeRequest, vol utils.Volume, backendName s
 		constants.DTreeParentKey:           vol.GetDTreeParentName(),
 		constants.DisableVerifyCapacityKey: req.Parameters[constants.DisableVerifyCapacityKey],
 	}
-
 	if lunWWN, err := vol.GetLunWWN(); err == nil {
 		attributes["lunWWN"] = lunWWN
+	}
+	kvcacheStoreId := vol.GetKvcacheStoreId()
+	if kvcacheStoreId != "" {
+		attributes["kvcacheStoreId"] = kvcacheStoreId
 	}
 	return attributes
 }
@@ -516,8 +519,6 @@ func processCreateVolumeParametersAfterSelect(parameters map[string]interface{},
 		parameters["remoteStoragePool"] = remotePool.Name
 	}
 
-	parameters["accountName"] = backend.GetAccountName(localPool.Parent)
-
 	size := utils.GetValueOrFallback(parameters, "size", int64(0))
 	return utils.IsCapacityAvailable(size, localPool.Plugin.GetSectorSize(), parameters)
 }
@@ -654,7 +655,7 @@ func processAnnotations(annotations map[string]string, req *csi.CreateVolumeRequ
 
 func getBackendFilesystemMode(ctx context.Context, bk *model.Backend, volName string) string {
 	if protocol, ok := bk.Parameters["protocol"].(string); ok && protocol == plugin.ProtocolNfsPlus &&
-		bk.Storage != constants.OceanStorDtree && bk.Storage != constants.FusionDTree {
+		!constants.IsDtreeStorage(bk.Storage) {
 		volume, err := bk.Plugin.QueryVolume(ctx, volName, map[string]interface{}{
 			"description": "Query from Huawei Storage",
 			"size":        int64(0),
@@ -667,4 +668,19 @@ func getBackendFilesystemMode(ctx context.Context, bk *model.Backend, volName st
 		return volume.GetFilesystemMode()
 	}
 	return ""
+}
+
+func (d *CsiDriver) getASeriesNasDeleteParams(volNameId string) (map[string]interface{}, error) {
+	kvcacheStoreId, err := app.GetGlobalConfig().K8sUtils.GetKvCacheStoreIdByVolumeId(volNameId)
+	if err != nil {
+		return nil, err
+	}
+
+	params := map[string]interface{}{}
+
+	if kvcacheStoreId != "" {
+		params[constants.KvCacheStoreId] = kvcacheStoreId
+	}
+
+	return params, nil
 }

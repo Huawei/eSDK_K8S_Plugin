@@ -452,3 +452,124 @@ func TestNAS_allowShareAccess_Error(t *testing.T) {
 	assert.Nil(t, got)
 	assert.Equal(t, wantErr, err)
 }
+
+func TestNAS_DeleteNfsShare(t *testing.T) {
+	ctx := context.Background()
+	nas := NewNAS(testClient)
+
+	t.Run("Success", func(t *testing.T) {
+		// arrange
+		share := map[string]interface{}{
+			"id":             "shareID",
+			"file_system_id": "fsID",
+		}
+
+		// mock
+		p := gomonkey.NewPatches()
+		defer p.Reset()
+		p.ApplyMethodReturn(testClient, "GetNfsShareByPath", share, nil)
+		p.ApplyMethodReturn(testClient, "DeleteNfsShare", nil)
+
+		// action
+		fsIdInShare, err := nas.DeleteNfsShare(ctx, "sharePath")
+
+		// assert
+		assert.NoError(t, err)
+		assert.Equal(t, "fsID", fsIdInShare)
+	})
+
+	t.Run("ShareNotFound", func(t *testing.T) {
+		// mock
+		p := gomonkey.NewPatches()
+		defer p.Reset()
+		p.ApplyMethodReturn(testClient, "GetNfsShareByPath", nil, nil)
+
+		// action
+		fsIdInShare, err := nas.DeleteNfsShare(ctx, "sharePath")
+
+		// assert
+		assert.NoError(t, err)
+		assert.Equal(t, "", fsIdInShare)
+	})
+
+	t.Run("GetShareError", func(t *testing.T) {
+		// mock
+		p := gomonkey.NewPatches()
+		defer p.Reset()
+		p.ApplyMethodReturn(testClient, "GetNfsShareByPath", nil, errors.New("get error"))
+
+		// action
+		_, err := nas.DeleteNfsShare(ctx, "sharePath")
+
+		// assert
+		assert.ErrorContains(t, err, "get error")
+	})
+
+	t.Run("DeleteShareError", func(t *testing.T) {
+		// arrange
+		share := map[string]interface{}{
+			"id":             "shareID",
+			"file_system_id": "fsID",
+		}
+
+		// mock
+		p := gomonkey.NewPatches()
+		defer p.Reset()
+		p.ApplyMethodReturn(testClient, "GetNfsShareByPath", share, nil)
+		p.ApplyMethodReturn(testClient, "DeleteNfsShare", errors.New("delete error"))
+
+		// action
+		_, err := nas.DeleteNfsShare(ctx, "sharePath")
+
+		// assert
+		assert.ErrorContains(t, err, "delete error")
+	})
+}
+
+func TestNAS_RevertShare(t *testing.T) {
+	ctx := context.Background()
+	nas := NewNAS(testClient)
+
+	t.Run("ShareIDExists", func(t *testing.T) {
+		// arrange
+		taskResult := map[string]interface{}{"shareID": "test_share_id"}
+
+		// mock
+		p := gomonkey.NewPatches()
+		defer p.Reset()
+		p.ApplyMethodReturn(testClient, "DeleteNfsShare", nil)
+
+		// action
+		err := nas.revertShare(ctx, taskResult)
+
+		// assert
+		assert.NoError(t, err)
+	})
+
+	t.Run("ShareIDDoesNotExist", func(t *testing.T) {
+		// arrange
+		taskResult := map[string]interface{}{"shareID": 123}
+
+		// action
+		err := nas.revertShare(ctx, taskResult)
+
+		// assert
+		assert.NoError(t, err)
+	})
+
+	t.Run("DeleteShareFails", func(t *testing.T) {
+		// arrange
+		taskResult := map[string]interface{}{"shareID": "test_share_id"}
+
+		// mock
+		p := gomonkey.NewPatches()
+		defer p.Reset()
+		p.ApplyMethodReturn(testClient, "DeleteNfsShare", errors.New("delete error"))
+
+		// action
+		err := nas.revertShare(ctx, taskResult)
+
+		// assert
+		assert.ErrorContains(t, err, "delete error")
+	})
+}

@@ -90,6 +90,8 @@ const (
 	StandByVStoreIDKey = "remoteVStoreID"
 	// CloneFromKey is the string of CloneFrom's key
 	CloneFromKey = "clonefrom"
+	// WaitForSplitKey is the string of WaitForSplitKey's key
+	WaitForSplitKey = "waitforsplit"
 	// CloneSpeedKey is the string of CloneSpeed's key
 	CloneSpeedKey = "clonespeed"
 	// SourceVolumeNameKey is the string of SourceVolumeName's key
@@ -219,6 +221,11 @@ func (p *Parameter) StandByVStoreID() string {
 
 // CloneFrom gets the CloneFrom value of the params map.
 func (p *Parameter) CloneFrom() string { return utils.GetValueOrFallback(p.params, CloneFromKey, "") }
+
+// WaitForSplit gets the WaitForSplitKey value of the params map.
+func (p *Parameter) WaitForSplit() bool {
+	return utils.GetValueOrFallback(p.params, WaitForSplitKey, true)
+}
 
 // CloneSpeed gets the CloneSpeed value of the params map.
 func (p *Parameter) CloneSpeed() int {
@@ -366,4 +373,9 @@ func (p *Parameter) SetIsSkipNfsShare(isSkip bool) {
 // SetQos sets the value of qos
 func (p *Parameter) SetQos(qos map[string]int) {
 	p.params[QoSKey] = qos
+}
+
+// SetWaitForSplit sets the value of waitForSplit
+func (p *Parameter) SetWaitForSplit(isWait bool) {
+	p.params[WaitForSplitKey] = isWait
 }

@@ -110,8 +110,7 @@ func (cli *IscsiClient) GetIscsiInitiator(ctx context.Context, initiator string)
 
 // GetIscsiInitiatorByID used for get iscsi initiator by id
 func (cli *IscsiClient) GetIscsiInitiatorByID(ctx context.Context, initiator string) (map[string]interface{}, error) {
-	id := strings.Replace(initiator, ":", "\\:", -1)
-	url := fmt.Sprintf("/iscsi_initiator/%s", id)
+	url := fmt.Sprintf("/iscsi_initiator/%s", initiator)
 	resp, err := cli.Get(ctx, url, nil)
 	if err != nil {
 		return nil, err

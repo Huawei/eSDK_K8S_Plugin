@@ -60,8 +60,8 @@ func GetFCInitiator(ctx context.Context) ([]string, error) {
 	return strings.Fields(output), nil
 }
 
-// GetRoCEInitiator used to get roce initiator
-func GetRoCEInitiator(ctx context.Context) (string, error) {
+// GetNVMeInitiator used to get nvme initiator
+func GetNVMeInitiator(ctx context.Context) (string, error) {
 	output, err := utils.ExecShellCmd(ctx, "cat /etc/nvme/hostnqn")
 	if err != nil {
 		if strings.Contains(output, "No such file or directory") {
@@ -75,10 +75,10 @@ func GetRoCEInitiator(ctx context.Context) (string, error) {
 	return strings.TrimRight(output, "\n"), nil
 }
 
-// VerifyIscsiPortals used to verify iscsi portals
-func VerifyIscsiPortals(ctx context.Context, portals []interface{}) ([]string, error) {
+// VerifySanPortals used to verify iscsi portals
+func VerifySanPortals(ctx context.Context, portals []interface{}) ([]string, error) {
 	if len(portals) < 1 {
-		return nil, errors.New("at least 1 portal must be provided for iscsi backend")
+		return nil, errors.New("at least 1 portal must be provided for this backend")
 	}
 
 	var verifiedPortals []string
@@ -86,7 +86,7 @@ func VerifyIscsiPortals(ctx context.Context, portals []interface{}) ([]string, e
 	for _, i := range portals {
 		portal, ok := i.(string)
 		if !ok {
-			log.AddContext(ctx).Warningf("VerifyIscsiPortals, convert portal to string failed, data: %v", i)
+			log.AddContext(ctx).Warningf("VerifySanPortals, convert portal to string failed, data: %v", i)
 			continue
 		}
 		ip := net.ParseIP(portal)

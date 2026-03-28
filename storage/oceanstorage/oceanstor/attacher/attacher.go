@@ -35,7 +35,7 @@ import (
 type VolumeAttacherPlugin interface {
 	ControllerAttach(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
 	ControllerDetach(context.Context, string, map[string]interface{}) (string, error)
-	GetTargetRoCEPortals(context.Context) ([]string, error)
+	GetTargetNVMePortals(context.Context) ([]string, error)
 	getLunInfo(context.Context, string) (map[string]interface{}, error)
 }
 

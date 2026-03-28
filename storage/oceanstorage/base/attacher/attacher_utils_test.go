@@ -60,17 +60,17 @@ func TestGetSingleInitiator(t *testing.T) {
 			want:    "iscsi_initiator_1",
 			wantErr: false,
 		},
-		{name: "TestGetRoceInitiator",
+		{name: "TestGetNVMeInitiator",
 			args: args{
-				protocol:   ROCE,
+				protocol:   NVME,
 				parameters: params,
 			},
-			want:    "roce_initiator_1",
+			want:    "nvme_initiator_1",
 			wantErr: false,
 		},
 		{name: "TestHostNameNotExist",
 			args: args{
-				protocol:   ROCE,
+				protocol:   NVME,
 				parameters: map[string]interface{}{},
 			},
 			want:    "",
@@ -91,7 +91,7 @@ func TestGetSingleInitiator(t *testing.T) {
 			HostName:       hostName,
 			IscsiInitiator: "iscsi_initiator_1",
 			FCInitiators:   []string{"fc_initiators_1", "fc_initiators_2"},
-			RoCEInitiator:  "roce_initiator_1",
+			NVMeInitiator:  "nvme_initiator_1",
 		}, nil
 	})
 	defer getNodeHostInfosFromSecret.Reset()

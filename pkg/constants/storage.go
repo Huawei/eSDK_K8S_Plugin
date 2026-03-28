@@ -17,6 +17,8 @@
 // Package constants is storage-related constants
 package constants
 
+import "slices"
+
 // OceanstorVersion defines Oceantor storage's version
 type OceanstorVersion string
 
@@ -63,7 +65,20 @@ var (
 
 	// FusionstorageProtocol contains all of fusionstorage protocols supported
 	FusionstorageProtocol = []string{ProtocolIscsi, ProtocolScsi}
+
+	// NVMeProtocols contain all of nvme protocols
+	NVMeProtocols = []string{ProtocolRoce, ProtocolRoceNVMe, ProtocolFCNVMe, ProtocolTCPNVMe}
 )
+
+// IsNVMeProtocol checks whether the protocol is the nvme type
+func IsNVMeProtocol(protocol string) bool {
+	return slices.Contains(NVMeProtocols, protocol)
+}
+
+// IsDtreeStorage checks whether the storage type is dtree
+func IsDtreeStorage(storage string) bool {
+	return storage == OceanStorDtree || storage == FusionDTree || storage == OceanStorASeriesDtree
+}
 
 const (
 	// DoradoV615 is Dorado V6.1.5
@@ -83,6 +98,8 @@ const (
 	OceandiskSan = "oceandisk-san"
 	// OceanStorASeriesNas storage type is "oceanstor-a-series-nas"
 	OceanStorASeriesNas = "oceanstor-a-series-nas"
+	// OceanStorASeriesDtree storage type is "oceanstor-a-series-dtree"
+	OceanStorASeriesDtree = "oceanstor-a-series-dtree"
 	// OceanStorASeriesNasDme storage type is "oceanstor-a-series-nas-dme"
 	OceanStorASeriesNasDme = "oceanstor-a-series-nas-dme"
 	// FusionSan storage type is fusionstorage-san
@@ -113,6 +130,16 @@ const (
 	ProtocolIscsi = "iscsi"
 	// ProtocolScsi defines the scsi protocol type
 	ProtocolScsi = "scsi"
+	// ProtocolRoce (deprecated) defines the roce protocol type, use ProtocolRoceNVMe instead
+	ProtocolRoce = "roce"
+	// ProtocolRoceNVMe defines the roce-nvme protocol type, roce-nvme is the same as roce
+	ProtocolRoceNVMe = "roce-nvme"
+	// ProtocolFC defines the fc protocol type
+	ProtocolFC = "fc"
+	// ProtocolFCNVMe defines the fc-nvme protocol type
+	ProtocolFCNVMe = "fc-nvme"
+	// ProtocolTCPNVMe defines the tcp-nvme protocol type
+	ProtocolTCPNVMe = "tcp-nvme"
 
 	// AllSquash is the value of all squash configured on the StorageClass
 	AllSquash = "all_squash"

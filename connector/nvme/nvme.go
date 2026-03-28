@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2024. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,20 +18,23 @@ package nvme
 
 import (
 	"context"
-	"sync"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
-// FCNVMe implements the connector.VolumeConnector for FCNVMe protocol
-type FCNVMe struct {
-	mutex sync.Mutex
+// Connector implements the connector.VolumeConnector for Connector protocol
+type Connector struct {
 }
 
+const (
+	intNumTwo   = 2
+	intNumThree = 3
+)
+
 func init() {
-	connector.RegisterConnector(connector.FCNVMeDriver, &FCNVMe{})
+	connector.RegisterConnector(connector.NVMeDriver, &Connector{})
 }
 
 // ConnectVolume to mount the source to target path, the source path can be block or nfs
@@ -39,18 +42,17 @@ func init() {
 //
 //	mount /dev/sdb /<target-path>
 //	mount <source-path> /<target-path>
-func (fc *FCNVMe) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
-	log.AddContext(ctx).Infof("FC-NVMe Start to connect volume ==> connect info: %v", conn)
-	tgtLunGuid, exist := conn["tgtLunGuid"].(string)
+func (roce *Connector) ConnectVolume(ctx context.Context, conn map[string]interface{}) (string, error) {
+	log.AddContext(ctx).Infof("RoCE Start to connect volume ==> connect info: %v", conn)
+	tgtLunGUID, exist := conn["tgtLunGuid"].(string)
 	if !exist {
-		return "", utils.Errorln(ctx, "there is no Lun GUID in connect info")
+		return "", utils.Errorln(ctx, "key tgtLunGuid does not exist in connection properties")
 	}
-
-	return connector.ConnectVolumeCommon(ctx, conn, tgtLunGuid, connector.FCNVMeDriver, tryConnectVolume)
+	return connector.ConnectVolumeCommon(ctx, conn, tgtLunGUID, connector.NVMeDriver, tryConnectVolume)
 }
 
 // DisConnectVolume to unmount the target path
-func (fc *FCNVMe) DisConnectVolume(ctx context.Context, tgtLunGuid string) error {
-	log.AddContext(ctx).Infof("FC-NVMe Start to disconnect volume ==> Volume Guid info: %v", tgtLunGuid)
-	return connector.DisConnectVolumeCommon(ctx, tgtLunGuid, connector.FCNVMeDriver, tryDisConnectVolume)
+func (roce *Connector) DisConnectVolume(ctx context.Context, tgtLunGuid string) error {
+	log.AddContext(ctx).Infof("RoCE Start to disconnect volume ==> Volume Guid info: %v", tgtLunGuid)
+	return connector.DisConnectVolumeCommon(ctx, tgtLunGuid, connector.NVMeDriver, tryDisConnectVolume)
 }

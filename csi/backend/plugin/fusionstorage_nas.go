@@ -117,7 +117,7 @@ func (p *FusionStorageNasPlugin) QueryVolume(ctx context.Context, name string, p
 }
 
 // DeleteVolume used to delete volume
-func (p *FusionStorageNasPlugin) DeleteVolume(ctx context.Context, name string) error {
+func (p *FusionStorageNasPlugin) DeleteVolume(ctx context.Context, name string, params map[string]interface{}) error {
 	nas := volume.NewNAS(p.cli)
 	return nas.Delete(ctx, name)
 }
@@ -141,9 +141,9 @@ func (p *FusionStorageNasPlugin) UpdateBackendCapabilities(ctx context.Context) 
 }
 
 // CreateSnapshot used to create snapshot
-func (p *FusionStorageNasPlugin) CreateSnapshot(ctx context.Context,
-	lunName, snapshotName string) (map[string]interface{}, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (p *FusionStorageNasPlugin) CreateSnapshot(ctx context.Context, lunName string, snapshotName string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
+	return nil, fmt.Errorf("fusionstorage-nas not support snapshot feature")
 }
 
 // DeleteSnapshot used to delete snapshot

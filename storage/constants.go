@@ -24,6 +24,9 @@ const (
 	// SuccessCode defines error code of success
 	SuccessCode = int64(0)
 
+	// ObjectNotExist defines error code of the specified object is unavailable
+	ObjectNotExist int64 = 1077948996
+
 	// UserUnauthorized defines error code of user unauthorized
 	UserUnauthorized int64 = -401
 

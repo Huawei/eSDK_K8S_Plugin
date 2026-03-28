@@ -25,6 +25,7 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
 	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/flow"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -40,15 +41,15 @@ type SanManager struct {
 func NewSanManager(ctx context.Context, protocol string) (VolumeManager, error) {
 	var conn connector.VolumeConnector
 	switch protocol {
-	case "iscsi":
+	case constants.ProtocolIscsi:
 		conn = connector.GetConnector(ctx, connector.ISCSIDriver)
-	case "fc":
+	case constants.ProtocolFC:
 		conn = connector.GetConnector(ctx, connector.FCDriver)
-	case "roce":
-		conn = connector.GetConnector(ctx, connector.RoCEDriver)
-	case "fc-nvme":
+	case constants.ProtocolRoce, constants.ProtocolRoceNVMe, constants.ProtocolTCPNVMe:
+		conn = connector.GetConnector(ctx, connector.NVMeDriver)
+	case constants.ProtocolFCNVMe:
 		conn = connector.GetConnector(ctx, connector.FCNVMeDriver)
-	case "scsi":
+	case constants.ProtocolScsi:
 		conn = connector.GetConnector(ctx, connector.LocalDriver)
 	default:
 		return nil, utils.Errorf(ctx, "protocol: [%s] is not unsupported under san", protocol)
@@ -248,6 +249,7 @@ func connectVolume(ctx context.Context, parameters map[string]interface{}) error
 		return errors.New("connector doesn't exist while connect volume")
 	}
 
+	connectionParams["protocol"] = parameters["protocol"]
 	devPath, err := conn.ConnectVolume(ctx, connectionParams)
 	if err != nil {
 		return err

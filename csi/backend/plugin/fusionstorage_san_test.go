@@ -183,7 +183,7 @@ func TestFusionStorageSanPlugin_Init_VerifyIscsiFailed(t *testing.T) {
 	// mock
 	patches := gomonkey.NewPatches()
 	defer patches.Reset()
-	patches.ApplyFuncReturn(proto.VerifyIscsiPortals, nil, wantErr)
+	patches.ApplyFuncReturn(proto.VerifySanPortals, nil, wantErr)
 
 	// act
 	gotErr := p.Init(context.Background(), nil, params, false)

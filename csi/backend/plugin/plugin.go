@@ -31,7 +31,7 @@ type StoragePlugin interface {
 	Init(context.Context, map[string]interface{}, map[string]interface{}, bool) error
 	CreateVolume(context.Context, string, map[string]interface{}) (utils.Volume, error)
 	QueryVolume(context.Context, string, map[string]interface{}) (utils.Volume, error)
-	DeleteVolume(context.Context, string) error
+	DeleteVolume(context.Context, string, map[string]interface{}) error
 	ExpandVolume(context.Context, string, int64) (bool, error)
 	AttachVolume(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
 	DetachVolume(context.Context, string, map[string]interface{}) error
@@ -40,7 +40,7 @@ type StoragePlugin interface {
 	UpdateBackendCapabilities(context.Context) (map[string]interface{}, map[string]interface{}, error)
 	UpdatePoolCapabilities(context.Context, []string) (map[string]interface{}, error)
 	UpdateMetroRemotePlugin(context.Context, StoragePlugin)
-	CreateSnapshot(context.Context, string, string) (map[string]interface{}, error)
+	CreateSnapshot(context.Context, string, string, map[string]interface{}) (map[string]interface{}, error)
 	DeleteSnapshot(context.Context, string, string) error
 	SmartXQoSQuery
 	Logout(context.Context)

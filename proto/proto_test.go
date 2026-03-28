@@ -149,7 +149,7 @@ func TestGetRoCEInitiator(t *testing.T) {
 		utils.ExecShellCmd = func(_ context.Context, _ string, _ ...interface{}) (string, error) {
 			return c.output, c.err
 		}
-		iqn, err := GetRoCEInitiator(context.TODO())
+		iqn, err := GetNVMeInitiator(context.TODO())
 		assert.Equal(t, c.wantErr, err, c.name)
 		assert.Equal(t, c.wantNQN, iqn, c.name)
 	}
@@ -172,18 +172,18 @@ func TestVerifyIscsiPortals(t *testing.T) {
 			"The portals parameter is empty",
 			nil,
 			nil,
-			errors.New("at least 1 portal must be provided for iscsi backend"),
+			errors.New("at least 1 portal must be provided for this backend"),
 		},
 		{
 			"The format of the portals parameter is incorrect",
-			[]interface{}{"127..0.1:3260", "127.0.0.2:3260"},
+			[]interface{}{[]string{}, "127..0.1:3260", "127.0.0.2:3260"},
 			nil,
 			errors.New("127..0.1:3260 of portals is invalid"),
 		},
 	}
 
 	for _, c := range cases {
-		portals, err := VerifyIscsiPortals(context.Background(), c.portals)
+		portals, err := VerifySanPortals(context.Background(), c.portals)
 		assert.Equal(t, c.wantErr, err, c.name)
 		assert.Equal(t, c.wantVal, portals, c.name)
 	}

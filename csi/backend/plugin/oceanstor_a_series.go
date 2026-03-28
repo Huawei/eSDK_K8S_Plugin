@@ -94,12 +94,12 @@ func (p *OceanstorASeriesPlugin) Init(ctx context.Context, config map[string]int
 func (p *OceanstorASeriesPlugin) verifyAndSetProtocol(params map[string]interface{}) error {
 	protocol, ok := utils.GetValue[string](params, "protocol")
 	if !ok {
-		return fmt.Errorf("protocol must be provided for %s backend", constants.OceanStorASeriesNas)
+		return fmt.Errorf("protocol must be provided for a-series backend")
 	}
 
 	if protocol != constants.ProtocolNfs && protocol != constants.ProtocolDtfs {
-		return fmt.Errorf("protocol must be %s or %s for %s backend", constants.ProtocolNfs,
-			constants.ProtocolDtfs, constants.OceanStorASeriesNas)
+		return fmt.Errorf("protocol must be %s or %s for a-series backend", constants.ProtocolNfs,
+			constants.ProtocolDtfs)
 	}
 
 	p.protocol = protocol
@@ -157,10 +157,12 @@ func (p *OceanstorASeriesPlugin) QueryVolume(ctx context.Context, name string, p
 }
 
 // DeleteVolume used to delete volume
-func (p *OceanstorASeriesPlugin) DeleteVolume(ctx context.Context, name string) error {
+func (p *OceanstorASeriesPlugin) DeleteVolume(ctx context.Context, name string, params map[string]interface{}) error {
+	kvCacheStoreId, _ := utils.GetValue[string](params, constants.KvCacheStoreId)
 	model := &volume.DeleteFilesystemModel{
-		Protocol: p.protocol,
-		Name:     name,
+		Protocol:       p.protocol,
+		Name:           name,
+		KvCacheStoreId: kvCacheStoreId,
 	}
 	return volume.NewDeleter(ctx, p.cli, model).Delete()
 }
@@ -343,8 +345,8 @@ func (p *OceanstorASeriesPlugin) GetSectorSize() int64 {
 }
 
 // CreateSnapshot used to create snapshot
-func (p *OceanstorASeriesPlugin) CreateSnapshot(ctx context.Context,
-	fsName, snapshotName string) (map[string]interface{}, error) {
+func (p *OceanstorASeriesPlugin) CreateSnapshot(ctx context.Context, fsName string, snapshotName string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
 	return nil, fmt.Errorf("%s storage does not support snapshot feature", constants.OceanStorASeriesNas)
 }
 

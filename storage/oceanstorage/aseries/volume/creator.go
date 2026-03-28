@@ -31,25 +31,29 @@ import (
 )
 
 const (
-	readWriteAccessValue = 1
-	synchronize          = 0
+	readWriteAccessValue          = 1
+	synchronize                   = 0
+	applicationTypeNASAIInference = "NAS_AI_Inference"
 )
 
 // CreateFilesystemModel is used to create a volume
 type CreateFilesystemModel struct {
-	Protocol        string
-	Name            string
-	PoolName        string
-	WorkloadType    string
-	Capacity        int64
-	Description     string
-	UnixPermissions string
-	AllSquash       int
-	RootSquash      int
-	Qos             string
-	AuthClients     []string
-	AuthUsers       []string
-	AdvancedOptions map[string]interface{}
+	Protocol          string
+	Name              string
+	PoolName          string
+	WorkloadType      string
+	Capacity          int64
+	Description       string
+	UnixPermissions   string
+	AllSquash         int
+	RootSquash        int
+	Qos               string
+	AuthClients       []string
+	AuthUsers         []string
+	AdvancedOptions   map[string]interface{}
+	EnableKVCache     bool
+	EnableTimeAwareGC bool
+	GCTimeThreshold   int64
 }
 
 func (model *CreateFilesystemModel) sharePath() string {
@@ -65,6 +69,7 @@ type Creator struct {
 	nfsShareId       string
 	dataTurboShareId string
 	qosId            string
+	kvcacheStoreId   string
 
 	ctx    context.Context
 	cli    client.OceanASeriesClientInterface
@@ -98,6 +103,9 @@ func (c *Creator) Create() (utils.Volume, error) {
 
 	tr.Then(c.createQos, c.revertQos)
 
+	if c.params.EnableKVCache {
+		tr.Then(c.createKVCache, c.rollbackKVCache)
+	}
 	err := tr.Commit()
 	if err != nil {
 		tr.Rollback()
@@ -107,6 +115,7 @@ func (c *Creator) Create() (utils.Volume, error) {
 	vol := utils.NewVolume(c.params.Name)
 	vol.SetSize(utils.TransK8SCapacity(c.params.Capacity, constants.AllocationUnitBytes))
 	vol.SetID(c.fsId)
+	vol.SetKvCacheStoreId(c.kvcacheStoreId)
 
 	return vol, nil
 }
@@ -155,6 +164,15 @@ func (c *Creator) setPoolId() error {
 }
 
 func (c *Creator) setWorkloadId() error {
+	if c.params.EnableKVCache {
+		if c.params.WorkloadType == "" {
+			c.params.WorkloadType = applicationTypeNASAIInference
+		}
+		if c.params.WorkloadType != applicationTypeNASAIInference {
+			return fmt.Errorf("applicationType %s is not supported for kvCache", c.params.WorkloadType)
+		}
+	}
+
 	if c.params.WorkloadType == "" {
 		c.workloadTypeId = ""
 		return nil
@@ -171,6 +189,45 @@ func (c *Creator) setWorkloadId() error {
 
 	c.workloadTypeId = workloadTypeId
 	return nil
+}
+
+func (c *Creator) createKVCache() error {
+	// KVCacheStoreName is the same as FSName
+	params := &client.CreateKVCacheParams{
+		FSName:            c.params.Name,
+		PoolID:            c.poolId,
+		Capacity:          c.params.Capacity,
+		EnableTimeAwareGC: c.params.EnableTimeAwareGC,
+		GCTimeThreshold:   c.params.GCTimeThreshold,
+		VStoreID:          c.vstoreId,
+		FsID:              c.fsId,
+		Description:       c.params.Description,
+		NfsId:             c.nfsShareId,
+		KVCacheStoreName:  c.params.Name,
+	}
+
+	kvCache, err := c.cli.CreateKVCache(c.ctx, params)
+	if err != nil {
+		return err
+	}
+
+	kvcacheStoreId, ok := utils.GetValue[string](kvCache, "kvcacheStoreId")
+	if !ok || kvcacheStoreId == "" {
+		return fmt.Errorf("failed to create KVCache %s: can not get kvcacheStoreId, resp data is %v",
+			c.params.Name, kvCache)
+	}
+	c.kvcacheStoreId = kvcacheStoreId
+	return nil
+}
+
+func (c *Creator) rollbackKVCache() {
+	if c.kvcacheStoreId == "" {
+		return
+	}
+
+	if err := c.cli.DeleteKVCache(c.ctx, c.kvcacheStoreId); err != nil {
+		log.AddContext(c.ctx).Errorf("Failed to rollback KVCache %s: %v", c.kvcacheStoreId, err)
+	}
 }
 
 func (c *Creator) createFilesystem() error {

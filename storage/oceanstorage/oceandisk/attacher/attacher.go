@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base/attacher"
 	oceandisk "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceandisk/client"
@@ -95,12 +96,12 @@ func (p *OceandiskAttacher) ControllerAttach(ctx context.Context, namespaceName 
 		}
 	}
 
-	if p.Protocol == "iscsi" {
+	if p.Protocol == constants.ProtocolIscsi {
 		_, err = p.AttachISCSI(ctx, hostID, parameters)
-	} else if p.Protocol == "fc" || p.Protocol == "fc-nvme" {
+	} else if p.Protocol == constants.ProtocolFC || p.Protocol == constants.ProtocolFCNVMe {
 		_, err = p.AttachFC(ctx, hostID, parameters)
-	} else if p.Protocol == "roce" {
-		_, err = p.AttachRoCE(ctx, hostID, parameters)
+	} else if p.Protocol == constants.ProtocolRoce || p.Protocol == constants.ProtocolRoceNVMe {
+		_, err = p.AttachNVMe(ctx, hostID, parameters)
 	}
 
 	if err != nil {

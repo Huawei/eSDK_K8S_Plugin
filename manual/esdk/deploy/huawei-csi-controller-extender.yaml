@@ -461,7 +461,7 @@ spec:
           args:
             - "--csi-address=/csi/csi.sock"
             - "--health-port=9808"
-          image: registry.k8s.io/sig-storage/livenessprobe:v2.12.0
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.15.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -478,12 +478,13 @@ spec:
             - "--csi-address=$(ADDRESS)"
             - "--timeout=6h"
             - "--extra-create-metadata=true"
+            - "--feature-gates=Topology=false"
             - "--volume-name-prefix=pvc"
             - "--leader-election"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: registry.k8s.io/sig-storage/csi-provisioner:v3.6.0
+          image: registry.k8s.io/sig-storage/csi-provisioner:v5.2.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -502,7 +503,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: registry.k8s.io/sig-storage/csi-attacher:v4.4.0
+          image: registry.k8s.io/sig-storage/csi-attacher:v4.8.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -523,7 +524,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: registry.k8s.io/sig-storage/csi-resizer:v1.9.0
+          image: registry.k8s.io/sig-storage/csi-resizer:v1.13.2
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - mountPath: /csi
@@ -543,7 +544,7 @@ spec:
           env:
             - name: ADDRESS
               value: /csi/csi.sock
-          image: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.0
+          image: registry.k8s.io/sig-storage/csi-snapshotter:v8.2.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -559,7 +560,7 @@ spec:
           args:
             - "--v=5"
             - "--leader-election"
-          image: registry.k8s.io/sig-storage/snapshot-controller:v6.3.0
+          image: registry.k8s.io/sig-storage/snapshot-controller:v8.2.0
           imagePullPolicy: "IfNotPresent"
           resources:
             limits:
@@ -698,6 +699,7 @@ spec:
             - "--log-file-dir=/var/log/huawei"
             - "--log-file-size=20M"
             - "--max-backups=9"
+            - "--enable-per-node-secret=false"
           env:
             - name: CSI_ENDPOINT
               value: /csi/csi.sock

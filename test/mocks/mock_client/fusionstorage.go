@@ -446,18 +446,18 @@ func (mr *MockIRestClientMockRecorder) DeleteLunFromHost(ctx, lunName, hostName 
 }
 
 // DeleteNfsShare mocks base method.
-func (m *MockIRestClient) DeleteNfsShare(ctx context.Context, id, accountId string) error {
+func (m *MockIRestClient) DeleteNfsShare(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteNfsShare", ctx, id, accountId)
+	ret := m.ctrl.Call(m, "DeleteNfsShare", ctx, id)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteNfsShare indicates an expected call of DeleteNfsShare.
-func (mr *MockIRestClientMockRecorder) DeleteNfsShare(ctx, id, accountId any) *gomock.Call {
+func (mr *MockIRestClientMockRecorder) DeleteNfsShare(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNfsShare",
-		reflect.TypeOf((*MockIRestClient)(nil).DeleteNfsShare), ctx, id, accountId)
+		reflect.TypeOf((*MockIRestClient)(nil).DeleteNfsShare), ctx, id)
 }
 
 // DeleteNfsShareAccess mocks base method.
@@ -805,19 +805,19 @@ func (mr *MockIRestClientMockRecorder) GetNfsShareAccess(ctx, shareID any) *gomo
 }
 
 // GetNfsShareByPath mocks base method.
-func (m *MockIRestClient) GetNfsShareByPath(ctx context.Context, path, accountId string) (map[string]any, error) {
+func (m *MockIRestClient) GetNfsShareByPath(ctx context.Context, path string) (map[string]any, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetNfsShareByPath", ctx, path, accountId)
+	ret := m.ctrl.Call(m, "GetNfsShareByPath", ctx, path)
 	ret0, _ := ret[0].(map[string]any)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetNfsShareByPath indicates an expected call of GetNfsShareByPath.
-func (mr *MockIRestClientMockRecorder) GetNfsShareByPath(ctx, path, accountId any) *gomock.Call {
+func (mr *MockIRestClientMockRecorder) GetNfsShareByPath(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNfsShareByPath",
-		reflect.TypeOf((*MockIRestClient)(nil).GetNfsShareByPath), ctx, path, accountId)
+		reflect.TypeOf((*MockIRestClient)(nil).GetNfsShareByPath), ctx, path)
 }
 
 // GetPoolById mocks base method.

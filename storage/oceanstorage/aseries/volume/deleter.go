@@ -31,8 +31,9 @@ import (
 
 // DeleteFilesystemModel is used to delete a filesystem volume
 type DeleteFilesystemModel struct {
-	Protocol string
-	Name     string
+	Protocol       string
+	Name           string
+	KvCacheStoreId string
 }
 
 func (model *DeleteFilesystemModel) sharePath() string {
@@ -69,6 +70,10 @@ func (c *Deleter) Delete() error {
 	}
 
 	tr.Then(c.deleteFilesystem, nil)
+
+	if c.params.KvCacheStoreId != "" {
+		tr.Then(c.deleteKVCache, nil)
+	}
 
 	err := tr.Commit()
 	if err != nil {
@@ -149,4 +154,8 @@ func (c *Deleter) deleteFilesystem() error {
 
 	deleteParams := map[string]interface{}{"ID": fsId}
 	return c.cli.DeleteFileSystem(c.ctx, deleteParams)
+}
+
+func (c *Deleter) deleteKVCache() error {
+	return c.cli.DeleteKVCache(c.ctx, c.params.KvCacheStoreId)
 }

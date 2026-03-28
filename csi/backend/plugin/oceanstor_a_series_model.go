@@ -29,18 +29,21 @@ import (
 
 // CreateASeriesVolumeParameter is the parameter for creating a-series volume
 type CreateASeriesVolumeParameter struct {
-	StoragePool     string `json:"storagepool"`
-	Qos             string `json:"qos"`
-	AuthClient      string `json:"authClient"`
-	AuthUser        string `json:"authUser"`
-	ApplicationType string `json:"applicationType"`
-	AllSquash       string `json:"allSquash"`
-	RootSquash      string `json:"rootSquash"`
-	AllocType       string `json:"allocType"`
-	FsPermission    string `json:"fsPermission"`
-	Description     string `json:"description"`
-	Size            int64  `json:"size"`
-	AdvancedOptions string `json:"advancedOptions"`
+	StoragePool       string `json:"storagepool"`
+	Qos               string `json:"qos"`
+	AuthClient        string `json:"authClient"`
+	AuthUser          string `json:"authUser"`
+	ApplicationType   string `json:"applicationType"`
+	EnableKVCache     bool   `json:"enableKVCache,string"`
+	EnableTimeAwareGC bool   `json:"enableTimeAwareGc,string"`
+	GCTimeThreshold   int64  `json:"gcTimeThreshold,string"`
+	AllSquash         string `json:"allSquash"`
+	RootSquash        string `json:"rootSquash"`
+	AllocType         string `json:"allocType"`
+	FsPermission      string `json:"fsPermission"`
+	Description       string `json:"description"`
+	Size              int64  `json:"size"`
+	AdvancedOptions   string `json:"advancedOptions"`
 }
 
 func (p *CreateASeriesVolumeParameter) genCreateVolumeModel(name,
@@ -50,18 +53,21 @@ func (p *CreateASeriesVolumeParameter) genCreateVolumeModel(name,
 	}
 
 	model := &volume.CreateFilesystemModel{
-		Protocol:        protocol,
-		Name:            name,
-		PoolName:        p.StoragePool,
-		WorkloadType:    p.ApplicationType,
-		AllSquash:       constants.NoAllSquashValue,
-		RootSquash:      constants.NoRootSquashValue,
-		Capacity:        utils.RoundUpSize(p.Size, constants.AllocationUnitBytes),
-		Description:     p.Description,
-		UnixPermissions: p.FsPermission,
-		Qos:             p.Qos,
-		AuthClients:     strings.Split(p.AuthClient, ";"),
-		AuthUsers:       strings.Split(p.AuthUser, ";"),
+		Protocol:          protocol,
+		Name:              name,
+		PoolName:          p.StoragePool,
+		WorkloadType:      p.ApplicationType,
+		EnableKVCache:     p.EnableKVCache,
+		EnableTimeAwareGC: p.EnableTimeAwareGC,
+		GCTimeThreshold:   p.GCTimeThreshold,
+		AllSquash:         constants.NoAllSquashValue,
+		RootSquash:        constants.NoRootSquashValue,
+		Capacity:          utils.RoundUpSize(p.Size, constants.AllocationUnitBytes),
+		Description:       p.Description,
+		UnixPermissions:   p.FsPermission,
+		Qos:               p.Qos,
+		AuthClients:       strings.Split(p.AuthClient, ";"),
+		AuthUsers:         strings.Split(p.AuthUser, ";"),
 	}
 
 	if p.AllSquash == constants.AllSquash {

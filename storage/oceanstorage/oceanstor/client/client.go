@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"sync/atomic"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
@@ -60,7 +61,7 @@ type OceanstorClientInterface interface {
 	base.Iscsi
 	base.Mapping
 	base.Qos
-	base.RoCE
+	base.NVMe
 	base.System
 
 	Clone
@@ -100,6 +101,7 @@ var (
 			`/vstore_pair\?filter=ID`,
 			`/FsHyperMetroDomain\?RUNNINGSTATUS=0`,
 			`/remote_device`,
+			`/HyperMetroDomain\?range=\[0-100\]`,
 		},
 	}
 
@@ -143,16 +145,16 @@ func isFilterLog(method, url string) bool {
 
 // OceanstorClient implements OceanstorClientInterface
 type OceanstorClient struct {
-	*base.ApplicationTypeClient
-	*base.FCClient
-	*base.HostClient
-	*base.IscsiClient
-	*base.MappingClient
-	*base.QosClient
-	*base.RoCEClient
-	*base.SystemClient
-	*base.FilesystemClient
-	*base.VStoreClient
+	base.ApplicationType
+	base.FC
+	base.Host
+	base.Iscsi
+	base.Mapping
+	base.Qos
+	base.NVMe
+	base.System
+	base.Filesystem
+	base.VStore
 
 	*RestClient
 }
@@ -171,6 +173,7 @@ type NewClientConfig struct {
 	Storage            string
 	Name               string
 	AuthenticationMode string
+	Protocol           string
 }
 
 // NewClient inits a new oceanstor client
@@ -180,19 +183,30 @@ func NewClient(ctx context.Context, param *NewClientConfig) (*OceanstorClient, e
 		return nil, err
 	}
 
-	return &OceanstorClient{
-		ApplicationTypeClient: &base.ApplicationTypeClient{RestClientInterface: restClient},
-		FCClient:              &base.FCClient{RestClientInterface: restClient},
-		HostClient:            &base.HostClient{RestClientInterface: restClient},
-		IscsiClient:           &base.IscsiClient{RestClientInterface: restClient},
-		MappingClient:         &base.MappingClient{RestClientInterface: restClient},
-		QosClient:             &base.QosClient{RestClientInterface: restClient},
-		RoCEClient:            &base.RoCEClient{RestClientInterface: restClient},
-		SystemClient:          &base.SystemClient{RestClientInterface: restClient},
-		FilesystemClient:      &base.FilesystemClient{RestClientInterface: restClient},
-		VStoreClient:          &base.VStoreClient{RestClientInterface: restClient},
-		RestClient:            restClient,
-	}, nil
+	oceanstorClient := &OceanstorClient{
+		ApplicationType: &base.ApplicationTypeClient{RestClientInterface: restClient},
+		FC:              &base.FCClient{RestClientInterface: restClient},
+		Host:            &base.HostClient{RestClientInterface: restClient},
+		Iscsi:           &base.IscsiClient{RestClientInterface: restClient},
+		Mapping:         &base.MappingClient{RestClientInterface: restClient},
+		Qos:             &base.QosClient{RestClientInterface: restClient},
+		NVMe:            &base.RoCEClient{RestClientInterface: restClient},
+		System:          &base.SystemClient{RestClientInterface: restClient},
+		Filesystem:      &base.FilesystemClient{RestClientInterface: restClient},
+		VStore:          &base.VStoreClient{RestClientInterface: restClient},
+		RestClient:      restClient,
+	}
+
+	switch param.Protocol {
+	case constants.ProtocolRoce, constants.ProtocolRoceNVMe:
+		oceanstorClient.NVMe = &base.RoCEClient{RestClientInterface: restClient}
+	case constants.ProtocolTCPNVMe:
+		oceanstorClient.NVMe = &base.TcpClient{RestClientInterface: restClient}
+	default:
+		// do nothing
+	}
+
+	return oceanstorClient, nil
 }
 
 // SafeCall provides call for restful request

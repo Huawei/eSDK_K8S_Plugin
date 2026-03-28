@@ -135,7 +135,7 @@ spec:
           args:
             - "--csi-address=/csi/csi.sock"
             - "--health-port=9800"
-          image: registry.k8s.io/sig-storage/livenessprobe:v2.12.0
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.15.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -151,7 +151,7 @@ spec:
           args:
             - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.huawei.com/csi.sock"
-          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.0
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.13.0
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - mountPath: /csi
@@ -185,6 +185,8 @@ spec:
             - "--log-file-size=20M"
             - "--max-backups=9"
             - "--kubelet-volume-devices-dir-name=/volumeDevices/"
+            - "--report-node-ip=false"
+            - "--enable-per-node-secret=false"
           env:
             - name: CSI_NODENAME
               valueFrom:

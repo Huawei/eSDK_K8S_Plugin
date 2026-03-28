@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 
-	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
@@ -122,10 +121,16 @@ func (p *OceanstorDTreePlugin) CreateVolume(ctx context.Context, name string, pa
 }
 
 // QueryVolume used to query volume
-func (p *OceanstorDTreePlugin) QueryVolume(ctx context.Context, name string, parameters map[string]interface{}) (
-	utils.Volume, error) {
+func (p *OceanstorDTreePlugin) QueryVolume(ctx context.Context, name string,
+	parameters map[string]any) (utils.Volume, error) {
 
-	return nil, errors.New("oceanstor-dtree does not support DTree feature")
+	scParentName, _ := utils.GetValue[string](parameters, "parentname")
+	parentName, err := getValidParentname(scParentName, p.parentName)
+	if err != nil {
+		return nil, err
+	}
+
+	return p.getDTreeObj().Query(ctx, name, parentName, p.vStoreId)
 }
 
 // DeleteDTreeVolume used to delete DTree volume
@@ -222,7 +227,7 @@ func (p *OceanstorDTreePlugin) DetachVolume(ctx context.Context, volume string,
 }
 
 // DeleteVolume used to delete volume
-func (p *OceanstorDTreePlugin) DeleteVolume(ctx context.Context, name string) error {
+func (p *OceanstorDTreePlugin) DeleteVolume(ctx context.Context, name string, params map[string]interface{}) error {
 	return errors.New("not implement")
 
 }
@@ -264,9 +269,9 @@ func (p *OceanstorDTreePlugin) Validate(ctx context.Context, param map[string]in
 }
 
 // CreateSnapshot used to create snapshot
-func (p *OceanstorDTreePlugin) CreateSnapshot(ctx context.Context, s, s2 string) (map[string]interface{}, error) {
-	return nil, errors.New("not implement")
-
+func (p *OceanstorDTreePlugin) CreateSnapshot(ctx context.Context, s string, s2 string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
+	return nil, errors.New("oceanstor-dtree not support snapshot feature")
 }
 
 // DeleteSnapshot used to delete snapshot
@@ -306,17 +311,7 @@ func (p *OceanstorDTreePlugin) UpdateBackendCapabilities(ctx context.Context) (m
 // UpdatePoolCapabilities used to update pool capabilities
 func (p *OceanstorDTreePlugin) UpdatePoolCapabilities(ctx context.Context, poolNames []string) (map[string]interface{},
 	error) {
-	capabilities := make(map[string]interface{})
-
-	for _, poolName := range poolNames {
-		capabilities[poolName] = map[string]interface{}{
-			string(v1.FreeCapacity):  int64(0),
-			string(v1.UsedCapacity):  int64(0),
-			string(v1.TotalCapacity): int64(0),
-		}
-	}
-	return capabilities, nil
-
+	return getZeroPoolsCapacities(ctx, poolNames)
 }
 
 func (p *OceanstorDTreePlugin) updateNFS4Capability(ctx context.Context, capabilities map[string]interface{}) error {

@@ -86,6 +86,299 @@ func getMockClientWithResponse(statusCode int, body string) *OceanASeriesClient 
 	return testClient
 }
 
+func TestQueryKVCacheSuccess(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	successBody := `{
+        "data": [
+            {"kvcacheStoreId": "1", "kvcacheStoreName": "pv-name"}
+        ],
+        "error": {
+            "code": 0,
+            "description": "success"
+        }
+    }`
+	params := &QueryKVCacheParams{
+		KvcacheStoreName: "pv-name",
+		VstoreId:         "0",
+	}
+
+	// mock
+	mockClient := getMockClientWithResponse(200, successBody)
+
+	// action
+	result, err := mockClient.QueryKVCache(ctx, params)
+
+	// assert
+	require.NoError(t, err)
+	require.Equal(t, "1", result["kvcacheStoreId"])
+}
+
+func TestQueryKVCache_WithoutKVCache(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	successBody := `{
+        "data": [],
+        "error": {
+            "code": 0,
+            "description": "success"
+        }
+    }`
+	params := &QueryKVCacheParams{
+		KvcacheStoreName: "pv-name",
+		VstoreId:         "0",
+	}
+	// mock
+	mockClient := getMockClientWithResponse(200, successBody)
+
+	// action
+	result, err := mockClient.QueryKVCache(ctx, params)
+
+	// assert
+	require.NoError(t, err)
+	require.Empty(t, result)
+}
+
+func TestQueryKVCache_WithMoreThanOneKVCache(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	params := &QueryKVCacheParams{
+		KvcacheStoreName: "pv-name",
+		VstoreId:         "0",
+	}
+	successBody := `{
+        "data": [
+            {"kvcacheStoreId": "1", "kvcacheStoreName": "pv-name"},
+            {"kvcacheStoreId": "2", "kvcacheStoreName": "pv-name-1"}
+		],
+        "error": {
+            "code": 0,
+            "description": "success"
+        }
+    }`
+
+	// mock
+	mockClient := getMockClientWithResponse(200, successBody)
+
+	// action
+	result, err := mockClient.QueryKVCache(ctx, params)
+
+	// assert
+	require.NoError(t, err)
+	require.Equal(t, "1", result["kvcacheStoreId"])
+}
+
+func TestQueryKVCache_WithInvalidDataFormat(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	params := &QueryKVCacheParams{
+		KvcacheStoreName: "pv-name",
+		VstoreId:         "0",
+	}
+	successBody := `{
+        "data": "invalid_string",
+        "error": {
+            "code": 0,
+            "description": "success"
+        }
+    }`
+
+	// mock
+	mockClient := getMockClientWithResponse(200, successBody)
+
+	// action
+	_, err := mockClient.QueryKVCache(ctx, params)
+
+	// assert
+	require.ErrorContains(t, err, "convert respData to array failed")
+}
+
+func TestQueryKVCache_WithOneInvalidDataFormat(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	params := &QueryKVCacheParams{
+		KvcacheStoreName: "pv-name",
+		VstoreId:         "0",
+	}
+	successBody := `{
+        "data": [
+            [123],
+            {"kvcacheStoreId": "2", "kvcacheStoreName": "pv-name"}
+		],
+        "error": {
+            "code": 0,
+            "description": "success"
+        }
+    }`
+
+	// mock
+	mockClient := getMockClientWithResponse(200, successBody)
+
+	// action
+	result, err := mockClient.QueryKVCache(ctx, params)
+
+	// assert
+	require.NoError(t, err)
+	require.Equal(t, "2", result["kvcacheStoreId"])
+}
+
+func TestQueryKVCache_DataWithoutKVCacheStoreName(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	params := &QueryKVCacheParams{
+		KvcacheStoreName: "pv-name",
+		VstoreId:         "0",
+	}
+	successBody := `{
+        "data": [
+            {"kvcacheStoreId": "1"},
+            {"kvcacheStoreId": "2", "kvcacheStoreName": "pv-name"}
+		],
+        "error": {
+            "code": 0,
+            "description": "success"
+        }
+    }`
+
+	// mock
+	mockClient := getMockClientWithResponse(200, successBody)
+
+	// action
+	result, err := mockClient.QueryKVCache(ctx, params)
+
+	// assert
+	require.NoError(t, err)
+	require.Equal(t, "2", result["kvcacheStoreId"])
+}
+
+func TestOceanASeriesClient_CreateKVCache_Success(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	params := &CreateKVCacheParams{
+		FSName:            "fsName",
+		PoolID:            "0",
+		Capacity:          209715200,
+		EnableTimeAwareGC: true,
+		GCTimeThreshold:   2,
+		VStoreID:          "0",
+		FsID:              "1",
+		Description:       "test",
+		NfsId:             "1",
+		KVCacheStoreName:  "fsName",
+	}
+	mockRespBody := `{
+        "data": {
+            "kvcacheStoreId": "kvcacheStoreId1"
+        },
+        "error": {
+            "code": 0
+        }
+    }`
+
+	// mock
+	mockClient := getMockClientWithResponse(200, mockRespBody)
+
+	// action
+	result, err := mockClient.CreateKVCache(ctx, params)
+
+	// assert
+	require.NoError(t, err)
+	assert.Equal(t, "kvcacheStoreId1", result["kvcacheStoreId"])
+}
+
+func TestOceanASeriesClient_CreateKVCache_Failed_With_InvalidDataFormat(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	params := &CreateKVCacheParams{}
+	errorBody := `{
+        "data":"invalidDataFormatString",
+        "error": {
+            "code": 0
+        }
+    }`
+	// mock
+	mockClient := getMockClientWithResponse(200, errorBody)
+
+	// action
+	_, err := mockClient.CreateKVCache(ctx, params)
+
+	// assert
+	require.ErrorContains(t, err, "convert kvcache to map failed")
+}
+
+func TestOceanASeriesClient_DeleteKVCache_WithKVCacheStoreId(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	kvcacheStoreId := "kvcacheStoreId"
+	successRespBody := `{
+        "error": {"code":0}
+    }`
+
+	// mock
+	mockClient := getMockClientWithResponse(200, successRespBody)
+
+	// action
+	err := mockClient.DeleteKVCache(ctx, kvcacheStoreId)
+
+	// assert
+	require.NoError(t, err)
+}
+
+func TestOceanASeriesClient_DeleteKVCache_NotExist(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	kvcacheStoreId := "kvcacheStoreId"
+	notExistRespBody := fmt.Sprintf(`{
+        "error": {
+            "code": %d
+        }
+    }`, storage.ObjectNotExist)
+
+	// mock
+	mockClient := getMockClientWithResponse(200, notExistRespBody)
+
+	// action
+	err := mockClient.DeleteKVCache(ctx, kvcacheStoreId)
+
+	// assert
+	require.NoError(t, err)
+}
+
+func TestOceanASeriesClient_DeleteKVCache_ErrorCode(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	kvcacheStoreId := "kvcacheStoreId"
+	errorBody := fmt.Sprintf(`{
+        "data": null,
+        "error": {
+            "code": %d,
+            "description": "permission denied"
+        }
+    }`, mockErrCode)
+
+	// mock
+	mockClient := getMockClientWithResponse(200, errorBody)
+
+	// action
+	err := mockClient.DeleteKVCache(ctx, kvcacheStoreId)
+
+	// assert
+	require.ErrorContains(t, err, mockErrStr)
+}
+
+func TestOceanASeriesClient_DeleteKVCache_WithEmptyKVCacheStoreId(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	kvcacheStoreId := ""
+	oceanASeriesClient := &OceanASeriesClient{}
+
+	// action
+	err := oceanASeriesClient.DeleteKVCache(ctx, kvcacheStoreId)
+
+	// assert
+	require.ErrorContains(t, err, "kvcacheStoreId must not be empty")
+}
+
 func TestOceanASeriesClient_GetFileSystemByName_Success(t *testing.T) {
 	// arrange
 	ctx := context.Background()

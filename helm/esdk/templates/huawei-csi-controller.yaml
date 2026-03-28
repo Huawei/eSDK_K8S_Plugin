@@ -514,6 +514,7 @@ spec:
             - "--csi-address=$(ADDRESS)"
             - "--timeout=6h"
             - "--extra-create-metadata=true"
+            - "--feature-gates=Topology=false"
             - "--volume-name-prefix={{ default "pvc" (.Values.controller).volumeNamePrefix }}"
             {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
             - "--leader-election"
@@ -742,6 +743,7 @@ spec:
             - "--logging-module={{ .Values.csiDriver.controllerLogging.module }}"
             - "--log-level={{ .Values.csiDriver.controllerLogging.level }}"
             - "--volume-name-prefix={{ default "pvc" (.Values.controller).volumeNamePrefix }}"
+            - "-enable-per-node-secret={{ .Values.csiDriver.enablePerNodeSecret | default false }}"
             {{ if eq .Values.csiDriver.controllerLogging.module "file" }}
             - "--log-file-dir={{ .Values.csiDriver.controllerLogging.fileDir }}"
             - "--log-file-size={{ .Values.csiDriver.controllerLogging.fileSize }}"

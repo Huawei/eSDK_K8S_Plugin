@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,143 +18,275 @@ package nvme
 
 import (
 	"context"
-	"errors"
-	"flag"
-	"sync"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/prashantv/gostub"
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils/lock"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
-const (
-	logName = "nvmeTest.log"
-)
-
-type args struct {
-	ctx  context.Context
-	conn map[string]any
-}
-
-func TestConnectVolume(t *testing.T) {
-	var ctx = context.TODO()
-	var mutex = sync.Mutex{}
-	var GetSubSysInfoOutput = map[string]any{
-		"Subsystems": []any{map[string]any{"Paths": []any{map[string]any{
-			"Transport": "fc", "State": "live", "Name": "channelName", "Address": "address"}}}}}
-	var normalConnMap = map[string]any{"tgtLunGuid": "LunGUID", "volumeUseMultiPath": true,
-		"multiPathType": "UseUltraPath",
-		"portWWNList":   []PortWWNPair{{"address", "address"}}}
-	var noTgtLunGuidConnMap = map[string]any{}
-	var noVolumeUseMultiPathConnMap = map[string]any{"tgtLunGuid": "LunGUID"}
-	var noMultiPathTypeConnMap = map[string]any{"tgtLunGuid": "LunGUID", "volumeUseMultiPath": true}
-	var noPortWWNListConnMap = map[string]any{"tgtLunGuid": "LunGUID", "volumeUseMultiPath": true,
-		"multiPathType": "UseUltraPath"}
-
-	tests := []struct {
-		name    string
-		mutex   sync.Mutex
-		args    args
-		want    string
-		wantErr bool
-	}{
-		{"Normal", mutex, args{ctx, normalConnMap}, "/dev/NVMeVirtualDevice", false},
-		{"NoTgtLunGuid", mutex, args{ctx, noTgtLunGuidConnMap}, "", true},
-		{"NoVolumeUseMultiPath", mutex, args{ctx, noVolumeUseMultiPathConnMap}, "", true},
-		{"NoMultiPathType", mutex, args{ctx, noMultiPathTypeConnMap}, "", true},
-		{"NoPortWWNList", mutex, args{ctx, noPortWWNListConnMap}, "", true},
+func TestConnector_ConnectVolume_SuccessWithoutMultipath(t *testing.T) {
+	// arrange
+	mockConn := &Connector{}
+	params := map[string]interface{}{
+		"tgtLunGuid":         "guid1",
+		"tgtPortals":         []string{"127.0.0.1"},
+		"protocol":           constants.ProtocolTCPNVMe,
+		"volumeUseMultiPath": false,
+		"multiPathType":      "none",
 	}
-	stubs := gostub.StubFunc(&connector.GetSubSysInfo, GetSubSysInfoOutput, nil)
-	defer stubs.Reset()
-	stubs.StubFunc(&connector.DoScanNVMeDevice, nil)
-	stubs.StubFunc(&connector.GetDevNameByLunWWN, "NVMeVirtualDevice", nil)
-	stubs.StubFunc(&connector.IsUpNVMeResidualPath, false, nil)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fc := &FCNVMe{mutex: tt.mutex}
-			got, err := fc.ConnectVolume(tt.args.ctx, tt.args.conn)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ConnectVolume() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("ConnectVolume() got = %v, want %v", got, tt.want)
-			}
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(lock.SyncLock, nil).
+		ApplyFuncReturn(lock.SyncUnlock, nil).
+		ApplyFuncReturn(utils.PathExist, true, nil).
+		ApplyFuncReturn(ioutil.ReadFile, []byte("guid1"), nil).
+		ApplyFuncReturn(connector.VerifySingleDevice, nil).
+		ApplyFuncReturn(time.Sleep).
+		ApplyFuncSeq(utils.ExecShellCmd, []gomonkey.OutputCell{
+			// 1: mock ping command
+			{Values: gomonkey.Params{"", nil}},
+			// 2, 6: mock nvme version
+			{Values: gomonkey.Params{"nvme version 2.3 (git 2.3)", nil}, Times: 2},
+			// 8: mock nvme ns-rescan
+			{Values: gomonkey.Params{"", nil}},
+			// 9: mock ls <path> | grep nvme
+			{Values: gomonkey.Params{"nvme0n1", nil}},
+		}).
+		ApplyFuncSeq(utils.ExecShellCmdFilterLog, []gomonkey.OutputCell{
+			// 3: mock nvme list-subsys
+			{Values: gomonkey.Params{"[]", nil}},
+			// 4: mock nvme discovery
+			{Values: gomonkey.Params{`
+=====Discovery Log Entry 0======
+trtype:  tcp
+adrfam:  ipv4
+subtype: nvme subsystem
+treq:    not specified
+portid:  32
+trsvcid: 4420
+subnqn:  domain:sign
+traddr:  127.0.0.1
+eflags:  none
+sectype: none`, nil}},
+			// 5: mock nvme connect
+			{Values: gomonkey.Params{"", nil}},
+			// 7: mock nvme list-subsys
+			{Values: gomonkey.Params{`[
+  {
+    "HostNQN":"host-nqn",
+    "HostID":"host-id",
+    "Subsystems":[
+      {
+        "Name":"nvme-subsys0",
+        "NQN":"domain:sign",
+        "Paths":[
+          {
+            "Name":"nvme0",
+            "Transport":"tcp",
+            "Address":"traddr=127.0.0.1,trsvcid=4420,src_addr=192.168.0.0",
+            "State":"live"
+          }
+        ]
+      }
+    ]
+  }
+]`, nil}},
 		})
-	}
+
+	// act
+	disk, err := mockConn.ConnectVolume(context.Background(), params)
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, "/dev/nvme0n1", disk)
+
 }
 
-func TestDisConnectVolume(t *testing.T) {
-	var ctx = context.TODO()
-
-	var mutex = sync.Mutex{}
-
-	type args struct {
-		ctx        context.Context
-		tgtLunGuid string
-	}
-	tests := []struct {
-		name    string
-		mutex   sync.Mutex
-		args    args
-		wantErr bool
-	}{
-		{"Normal", mutex, args{ctx, "LunGUID"}, false},
-		{"GetVirtualDeviceError", mutex, args{ctx, "errTgtLunGUID"}, true},
-		{"emptyVirtualDevice", mutex, args{ctx, "emptyTgtLunGUID"}, false},
+func TestConnector_ConnectVolume_SuccessWithNVMeNative(t *testing.T) {
+	// arrange
+	mockConn := &Connector{}
+	params := map[string]interface{}{
+		"tgtLunGuid":         "guid1",
+		"tgtPortals":         []string{"127.0.0.1"},
+		"protocol":           constants.ProtocolTCPNVMe,
+		"volumeUseMultiPath": true,
+		"multiPathType":      connector.NVMeNative,
 	}
 
-	stubs := gostub.Stub(&connector.GetVirtualDevice, func(ctx context.Context, tgtLunGUID string) (string, int, error) {
-		if tgtLunGUID == "errTgtLunGUID" {
-			return "", 0, errors.New("test err")
-		}
-		if tgtLunGUID == "emptyTgtLunGUID" {
-			return "", 0, nil
-		}
-		return "test", 1, nil
-	})
-	defer stubs.Reset()
-
-	stubs.StubFunc(&connector.GetNVMePhysicalDevices, []string{}, nil)
-	stubs.StubFunc(&connector.RemoveAllDevice, "test", nil)
-	stubs.StubFunc(&connector.FlushDMDevice, nil)
-	var interval = flushTimeInterval
-	stubs.Stub(&interval, time.Microsecond)
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fc := &FCNVMe{
-				mutex: tt.mutex,
-			}
-			if err := fc.DisConnectVolume(tt.args.ctx, tt.args.tgtLunGuid); (err != nil) != tt.wantErr {
-				t.Errorf("DisConnectVolume() error = %v, wantErr %v", err, tt.wantErr)
-			}
+	// mock
+	defaultWait := app.GetGlobalConfig().AllPathOnline
+	app.GetGlobalConfig().AllPathOnline = true
+	defer func() {
+		app.GetGlobalConfig().AllPathOnline = defaultWait
+	}()
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(lock.SyncLock, nil).
+		ApplyFuncReturn(lock.SyncUnlock, nil).
+		ApplyFuncReturn(utils.PathExist, true, nil).
+		ApplyFuncReturn(ioutil.ReadFile, []byte("guid1"), nil).
+		ApplyFuncReturn(connector.VerifySingleDevice, nil).
+		ApplyFuncReturn(os.ReadFile, []byte("Y"), nil).
+		ApplyFuncReturn(os.Lstat, nil, nil).
+		ApplyFuncReturn(os.Stat, nil, nil).
+		ApplyFuncReturn(os.Readlink, "../../nvme0n1", nil).
+		ApplyFuncReturn(time.Sleep).
+		ApplyFuncSeq(utils.ExecShellCmd, []gomonkey.OutputCell{
+			// 1: mock ping command
+			{Values: gomonkey.Params{"", nil}},
+			// 2, 6: mock nvme version
+			{Values: gomonkey.Params{"nvme version 2.3 (git 2.3)", nil}, Times: 2},
+			// 8: mock nvme ns-rescan
+			{Values: gomonkey.Params{"", nil}},
+			// 9: mock ls <path> | grep nvme
+			{Values: gomonkey.Params{"nvme0c1n1", nil}},
+			// 10: mock nvme version
+			{Values: gomonkey.Params{"nvme version 2.3 (git 2.3)", nil}},
+			// 12: mock nvme list
+			{Values: gomonkey.Params{"nvme0n1    /dev/nvme0n1    XXXX", nil}},
+		}).
+		ApplyFuncSeq(utils.ExecShellCmdFilterLog, []gomonkey.OutputCell{
+			// 3: mock nvme list-subsys
+			{Values: gomonkey.Params{"[]", nil}},
+			// 4: mock nvme discovery
+			{Values: gomonkey.Params{`
+=====Discovery Log Entry 0======
+trtype:  tcp
+adrfam:  ipv4
+subtype: nvme subsystem
+treq:    not specified
+portid:  32
+trsvcid: 4420
+subnqn:  domain:sign
+traddr:  127.0.0.1
+eflags:  none
+sectype: none`, nil}},
+			// 5: mock nvme connect
+			{Values: gomonkey.Params{"", nil}},
+			// 7, 11: mock nvme list-subsys
+			{Values: gomonkey.Params{`
+[
+  {
+    "HostNQN":"host-nqn",
+    "HostID":"host-id",
+    "Subsystems":[
+      {
+        "Name":"nvme-subsys0",
+        "NQN":"domain:sign",
+        "Paths":[
+          {
+            "Name":"nvme0",
+            "Transport":"tcp",
+            "Address":"traddr=127.0.0.1,trsvcid=4420,src_addr=192.168.0.0",
+            "State":"live"
+          }
+        ]
+      }
+    ]
+  }
+]`, nil}, Times: 2},
 		})
-	}
+
+	// act
+	disk, err := mockConn.ConnectVolume(context.Background(), params)
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, "/dev/nvme0n1", disk)
 }
 
-const defaultDriverName = "csi.huawei.com"
-
-var driverName = flag.String("driver-name", defaultDriverName, "CSI driver name")
-
-func TestMain(m *testing.M) {
-	stubs := gostub.StubFunc(&app.GetGlobalConfig, config.MockCompletedConfig())
-	defer stubs.Reset()
-
-	log.MockInitLogging(logName)
-	defer log.MockStopLogging(logName)
-
-	if err := lock.InitLock(*driverName); err != nil {
-		log.Errorf("test lock init failed: %v", err)
-		return
+func TestConnector_ConnectVolume_NVMeVersionNotSupport(t *testing.T) {
+	// arrange
+	mockConn := &Connector{}
+	params := map[string]interface{}{
+		"tgtLunGuid":         "guid1",
+		"tgtPortals":         []string{"127.0.0.1"},
+		"protocol":           constants.ProtocolTCPNVMe,
+		"volumeUseMultiPath": false,
+		"multiPathType":      "none",
 	}
 
-	m.Run()
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(lock.SyncLock, nil).
+		ApplyFuncReturn(lock.SyncUnlock, nil).
+		ApplyFuncReturn(utils.ExecShellCmd, "nvme version 1.5", nil)
+
+	// act
+	disk, err := mockConn.ConnectVolume(context.Background(), params)
+
+	// assert
+	assert.ErrorContains(t, err, "the current NVMe CLI version is not supported")
+	assert.Empty(t, disk)
+
+}
+
+func TestConnector_DisConnectVolume_NVMeNative(t *testing.T) {
+	// arrange
+	mockConn := &Connector{}
+
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(lock.SyncLock, nil).
+		ApplyFuncReturn(lock.SyncUnlock, nil).
+		ApplyFuncSeq(utils.ExecShellCmd, []gomonkey.OutputCell{
+			// 1: mock ls -l /dev/disk/by-id/
+			{Values: gomonkey.Params{"xxxxx nvme-eui.wwn -> ../../nvme0n1", nil}},
+			// 2: mock get subpath number
+			{Values: gomonkey.Params{"\n0", nil}},
+			// 3: mock nvme disconnect
+			{Values: gomonkey.Params{"", nil}},
+		}).ApplyFuncReturn(filepath.Glob, []string{
+		"/sys/class/nvme-fabrics/ctl/nvme0/nvme0c0n1",
+		"/sys/class/nvme-fabrics/ctl/nvme1/nvme0c1n1",
+	}, nil)
+
+	// act
+	err := mockConn.DisConnectVolume(context.Background(), "wwn")
+
+	// assert
+	assert.NoError(t, err)
+
+}
+
+func TestConnector_DisConnectVolume_NonMultipath(t *testing.T) {
+	// arrange
+	mockConn := &Connector{}
+
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(lock.SyncLock, nil).
+		ApplyFuncReturn(lock.SyncUnlock, nil).
+		ApplyFuncSeq(utils.ExecShellCmd, []gomonkey.OutputCell{
+			// 1: mock ls -l /dev/disk/by-id/
+			{Values: gomonkey.Params{"xxxxx nvme-eui.wwn -> ../../nvme0n1", nil}},
+			// 2: mock get subpath number
+			{Values: gomonkey.Params{"\n0", nil}},
+			// 3: mock nvme disconnect
+			{Values: gomonkey.Params{"", nil}},
+		}).ApplyFuncReturn(filepath.Glob, []string{
+		"/sys/class/nvme-fabrics/ctl/nvme0/nvme0n1",
+	}, nil)
+
+	// act
+	err := mockConn.DisConnectVolume(context.Background(), "wwn")
+
+	// assert
+	assert.NoError(t, err)
+
 }

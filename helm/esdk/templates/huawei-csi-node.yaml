@@ -181,6 +181,7 @@ spec:
             - "--max-volumes-per-node={{ .Values.node.maxVolumesPerNode }}"
             {{ end }}
             - "-report-node-ip={{ .Values.csiDriver.reportNodeIP | default false }}"
+            - "-enable-per-node-secret={{ .Values.csiDriver.enablePerNodeSecret | default false }}"
           env:
             - name: CSI_NODENAME
               valueFrom:

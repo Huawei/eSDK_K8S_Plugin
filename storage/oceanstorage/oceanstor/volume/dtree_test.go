@@ -17,16 +17,21 @@
 package volume
 
 import (
+	"context"
+	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/test/mocks/mock_client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -113,4 +118,183 @@ func Test_generateCreateDTreeDataFromParams(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+var (
+	fakeDTreeName              = "fake-dtree-name"
+	fakeParentName             = "fake-parent-name"
+	fakeDTreeID                = "fake-dtree-id"
+	fakeVStoreID               = "fake-vstore-id"
+	fakeDtreeQuotaSpaceHard    = "1024"
+	fakeDtreeQuotaSpaceHardInt = int64(1024)
+)
+
+func Test_QueryVolume_Success(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	dtree := NewDTree(cli)
+
+	// mock
+	cli.EXPECT().GetDTreeByName(ctx, "", fakeParentName, fakeVStoreID, fakeDTreeName).
+		Return(
+			map[string]interface{}{
+				"ID": fakeDTreeID,
+			},
+			nil,
+		)
+	fakeQuotaResult := map[string]interface{}{"SPACEHARDQUOTA": fakeDtreeQuotaSpaceHard}
+	fakeQuotaResultList := []interface{}{fakeQuotaResult}
+	batchQueryParam := map[string]interface{}{
+		"PARENTTYPE":    client.ParentTypeDTree,
+		"PARENTID":      fakeDTreeID,
+		"range":         "[0-100]",
+		"vstoreId":      fakeVStoreID,
+		"QUERYTYPE":     "2",
+		"SPACEUNITTYPE": client.SpaceUnitTypeBytes,
+	}
+	cli.EXPECT().BatchGetQuota(ctx, batchQueryParam).
+		Return(fakeQuotaResultList, nil)
+
+	// action
+	volume, err := dtree.Query(ctx, fakeDTreeName, fakeParentName, fakeVStoreID)
+
+	// assert
+	require.NoError(t, err)
+	require.NotNil(t, volume)
+	require.Equal(t, fakeDTreeName, volume.GetVolumeName())
+	require.Equal(t, fakeDtreeQuotaSpaceHard, strconv.FormatInt(volume.GetSize(), 10))
+}
+
+func Test_QueryVolume_Fail(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	dtree := NewDTree(cli)
+	batchQueryParam := map[string]interface{}{
+		"PARENTTYPE":    client.ParentTypeDTree,
+		"PARENTID":      fakeDTreeID,
+		"range":         "[0-100]",
+		"vstoreId":      fakeVStoreID,
+		"QUERYTYPE":     "2",
+		"SPACEUNITTYPE": client.SpaceUnitTypeBytes,
+	}
+
+	t.Run("get dtree by name failed", func(t *testing.T) {
+		// mock
+		fakeErr := fmt.Errorf("get dtree by name failed")
+		cli.EXPECT().GetDTreeByName(ctx, "", fakeParentName, fakeVStoreID, fakeDTreeName).
+			Return(nil, fakeErr)
+
+		// action
+		volume, err := dtree.Query(ctx, fakeDTreeName, fakeParentName, fakeVStoreID)
+
+		// assert
+		require.ErrorIs(t, err, fakeErr)
+		require.Nil(t, volume)
+	})
+
+	t.Run("get nil dtree", func(t *testing.T) {
+		// mock
+		cli.EXPECT().GetDTreeByName(ctx, "", fakeParentName, fakeVStoreID, fakeDTreeName).
+			Return(nil, nil)
+
+		// action
+		volume, err := dtree.Query(ctx, fakeDTreeName, fakeParentName, fakeVStoreID)
+
+		// assert
+		require.EqualError(t, err, fmt.Sprintf("dtree to query does not exist, dtree:%q parentName:%q vstoreID:%q ",
+			fakeDTreeName, fakeParentName, fakeVStoreID))
+		require.Nil(t, volume)
+	})
+
+	t.Run("batch get quota failed", func(t *testing.T) {
+		// mock
+		fakeErr := fmt.Errorf("batch get quota failed")
+		cli.EXPECT().GetDTreeByName(ctx, "", fakeParentName, fakeVStoreID, fakeDTreeName).
+			Return(map[string]interface{}{"ID": fakeDTreeID}, nil)
+		cli.EXPECT().BatchGetQuota(ctx, batchQueryParam).
+			Return(nil, fakeErr)
+
+		// action
+		volume, err := dtree.Query(ctx, fakeDTreeName, fakeParentName, fakeVStoreID)
+
+		// assert
+		require.ErrorIs(t, err, fakeErr)
+		require.Nil(t, volume)
+	})
+
+	t.Run("batch get quota empty result", func(t *testing.T) {
+		// mock
+		cli.EXPECT().GetDTreeByName(ctx, "", fakeParentName, fakeVStoreID, fakeDTreeName).
+			Return(map[string]interface{}{"ID": fakeDTreeID}, nil)
+		cli.EXPECT().BatchGetQuota(ctx, batchQueryParam).
+			Return(nil, nil)
+
+		// action
+		volume, err := dtree.Query(ctx, fakeDTreeName, fakeParentName, fakeVStoreID)
+
+		// assert
+		require.Nil(t, volume)
+		require.EqualError(t, err, fmt.Sprintf("quota to query does not exist, dtree:%q parentName:%q vstoreID:%q",
+			fakeDTreeName, fakeParentName, fakeVStoreID))
+	})
+
+	t.Run("has no quota hard space", func(t *testing.T) {
+		// mock
+		cli.EXPECT().GetDTreeByName(ctx, "", fakeParentName, fakeVStoreID, fakeDTreeName).
+			Return(map[string]interface{}{"ID": fakeDTreeID}, nil)
+
+		fakeQuotaResult := map[string]interface{}{"SPACEHARDQUOTA-wrong": fakeDtreeQuotaSpaceHard}
+		fakeQuotaResultList := []interface{}{fakeQuotaResult}
+		cli.EXPECT().BatchGetQuota(ctx, batchQueryParam).
+			Return(fakeQuotaResultList, nil)
+
+		// action
+		volume, err := dtree.Query(ctx, fakeDTreeName, fakeParentName, fakeVStoreID)
+
+		// assert
+		require.Nil(t, volume)
+		require.EqualError(t, err, fmt.Sprintf("quota to query does not contain hard quota, "+
+			"dtree:%q parentName:%q vstoreID:%q",
+			fakeDTreeName, fakeParentName, fakeVStoreID))
+	})
+}
+
+func Test_ExpandVolume(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	dtree := NewDTree(cli)
+
+	batchQueryParam := map[string]interface{}{
+		"PARENTTYPE":    client.ParentTypeDTree,
+		"PARENTID":      fakeDTreeID,
+		"range":         "[0-100]",
+		"vstoreId":      fakeVStoreID,
+		"QUERYTYPE":     "2",
+		"SPACEUNITTYPE": client.SpaceUnitTypeBytes,
+	}
+
+	createQuotaParam := map[string]any{"PARENTTYPE": client.ParentTypeDTree, "PARENTID": fakeDTreeID,
+		"QUOTATYPE": client.QuotaTypeDir, "SPACEUNITTYPE": client.SpaceUnitTypeBytes,
+		"SPACEHARDQUOTA": fakeDtreeQuotaSpaceHardInt, "vstoreId": fakeVStoreID}
+
+	t.Run("expand volume success when quota is not exist", func(t *testing.T) {
+		// mock
+		cli.EXPECT().GetDTreeByName(ctx, "", fakeParentName, fakeVStoreID, fakeDTreeName).
+			Return(map[string]interface{}{"ID": fakeDTreeID}, nil)
+		cli.EXPECT().BatchGetQuota(ctx, batchQueryParam).
+			Return([]interface{}{}, nil)
+		cli.EXPECT().CreateQuota(ctx, createQuotaParam).Return(nil, nil)
+
+		// action
+		err := dtree.Expand(ctx, fakeParentName, fakeDTreeName, fakeVStoreID, fakeDtreeQuotaSpaceHardInt)
+
+		// assert
+		require.NoError(t, err)
+	})
 }

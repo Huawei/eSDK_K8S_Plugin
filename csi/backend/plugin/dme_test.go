@@ -196,7 +196,7 @@ func TestDmeASeriesPlugin_DeleteVolume(t *testing.T) {
 	patch.ApplyMethodReturn((*dmeVol.Deleter)(nil), "Delete", nil)
 
 	// act
-	err := p.DeleteVolume(ctx, name)
+	err := p.DeleteVolume(ctx, name, nil)
 
 	// assert
 	assert.NoError(t, err)
@@ -324,7 +324,7 @@ func TestDmeASeriesPlugin_CreateSnapshot(t *testing.T) {
 	snapshotName := "test"
 
 	// act
-	ret, err := p.CreateSnapshot(ctx, fsName, snapshotName)
+	ret, err := p.CreateSnapshot(ctx, fsName, snapshotName, nil)
 
 	// assert
 	assert.Error(t, err)

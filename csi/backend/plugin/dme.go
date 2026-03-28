@@ -168,7 +168,7 @@ func (p *DMEASeriesPlugin) QueryVolume(ctx context.Context, name string,
 }
 
 // DeleteVolume used to delete volume
-func (p *DMEASeriesPlugin) DeleteVolume(ctx context.Context, name string) error {
+func (p *DMEASeriesPlugin) DeleteVolume(ctx context.Context, name string, _ map[string]interface{}) error {
 	model := &volume.DeleteVolumeModel{
 		Protocol: p.protocol,
 		Name:     name,
@@ -252,7 +252,8 @@ func (p *DMEASeriesPlugin) UpdatePoolCapabilities(ctx context.Context,
 }
 
 // CreateSnapshot used to create snapshot
-func (p *DMEASeriesPlugin) CreateSnapshot(context.Context, string, string) (map[string]interface{}, error) {
+func (p *DMEASeriesPlugin) CreateSnapshot(context.Context, string, string, map[string]interface{}) (
+	map[string]interface{}, error) {
 	return nil, fmt.Errorf("%s storage does not support snapshot feature", constants.OceanStorASeriesNasDme)
 }
 

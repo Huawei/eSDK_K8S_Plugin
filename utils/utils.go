@@ -54,13 +54,6 @@ const (
 )
 
 const (
-	iSCSIProtocol  string = "iscsi"
-	scsiProtocol   string = "scsi"
-	fcProtocol     string = "fc"
-	roceProtocol   string = "roce"
-	fcNVMeProtocol string = "fc-nvme"
-	nfsProtocol    string = "nfs"
-
 	dmMultipathService string = "multipathd.service"
 	nxupService        string = "nxup.service"
 	upudevService      string = "upudev.service"
@@ -435,7 +428,7 @@ func GetVolumeMetrics(path string) (*VolumeMetrics, error) {
 }
 
 func GetLunUniqueId(ctx context.Context, protocol string, lun map[string]interface{}) (string, error) {
-	if protocol == "roce" || protocol == "fc-nvme" {
+	if constants.IsNVMeProtocol(protocol) {
 		tgtLunGuid, exist := lun["NGUID"].(string)
 		if !exist {
 			msg := fmt.Sprintf("The Lun info %s does not contain key NGUID", lun)
@@ -645,12 +638,12 @@ func GetRequiredMultipath(ctx context.Context,
 	protocols := getBackendProtocols(ctx, backendConfigs)
 	for _, protocol := range protocols {
 		var relatedServices []string
-		if protocol == iSCSIProtocol || protocol == fcProtocol {
+		if protocol == constants.ProtocolIscsi || protocol == constants.ProtocolFC {
 			relatedServices, exist = serviceMap[scsiMultipathType]
 			if !exist {
 				log.AddContext(ctx).Errorf("scsi-multipath-type: %s is incorrectly configured.", scsiMultipathType)
 			}
-		} else if protocol == roceProtocol || protocol == fcNVMeProtocol {
+		} else if constants.IsNVMeProtocol(protocol) {
 			relatedServices, exist = serviceMap[nvmeMultipathType]
 			if !exist {
 				log.AddContext(ctx).Errorf("nvme-multipath-type: %s is incorrectly configured.", nvmeMultipathType)

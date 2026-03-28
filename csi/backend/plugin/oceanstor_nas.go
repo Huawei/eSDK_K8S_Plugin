@@ -192,7 +192,7 @@ func (p *OceanstorNasPlugin) QueryVolume(ctx context.Context, name string, param
 }
 
 // DeleteVolume used to delete volume
-func (p *OceanstorNasPlugin) DeleteVolume(ctx context.Context, name string) error {
+func (p *OceanstorNasPlugin) DeleteVolume(ctx context.Context, name string, params map[string]interface{}) error {
 	if p.metroRemotePlugin == nil {
 		if err := p.assertLogicPortRunOnOwnSite(ctx); err != nil {
 			return err
@@ -277,8 +277,8 @@ func (p *OceanstorNasPlugin) UpdateMetroRemotePlugin(ctx context.Context, remote
 }
 
 // CreateSnapshot used to create snapshot
-func (p *OceanstorNasPlugin) CreateSnapshot(ctx context.Context,
-	fsName, snapshotName string) (map[string]interface{}, error) {
+func (p *OceanstorNasPlugin) CreateSnapshot(ctx context.Context, fsName string, snapshotName string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
 	if p.metroRemotePlugin == nil {
 		if err := p.assertLogicPortRunOnOwnSite(ctx); err != nil {
 			return nil, err

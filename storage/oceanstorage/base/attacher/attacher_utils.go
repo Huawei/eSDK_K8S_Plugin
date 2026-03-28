@@ -19,11 +19,11 @@ package attacher
 import (
 	"context"
 
+	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/fcnvme"
 	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/fibrechannel"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/host"
 	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/iscsi"
 	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
-	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/roce"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
@@ -37,8 +37,8 @@ const (
 	// FC defines fc initiator type
 	FC
 
-	// ROCE defines roce initiator type
-	ROCE
+	// NVME defines nvme initiator type
+	NVME
 )
 
 // GetMultipleInitiators use this method when the initiator is an array e.g. fc
@@ -86,7 +86,7 @@ func getInitiatorByProtocol(ctx context.Context,
 	mapping := map[InitiatorType]interface{}{
 		ISCSI: hostInfo.IscsiInitiator,
 		FC:    hostInfo.FCInitiators,
-		ROCE:  hostInfo.RoCEInitiator,
+		NVME:  hostInfo.NVMeInitiator,
 	}
 
 	value, exist := mapping[protocol]

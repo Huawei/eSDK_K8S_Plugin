@@ -96,9 +96,6 @@ func runCSIController(ctx context.Context, csiDriver *driver.CsiDriver) {
 
 	app.GetGlobalConfig().K8sUtils.Activate()
 
-	// Clean up before exiting
-	go exitClean(true)
-
 	// Refresh backend cache
 	go job.RunSyncBackendTaskInBackground()
 
@@ -113,8 +110,6 @@ func runCSIController(ctx context.Context, csiDriver *driver.CsiDriver) {
 }
 
 func runCSINode(ctx context.Context, csiDriver *driver.CsiDriver) {
-	go exitClean(false)
-
 	// Init file lock
 	err := lock.InitLock(app.GetGlobalConfig().DriverName)
 	if err != nil {
@@ -169,10 +164,12 @@ func main() {
 
 	// Start CSI service
 	if app.GetGlobalConfig().Controller {
-		runCSIController(context.Background(), csiDriver)
+		go runCSIController(context.Background(), csiDriver)
 	} else {
-		runCSINode(context.Background(), csiDriver)
+		go runCSINode(context.Background(), csiDriver)
 	}
+
+	exitClean(app.GetGlobalConfig().Controller)
 }
 
 func registerDRCSIServer() {

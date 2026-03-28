@@ -37,5 +37,12 @@ func GetStopChan() chan struct{} {
 
 func wait() {
 	// The purpose is to block business goroutine
-	stopChan <- struct{}{}
+	for {
+		select {
+		case _, ok := <-stopChan:
+			if !ok {
+				return
+			}
+		}
+	}
 }

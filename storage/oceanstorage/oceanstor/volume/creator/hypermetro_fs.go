@@ -88,6 +88,7 @@ func NewHyperMetroCreatorFromParams(
 	params.SetIsSkipNfsShare(true)
 	qos := params.QoS()
 	params.SetQos(nil)
+	params.SetWaitForSplit(true)
 	activeCreator := newSingle(params, activeCli)
 	standbyCreator := NewFsCreatorFromParams(standbyCli, params)
 	standbyCreator.storagePoolName = params.RemoteStoragePool()

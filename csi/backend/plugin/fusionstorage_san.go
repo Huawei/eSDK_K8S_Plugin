@@ -101,7 +101,7 @@ func (p *FusionStorageSanPlugin) fillIscsiParams(ctx context.Context,
 	var err error
 	var validPortals []string
 	if len(portals) > 0 {
-		validPortals, err = proto.VerifyIscsiPortals(ctx, portals)
+		validPortals, err = proto.VerifySanPortals(ctx, portals)
 		if err != nil {
 			return err
 		}
@@ -206,7 +206,7 @@ func (p *FusionStorageSanPlugin) QueryVolume(ctx context.Context, name string, p
 }
 
 // DeleteVolume used to delete volume
-func (p *FusionStorageSanPlugin) DeleteVolume(ctx context.Context, name string) error {
+func (p *FusionStorageSanPlugin) DeleteVolume(ctx context.Context, name string, params map[string]interface{}) error {
 	san := volume.NewSAN(p.cli)
 	return san.Delete(ctx, name)
 }
@@ -295,8 +295,8 @@ func (p *FusionStorageSanPlugin) UpdateBackendCapabilities(ctx context.Context) 
 }
 
 // CreateSnapshot used to create snapshot
-func (p *FusionStorageSanPlugin) CreateSnapshot(ctx context.Context,
-	lunName, snapshotName string) (map[string]interface{}, error) {
+func (p *FusionStorageSanPlugin) CreateSnapshot(ctx context.Context, lunName string, snapshotName string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
 	san := volume.NewSAN(p.cli)
 
 	snapshotName = utils.GetFusionStorageSnapshotName(snapshotName)

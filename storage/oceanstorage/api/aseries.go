@@ -19,14 +19,18 @@ package api
 
 // ASeries storage interface urls
 const (
-	// ManageFileSystemPath is the path for manage filesystem.
+	// ManageFileSystemPath is the path for managing filesystem.
 	ManageFileSystemPath = "/filesystem"
-	// ManageDataTurboShare is the path for manage DataTurbo share.
+	// ManageDataTurboShare is the path for managing DataTurbo share.
 	ManageDataTurboShare = "/DATATURBO_SHARE"
 	// DeleteDataTurboShare is the path for deleting a DataTurbo share.
 	DeleteDataTurboShare = "/DATATURBO_SHARE/%s"
-	// ManageDataTurboShareUser is the path for manage DataTurbo share auth user.
+	// ManageDataTurboShareUser is the path for managing DataTurbo share auth user.
 	ManageDataTurboShareUser = "/DATATURBO_SHARE_AUTH"
 	// RemoveDataTurboShareUser is the path for removing an auth user from a DataTurbo share.
 	RemoveDataTurboShareUser = "/DATATURBO_SHARE_AUTH/%s"
+	// QueryKVCachePath is the path for querying KVCaches.
+	QueryKVCachePath = "/kv_cache_store/batch"
+	// ManageKVCachePath is the path for managing KVCaches.
+	ManageKVCachePath = "/kv_cache_store"
 )

@@ -53,6 +53,7 @@ type DTreeResponse struct {
 func (cli *RestClient) GetDTreeByName(ctx context.Context, parentName, name string) (*DTreeResponse, error) {
 	restPath := utils.NewFusionRestPath(manageDtreePath)
 	restPath.SetQuery("file_system_name", parentName)
+	restPath.SetQuery("account_id", strconv.Itoa(cli.accountId))
 	restPath.AddFilter("name", name)
 	encodedPath, err := restPath.Encode()
 	if err != nil {

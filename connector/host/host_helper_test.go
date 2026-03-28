@@ -14,27 +14,23 @@
  *  limitations under the License.
  */
 
+// Package host defines a set of useful methods, which can help Connector to operate host information
 package host
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prashantv/gostub"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
-	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/proto"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -43,274 +39,98 @@ const (
 )
 
 var (
-	testK8sUtils k8sutils.Interface
-	testNodeInfo = &NodeHostInfo{
+	mockInfo = &NodeHostInfo{
 		HostName:       "test_hostname",
 		IscsiInitiator: "test_iscsi_initiator",
-		RoCEInitiator:  "test_roce_initiator",
-		FCInitiators:   []string{"test_fc_initiator_1,test_fc_initiator_2"},
+		NVMeInitiator:  "test_nvme_initiator",
+		FCInitiators:   []string{"test_fc_initiator_1", "test_fc_initiator_2"},
+		HostIPs:        []string{"127.0.0.1"},
 	}
 )
 
 func TestMain(m *testing.M) {
-	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
-	defer getGlobalConfig.Reset()
-
-	testK8sUtils = app.GetGlobalConfig().K8sUtils
 	log.MockInitLogging(logName)
 	defer log.MockStopLogging(logName)
-
 	m.Run()
 }
-func TestNewNodeHostInfo(t *testing.T) {
+
+func TestNewNodeHostInfo_Successful(t *testing.T) {
+	// arrange
 	want := &NodeHostInfo{
 		HostName:       "test_hostname",
 		IscsiInitiator: "test_iscsi_initiator",
-		RoCEInitiator:  "test_roce_initiator",
-		FCInitiators:   nil,
+		FCInitiators:   []string{"test_fc_initiator_1", "test_fc_initiator_2"},
+		NVMeInitiator:  "test_nvme_initiator",
+		HostIPs:        []string{"127.0.0.1"},
 	}
-	getISCSIInitiator := gomonkey.ApplyFunc(proto.GetISCSIInitiator, func(_ context.Context) (string, error) {
-		return want.IscsiInitiator, errors.New("no iscsi initiator")
-	})
-	defer getISCSIInitiator.Reset()
 
-	getFCInitiator := gomonkey.ApplyFunc(proto.GetFCInitiator, func(_ context.Context) ([]string, error) {
-		return nil, errors.New("no fc initiator")
-	})
-	defer getFCInitiator.Reset()
+	// mock
+	patches := gomonkey.NewPatches()
+	patches.Reset()
+	mockHostInfo(patches)
 
-	getRoCEInitiator := gomonkey.ApplyFunc(proto.GetRoCEInitiator, func(_ context.Context) (string, error) {
-		return want.RoCEInitiator, errors.New("no roce initiator")
-	})
-	defer getRoCEInitiator.Reset()
+	// action
+	info, err := NewNodeHostInfo(context.Background(), true)
 
-	t.Run("TestNewNodeHostInfoSuccessful", func(t *testing.T) {
-		execShellCmd := gostub.StubFunc(&utils.ExecShellCmd, want.HostName, nil)
-		defer execShellCmd.Reset()
-		patches := gomonkey.ApplyFuncReturn(utils.GetHostIPs, nil, nil)
-		defer patches.Reset()
-		nodeHostInfo, err := NewNodeHostInfo(context.Background())
-		if !reflect.DeepEqual(nodeHostInfo, want) {
-			t.Errorf("NewNodeHostInfo() got = %v, want %v", nodeHostInfo, want)
-		}
-		require.NoError(t, err)
-	})
-
-	t.Run("TestNewNodeHostInfoWithQueryHostNameFail", func(t *testing.T) {
-		execShellCmd := gostub.StubFunc(&utils.ExecShellCmd, nil, errors.New("timeout"))
-		defer execShellCmd.Reset()
-
-		nodeHostInfo, err := NewNodeHostInfo(context.Background())
-		require.Error(t, err)
-		require.Nil(t, nodeHostInfo)
-	})
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, want, info)
 }
 
-func TestSaveNodeHostInfoToSecretWithGetSecretError(t *testing.T) {
-	getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
-		func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
-			return nil, errors.New("error")
-		})
-	defer getSecret.Reset()
-
-	t.Run("TestSaveNodeHostInfoToSecretWithGetSecretError", func(t *testing.T) {
-		err := SaveNodeHostInfoToSecret(context.Background())
-		require.Error(t, err)
-	})
-
-	isNotFound := gomonkey.ApplyFunc(apiErrors.IsNotFound, func(err error) bool {
-		return true
-	})
-	defer isNotFound.Reset()
-
-	t.Run("TestSaveNodeHostInfoToSecretWithIsNotFoundError", func(t *testing.T) {
-		createSecretFunc := func(_ *k8sutils.KubeClient, ctx context.Context, secret *corev1.Secret) (*corev1.Secret,
-			error) {
-			return secret, nil
-		}
-		createSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "CreateSecret", createSecretFunc)
-		defer createSecret.Reset()
-
-		newNodeHostInfoFunc := func(ctx context.Context) (*NodeHostInfo, error) { return nil, nil }
-		newNodeHostInfo := gomonkey.ApplyFunc(NewNodeHostInfo, newNodeHostInfoFunc)
-		defer newNodeHostInfo.Reset()
-
-		err := SaveNodeHostInfoToSecret(context.Background())
-		require.Error(t, err)
-	})
-
-	createSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "CreateSecret",
-		func(_ *k8sutils.KubeClient, ctx context.Context, secret *corev1.Secret) (*corev1.Secret, error) {
-			return nil, errors.New("create  secret exist")
-		})
-	defer createSecret.Reset()
-
-	isAlreadyExists := gomonkey.ApplyFunc(apiErrors.IsAlreadyExists, func(err error) bool {
-		return false
-	})
-	defer isAlreadyExists.Reset()
-
-	t.Run("TestSaveNodeHostInfoToSecretWithSecretNotExistAndCreateFail", func(t *testing.T) {
-		err := SaveNodeHostInfoToSecret(context.Background())
-		require.Error(t, err)
-	})
-
-	t.Run("TestSaveNodeHostInfoToSecretWithSecretNotExistAndCreateReturnExists", func(t *testing.T) {
-		err := SaveNodeHostInfoToSecret(context.Background())
-		require.Error(t, err)
-	})
+func mockHostInfo(patches *gomonkey.Patches) {
+	patches.ApplyFuncReturn(proto.GetISCSIInitiator, mockInfo.IscsiInitiator, nil)
+	patches.ApplyFuncReturn(proto.GetFCInitiator, mockInfo.FCInitiators, nil)
+	patches.ApplyFuncReturn(proto.GetNVMeInitiator, mockInfo.NVMeInitiator, nil)
+	patches.ApplyFuncReturn(utils.GetHostIPs, mockInfo.HostIPs, nil)
+	patches.ApplyFuncReturn(utils.GetHostName, mockInfo.HostName, nil)
 }
 
-func TestSaveNodeHostInfoToSecretWithSecretNotExist(t *testing.T) {
-	t.Run("TestSaveNodeHostInfoToSecretWithGetSecretNotExist", func(t *testing.T) {
-		getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
-			func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
-				return &corev1.Secret{}, nil
-			})
-		defer getSecret.Reset()
+func TestSaveNodeHostInfoToSecret_withDifferentSecretMode(t *testing.T) {
+	tests := []struct {
+		name          string
+		enablePreNode bool
+		reportIps     bool
+	}{
+		{name: "test_for_pre_node_secret_with_not_report_ips", enablePreNode: true, reportIps: false},
+		{name: "test_for_unified_secret_with_not_report_ips", enablePreNode: false, reportIps: false},
+		{name: "test_for_pre_node_secret_with_report_ips", enablePreNode: true, reportIps: true},
+		{name: "test_for_unified_secret_with_report_ips", enablePreNode: false, reportIps: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// arrange
+			config := cfg.MockCompletedConfig()
+			config.ReportNodeIP = tt.reportIps
+			config.EnablePerNodeSecret = tt.enablePreNode
+			stubs := gostub.StubFunc(&app.GetGlobalConfig, config)
+			defer stubs.Reset()
 
-		isNotFound := gomonkey.ApplyFunc(apiErrors.IsNotFound, func(err error) bool {
-			return true
+			patches := gomonkey.NewPatches()
+			patches.Reset()
+			mockHostInfo(patches)
+
+			// action
+			err := SaveNodeHostInfoToSecret(context.Background())
+			assert.NoError(t, err)
+
+			// asset
+			info, err := GetNodeHostInfosFromSecret(context.Background(), mockInfo.HostName)
+			assert.NoError(t, err)
+
+			assert.Equal(t, "", info.HostName)
+			if tt.reportIps {
+				assert.Equal(t, mockInfo.HostIPs, info.HostIPs)
+			} else {
+				assert.Equal(t, []string(nil), info.HostIPs)
+			}
 		})
-		defer isNotFound.Reset()
-
-		createSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "CreateSecret",
-			func(_ *k8sutils.KubeClient, ctx context.Context, secret *corev1.Secret) (*corev1.Secret, error) {
-				return secret, nil
-			})
-		defer createSecret.Reset()
-
-		newNodeHostInfo := gomonkey.ApplyFunc(NewNodeHostInfo, func(ctx context.Context) (*NodeHostInfo, error) {
-			return testNodeInfo, nil
-		})
-		defer newNodeHostInfo.Reset()
-
-		updateSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "UpdateSecret",
-			func(_ *k8sutils.KubeClient, ctx context.Context, secret *corev1.Secret) (*corev1.Secret, error) {
-				return secret, nil
-			})
-		defer updateSecret.Reset()
-
-		err := SaveNodeHostInfoToSecret(context.Background())
-		require.NoError(t, err)
-	})
-}
-
-func TestSaveNodeHostInfoToSecretWithNewHostInfoError(t *testing.T) {
-	t.Run("TestSaveNodeHostInfoToSecretWithNewHostInfoError", func(t *testing.T) {
-		getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
-			func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
-				return &corev1.Secret{}, nil
-			})
-		defer getSecret.Reset()
-
-		newNodeHostInfo := gomonkey.ApplyFunc(NewNodeHostInfo, func(ctx context.Context) (*NodeHostInfo, error) {
-			return nil, errors.New("new host info error")
-		})
-		defer newNodeHostInfo.Reset()
-
-		err := SaveNodeHostInfoToSecret(context.Background())
-		require.Error(t, err)
-	})
-}
-
-func TestSaveNodeHostInfoToSecretWithUpdateSecret(t *testing.T) {
-	getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
-		func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
-			return &corev1.Secret{}, nil
-		})
-	defer getSecret.Reset()
-
-	newNodeHostInfo := gomonkey.ApplyFunc(NewNodeHostInfo, func(ctx context.Context) (*NodeHostInfo, error) {
-		return testNodeInfo, nil
-	})
-	defer newNodeHostInfo.Reset()
-
-	t.Run("TestSaveNodeHostInfoToSecretWithMarshalError", func(t *testing.T) {
-		errorMsg := "marshal error"
-		marshal := gomonkey.ApplyFunc(json.Marshal, func(v any) ([]byte, error) {
-			return nil, errors.New(errorMsg)
-		})
-		defer marshal.Reset()
-
-		err := SaveNodeHostInfoToSecret(context.Background())
-		require.Error(t, err)
-		require.ErrorContains(t, err, errorMsg)
-	})
-
-	t.Run("TestSaveNodeHostInfoToSecretWithUpdateSecretFail", func(t *testing.T) {
-		updateSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "UpdateSecret",
-			func(_ *k8sutils.KubeClient, ctx context.Context, secret *corev1.Secret) (*corev1.Secret, error) {
-				return nil, errors.New("error")
-			})
-		defer updateSecret.Reset()
-
-		err := SaveNodeHostInfoToSecret(context.Background())
-		require.Error(t, err)
-	})
-
-	t.Run("TestSaveNodeHostInfoToSecretWithUpdateSecretSuccess", func(t *testing.T) {
-		updateSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "UpdateSecret",
-			func(_ *k8sutils.KubeClient, ctx context.Context, secret *corev1.Secret) (*corev1.Secret, error) {
-				return secret, nil
-			})
-		defer updateSecret.Reset()
-
-		err := SaveNodeHostInfoToSecret(context.Background())
-		require.NoError(t, err)
-	})
-}
-
-func TestGetNodeHostInfosFromSecret(t *testing.T) {
-	t.Run("TestGetNodeHostInfosFromSecretAndGetSecretError", func(t *testing.T) {
-		getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
-			func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
-				return nil, errors.New(" get secret error")
-			})
-		defer getSecret.Reset()
-
-		nodeHostInfos, err := GetNodeHostInfosFromSecret(context.Background(), testNodeInfo.HostName)
-		require.Error(t, err)
-		require.Nil(t, nodeHostInfos)
-	})
-	t.Run("TestGetNodeHostInfosFromSecretAndDataIsNil", func(t *testing.T) {
-		getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
-			func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
-				return &corev1.Secret{}, nil
-			})
-		defer getSecret.Reset()
-
-		nodeHostInfos, err := GetNodeHostInfosFromSecret(context.Background(), testNodeInfo.HostName)
-		require.Error(t, err)
-		require.EqualError(t, err, "secret data is empty")
-		require.Nil(t, nodeHostInfos)
-	})
-	t.Run("TestGetNodeHostInfosFromSecretSuccess", func(t *testing.T) {
-		secretData, err := json.Marshal(testNodeInfo)
-		if err != nil {
-			t.Errorf("TestGetNodeHostInfosFromSecretSuccess() json marshal %v", err)
-		}
-		testSecretData := map[string][]byte{
-			testNodeInfo.HostName: secretData,
-		}
-
-		getSecret := gomonkey.ApplyMethod(reflect.TypeOf(testK8sUtils), "GetSecret",
-			func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
-				return &corev1.Secret{
-					Data: testSecretData,
-				}, nil
-			})
-		defer getSecret.Reset()
-
-		testReturnData, err := GetNodeHostInfosFromSecret(context.Background(), testNodeInfo.HostName)
-		require.NoError(t, err)
-		if !reflect.DeepEqual(testReturnData, testNodeInfo) {
-			t.Errorf("TestGetNodeHostInfosFromSecretSuccess() got = %v, want %v", testReturnData, testNodeInfo)
-		}
-	})
+	}
 }
 
 func TestMakeNodeHostInfoSecret(t *testing.T) {
+	stubs := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer stubs.Reset()
+
 	want := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
@@ -319,13 +139,12 @@ func TestMakeNodeHostInfoSecret(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      hostInfoSecretName,
 			Namespace: app.GetGlobalConfig().Namespace,
+			Labels:    map[string]string{hostInfoSecretKey: hostInfoSecretValue},
 		},
 		StringData: map[string]string{},
 		Type:       corev1.SecretTypeOpaque,
 	}
 
-	hostInfoSecret := makeNodeHostInfoSecret()
-	if !reflect.DeepEqual(hostInfoSecret, want) {
-		t.Errorf("TestMakeNodeHostInfoSecret() got = %v, want %v", hostInfoSecret, want)
-	}
+	hostInfoSecret := makeNodeHostInfoSecret(hostInfoSecretName, app.GetGlobalConfig().Namespace)
+	assert.Equal(t, want, hostInfoSecret)
 }

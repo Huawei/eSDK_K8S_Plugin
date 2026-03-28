@@ -95,7 +95,7 @@ type CSIConfig struct {
 func analyzePools(backend *model.Backend, config map[string]interface{}) error {
 	var pools []*model.StoragePool
 
-	if backend.Storage == constants.OceanStorDtree || backend.Storage == constants.FusionDTree {
+	if constants.IsDtreeStorage(backend.Storage) {
 		pools = append(pools, &model.StoragePool{
 			Storage:      backend.Storage,
 			Name:         backend.Name,
@@ -511,7 +511,7 @@ func filterByVolumeType(ctx context.Context, volumeType string, candidatePools [
 				filterPools = append(filterPools, pool)
 			}
 		} else if volumeType == "dtree" {
-			if pool.Storage == constants.OceanStorDtree || pool.Storage == constants.FusionDTree {
+			if constants.IsDtreeStorage(pool.Storage) {
 				filterPools = append(filterPools, pool)
 			}
 		}

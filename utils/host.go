@@ -80,6 +80,12 @@ func GetHostIPs(ctx context.Context) ([]string, error) {
 			continue
 		}
 
+		// skip down interface
+		if iface.Flags&net.FlagUp == 0 {
+			log.AddContext(ctx).Infof("skip down interface %v", iface.Name)
+			continue
+		}
+
 		addrs, err := iface.Addrs()
 		if err != nil {
 			return nil, fmt.Errorf("cannot get addrs for %s: %w", iface.Name, err)

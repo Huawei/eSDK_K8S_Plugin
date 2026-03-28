@@ -33,6 +33,11 @@ var (
 		Protocol: constants.ProtocolNfs,
 		Name:     fakeFsName,
 	}
+	fakeDeleteNfsAndKVCacheModel = &DeleteFilesystemModel{
+		Protocol:       constants.ProtocolNfs,
+		Name:           fakeFsName,
+		KvCacheStoreId: fakeKvcacheStoreId,
+	}
 	fakeDeleteDtfsModel = &DeleteFilesystemModel{
 		Protocol: constants.ProtocolDtfs,
 		Name:     fakeFsName,
@@ -59,6 +64,35 @@ func TestQuerier_DeleteWithNfsProtocol_Success(t *testing.T) {
 	cli.EXPECT().DeactivateQos(ctx, fakeQosID, fakeVstoreID).Return(nil)
 	cli.EXPECT().DeleteQos(ctx, fakeQosID, fakeVstoreID).Return(nil)
 	cli.EXPECT().DeleteFileSystem(ctx, map[string]interface{}{"ID": fakeFsID}).Return(nil)
+
+	// action
+	err := deleter.Delete()
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func TestQuerier_DeleteWithNfsProtocolAndKVCache_Success(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	deleter := NewDeleter(ctx, cli, fakeDeleteNfsAndKVCacheModel)
+
+	// mock
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetNfsShareByPath(ctx, fakeDeleteDtfsModel.sharePath(), fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeShareID}, nil)
+	cli.EXPECT().DeleteNfsShare(ctx, fakeShareID, fakeVstoreID).Return(nil)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeFsName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID, "IOCLASSID": fakeQosID}, nil)
+	cli.EXPECT().GetQosByID(ctx, fakeQosID, fakeVstoreID).
+		Return(map[string]interface{}{"FSLIST": fmt.Sprintf("[%q]", fakeFsID)}, nil)
+	cli.EXPECT().DeactivateQos(ctx, fakeQosID, fakeVstoreID).Return(nil)
+	cli.EXPECT().DeleteQos(ctx, fakeQosID, fakeVstoreID).Return(nil)
+	cli.EXPECT().DeleteFileSystem(ctx, map[string]interface{}{"ID": fakeFsID}).Return(nil)
+	cli.EXPECT().DeleteKVCache(ctx, fakeKvcacheStoreId).Return(nil)
 
 	// action
 	err := deleter.Delete()
@@ -143,7 +177,6 @@ func TestQuerier_DeleteWithDtfsProtocol_SuccessWithResourceNotExist(t *testing.T
 	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
 	cli.EXPECT().GetDataTurboShareByPath(ctx, fakeDeleteDtfsModel.sharePath(), fakeVstoreID).Return(nil, nil)
 	cli.EXPECT().GetFileSystemByName(ctx, fakeFsName, fakeVstoreID).Return(nil, nil)
-
 	// action
 	err := deleter.Delete()
 

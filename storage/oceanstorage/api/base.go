@@ -22,3 +22,29 @@ const (
 	// GetAllQos is the query path for getting all qos
 	GetAllQos = "/ioclass"
 )
+
+const (
+	// GetRoCENVMeInitiatorByID get roce-nvme initiator filter by initiator id
+	GetRoCENVMeInitiatorByID = "/NVMe_over_RoCE_initiator/%s"
+
+	// GetTcpNVMeInitiatorByID get tcp-nvme initiator filter by initiator id
+	GetTcpNVMeInitiatorByID = "/nvme_over_tcp_initiator/%s"
+
+	// CreateRoCENVMeInitiator create roce-nvme initiator
+	CreateRoCENVMeInitiator = "/NVMe_over_RoCE_initiator"
+
+	// CreateTcpNVMeInitiator create tcp-nvme initiator
+	CreateTcpNVMeInitiator = "/nvme_over_tcp_initiator"
+
+	// AddRoCENVMeInitiatorToHost add roce-nvme initiator to host
+	AddRoCENVMeInitiatorToHost = "/host/create_associate"
+
+	// AddTcpNVMeInitiatorToHost add tcp-nvme initiator to host
+	AddTcpNVMeInitiatorToHost = "/nvme_over_tcp_initiator/create_associate"
+
+	// GetIPV4Lif get logical ports of ipv4
+	GetIPV4Lif = "/lif?filter=IPV4ADDR::%s"
+
+	// GetIPV6Lif get logical ports of ipv6
+	GetIPV6Lif = "/lif?filter=IPV6ADDR::%s"
+)

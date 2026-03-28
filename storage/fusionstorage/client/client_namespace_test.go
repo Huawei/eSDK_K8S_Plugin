@@ -18,10 +18,12 @@ package client
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,7 +48,6 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			AccessValue: 0,
 			AllSquash:   1,
 			RootSquash:  1,
-			AccountId:   "0",
 		})
 		require.NoError(t, err)
 	})
@@ -66,7 +67,6 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			AccessValue: 0,
 			AllSquash:   1,
 			RootSquash:  1,
-			AccountId:   "0",
 		})
 		require.Error(t, err)
 	})
@@ -87,7 +87,6 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			AccessValue: 0,
 			AllSquash:   1,
 			RootSquash:  1,
-			AccountId:   "0",
 		})
 		require.NoError(t, err)
 	})
@@ -108,8 +107,294 @@ func TestAllowNfsShareAccess(t *testing.T) {
 			AccessValue: 0,
 			AllSquash:   1,
 			RootSquash:  1,
-			AccountId:   "0",
 		})
 		require.Error(t, err)
+	})
+}
+
+func TestRestClient_CreateFileSystem(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name         string
+		params       map[string]interface{}
+		mockResponse string
+		mockError    error
+		expectedData map[string]interface{}
+		expectedErr  error
+	}{
+		{
+			name: "Successful creation",
+			params: map[string]interface{}{
+				"name":     "testFS",
+				"poolId":   int64(1),
+				"protocol": "dpc",
+			},
+			mockResponse: `{"result":{"code":0},"data":{"id":"123"}}`,
+			expectedData: map[string]interface{}{
+				"id": "123",
+			},
+			expectedErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// mock
+			mockClient := getMockClient(200, tt.mockResponse)
+
+			// action
+			data, err := mockClient.CreateFileSystem(ctx, tt.params)
+
+			// assert
+			if tt.expectedErr != nil {
+				assert.Error(t, err)
+				assert.EqualError(t, err, tt.expectedErr.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedData, data)
+			}
+		})
+	}
+}
+
+func TestRestClient_GetFileSystemByName(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Success", func(t *testing.T) {
+		// arrange
+		expectedResponse := `{"result":{"code":0},"data":{"key":"value"}}`
+
+		// mock
+		cli := getMockClient(200, expectedResponse)
+
+		// action
+		result, err := cli.GetFileSystemByName(ctx, "test")
+
+		// assert
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]interface{}{"key": "value"}, result)
+	})
+}
+
+func TestRestClient_CreateNfsShare(t *testing.T) {
+	tests := []struct {
+		name         string
+		params       map[string]interface{}
+		mockResponse string
+		mockError    error
+		expectedData map[string]interface{}
+		expectedErr  error
+	}{
+		{
+			name: "Successful creation of NFS share",
+			params: map[string]interface{}{
+				"sharepath":   "/path/to/share",
+				"fsid":        "12345",
+				"description": "Test NFS Share",
+			},
+			mockResponse: `{"result":{"code":0},"data":{"share_path":"/path/to/share",
+"file_system_id":"12345","description":"Test NFS Share","account_id":"1"}}`,
+			expectedData: map[string]interface{}{
+				"share_path":     "/path/to/share",
+				"file_system_id": "12345",
+				"description":    "Test NFS Share",
+				"account_id":     "1",
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "Error creating NFS share",
+			params: map[string]interface{}{
+				"sharepath":   "/path/to/share",
+				"fsid":        "12345",
+				"description": "Test NFS Share",
+			},
+			mockResponse: `{"result":{"code":1}}`,
+			expectedData: nil,
+			expectedErr: errors.New("Create nfs share map[account_id:0 description:" +
+				"Test NFS Share file_system_id:12345 share_path:/path/to/share] error: 1"),
+		},
+		{
+			name: "Invalid response format",
+			params: map[string]interface{}{
+				"sharepath":   "/path/to/share",
+				"fsid":        "12345",
+				"description": "Test NFS Share",
+			},
+			mockResponse: `{"result": "invalid"}`,
+			expectedData: nil,
+			expectedErr: errors.New(
+				"The result of response map[result:invalid]'s format is not map[string]interface{}"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// mock
+			mockClient := getMockClient(200, tt.mockResponse)
+
+			// action
+			data, err := mockClient.CreateNfsShare(context.Background(), tt.params)
+
+			// assert
+			if tt.expectedErr != nil {
+				assert.Error(t, err)
+				assert.EqualError(t, err, tt.expectedErr.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedData, data)
+			}
+		})
+	}
+}
+
+func TestRestClient_DeleteNfsShare(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Success", func(t *testing.T) {
+		// mock
+		id := "test-id"
+		cli := getMockClient(200, `{"result":{"code":0}}`)
+
+		// action
+		err := cli.DeleteNfsShare(ctx, id)
+
+		// assert
+		assert.NoError(t, err)
+	})
+
+	t.Run("InvalidResponseFormat", func(t *testing.T) {
+		// mock
+		id := "test-id"
+		cli := getMockClient(200, `{"result":"not a map"}`)
+
+		// action
+		err := cli.DeleteNfsShare(ctx, id)
+
+		// assert
+		assert.ErrorContains(t, err, "format is not map[string]interface{}")
+	})
+
+	t.Run("NonZeroErrorCode", func(t *testing.T) {
+		// mock
+		id := "test-id"
+		cli := getMockClient(200, `{"result":{"code":1}}`)
+
+		// action
+		err := cli.DeleteNfsShare(ctx, id)
+
+		// assert
+		assert.ErrorContains(t, err, "Delete NFS share test-id error: 1")
+	})
+}
+
+func TestRestClient_GetNfsShareByPath(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Success", func(t *testing.T) {
+		// mock
+		path := "/test/path"
+		cli := getMockClient(200, `{"result":{"code":0},"data":[{"share_path":"/test/path","other_info":"some_info"}]}`)
+
+		// action
+		share, err := cli.GetNfsShareByPath(ctx, path)
+
+		// assert
+		assert.NoError(t, err)
+		assert.Equal(t, path, share["share_path"])
+
+	})
+
+	t.Run("Non-zero error code in response", func(t *testing.T) {
+		// mock
+		path := "/test/path"
+		cli := getMockClient(200, `{"result":{"code":1}}`)
+
+		// action
+		_, err := cli.GetNfsShareByPath(ctx, path)
+
+		// assert
+		assert.ErrorContains(t, err, "error: 1")
+	})
+
+	t.Run("No matching share path in response", func(t *testing.T) {
+		// mock
+		path := "/test/path"
+		cli := getMockClient(200, `{"result":{"code":0},"data":[{"share_path":"/other/path"}]}`)
+
+		// action
+		share, err := cli.GetNfsShareByPath(ctx, path)
+
+		// assert
+		assert.NoError(t, err)
+		assert.Nil(t, share)
+	})
+}
+
+func TestRestClient_DeleteNfsShareAccess(t *testing.T) {
+	ctx := context.Background()
+	accessID := "test-access-id"
+
+	tests := []struct {
+		name        string
+		mockResp    string
+		mockErr     error
+		expectedErr error
+	}{
+		{
+			name:        "Success case",
+			mockResp:    `{"result":{"code":0}}`,
+			expectedErr: nil,
+		},
+		{
+			name:        "Non-zero error code",
+			mockResp:    `{"result":{"code":1}}`,
+			expectedErr: errors.New("Delete nfs share test-access-id access error: 1"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// mock
+			mockClient := getMockClient(200, tt.mockResp)
+
+			// action
+			err := mockClient.DeleteNfsShareAccess(ctx, accessID)
+
+			// assert
+			if tt.expectedErr != nil {
+				assert.EqualError(t, err, tt.expectedErr.Error())
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestGetNfsShareAccess(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	shareID := "test_share_id"
+
+	t.Run("SuccessfulResponse", func(t *testing.T) {
+		expectedResponse := map[string]interface{}{
+			"result": map[string]interface{}{
+				"code": 0,
+			},
+			"data": map[string]interface{}{
+				"key": "value",
+			},
+		}
+
+		// mock
+		mockClient := getMockClient(200, `{"result":{"code":0},"data":{"key":"value"}}`)
+
+		// action
+		result, err := mockClient.GetNfsShareAccess(ctx, shareID)
+
+		// assert
+		assert.NoError(t, err)
+		assert.Equal(t, expectedResponse["data"], result)
 	})
 }

@@ -96,53 +96,53 @@ func checkNfsPlusPortalsFormat(portals []string) bool {
 	return true
 }
 
-func formatOceanstorInitParam(config map[string]interface{}) (res *oceanstor.NewClientConfig, err error) {
-	res = &oceanstor.NewClientConfig{}
-
-	configUrls, exist := config["urls"].([]interface{})
-	if !exist || len(configUrls) <= 0 {
-		err = errors.New("urls must be provided")
-		return
+func formatOceanstorInitParam(config map[string]interface{}) (*oceanstor.NewClientConfig, error) {
+	res := &oceanstor.NewClientConfig{}
+	configUrls, ok := utils.GetValue[[]interface{}](config, "urls")
+	if !ok || len(configUrls) <= 0 {
+		return nil, errors.New("urls field is invalid")
 	}
 	for _, i := range configUrls {
 		res.Urls = append(res.Urls, i.(string))
 	}
-	res.User, exist = config["user"].(string)
-	if !exist {
-		err = errors.New("user must be provided")
-		return
-	}
-	res.SecretName, exist = config["secretName"].(string)
-	if !exist {
-		err = errors.New("SecretName must be provided")
-		return
-	}
-	res.SecretNamespace, exist = config["secretNamespace"].(string)
-	if !exist {
-		err = errors.New("SecretNamespace must be provided")
-		return
-	}
-	res.BackendID, exist = config["backendID"].(string)
-	if !exist {
-		err = errors.New("backendID must be provided")
-		return
-	}
-	res.VstoreName, _ = config["vstoreName"].(string)
-	res.ParallelNum, _ = config["maxClientThreads"].(string)
 
-	res.UseCert, _ = config["useCert"].(bool)
-	res.CertSecretMeta, _ = config["certSecret"].(string)
-
-	res.Storage, exist = config["storage"].(string)
-	if !exist {
-		return nil, errors.New("storage type must be configured for backend")
+	res.User, ok = utils.GetValue[string](config, "user")
+	if !ok {
+		return nil, errors.New("user field is invalid")
 	}
 
-	res.Name, exist = config["name"].(string)
-	if !exist {
-		return nil, errors.New("storage name must be configured for backend")
+	res.SecretName, ok = utils.GetValue[string](config, "secretName")
+	if !ok {
+		return nil, errors.New("secretName field is invalid")
 	}
-	return
+
+	res.SecretNamespace, ok = utils.GetValue[string](config, "secretNamespace")
+	if !ok {
+		return nil, errors.New("secretNamespace field is invalid")
+	}
+
+	res.BackendID, ok = utils.GetValue[string](config, "backendID")
+	if !ok {
+		return nil, errors.New("backendID field is invalid")
+	}
+
+	res.Storage, ok = utils.GetValue[string](config, "storage")
+	if !ok {
+		return nil, errors.New("storage field is invalid")
+	}
+
+	res.Name, ok = utils.GetValue[string](config, "name")
+	if !ok {
+		return nil, errors.New("name field is invalid")
+	}
+
+	res.VstoreName, _ = utils.GetValue[string](config, "vstoreName")
+	res.ParallelNum, _ = utils.GetValue[string](config, "maxClientThreads")
+	res.UseCert, _ = utils.GetValue[bool](config, "useCert")
+	res.CertSecretMeta, _ = utils.GetValue[string](config, "certSecret")
+	res.Protocol, _ = utils.GetValue[string](config, "protocol")
+
+	return res, nil
 }
 
 func formatBaseClientConfig(config map[string]interface{}) (*storage.NewClientConfig, error) {
@@ -416,4 +416,17 @@ func getFilteredIPs(ctx context.Context, cidrs []string, params map[string]any) 
 	}
 
 	return authClients, nil
+}
+
+func getZeroPoolsCapacities(ctx context.Context, poolNames []string) (map[string]interface{}, error) {
+	capabilities := make(map[string]interface{})
+
+	for _, poolName := range poolNames {
+		capabilities[poolName] = map[string]interface{}{
+			string(xuanwuV1.FreeCapacity):  int64(0),
+			string(xuanwuV1.UsedCapacity):  int64(0),
+			string(xuanwuV1.TotalCapacity): int64(0),
+		}
+	}
+	return capabilities, nil
 }

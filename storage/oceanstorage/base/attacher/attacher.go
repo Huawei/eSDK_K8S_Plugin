@@ -24,7 +24,8 @@ import (
 	"net"
 	"strings"
 
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/fcnvme"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
@@ -34,6 +35,8 @@ import (
 const (
 	splitIqnLength    = 6
 	maxHostNameLength = 31
+	roceProtocolType  = "64"
+	tcpProtocolType   = "16384"
 )
 
 // BaseAttacherClientInterface defines client interfaces need to be implemented for base attacher
@@ -42,7 +45,7 @@ type BaseAttacherClientInterface interface {
 	base.Host
 	base.Iscsi
 	base.Mapping
-	base.RoCE
+	base.NVMe
 }
 
 // AttachmentManager provides base operations for attach
@@ -292,9 +295,9 @@ func (p *AttachmentManager) getFCNVMeProperties(ctx context.Context, wwn, hostLu
 	}, nil
 }
 
-func (p *AttachmentManager) getRoCEProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]any) (
+func (p *AttachmentManager) getNVMeProperties(ctx context.Context, wwn, hostLunId string, parameters map[string]any) (
 	map[string]interface{}, error) {
-	tgtPortals, err := p.GetTargetRoCEPortals(ctx)
+	tgtPortals, err := p.GetTargetNVMePortals(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -308,14 +311,15 @@ func (p *AttachmentManager) getRoCEProperties(ctx context.Context, wwn, hostLunI
 // GetMappingProperties gets the mapping properties
 func (p *AttachmentManager) GetMappingProperties(ctx context.Context,
 	wwn, hostLunId string, parameters map[string]interface{}) (map[string]interface{}, error) {
-	if p.Protocol == "iscsi" {
+	if p.Protocol == constants.ProtocolIscsi {
 		return p.getISCSIProperties(ctx, wwn, hostLunId, parameters)
-	} else if p.Protocol == "fc" {
+	} else if p.Protocol == constants.ProtocolFC {
 		return p.getFCProperties(ctx, wwn, hostLunId, parameters)
-	} else if p.Protocol == "fc-nvme" {
+	} else if p.Protocol == constants.ProtocolFCNVMe {
 		return p.getFCNVMeProperties(ctx, wwn, hostLunId, parameters)
-	} else if p.Protocol == "roce" {
-		return p.getRoCEProperties(ctx, wwn, hostLunId, parameters)
+	} else if p.Protocol == constants.ProtocolRoce || p.Protocol == constants.ProtocolRoceNVMe ||
+		p.Protocol == constants.ProtocolTCPNVMe {
+		return p.getNVMeProperties(ctx, wwn, hostLunId, parameters)
 	}
 
 	return nil, utils.Errorf(ctx, "UnSupport protocol %s", p.Protocol)
@@ -387,32 +391,42 @@ func (p *AttachmentManager) getTargetISCSIProperties(ctx context.Context, validI
 	return tgtPortals, tgtIQNs, nil
 }
 
-// GetTargetRoCEPortals gets target roce portals
-func (p *AttachmentManager) GetTargetRoCEPortals(ctx context.Context) ([]string, error) {
+// GetTargetNVMePortals gets target nvme portals
+func (p *AttachmentManager) GetTargetNVMePortals(ctx context.Context) ([]string, error) {
 	var availablePortals []string
 	for _, portal := range p.Portals {
 		ip := net.ParseIP(portal).String()
-		rocePortal, err := p.Cli.GetRoCEPortalByIP(ctx, ip)
+		nvmePortal, err := p.Cli.GetPortalByIP(ctx, ip)
 		if err != nil {
-			log.AddContext(ctx).Errorf("Get RoCE tgt portal error: %v", err)
+			log.AddContext(ctx).Errorf("Get NVMe tgt portal error: %v", err)
 			return nil, err
 		}
 
-		if rocePortal == nil {
+		if nvmePortal == nil {
 			log.AddContext(ctx).Warningf("the config portal %s does not exist.", ip)
 			continue
 		}
 
-		supportProtocol, exist := rocePortal["SUPPORTPROTOCOL"].(string)
+		supportProtocol, exist := nvmePortal["SUPPORTPROTOCOL"].(string)
 		if !exist {
 			msg := "current storage does not support NVMe"
 			log.AddContext(ctx).Errorln(msg)
 			return nil, errors.New(msg)
 		}
 
-		if supportProtocol != "64" { // 64 means NVME protocol
-			log.AddContext(ctx).Warningf("the config portal %s does not support NVME.", ip)
-			continue
+		switch p.Protocol {
+		case constants.ProtocolRoce, constants.ProtocolRoceNVMe:
+			if supportProtocol != roceProtocolType {
+				log.AddContext(ctx).Warningf("the config portal %s does not support NVME_over_RoCE.", ip)
+				continue
+			}
+		case constants.ProtocolTCPNVMe:
+			if supportProtocol != tcpProtocolType {
+				log.AddContext(ctx).Warningf("the config portal %s does not support NVME_over_TCP.", ip)
+				continue
+			}
+		default:
+			log.AddContext(ctx).Warningf("protocol %s is not supported for NVMe", p.Protocol)
 		}
 
 		availablePortals = append(availablePortals, ip)
@@ -428,14 +442,14 @@ func (p *AttachmentManager) GetTargetRoCEPortals(ctx context.Context) ([]string,
 }
 
 func (p *AttachmentManager) getTargetFCNVMeProperties(ctx context.Context,
-	parameters map[string]interface{}) ([]nvme.PortWWNPair, error) {
+	parameters map[string]interface{}) ([]fcnvme.PortWWNPair, error) {
 	fcInitiators, err := GetMultipleInitiators(ctx, FC, parameters)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get fc initiator error:%v", err)
 		return nil, err
 	}
 
-	var ret []nvme.PortWWNPair
+	var ret []fcnvme.PortWWNPair
 	for _, hostInitiator := range fcInitiators {
 		tgtWWNs, err := p.Cli.GetFCTargetWWNs(ctx, hostInitiator)
 		if err != nil {
@@ -443,7 +457,7 @@ func (p *AttachmentManager) getTargetFCNVMeProperties(ctx context.Context,
 		}
 
 		for _, tgtWWN := range tgtWWNs {
-			ret = append(ret, nvme.PortWWNPair{InitiatorPortWWN: hostInitiator, TargetPortWWN: tgtWWN})
+			ret = append(ret, fcnvme.PortWWNPair{InitiatorPortWWN: hostInitiator, TargetPortWWN: tgtWWN})
 		}
 	}
 
@@ -594,25 +608,25 @@ func (p *AttachmentManager) AttachFC(ctx context.Context,
 	return hostInitiators, nil
 }
 
-// AttachRoCE generates the relationship between roce initiator and host
-func (p *AttachmentManager) AttachRoCE(ctx context.Context,
+// AttachNVMe generates the relationship between nvme initiator and host
+func (p *AttachmentManager) AttachNVMe(ctx context.Context,
 	hostID string, parameters map[string]interface{}) (map[string]interface{}, error) {
-	name, err := GetSingleInitiator(ctx, ROCE, parameters)
+	initiatorId, err := GetSingleInitiator(ctx, NVME, parameters)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get RoCE initiator name error: %v", err)
+		log.AddContext(ctx).Errorf("Get NVMe initiator id error: %v", err)
 		return nil, err
 	}
 
-	initiator, err := p.Cli.GetRoCEInitiator(ctx, name)
+	initiator, err := p.Cli.GetInitiatorByID(ctx, initiatorId)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get RoCE initiator %s error: %v", name, err)
+		log.AddContext(ctx).Errorf("Get NVMe initiator %s error: %v", initiatorId, err)
 		return nil, err
 	}
 
-	if initiator == nil {
-		initiator, err = p.Cli.AddRoCEInitiator(ctx, name)
+	if len(initiator) == 0 {
+		initiator, err = p.Cli.AddInitiator(ctx, initiatorId)
 		if err != nil {
-			log.AddContext(ctx).Errorf("Add initiator %s error: %v", name, err)
+			log.AddContext(ctx).Errorf("Add initiator %s error: %v", initiatorId, err)
 			return nil, err
 		}
 	}
@@ -626,13 +640,13 @@ func (p *AttachmentManager) AttachRoCE(ctx context.Context,
 		log.AddContext(ctx).Warningf("convert parentID to string failed, data: %v", initiator["PARENTID"])
 	}
 	if freeExist && isFree == "true" {
-		err := p.Cli.AddRoCEInitiatorToHost(ctx, name, hostID)
+		err := p.Cli.AddInitiatorToHost(ctx, initiatorId, hostID)
 		if err != nil {
-			log.AddContext(ctx).Errorf("Add RoCE initiator %s to host %s error: %v", name, hostID, err)
+			log.AddContext(ctx).Errorf("Add NVMe initiator %s to host %s error: %v", initiatorId, hostID, err)
 			return nil, err
 		}
 	} else if parentExist && parent != hostID {
-		msg := fmt.Sprintf("RoCE initiator %s is already associated to another host %s", name, parent)
+		msg := fmt.Sprintf("NVMe initiator %s is already associated to another host %s", initiatorId, parent)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}

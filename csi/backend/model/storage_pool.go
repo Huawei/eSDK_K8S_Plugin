@@ -96,7 +96,7 @@ func (p *StoragePool) UpdatePoolBySBCT(ctx context.Context, content *xuanwuV1.St
 // UpdateCapacities update pool capacities
 func (p *StoragePool) UpdateCapacities(ctx context.Context, capacities map[string]string) {
 	// The storage p capability does not need to be updated in the DTree scenario.
-	if p.Storage == constants.OceanStorDtree || p.Storage == constants.FusionDTree {
+	if constants.IsDtreeStorage(p.Storage) {
 		return
 	}
 

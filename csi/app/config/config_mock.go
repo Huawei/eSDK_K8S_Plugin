@@ -20,6 +20,8 @@ package config
 import (
 	"time"
 
+	"k8s.io/client-go/kubernetes/fake"
+
 	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 )
@@ -33,6 +35,8 @@ const (
 
 // MockCompletedConfig for unit test
 func MockCompletedConfig() *CompletedConfig {
+	k8sClient := &k8sutils.KubeClient{}
+	k8sClient.SetClient(fake.NewClientset())
 	return &CompletedConfig{
 		AppConfig: &AppConfig{
 			mockLoggingConfig(),
@@ -41,7 +45,7 @@ func MockCompletedConfig() *CompletedConfig {
 			mockK8sConfig(),
 			mockExtenderConfig(),
 		},
-		K8sUtils:     &k8sutils.KubeClient{},
+		K8sUtils:     k8sClient,
 		BackendUtils: &clientSet.Clientset{},
 	}
 }
@@ -75,6 +79,8 @@ func mockServiceConfig() serviceConfig {
 		WorkerThreads:               0,
 		BackendUpdateInterval:       0,
 		KubeletVolumeDevicesDirName: "",
+		ReportNodeIP:                false,
+		EnablePerNodeSecret:         false,
 	}
 }
 

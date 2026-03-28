@@ -124,6 +124,8 @@ const (
 	AuthModeScopeLocal = "0"
 	// AuthModeScopeLDAP is the login backend scope param
 	AuthModeScopeLDAP = "1"
+	// KvCacheStoreId is the id of kvCache
+	KvCacheStoreId = "kvcacheStoreId"
 )
 
 var (

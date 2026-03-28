@@ -20,7 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/proto"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
@@ -32,6 +34,13 @@ import (
 )
 
 const oceandiskSanBackend = "oceandisk-san"
+
+var (
+	oceandiskSanProtocols = []string{constants.ProtocolIscsi, constants.ProtocolFC,
+		constants.ProtocolRoce, constants.ProtocolRoceNVMe}
+	oceandiskSanProtocolsWithPortals = []string{constants.ProtocolIscsi,
+		constants.ProtocolRoce, constants.ProtocolRoceNVMe}
+)
 
 // OceandiskSanPlugin implements storage StoragePlugin interface
 type OceandiskSanPlugin struct {
@@ -52,22 +61,21 @@ func (p *OceandiskSanPlugin) NewPlugin() StoragePlugin {
 func (p *OceandiskSanPlugin) Init(ctx context.Context, config map[string]interface{},
 	parameters map[string]interface{}, keepLogin bool) error {
 	protocol, exist := parameters["protocol"].(string)
-	if !exist || (protocol != "iscsi" && protocol != "fc" && protocol != "roce") {
-		return errors.New("protocol must be provided as 'iscsi', 'fc' or " +
-			"'roce' for oceandisk-san backend")
+	if !exist || !isOceandiskSanProtocol(protocol) {
+		return fmt.Errorf("protocol must be provided as one of %s for oceandisk-san backend", oceandiskSanProtocols)
 	}
 
 	alua, _ := parameters["ALUA"].(map[string]interface{})
 
 	var ips []string
 	var err error
-	if protocol == "iscsi" || protocol == "roce" {
+	if isOceandiskSanProtocolWithPortals(protocol) {
 		portals, exist := parameters["portals"].([]interface{})
 		if !exist {
 			return fmt.Errorf("portals are required to configure for %s backend", protocol)
 		}
 
-		ips, err = proto.VerifyIscsiPortals(ctx, portals)
+		ips, err = proto.VerifySanPortals(ctx, portals)
 		if err != nil {
 			return err
 		}
@@ -87,6 +95,14 @@ func (p *OceandiskSanPlugin) Init(ctx context.Context, config map[string]interfa
 	})
 
 	return nil
+}
+
+func isOceandiskSanProtocol(protocol string) bool {
+	return slices.Contains(oceandiskSanProtocols, protocol)
+}
+
+func isOceandiskSanProtocolWithPortals(protocol string) bool {
+	return slices.Contains(oceandiskSanProtocolsWithPortals, protocol)
 }
 
 func (p *OceandiskSanPlugin) getSanObj() *volume.SAN {
@@ -112,7 +128,7 @@ func (p *OceandiskSanPlugin) QueryVolume(ctx context.Context, name string, param
 }
 
 // DeleteVolume used to delete volume
-func (p *OceandiskSanPlugin) DeleteVolume(ctx context.Context, name string) error {
+func (p *OceandiskSanPlugin) DeleteVolume(ctx context.Context, name string, params map[string]interface{}) error {
 	san := p.getSanObj()
 	return san.Delete(ctx, name)
 }
@@ -161,8 +177,8 @@ func (p *OceandiskSanPlugin) UpdatePoolCapabilities(ctx context.Context,
 }
 
 // CreateSnapshot used to create snapshot
-func (p *OceandiskSanPlugin) CreateSnapshot(ctx context.Context,
-	namespaceName, snapshotName string) (map[string]interface{}, error) {
+func (p *OceandiskSanPlugin) CreateSnapshot(ctx context.Context, namespaceName string,
+	snapshotName string, parameters map[string]interface{}) (map[string]interface{}, error) {
 	return nil, errors.New("oceandisk does not support snapshot feature")
 }
 
@@ -261,19 +277,19 @@ func (p *OceandiskSanPlugin) verifyOceandiskSanParam(ctx context.Context, config
 
 func verifyOceandiskProtocolParams(ctx context.Context, parameters map[string]interface{}) error {
 	protocol, exist := parameters["protocol"].(string)
-	if !exist || (protocol != "iscsi" && protocol != "fc" && protocol != "roce") {
+	if !exist || !isOceandiskSanProtocol(protocol) {
 		return fmt.Errorf("verify protocol: [%v] failed. protocol must be provided and be one of "+
-			"[iscsi, fc, roce] for oceandisk-san backend", parameters["protocol"])
+			"%v for oceandisk-san backend", parameters["protocol"], oceandiskSanProtocols)
 	}
 
-	if protocol == "iscsi" || protocol == "roce" {
+	if isOceandiskSanProtocolWithPortals(protocol) {
 		portals, exist := parameters["portals"].([]interface{})
 		if !exist {
 			return fmt.Errorf("verify portals: [%v] failed. portals are required to configure for "+
-				"iscsi or roce for oceandisk-san backend", parameters["portals"])
+				"%s for oceandisk-san backend", parameters["portals"], protocol)
 		}
 
-		_, err := proto.VerifyIscsiPortals(ctx, portals)
+		_, err := proto.VerifySanPortals(ctx, portals)
 		if err != nil {
 			return err
 		}

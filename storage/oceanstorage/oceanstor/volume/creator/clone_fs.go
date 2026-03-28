@@ -57,6 +57,7 @@ type CloneFsCreator struct {
 	cloneFrom              string
 	cloneSpeed             int
 	parentSnapshotId       string
+	waitForSplit           bool
 	isDeleteParentSnapshot bool
 
 	createdFilesystem map[string]any
@@ -93,6 +94,7 @@ func NewCloneFsCreatorByParams(cli client.OceanstorClientInterface,
 		BaseCreator:            base,
 		cloneFrom:              params.CloneFrom(),
 		cloneSpeed:             params.CloneSpeed(),
+		waitForSplit:           params.WaitForSplit(),
 		parentSnapshotId:       params.SnapshotParentId(),
 		isDeleteParentSnapshot: true,
 	}
@@ -272,6 +274,10 @@ func (creator *CloneFsCreator) splitClone(ctx context.Context, cloneFSID string,
 }
 
 func (creator *CloneFsCreator) waitFsSplit(ctx context.Context, fsID string) error {
+	if !creator.waitForSplit {
+		log.AddContext(ctx).Infof("Skip wait filesystem %s split", fsID)
+		return nil
+	}
 	return utils.WaitUntil(func() (bool, error) {
 		fs, err := creator.cli.GetFileSystemByID(ctx, fsID)
 		if err != nil {

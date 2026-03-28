@@ -30,8 +30,8 @@ const (
 	FCNVMeDriver = "FC-NVMe"
 	// ISCSIDriver name string
 	ISCSIDriver = "iSCSI"
-	// RoCEDriver name string
-	RoCEDriver = "RoCE"
+	// NVMeDriver name string
+	NVMeDriver = "NVMe"
 	// LocalDriver name string
 	LocalDriver = "Local"
 	// NFSDriver name string
@@ -68,6 +68,8 @@ const (
 	HWUltraPath = "HW-UltraPath"
 	// HWUltraPathNVMe HW-UltraPath-NVMe name string
 	HWUltraPathNVMe = "HW-UltraPath-NVMe"
+	// NVMeNative NVMe-Native name string
+	NVMeNative = "NVMe-Native"
 	// UnsupportedMultiPathType multi-path type not supported
 	UnsupportedMultiPathType = "UnsupportedMultiPathType"
 
@@ -76,8 +78,11 @@ const (
 	// VolumePathIncomplete the message of volume path incomplete
 	VolumePathIncomplete = "VolumePathIncomplete"
 
-	// PingCommand "ping" command format string
-	PingCommand = "ping -c 3 -i 0.001 -w 1 %s"
+	nvmeMultipathConfigPath   = "/sys/module/nvme_core/parameters/multipath"
+	nvmeMultipathEnabledValue = "Y"
+	subsystemPrefix           = "nvme-subsys"
+	nvmePathPrefix            = "nvme"
+	nvmeDeviceMatchNum        = 3
 )
 
 var (

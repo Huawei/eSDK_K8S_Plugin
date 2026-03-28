@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base/attacher"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -123,8 +124,8 @@ func (p *OceanStorAttacher) attachFC(ctx context.Context, hostID, hostName strin
 	return nil
 }
 
-func (p *OceanStorAttacher) attachRoCE(ctx context.Context, hostID string, parameters map[string]interface{}) error {
-	_, err := p.VolumeAttacher.AttachRoCE(ctx, hostID, parameters)
+func (p *OceanStorAttacher) attachNVMe(ctx context.Context, hostID string, parameters map[string]interface{}) error {
+	_, err := p.VolumeAttacher.AttachNVMe(ctx, hostID, parameters)
 	return err
 }
 
@@ -148,12 +149,13 @@ func (p *OceanStorAttacher) ControllerAttach(ctx context.Context,
 		return nil, errors.New("convert host[\"NAME\"] to string failed")
 	}
 
-	if p.Protocol == "iscsi" {
+	if p.Protocol == constants.ProtocolIscsi {
 		err = p.attachISCSI(ctx, hostID, hostName, parameters)
-	} else if p.Protocol == "fc" || p.Protocol == "fc-nvme" {
+	} else if p.Protocol == constants.ProtocolFC || p.Protocol == constants.ProtocolFCNVMe {
 		err = p.attachFC(ctx, hostID, hostName, parameters)
-	} else if p.Protocol == "roce" {
-		err = p.attachRoCE(ctx, hostID, parameters)
+	} else if p.Protocol == constants.ProtocolRoce || p.Protocol == constants.ProtocolRoceNVMe ||
+		p.Protocol == constants.ProtocolTCPNVMe {
+		err = p.attachNVMe(ctx, hostID, parameters)
 	}
 
 	if err != nil {

@@ -88,25 +88,6 @@ func (p *NAS) checkAuthclient(ctx context.Context, params map[string]interface{}
 	return nil
 }
 
-func (p *NAS) preProcessAccountName(ctx context.Context, params map[string]interface{}) error {
-	var exist bool
-	var err error
-	params["accountname"], exist = params["accountname"].(string)
-	if !exist || params["accountname"] == "" {
-		params["accountname"] = "system"
-		params["accountid"] = "0"
-	} else {
-		params["accountid"], err = p.cli.GetAccountIdByName(ctx, params["accountname"].(string))
-		if err != nil {
-			msg := fmt.Sprintf("Get account id by name failed. account name:%s, error:%v",
-				params["accountname"], err)
-			return pkgUtils.Errorln(ctx, msg)
-		}
-	}
-
-	return nil
-}
-
 func (p *NAS) checkStoragePool(ctx context.Context, params map[string]interface{}) error {
 	if poolName, exist := params["storagepool"].(string); exist {
 		pool, err := p.cli.GetPoolByName(ctx, poolName)
@@ -253,10 +234,6 @@ func (p *NAS) preProcessConvergedQoS(ctx context.Context, params map[string]inte
 
 func (p *NAS) preCreate(ctx context.Context, params map[string]interface{}) error {
 	if err := p.checkAuthclient(ctx, params); err != nil {
-		return err
-	}
-
-	if err := p.preProcessAccountName(ctx, params); err != nil {
 		return err
 	}
 
@@ -578,13 +555,8 @@ func (p *NAS) createShare(ctx context.Context,
 		return nil, errors.New(msg)
 	}
 
-	accountId, ok := params["accountid"].(string)
-	if !ok {
-		return nil, utils.Errorf(ctx, "Parameter %v does not contain accountId.", params)
-	}
-
 	sharePath := utils.GetFSSharePath(fsName)
-	share, err := p.cli.GetNfsShareByPath(ctx, sharePath, accountId)
+	share, err := p.cli.GetNfsShareByPath(ctx, sharePath)
 
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get nfs share by path %s error: %v", sharePath, err)
@@ -596,7 +568,6 @@ func (p *NAS) createShare(ctx context.Context,
 			"sharepath":   sharePath,
 			"fsid":        taskResult["fsID"].(string),
 			"description": "Created from Kubernetes Provisioner",
-			"accountid":   params["accountid"].(string),
 		}
 
 		share, err = p.cli.CreateNfsShare(ctx, shareParams)
@@ -606,8 +577,7 @@ func (p *NAS) createShare(ctx context.Context,
 		}
 	}
 	return map[string]interface{}{
-		"shareID":   share["id"].(string),
-		"accountId": accountId,
+		"shareID": share["id"].(string),
 	}, nil
 }
 
@@ -632,16 +602,11 @@ func (p *NAS) revertShare(ctx context.Context, taskResult map[string]interface{}
 		log.AddContext(ctx).Warningf("convert shareID to string failed, data: %v", taskResult["shareID"])
 		return nil
 	}
-	accountId, exist := taskResult["accountId"].(string)
-	if !exist {
-		log.AddContext(ctx).Warningf("convert accountID to string failed, data: %v", taskResult["accountId"])
-		return nil
-	}
-	return p.deleteShare(ctx, shareID, accountId)
+	return p.deleteShare(ctx, shareID)
 }
 
-func (p *NAS) deleteShare(ctx context.Context, shareID, accountId string) error {
-	err := p.cli.DeleteNfsShare(ctx, shareID, accountId)
+func (p *NAS) deleteShare(ctx context.Context, shareID string) error {
+	err := p.cli.DeleteNfsShare(ctx, shareID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete share %s error: %v", shareID, err)
 		return err
@@ -664,7 +629,6 @@ func (p *NAS) allowShareAccess(ctx context.Context, params, taskResult map[strin
 
 	allsquash, _ := utils.GetValue[int](params, "allsquash")
 	rootsquash, _ := utils.GetValue[int](params, "rootsquash")
-	accountid, _ := utils.GetValue[string](params, "accountid")
 
 	for _, clientName := range strings.Split(authClients, ";") {
 		allowNfsShareAccessReq := &client.AllowNfsShareAccessRequest{
@@ -673,7 +637,6 @@ func (p *NAS) allowShareAccess(ctx context.Context, params, taskResult map[strin
 			AccessValue: defaultAccessValue,
 			AllSquash:   allsquash,
 			RootSquash:  rootsquash,
-			AccountId:   accountid,
 		}
 
 		err := p.cli.AllowNfsShareAccess(ctx, allowNfsShareAccessReq)
@@ -718,9 +681,9 @@ func (p *NAS) setSize(ctx context.Context, fsName string, quota *client.QueryQuo
 }
 
 // DeleteNfsShare deletes nfs share
-func (p *NAS) DeleteNfsShare(ctx context.Context, fsName, accountId string) (string, error) {
+func (p *NAS) DeleteNfsShare(ctx context.Context, fsName string) (string, error) {
 	sharePath := utils.GetOriginSharePath(fsName)
-	share, err := p.cli.GetNfsShareByPath(ctx, sharePath, accountId)
+	share, err := p.cli.GetNfsShareByPath(ctx, sharePath)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get nfs share by path %s error: %v", sharePath, err)
 		return "", err
@@ -734,7 +697,7 @@ func (p *NAS) DeleteNfsShare(ctx context.Context, fsName, accountId string) (str
 	if !ok {
 		return "", pkgUtils.Errorln(ctx, fmt.Sprintf("convert id: [%v] to string failed.", share["id"]))
 	}
-	err = p.cli.DeleteNfsShare(ctx, shareID, accountId)
+	err = p.cli.DeleteNfsShare(ctx, shareID)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete nfs share %s error: %v", shareID, err)
 		return "", err
@@ -763,11 +726,7 @@ func (p *NAS) Delete(ctx context.Context, fsName string) error {
 	}
 
 	fsID := strconv.FormatInt(int64(fs["id"].(float64)), 10)
-	accountId, ok := fs["account_id"].(string)
-	if !ok {
-		return pkgUtils.Errorf(ctx, "convert accountID to string failed, data: %v", fs["account_id"])
-	}
-	fsIdInShare, err := p.DeleteNfsShare(ctx, fsName, accountId)
+	fsIdInShare, err := p.DeleteNfsShare(ctx, fsName)
 	if err != nil {
 		return pkgUtils.Errorln(ctx, fmt.Sprintf("DeleteNfsShare failed, err: %v", err))
 	}

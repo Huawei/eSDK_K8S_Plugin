@@ -31,6 +31,8 @@ type Volume interface {
 	SetFilesystemMode(string)
 	GetID() string
 	SetID(string)
+	GetKvcacheStoreId() string
+	SetKvCacheStoreId(kvcacheStoreId string)
 }
 
 type volume struct {
@@ -40,6 +42,7 @@ type volume struct {
 	size            int64
 	dTreeParentName string
 	filesystemMode  string
+	kvcacheStoreId  string
 }
 
 // NewVolume creates volume object for the name
@@ -99,7 +102,17 @@ func (vol *volume) GetID() string {
 	return vol.id
 }
 
-// SetID Get storage ID of volume object
+// SetID Set storage ID of volume object
 func (vol *volume) SetID(id string) {
 	vol.id = id
+}
+
+// SetKvCacheStoreId Set kvcacheStoreId of KVCache
+func (vol *volume) SetKvCacheStoreId(kvcacheStoreId string) {
+	vol.kvcacheStoreId = kvcacheStoreId
+}
+
+// GetKvcacheStoreId Get kvcacheStoreId of KVCache
+func (vol *volume) GetKvcacheStoreId() string {
+	return vol.kvcacheStoreId
 }

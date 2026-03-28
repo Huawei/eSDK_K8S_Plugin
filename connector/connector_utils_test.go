@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -728,4 +729,133 @@ func TestRemoveWwnType(t *testing.T) {
 			assert.Equalf(t, tt.want, removeWwnType(tt.wwn), "removeWwnType(%v)", tt.wwn)
 		})
 	}
+}
+
+func TestMultipathTypeToString(t *testing.T) {
+	// arrange
+	tests := []struct {
+		name          string
+		multipathType int
+		want          string
+	}{
+		{
+			name:          "not_use_multipath",
+			multipathType: NotUseMultipath,
+			want:          "NativePath",
+		},
+		{
+			name:          "use_dm_multipath",
+			multipathType: UseDMMultipath,
+			want:          "DMMultipath",
+		},
+		{
+			name:          "use_ultra_path",
+			multipathType: UseUltraPath,
+			want:          "UltraPath",
+		},
+		{
+			name:          "use_ultra_path_nvme",
+			multipathType: UseUltraPathNVMe,
+			want:          "UltraPathNVMe",
+		},
+		{
+			name:          "unknown_multipath_type",
+			multipathType: 999,
+			want:          "Unknown",
+		},
+		{
+			name:          "negative_multipath_type",
+			multipathType: -1,
+			want:          "Unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// action
+			got := MultipathTypeToString(tt.multipathType)
+
+			// assert
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestResizeBlock_NVMeNativeDeviceNoNeedResize(t *testing.T) {
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(GetVirtualDevice, "nvme0n1", NotUseMultipath, nil).
+		ApplyFuncReturn(utils.ExecShellCmd, "10737418240", nil)
+
+	// act
+	err := ResizeBlock(context.Background(), "wwn", 10737418240)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func TestResizeBlock_NVMeNativeDeviceNativePath(t *testing.T) {
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(GetVirtualDevice, "nvme0n1", NotUseMultipath, nil).
+		ApplyFuncReturn(os.Stat, nil, fs.ErrNotExist).
+		ApplyFuncSeq(utils.ExecShellCmd, []gomonkey.OutputCell{
+			// 1: get device size
+			{Values: gomonkey.Params{"10737418240", nil}},
+			// 2: nvme ns-rescan
+			{Values: gomonkey.Params{"", nil}},
+			// 3: get device size again
+			{Values: gomonkey.Params{"21474836480", nil}},
+		})
+
+	// act
+	err := ResizeBlock(context.Background(), "wwn", 21474836480)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func TestResizeBlock_NVMeNativeDeviceNoMultipath(t *testing.T) {
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(GetVirtualDevice, "nvme0n1", NotUseMultipath, nil).
+		ApplyFuncReturn(os.Stat, nil, nil).
+		ApplyFuncSeq(utils.ExecShellCmd, []gomonkey.OutputCell{
+			// 1: get device size
+			{Values: gomonkey.Params{"10737418240", nil}},
+			// 2: echo 1 to recan_controller
+			{Values: gomonkey.Params{"", nil}},
+			// 3: get device size again
+			{Values: gomonkey.Params{"21474836480", nil}},
+		})
+
+	// act
+	err := ResizeBlock(context.Background(), "wwn", 21474836480)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func TestResizeBlock_NVMeNativeControllerDevice(t *testing.T) {
+	// mock
+	p := gomonkey.NewPatches()
+	defer p.Reset()
+	p.ApplyFuncReturn(GetVirtualDevice, "nvme0", NotUseMultipath, nil).
+		ApplyFuncSeq(utils.ExecShellCmd, []gomonkey.OutputCell{
+			// 1: get device size
+			{Values: gomonkey.Params{"10737418240", nil}},
+			// 2: nvme ns-rescan
+			{Values: gomonkey.Params{"", nil}},
+			// 3: get device size again
+			{Values: gomonkey.Params{"21474836480", nil}},
+		})
+
+	// act
+	err := ResizeBlock(context.Background(), "wwn", 21474836480)
+
+	// assert
+	assert.NoError(t, err)
 }

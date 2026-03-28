@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 
-	v1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
@@ -101,15 +100,7 @@ func (p *FusionStorageDTreePlugin) UpdateBackendCapabilities(ctx context.Context
 // UpdatePoolCapabilities used to update pool capabilities
 func (p *FusionStorageDTreePlugin) UpdatePoolCapabilities(ctx context.Context, poolNames []string) (map[string]any,
 	error) {
-	capabilities := make(map[string]any)
-	for _, poolName := range poolNames {
-		capabilities[poolName] = map[string]any{
-			string(v1.FreeCapacity):  int64(0),
-			string(v1.UsedCapacity):  int64(0),
-			string(v1.TotalCapacity): int64(0),
-		}
-	}
-	return capabilities, nil
+	return getZeroPoolsCapacities(ctx, poolNames)
 }
 
 // Validate used to validate FusionStorageDTreePlugin parameters
@@ -152,12 +143,21 @@ func (p *FusionStorageDTreePlugin) CreateVolume(ctx context.Context, name string
 }
 
 // QueryVolume used to query volume
-func (p *FusionStorageDTreePlugin) QueryVolume(_ context.Context, _ string, _ map[string]any) (utils.Volume, error) {
-	return nil, errors.New("fusionstorage-dtree not support management volume feature")
+func (p *FusionStorageDTreePlugin) QueryVolume(ctx context.Context, name string,
+	parameters map[string]any) (utils.Volume, error) {
+
+	backendParentName := p.parentname
+	scParentName, _ := utils.GetValue[string](parameters, "parentname")
+	parentName, err := getValidParentname(scParentName, backendParentName)
+	if err != nil {
+		return nil, err
+	}
+
+	return dtree.NewQuerier(ctx, p.cli, name, parentName).Query()
 }
 
 // DeleteVolume used to delete volume
-func (p *FusionStorageDTreePlugin) DeleteVolume(ctx context.Context, s string) error {
+func (p *FusionStorageDTreePlugin) DeleteVolume(ctx context.Context, s string, _ map[string]interface{}) error {
 	return errors.New("fusionstorage-dtree not support DeleteVolume feature")
 }
 
@@ -179,8 +179,8 @@ func (p *FusionStorageDTreePlugin) ModifyVolume(_ context.Context, _ string, _ p
 }
 
 // CreateSnapshot used to create snapshot
-func (p *FusionStorageDTreePlugin) CreateSnapshot(ctx context.Context, s string, s2 string) (map[string]interface{},
-	error) {
+func (p *FusionStorageDTreePlugin) CreateSnapshot(ctx context.Context, s string, s2 string,
+	parameters map[string]interface{}) (map[string]interface{}, error) {
 	return nil, errors.New("fusionstorage-dtree not support snapshot feature")
 }
 

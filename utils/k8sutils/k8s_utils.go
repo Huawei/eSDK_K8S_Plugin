@@ -71,6 +71,9 @@ type Interface interface {
 	// GetDTreeParentNameByVolumeId returns dDTreeParentname field of PV by volume id
 	GetDTreeParentNameByVolumeId(volumeId string) (string, error)
 
+	// GetKvCacheStoreIdByVolumeId returns kvCacheStoreId field of PV by volume id
+	GetKvCacheStoreIdByVolumeId(volumeId string) (string, error)
+
 	// Activate the k8s helpers when start the service
 	Activate()
 	// Deactivate the k8s helpers when stop the service
@@ -302,4 +305,9 @@ func (k *KubeClient) Activate() {
 func (k *KubeClient) Deactivate() {
 	log.Infoln("Deactivate k8S helpers.")
 	close(k.informersStopChan)
+}
+
+// SetClient set k8s client
+func (k *KubeClient) SetClient(client kubernetes.Interface) {
+	k.clientSet = client
 }

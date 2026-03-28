@@ -64,6 +64,7 @@ type BackendConfiguration struct {
 	Pools               []string                 `json:"pools,omitempty" yaml:"pools"`
 	MetrovStorePairID   string                   `json:"metrovStorePairID,omitempty" yaml:"metrovStorePairID"`
 	MetroBackend        string                   `json:"metroBackend,omitempty" yaml:"metroBackend"`
+	HyperMetroDomain    string                   `json:"hyperMetroDomain,omitempty" yaml:"hyperMetroDomain"`
 	SupportedTopologies []map[string]interface{} `json:"supportedTopologies,omitempty" yaml:"supportedTopologies"`
 	MaxClientThreads    string                   `json:"maxClientThreads,omitempty" yaml:"maxClientThreads"`
 	Configured          bool                     `json:"-" yaml:"configured"`

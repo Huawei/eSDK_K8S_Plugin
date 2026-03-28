@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base/attacher"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -97,12 +98,13 @@ func (p *DoradoV6Attacher) ControllerAttach(ctx context.Context,
 		}
 	}
 
-	if p.Protocol == "iscsi" {
+	if p.Protocol == constants.ProtocolIscsi {
 		_, err = p.VolumeAttacher.AttachISCSI(ctx, hostID, parameters)
-	} else if p.Protocol == "fc" || p.Protocol == "fc-nvme" {
+	} else if p.Protocol == constants.ProtocolFC || p.Protocol == constants.ProtocolFCNVMe {
 		_, err = p.VolumeAttacher.AttachFC(ctx, hostID, parameters)
-	} else if p.Protocol == "roce" {
-		_, err = p.VolumeAttacher.AttachRoCE(ctx, hostID, parameters)
+	} else if p.Protocol == constants.ProtocolRoce || p.Protocol == constants.ProtocolRoceNVMe ||
+		p.Protocol == constants.ProtocolTCPNVMe {
+		_, err = p.VolumeAttacher.AttachNVMe(ctx, hostID, parameters)
 	}
 
 	if err != nil {

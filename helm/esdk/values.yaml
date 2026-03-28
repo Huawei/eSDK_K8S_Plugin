@@ -8,13 +8,13 @@ images:
   # CSI-related sidecar images provided by the Kubernetes community.
   # These must match the appropriate Kubernetes version.
   sidecar:
-    attacher: registry.k8s.io/sig-storage/csi-attacher:v4.4.0
-    provisioner: registry.k8s.io/sig-storage/csi-provisioner:v3.6.0
-    resizer: registry.k8s.io/sig-storage/csi-resizer:v1.9.0
-    registrar: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.0
-    livenessProbe: registry.k8s.io/sig-storage/livenessprobe:v2.12.0
-    snapshotter: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.0
-    snapshotController: registry.k8s.io/sig-storage/snapshot-controller:v6.3.0
+    attacher: registry.k8s.io/sig-storage/csi-attacher:v4.8.0
+    provisioner: registry.k8s.io/sig-storage/csi-provisioner:v5.2.0
+    resizer: registry.k8s.io/sig-storage/csi-resizer:v1.13.2
+    registrar: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.13.0
+    livenessProbe: registry.k8s.io/sig-storage/livenessprobe:v2.15.0
+    snapshotter: registry.k8s.io/sig-storage/csi-snapshotter:v8.2.0
+    snapshotController: registry.k8s.io/sig-storage/snapshot-controller:v8.2.0
 
 # Default image pull policy for sidecar container images, support [IfNotPresent, Always, Never]
 sidecarImagePullPolicy: "IfNotPresent"
@@ -70,7 +70,7 @@ controller:
   # Default value: 1
   # Recommended value: 2
   controllerCount: 1
-  
+
   # volumeNamePrefix: Define a prefix that is prepended to volumes.
   # THIS MUST BE ALL LOWER CASE.
   # Default value: pvc
@@ -223,7 +223,7 @@ csiDriver:
   volumeUseMultipath: true
   # Multipath software used by fc/iscsi. support [DM-multipath, HW-UltraPath, HW-UltraPath-NVMe]
   scsiMultipathType: DM-multipath
-  # Multipath software used by roce/fc-nvme. only support [HW-UltraPath-NVMe]
+  # Multipath software used by roce-nvme/fc-nvme. support [HW-UltraPath-NVMe, NVMe-Native]
   nvmeMultipathType: HW-UltraPath-NVMe
   # Timeout interval for waiting for multipath aggregation when DM-multipath is used on the host. support 1~600
   scanVolumeTimeout: 3
@@ -267,6 +267,11 @@ csiDriver:
     maxBackups: 9
   # Whether to report node IP
   reportNodeIP: false
+  # Whether to allow creating secrets for each Kubernetes node to store host information.
+  # Allowed values:
+  #   true: create a secret for each Kubernetes node and store the host information in the secret, suitable for large-scale clusters.
+  #   false: store the host information of all Kubernetes nodes in a secret.
+  enablePerNodeSecret: false
 
 # leaderElection configuration
 leaderElection:

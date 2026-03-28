@@ -18,18 +18,31 @@
 package connector
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
+)
+
+var (
+	// nvmeDeviceRegex is a regular expression used to match NVMe device names.
+	// Example matches: "nvme0n1", "nvme1n2".
+	nvmeDeviceRegex = regexp.MustCompile(`^nvme(\d+)n(\d+)$`)
+
+	// nvmeSubDeviceRegex is a regular expression used to match NVMe sub-device names.
+	// Example matches: "nvme0n1", "nvme1c2n3".
+	nvmeSubDeviceRegex = regexp.MustCompile(`^nvme\d+(c\d+)?n\d+$`)
 )
 
 // DoScanNVMeDevice used to scan device by command nvme ns-rescan
@@ -69,7 +82,8 @@ var GetSubSysInfo = func(ctx context.Context) (map[string]interface{}, error) {
 	}
 
 	if len(nvmeConnectInfo) == 0 {
-		return nil, fmt.Errorf("nvme connect info is empty, origin: %s", output)
+		log.AddContext(ctx).Warningf("nvme connect info is empty, origin: %s", output)
+		return map[string]interface{}{}, nil
 	}
 
 	return nvmeConnectInfo[0], nil
@@ -122,7 +136,7 @@ func GetNVMeDevice(ctx context.Context, devicePort string, tgtLunGUID string) (s
 		return "", err
 	}
 
-	output, err := utils.ExecShellCmd(ctx, fmt.Sprintf("ls %s |grep nvme", nvmePortPath))
+	output, err := utils.ExecShellCmd(ctx, fmt.Sprintf("ls %s | grep nvme", nvmePortPath))
 	if err != nil {
 		log.AddContext(ctx).Errorf("get nvme device failed, error:%v", err)
 		return "", err
@@ -130,15 +144,10 @@ func GetNVMeDevice(ctx context.Context, devicePort string, tgtLunGUID string) (s
 
 	outputLines := strings.Split(output, "\n")
 	for _, dev := range outputLines {
-		match, err := regexp.MatchString(`nvme[0-9]+n[0-9]+`, dev)
-		if err != nil {
-			log.AddContext(ctx).Warningf("Match string failed. dev:%s, error:%v", dev, err)
-			continue
-		}
-		if match {
+		if nvmeSubDeviceRegex.MatchString(dev) {
 			uuid, err := getNVMeWWN(ctx, devicePort, dev)
 			if err != nil {
-				log.AddContext(ctx).Warningf("Get nvme device uuid failed, error:%v", err)
+				log.AddContext(ctx).Warningf("Get nvme device uuid failed, dev: %s, error: %v", dev, err)
 				continue
 			}
 			if strings.Contains(uuid, tgtLunGUID) {
@@ -162,4 +171,83 @@ func getNVMeWWN(ctx context.Context, devicePort, device string) (string, error) 
 	}
 
 	return "", errors.New("uuid is not exist")
+}
+
+// IsNVMeMultipathEnabled checks whether the NVMe-Native multipath is enabled in the system
+func IsNVMeMultipathEnabled(ctx context.Context) bool {
+	data, err := os.ReadFile(nvmeMultipathConfigPath)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Read NVMe multipath failed, err: %v", err)
+		return false
+	}
+
+	return strings.TrimSpace(string(data)) == nvmeMultipathEnabledValue
+}
+
+// GetNVMeDiskByGuid gets the disk name of NVMe-Native multipath by guid
+func GetNVMeDiskByGuid(ctx context.Context, guid string) (string, error) {
+	symlinkPath := fmt.Sprintf("/dev/disk/by-id/nvme-eui.%s", guid)
+	if _, err := os.Lstat(symlinkPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("symbolic link does not exist: %s", symlinkPath)
+	}
+
+	devicePath, err := os.Readlink(symlinkPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read symbolic link %s: %w", symlinkPath, err)
+	}
+
+	return filepath.Base(devicePath), nil
+}
+
+// IsNVMeSubPathExist check whether the nvme sub path is existed
+func IsNVMeSubPathExist(ctx context.Context, subsystem, nvmePath, device string) bool {
+	// If subsystem is nvme-subsys0, nvmePath is nvme1, and device is nvme0n2,
+	// the subpath is /sys/class/nvme-subsystem/nvme-subsys0/nvme1/nvme0c1n2
+	subsystemNo := strings.TrimPrefix(subsystem, subsystemPrefix)
+	pathNo := strings.TrimPrefix(nvmePath, nvmePathPrefix)
+	deviceNo := strings.TrimPrefix(device, fmt.Sprintf("nvme%sn", subsystemNo))
+	subpath := fmt.Sprintf("/sys/class/nvme-subsystem/%s/%s/nvme%sc%sn%s",
+		subsystem, nvmePath, subsystemNo, pathNo, deviceNo)
+	_, err := os.Stat(subpath)
+	if os.IsNotExist(err) {
+		log.AddContext(ctx).Warningf("NVMe subpath %s is not existed", subpath)
+		return false
+	}
+
+	if err != nil {
+		log.AddContext(ctx).Warningf("Check NVMe subpath %s stat failed, reason: %v", subpath, err)
+		return true
+	}
+
+	return true
+}
+
+// CheckIsTakeOverByNVMeNative check whether the device is takeover by NVMe-Native multipath
+func CheckIsTakeOverByNVMeNative(ctx context.Context, device string) error {
+	output, err := utils.ExecShellCmd(ctx, "nvme list | grep %s", device)
+	if err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("device %s is not takeover by NVMe-Native multipath", device)
+}
+
+// GetNVMeDiskNumber extracts the number of an NVMe device.
+// In non-multipath scenarios, it returns the nvme path number and device ID.
+// In NVMe-Native multipath scenarios, it returns the nvme subsys number and device ID.
+func GetNVMeDiskNumber(diskName string) (string, string, error) {
+	matches := nvmeDeviceRegex.FindStringSubmatch(diskName)
+	if len(matches) < nvmeDeviceMatchNum {
+		return "", "", fmt.Errorf("invalid NVMe disk name format: %s", diskName)
+	}
+
+	return matches[1], matches[2], nil
 }

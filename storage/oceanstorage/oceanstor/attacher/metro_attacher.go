@@ -119,16 +119,16 @@ func (p *MetroAttacher) mergeLunWWN(ctx context.Context, locLunWWN, rmtLunWWN st
 	return locLunWWN, nil
 }
 
-// GetTargetRoCEPortals gets target roce portals
-func (p *MetroAttacher) GetTargetRoCEPortals(ctx context.Context) ([]string, error) {
+// GetTargetNVMePortals gets target nvme portals
+func (p *MetroAttacher) GetTargetNVMePortals(ctx context.Context) ([]string, error) {
 	var availablePortals []string
-	localPortals, err := p.localAttacher.GetTargetRoCEPortals(ctx)
+	localPortals, err := p.localAttacher.GetTargetNVMePortals(ctx)
 	if err != nil {
 		log.AddContext(ctx).Warningf("Get local roce portals error: %v", err)
 	}
 	availablePortals = append(availablePortals, localPortals...)
 
-	remotePortals, err := p.remoteAttacher.GetTargetRoCEPortals(ctx)
+	remotePortals, err := p.remoteAttacher.GetTargetNVMePortals(ctx)
 	if err != nil {
 		log.AddContext(ctx).Warningf("Get remote roce portals error: %v", err)
 	}

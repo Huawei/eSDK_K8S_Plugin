@@ -64,6 +64,14 @@ var (
 	DisconnectVolumeTimeOut = time.Minute
 	// DisconnectVolumeTimeInterval defines the time interval for checking if connected volume
 	DisconnectVolumeTimeInterval = time.Second
+
+	// nvmeNamespacePattern is a regular expression used to match NVMe namespace device names.
+	// Example matches: "nvme0n1", "nvme1n2".
+	nvmeNamespacePattern = regexp.MustCompile(`nvme[0-9]+n[0-9]+`)
+
+	// nvmeControllerPattern is a regular expression used to match NVMe controller device names.
+	// Example matches: "nvme0", "nvme1".
+	nvmeControllerPattern = regexp.MustCompile(`nvme[0-9]+$`)
 )
 
 type deviceInfo struct {
@@ -81,6 +89,22 @@ type DMDeviceInfo struct {
 	Sysfs string
 	// Devices device list
 	Devices []string
+}
+
+// MultipathTypeToString converts a multipath type integer to its corresponding name.
+func MultipathTypeToString(multipathType int) string {
+	switch multipathType {
+	case NotUseMultipath:
+		return "NativePath"
+	case UseDMMultipath:
+		return "DMMultipath"
+	case UseUltraPath:
+		return "UltraPath"
+	case UseUltraPathNVMe:
+		return "UltraPathNVMe"
+	default:
+		return "Unknown"
+	}
 }
 
 func getDeviceLink(ctx context.Context, tgtLunGUID string) (string, error) {
@@ -265,27 +289,31 @@ var GetDevicesByGUID = func(ctx context.Context, tgtLunGUID string) ([]string, e
 }
 
 func reScanNVMe(ctx context.Context, device string) error {
-	var err error
-	if match, err := regexp.MatchString(`nvme[0-9]+n[0-9]+`, device); err == nil && match {
-		output, err := utils.ExecShellCmd(ctx, "echo 1 > /sys/block/%s/device/rescan_controller", device)
-		if err != nil {
-			log.AddContext(ctx).Warningf("rescan nvme path error: %s", output)
-			return err
+	if nvmeNamespacePattern.MatchString(device) {
+		nvmeRescanPath := fmt.Sprintf("/sys/block/%s/device/rescan_controller", device)
+		_, err := os.Stat(nvmeRescanPath)
+		if !os.IsNotExist(err) {
+			// path exist, need rescan nvme device
+			output, err := utils.ExecShellCmd(ctx, "echo 1 > %s", nvmeRescanPath)
+			if err != nil {
+				return fmt.Errorf("rescan nvme namespace failed, err: %w, output: %s", err, output)
+			}
+		} else {
+			// path not exist, need rescan nvme controller device
+			output, err := utils.ExecShellCmd(ctx, "nvme ns-rescan /dev/%s", device)
+			if err != nil {
+				return fmt.Errorf("rescan nvme controller failed, err: %w, output: %s", err, output)
+			}
 		}
-	} else if match, err = regexp.MatchString(`nvme[0-9]+$`, device); err == nil && match {
+	} else if nvmeControllerPattern.MatchString(device) {
 		output, err := utils.ExecShellCmd(ctx, "nvme ns-rescan /dev/%s", device)
 		if err != nil {
-			log.AddContext(ctx).Warningf("rescan nvme path error: %s", output)
-			return err
+			return fmt.Errorf("rescan nvme controller failed, err: %w, output: %s", err, output)
 		}
+	} else {
+		return fmt.Errorf("device %s does not match any known pattern", device)
 	}
 
-	if err != nil {
-		log.AddContext(ctx).Warningf("pattern compile failed, err: %v", err)
-		return err
-	}
-
-	log.AddContext(ctx).Warningf("device %s match failed, err: %v", device, err)
 	return nil
 }
 
@@ -766,7 +794,11 @@ func ResizeBlock(ctx context.Context, tgtLunWWN string, requiredBytes int64) err
 		return utils.Errorf(ctx, "Can not find the device for lun %s", tgtLunWWN)
 	}
 
-	showDeviceSize(ctx, virtualDevice)
+	size := showDeviceSize(ctx, virtualDevice)
+	if isResized(size, requiredBytes) {
+		log.AddContext(ctx).Infof("Device is already resized, no need to rescan")
+		return nil
+	}
 
 	err = rescanDevice(ctx, virtualDevice, devType)
 	if err != nil {
@@ -775,11 +807,15 @@ func ResizeBlock(ctx context.Context, tgtLunWWN string, requiredBytes int64) err
 
 	return utils.WaitUntil(func() (bool, error) {
 		curSize := showDeviceSize(ctx, virtualDevice)
-		if curSize != "" && strconv.FormatInt(requiredBytes, constants.DefaultIntBase) == curSize {
+		if isResized(curSize, requiredBytes) {
 			return true, nil
 		}
 		return false, nil
 	}, time.Second*expandVolumeTimeOut, time.Second*expandVolumeInternal)
+}
+
+func isResized(curSize string, requiredBytes int64) bool {
+	return curSize != "" && strconv.FormatInt(requiredBytes, constants.DefaultIntBase) == curSize
 }
 
 func rescanUseDMMultipath(ctx context.Context, virtualDevice string) error {

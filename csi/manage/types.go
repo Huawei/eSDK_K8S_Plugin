@@ -21,7 +21,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nvme"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/fcnvme"
 )
 
 // VolumeManager defines the operations which storage manager should implement
@@ -40,15 +40,15 @@ type VolumeManager interface {
 // roce protocol: TgtPortals, TgtLunGuid is required
 // scsi protocol: TgtLunWWN is required
 type ControllerPublishInfo struct {
-	TgtLunWWN          string             `json:"tgtLunWWN"`
-	TgtPortals         []string           `json:"tgtPortals"`
-	TgtIQNs            []string           `json:"tgtIQNs"`
-	TgtHostLUNs        []string           `json:"tgtHostLUNs"`
-	TgtLunGuid         string             `json:"tgtLunGuid"`
-	TgtWWNs            []string           `json:"tgtWWNs"`
-	PortWWNList        []nvme.PortWWNPair `json:"portWWNList"`
-	VolumeUseMultiPath bool               `json:"volumeUseMultiPath"`
-	MultiPathType      string             `json:"multiPathType"`
+	TgtLunWWN          string               `json:"tgtLunWWN"`
+	TgtPortals         []string             `json:"tgtPortals"`
+	TgtIQNs            []string             `json:"tgtIQNs"`
+	TgtHostLUNs        []string             `json:"tgtHostLUNs"`
+	TgtLunGuid         string               `json:"tgtLunGuid"`
+	TgtWWNs            []string             `json:"tgtWWNs"`
+	PortWWNList        []fcnvme.PortWWNPair `json:"portWWNList"`
+	VolumeUseMultiPath bool                 `json:"volumeUseMultiPath"`
+	MultiPathType      string               `json:"multiPathType"`
 }
 
 // DTreePublishInfo records dtree parent name and pass by ControllerPublishVolume

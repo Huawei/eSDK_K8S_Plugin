@@ -82,7 +82,7 @@ func (cli *MappingClient) CreateMapping(ctx context.Context, name string) (map[s
 
 // GetMappingByName used for get mapping by name
 func (cli *MappingClient) GetMappingByName(ctx context.Context, name string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/mappingview?filter=NAME::%s", name)
+	url := fmt.Sprintf("/mappingview?filter=NAME::%s&range=[0-100]", name)
 	resp, err := cli.Get(ctx, url, nil)
 	if err != nil {
 		return nil, err

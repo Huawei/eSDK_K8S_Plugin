@@ -83,15 +83,22 @@ func (d *CsiDriver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReque
 		return &csi.DeleteVolumeResponse{}, nil
 	}
 
-	if bk.Storage == constants.OceanStorDtree || bk.Storage == constants.FusionDTree {
+	if constants.IsDtreeStorage(bk.Storage) {
 		var parentName string
 		parentName, err = app.GetGlobalConfig().K8sUtils.GetDTreeParentNameByVolumeId(volumeId)
 		if err != nil {
 			return &csi.DeleteVolumeResponse{}, err
 		}
 		err = bk.Plugin.DeleteDTreeVolume(ctx, volName, parentName)
+	} else if bk.Storage == constants.OceanStorASeriesNas {
+		params, err := d.getASeriesNasDeleteParams(volumeId)
+		if err != nil {
+			log.AddContext(ctx).Errorf("Delete volume %s error: %v", volumeId, err)
+			return &csi.DeleteVolumeResponse{}, err
+		}
+		err = bk.Plugin.DeleteVolume(ctx, volName, params)
 	} else {
-		err = bk.Plugin.DeleteVolume(ctx, volName)
+		err = bk.Plugin.DeleteVolume(ctx, volName, nil)
 	}
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete volume %s error: %v", volumeId, err)
@@ -99,7 +106,6 @@ func (d *CsiDriver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReque
 	}
 
 	log.AddContext(ctx).Infof("Volume %s is deleted", volumeId)
-
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
@@ -135,7 +141,7 @@ func (d *CsiDriver) ControllerExpandVolume(ctx context.Context, req *csi.Control
 	log.AddContext(ctx).Infof("Required capacity is %d, actual capacity is %d, sector size is %d",
 		minSize, size*sectorSize, sectorSize)
 	var nodeExpansionRequired bool
-	if backend.Storage == constants.OceanStorDtree || backend.Storage == constants.FusionDTree {
+	if constants.IsDtreeStorage(backend.Storage) {
 		var parentName string
 		parentName, err = app.GetGlobalConfig().K8sUtils.GetDTreeParentNameByVolumeId(volumeId)
 		if err != nil {
@@ -337,7 +343,8 @@ func (d *CsiDriver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotR
 		return nil, status.Error(codes.Internal, msg)
 	}
 
-	snapshot, err := backend.Plugin.CreateSnapshot(ctx, volName, snapshotName)
+	params := utils.CopyMap(req.GetParameters())
+	snapshot, err := backend.Plugin.CreateSnapshot(ctx, volName, snapshotName, params)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Create snapshot %s error: %v", snapshotName, err)
 		return nil, status.Error(codes.Internal, err.Error())

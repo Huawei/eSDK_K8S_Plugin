@@ -21,6 +21,8 @@ import (
 	"fmt"
 
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -37,6 +39,8 @@ type LunSnapshot interface {
 	DeleteLunSnapshot(ctx context.Context, snapshotID string) error
 	// CreateLunSnapshot used for create lun snapshot
 	CreateLunSnapshot(ctx context.Context, name, lunID string) (map[string]interface{}, error)
+	// CreateHyperMetroSnap used for create hyper metro lun snapshot
+	CreateHyperMetroSnap(ctx context.Context, name, pairID string) (map[string]interface{}, error)
 	// ActivateLunSnapshot used for activate lun snapshot
 	ActivateLunSnapshot(ctx context.Context, snapshotID string) error
 	// DeactivateLunSnapshot used for stop lun snapshot
@@ -59,6 +63,35 @@ func (cli *OceanstorClient) CreateLunSnapshot(ctx context.Context, name, lunID s
 	code := int64(resp.Error["code"].(float64))
 	if code != 0 {
 		return nil, fmt.Errorf("Create snapshot %s for lun %s error: %d", name, lunID, code)
+	}
+
+	respData, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
+	}
+	return respData, nil
+}
+
+// CreateHyperMetroSnap used for create lun snapshot
+func (cli *OceanstorClient) CreateHyperMetroSnap(ctx context.Context, name, pairID string) (
+	map[string]interface{}, error) {
+	data := map[string]interface{}{
+		"snapName":        name,
+		"snapDescription": description,
+		"ID":              pairID,
+	}
+
+	resp, err := cli.Post(ctx, "/CreateHyperMetroSnap", data)
+	if err != nil {
+		return nil, err
+	}
+
+	code, ok := utils.GetValue[float64](resp.Error, "code")
+	if !ok {
+		return nil, fmt.Errorf("get code from resp failed, resp: %v", resp)
+	}
+	if int64(code) != storage.SuccessCode {
+		return nil, fmt.Errorf("create hyper metro snapshot %s for pair %s error: %v", name, pairID, code)
 	}
 
 	respData, ok := resp.Data.(map[string]interface{})

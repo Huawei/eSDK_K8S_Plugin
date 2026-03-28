@@ -37,6 +37,7 @@ import (
 var (
 	fakeFsName         = "test-fs-name"
 	fakeFsID           = "test-fs-id"
+	fakeKvcacheStoreId = "test-kvcache-store-id"
 	fakePoolName       = "test-pool-name"
 	fakePoolID         = "test-pool-id"
 	fakeWorkloadType   = "test-workload-type"
@@ -71,6 +72,35 @@ var (
 		AllSquash:       constants.AllSquashValue,
 		RootSquash:      constants.RootSquashValue,
 		AuthUsers:       []string{fakeAuthUser},
+	}
+	fakeCreateNfsAndKvCacheModel = &CreateFilesystemModel{
+		Protocol:          constants.ProtocolNfs,
+		Name:              fakeFsName,
+		PoolName:          fakePoolName,
+		Capacity:          1024 * 1024,
+		Description:       "test-description",
+		UnixPermissions:   "755",
+		AllSquash:         constants.AllSquashValue,
+		RootSquash:        constants.RootSquashValue,
+		Qos:               "{\"IOTYPE\": 2, \"MAXIOPS\": 1000}",
+		AuthClients:       []string{fakeAuthClient},
+		EnableKVCache:     true,
+		EnableTimeAwareGC: true,
+		GCTimeThreshold:   1,
+	}
+	fakeCreateNfsAndKvCacheModelFail = &CreateFilesystemModel{
+		Protocol:        constants.ProtocolNfs,
+		Name:            fakeFsName,
+		PoolName:        fakePoolName,
+		Capacity:        1024 * 1024,
+		Description:     "test-description",
+		UnixPermissions: "755",
+		AllSquash:       constants.AllSquashValue,
+		RootSquash:      constants.RootSquashValue,
+		Qos:             "{\"IOTYPE\": 2, \"MAXIOPS\": 1000}",
+		AuthClients:     []string{fakeAuthClient},
+		EnableKVCache:   true,
+		WorkloadType:    "NAS_AI_Training",
 	}
 )
 
@@ -139,6 +169,143 @@ func TestCreator_CreateWithNfsProtocol_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, volume)
 	assert.Equal(t, fakeFsName, volume.GetVolumeName())
+}
+
+func setupCreateWithNfsAndKVCacheMocks(t *testing.T, ctx context.Context,
+	cli *mock_client.MockOceanASeriesClientInterface) (reset func()) {
+	t.Helper()
+
+	mock := gomonkey.NewPatches()
+	mock.ApplyMethodReturn(time.Time{}, "Format", "20060102150405")
+
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetPoolByName(ctx, fakePoolName).Return(map[string]interface{}{"ID": fakePoolID}, nil)
+	cli.EXPECT().GetApplicationTypeByName(ctx, applicationTypeNASAIInference).Return(fakeWorkloadTypeID, nil)
+
+	cli.EXPECT().GetFileSystemByName(ctx, fakeFsName, fakeVstoreID).Return(nil, nil)
+	cli.EXPECT().CreateFileSystem(ctx, &client.CreateFilesystemParams{
+		Name:            fakeCreateNfsModel.Name,
+		ParentId:        fakePoolID,
+		Capacity:        fakeCreateNfsModel.Capacity,
+		Description:     fakeCreateNfsModel.Description,
+		WorkLoadTypeId:  fakeWorkloadTypeID,
+		UnixPermissions: fakeCreateNfsModel.UnixPermissions,
+		VstoreId:        fakeVstoreID,
+	}, nil).Return(map[string]interface{}{"ID": fakeFsID}, nil)
+
+	cli.EXPECT().GetNfsShareByPath(ctx, fakeCreateNfsModel.sharePath(), fakeVstoreID).Return(nil, nil)
+	cli.EXPECT().CreateNfsShare(ctx, map[string]interface{}{
+		"sharepath":   fakeCreateNfsModel.sharePath(),
+		"fsid":        fakeFsID,
+		"description": fakeCreateNfsModel.Description,
+		"vStoreID":    fakeVstoreID,
+	}).Return(map[string]interface{}{"ID": fakeShareID}, nil)
+
+	cli.EXPECT().AllowNfsShareAccess(ctx,
+		&base.AllowNfsShareAccessRequest{
+			Name:       fakeAuthClient,
+			ParentID:   fakeShareID,
+			VStoreID:   fakeVstoreID,
+			AccessVal:  readWriteAccessValue,
+			Sync:       synchronize,
+			AllSquash:  fakeCreateNfsModel.AllSquash,
+			RootSquash: fakeCreateNfsModel.RootSquash,
+		}).Return(nil)
+
+	cli.EXPECT().CreateKVCache(ctx, &client.CreateKVCacheParams{
+		KVCacheStoreName:  fakeCreateNfsModel.Name,
+		PoolID:            fakePoolID,
+		Capacity:          fakeCreateNfsModel.Capacity,
+		Description:       fakeCreateNfsModel.Description,
+		FsID:              fakeFsID,
+		NfsId:             fakeShareID,
+		VStoreID:          fakeVstoreID,
+		FSName:            fakeCreateNfsModel.Name,
+		EnableTimeAwareGC: true,
+		GCTimeThreshold:   1,
+	}).Return(map[string]interface{}{"kvcacheStoreId": fakeKvcacheStoreId}, nil)
+
+	qosName := fmt.Sprintf("k8s_%s%s_%s", "fs", fakeFsID, "20060102150405")
+	cli.EXPECT().CreateQos(ctx, base.CreateQoSArgs{
+		Name:     qosName,
+		ObjID:    fakeFsID,
+		ObjType:  "fs",
+		VStoreID: fakeVstoreID,
+		Params:   map[string]int{"IOTYPE": 2, "MAXIOPS": 1000},
+	}).Return(map[string]interface{}{"ID": fakeQosID, "ENABLESTATUS": "false"}, nil)
+	cli.EXPECT().ActivateQos(ctx, fakeQosID, fakeVstoreID).Return(nil)
+
+	return func() {
+		mock.Reset()
+	}
+}
+
+func TestCreator_CreateWithNfsProtocolAndEnableKVCache_Success(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	creator := NewCreator(ctx, cli, fakeCreateNfsAndKvCacheModel)
+
+	// mock
+	reset := setupCreateWithNfsAndKVCacheMocks(t, ctx, cli)
+	defer reset()
+
+	// action
+	volume, err := creator.Create()
+	kvCacheStoreId := volume.GetKvcacheStoreId()
+
+	// assert
+	assert.NoError(t, err)
+	assert.NotNil(t, volume)
+	assert.Equal(t, fakeFsName, volume.GetVolumeName())
+	assert.Equal(t, fakeKvcacheStoreId, kvCacheStoreId)
+}
+
+func TestCreator_CreateWithNfsProtocolAndEnableKVCache_WithParamConflictError(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	creator := NewCreator(ctx, cli, fakeCreateNfsAndKvCacheModelFail)
+
+	// mock
+	mock := gomonkey.NewPatches()
+	mock.ApplyMethodReturn(time.Time{}, "Format", "20060102150405")
+
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetPoolByName(ctx, fakePoolName).Return(map[string]interface{}{"ID": fakePoolID}, nil)
+	defer mock.Reset()
+
+	// action
+	_, err := creator.Create()
+
+	// assert
+	assert.Contains(t, err.Error(), "is not supported for kvCache")
+}
+
+func TestCreator_CreateWithNfsProtocolAndEnableKVCache_Rollback(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	creator := NewCreator(ctx, cli, fakeCreateNfsAndKvCacheModel)
+
+	// mock
+	reset := setupCreateWithNfsAndKVCacheFailedMocksRollback(t, ctx, cli)
+	defer reset()
+
+	// action
+	_, err := creator.Create()
+
+	// assert
+	assert.Contains(t, err.Error(), "failed to create KVCache")
 }
 
 func TestCreator_CreateWithNfsProtocol_SuccessWithResourceExist(t *testing.T) {
@@ -362,4 +529,72 @@ func TestCreator_CreateWithDtfsProtocol_AddAuthUserError(t *testing.T) {
 	// assert
 	assert.ErrorIs(t, err, mockErr)
 	assert.Nil(t, volume)
+}
+
+func setupCreateWithNfsAndKVCacheFailedMocksRollback(t *testing.T, ctx context.Context,
+	cli *mock_client.MockOceanASeriesClientInterface) (reset func()) {
+	t.Helper()
+	mock := gomonkey.NewPatches()
+	mock.ApplyMethodReturn(time.Time{}, "Format", "20060102150405")
+
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetPoolByName(ctx, fakePoolName).Return(map[string]interface{}{"ID": fakePoolID}, nil)
+	cli.EXPECT().GetApplicationTypeByName(ctx, applicationTypeNASAIInference).Return(fakeWorkloadTypeID, nil)
+
+	cli.EXPECT().GetFileSystemByName(ctx, fakeFsName, fakeVstoreID).Return(nil, nil)
+	cli.EXPECT().CreateFileSystem(ctx, &client.CreateFilesystemParams{
+		Name:            fakeCreateNfsModel.Name,
+		ParentId:        fakePoolID,
+		Capacity:        fakeCreateNfsModel.Capacity,
+		Description:     fakeCreateNfsModel.Description,
+		WorkLoadTypeId:  fakeWorkloadTypeID,
+		UnixPermissions: fakeCreateNfsModel.UnixPermissions,
+		VstoreId:        fakeVstoreID,
+	}, nil).Return(map[string]interface{}{"ID": fakeFsID}, nil)
+
+	cli.EXPECT().GetNfsShareByPath(ctx, fakeCreateNfsModel.sharePath(), fakeVstoreID).Return(nil, nil)
+	cli.EXPECT().CreateNfsShare(ctx, map[string]interface{}{
+		"sharepath":   fakeCreateNfsModel.sharePath(),
+		"fsid":        fakeFsID,
+		"description": fakeCreateNfsModel.Description,
+		"vStoreID":    fakeVstoreID,
+	}).Return(map[string]interface{}{"ID": fakeShareID}, nil)
+	cli.EXPECT().GetQosByID(ctx, fakeQosID, fakeVstoreID).Return(map[string]interface{}{"ID": fakeQosID}, nil)
+	cli.EXPECT().AllowNfsShareAccess(ctx,
+		&base.AllowNfsShareAccessRequest{
+			Name:       fakeAuthClient,
+			ParentID:   fakeShareID,
+			VStoreID:   fakeVstoreID,
+			AccessVal:  readWriteAccessValue,
+			Sync:       synchronize,
+			AllSquash:  fakeCreateNfsModel.AllSquash,
+			RootSquash: fakeCreateNfsModel.RootSquash,
+		}).Return(nil)
+
+	qosName := fmt.Sprintf("k8s_%s%s_%s", "fs", fakeFsID, "20060102150405")
+	cli.EXPECT().CreateQos(ctx, base.CreateQoSArgs{
+		Name:     qosName,
+		ObjID:    fakeFsID,
+		ObjType:  "fs",
+		VStoreID: fakeVstoreID,
+		Params:   map[string]int{"IOTYPE": 2, "MAXIOPS": 1000},
+	}).Return(map[string]interface{}{"ID": fakeQosID, "ENABLESTATUS": "false"}, nil)
+	cli.EXPECT().DeleteNfsShare(ctx, fakeShareID, fakeVstoreID).Return(nil)
+	cli.EXPECT().DeleteFileSystem(ctx, map[string]interface{}{"ID": fakeFsID}).Return(nil)
+	cli.EXPECT().ActivateQos(ctx, fakeQosID, fakeVstoreID).Return(nil)
+	cli.EXPECT().CreateKVCache(ctx, &client.CreateKVCacheParams{
+		KVCacheStoreName:  fakeCreateNfsModel.Name,
+		PoolID:            fakePoolID,
+		Capacity:          fakeCreateNfsModel.Capacity,
+		Description:       fakeCreateNfsModel.Description,
+		FsID:              fakeFsID,
+		NfsId:             fakeShareID,
+		VStoreID:          fakeVstoreID,
+		FSName:            fakeCreateNfsModel.Name,
+		EnableTimeAwareGC: true,
+		GCTimeThreshold:   1,
+	}).Return(map[string]interface{}{"kvcacheStoreId": ""}, nil)
+	return func() {
+		mock.Reset()
+	}
 }

@@ -28,6 +28,7 @@ const (
 	dmMultiPath     = "DM-multipath"
 	hwUltraPath     = "HW-UltraPath"
 	hwUltraPathNVMe = "HW-UltraPath-NVMe"
+	nvmeNative      = "NVMe-Native"
 
 	defaultCleanupTimeout     = 240
 	defaultScanVolumeTimeout  = 3
@@ -145,7 +146,7 @@ func (opt *connectorOptions) validateScsiMultiPathType() error {
 
 func (opt *connectorOptions) validateNvmeMultiPathType() error {
 	switch opt.nvmeMultiPathType {
-	case hwUltraPathNVMe:
+	case hwUltraPathNVMe, nvmeNative:
 		return nil
 	default:
 		return fmt.Errorf("the nvme-multipath-type=%v configuration is incorrect", opt.nvmeMultiPathType)

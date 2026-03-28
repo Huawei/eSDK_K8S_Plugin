@@ -35,7 +35,7 @@ type OceandiskClientInterface interface {
 	base.Iscsi
 	base.Mapping
 	base.Qos
-	base.RoCE
+	base.NVMe
 	base.System
 
 	Namespace

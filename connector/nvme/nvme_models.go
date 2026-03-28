@@ -14,5 +14,5 @@
  *  limitations under the License.
  */
 
-// Package nvme provide the way to connect/disconnect volume within FC NVMe protocol
+// Package nvme provide the way to connect/disconnect volume within NVMe over Connector protocol
 package nvme

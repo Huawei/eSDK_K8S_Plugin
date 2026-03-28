@@ -109,55 +109,6 @@ func (p *OceanstorPlugin) init(ctx context.Context, config map[string]interface{
 	return nil
 }
 
-func (p *OceanstorPlugin) formatInitParam(config map[string]interface{}) (res *client.NewClientConfig, err error) {
-	res = &client.NewClientConfig{}
-
-	configUrls, exist := config["urls"].([]interface{})
-	if !exist || len(configUrls) <= 0 {
-		err = errors.New("urls must be provided")
-		return
-	}
-	for _, i := range configUrls {
-		res.Urls = append(res.Urls, i.(string))
-	}
-	res.User, exist = config["user"].(string)
-	if !exist {
-		err = errors.New("user must be provided")
-		return
-	}
-	res.SecretName, exist = config["secretName"].(string)
-	if !exist {
-		err = errors.New("SecretName must be provided")
-		return
-	}
-	res.SecretNamespace, exist = config["secretNamespace"].(string)
-	if !exist {
-		err = errors.New("SecretNamespace must be provided")
-		return
-	}
-	res.BackendID, exist = config["backendID"].(string)
-	if !exist {
-		err = errors.New("backendID must be provided")
-		return
-	}
-	res.VstoreName, _ = config["vstoreName"].(string)
-	res.ParallelNum, _ = config["maxClientThreads"].(string)
-
-	res.UseCert, _ = config["useCert"].(bool)
-	res.CertSecretMeta, _ = config["certSecret"].(string)
-
-	res.Storage, exist = config["storage"].(string)
-	if !exist {
-		return nil, errors.New("storage type must be configured for backend")
-	}
-
-	res.Name, exist = config["name"].(string)
-	if !exist {
-		return nil, errors.New("storage name must be configured for backend")
-	}
-	return
-}
-
 func (p *OceanstorPlugin) updateBackendCapabilities(ctx context.Context) (map[string]interface{}, error) {
 	features, err := p.cli.GetLicenseFeature(ctx)
 	if err != nil {
@@ -332,6 +283,7 @@ func processBoolParams(ctx context.Context, source, target map[string]interface{
 	for _, i := range []string{
 		"replication",
 		"hyperMetro",
+		"waitForSplit",
 	} {
 		if v, exist := source[i].(string); exist && v != "" {
 			target[strings.ToLower(i)] = utils.StrToBool(ctx, v)

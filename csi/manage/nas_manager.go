@@ -69,7 +69,7 @@ func NewNasManager(ctx context.Context, backendConfig *BackendConfig) (VolumeMan
 
 // StageVolume stage volume
 func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) error {
-	if m.storage == constants.OceanStorDtree || m.storage == constants.FusionDTree {
+	if constants.IsDtreeStorage(m.storage) {
 		log.AddContext(ctx).Infoln("dtree needn't to stage volume")
 		return nil
 	}
@@ -111,7 +111,7 @@ func (m *NasManager) StageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 
 // UnStageVolume for nas volumes, unstage is only umount the staging target path
 func (m *NasManager) UnStageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) error {
-	if m.storage == constants.OceanStorDtree || m.storage == constants.FusionDTree {
+	if constants.IsDtreeStorage(m.storage) {
 		log.AddContext(ctx).Infoln("dtree needn't to unstage volume")
 		return nil
 	}
