@@ -66,6 +66,9 @@ spec:
                   opaque key-value pairs. This field is OPTIONAL. The driver is responsible
                   for parsing and validating these parameters.
                 type: object
+              pvName:
+                description: PVName used to config the source PersistentVolume name.
+                type: string
               sourceVolume:
                 description: SourceVolume used to config the source PersistentVolumeClaim,
                   format is <namespace>/<name>.

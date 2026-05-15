@@ -17,6 +17,7 @@
 package plugin
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -25,6 +26,8 @@ import (
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 func TestOceanstorSanPlugin_InitSuccess(t *testing.T) {
@@ -330,4 +333,106 @@ func TestSetStorageOnline(t *testing.T) {
 
 	// assert
 	assert.True(t, plugin.storageOnline)
+}
+
+func TestOceanstorSanPlugin_CreateVolume_Success(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{}
+	plugin.product = constants.OceanStorDoradoV6
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+
+	mock.ApplyMethodReturn(&volume.SAN{}, "Create", utils.NewVolume("test-volume"), nil)
+
+	params := map[string]interface{}{
+		"name":        "test-volume",
+		"description": "test-desc",
+		"size":        int64(1073741824),
+	}
+
+	// action
+	vol, err := plugin.CreateVolume(context.Background(), "test-volume", params)
+
+	// assert
+	assert.NoError(t, err)
+	assert.NotNil(t, vol)
+	assert.Equal(t, "test-volume", vol.GetVolumeName())
+}
+
+func TestOceanstorSanPlugin_CreateVolume_SnapshotRecovery(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{}
+	plugin.product = constants.OceanStorDoradoV6
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+
+	mock.ApplyMethodReturn(&volume.SAN{}, "Create", utils.NewVolume("test-volume"), nil)
+
+	params := map[string]interface{}{
+		"name":               "test-volume",
+		"description":        "test-desc",
+		"size":               int64(1073741824),
+		"sourceSnapshotName": "test-snapshot",
+		"restoreMode":        constants.RestoreModeSnapshot,
+	}
+
+	// action
+	vol, err := plugin.CreateVolume(context.Background(), "test-volume", params)
+
+	// assert
+	assert.NoError(t, err)
+	assert.NotNil(t, vol)
+	assert.Equal(t, "test-volume", vol.GetVolumeName())
+}
+
+func TestOceanstorSanPlugin_CreateVolume_NonDoradoV6(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{}
+	plugin.product = constants.OceanStorV5
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+
+	mock.ApplyMethodReturn(&volume.SAN{}, "Create", utils.NewVolume("test-volume"), nil)
+
+	params := map[string]interface{}{
+		"name":        "test-volume",
+		"description": "test-desc",
+		"size":        int64(1073741824),
+	}
+
+	// action
+	vol, err := plugin.CreateVolume(context.Background(), "test-volume", params)
+
+	// assert
+	assert.NoError(t, err)
+	assert.NotNil(t, vol)
+	assert.Equal(t, "test-volume", vol.GetVolumeName())
+}
+
+func TestOceanstorSanPlugin_CreateVolume_Failed(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{}
+	plugin.product = constants.OceanStorDoradoV6
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+
+	mock.ApplyMethodReturn(&volume.SAN{}, "Create", nil, errors.New("create volume failed"))
+
+	params := map[string]interface{}{
+		"name":        "test-volume",
+		"description": "test-desc",
+		"size":        int64(1073741824),
+	}
+
+	// action
+	vol, err := plugin.CreateVolume(context.Background(), "test-volume", params)
+
+	// assert
+	assert.Error(t, err)
+	assert.Nil(t, vol)
+	assert.Contains(t, err.Error(), "create volume failed")
 }

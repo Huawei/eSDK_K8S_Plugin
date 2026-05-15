@@ -30,17 +30,15 @@ import (
 	http "net/http"
 	reflect "reflect"
 
-	gomock "go.uber.org/mock/gomock"
-
 	client "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/aseries/client"
 	base "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
+	gomock "go.uber.org/mock/gomock"
 )
 
 // MockOceanASeriesClientInterface is a mock of OceanASeriesClientInterface interface.
 type MockOceanASeriesClientInterface struct {
 	ctrl     *gomock.Controller
 	recorder *MockOceanASeriesClientInterfaceMockRecorder
-	isgomock struct{}
 }
 
 // MockOceanASeriesClientInterfaceMockRecorder is the mock recorder for MockOceanASeriesClientInterface.
@@ -139,6 +137,40 @@ func (mr *MockOceanASeriesClientInterfaceMockRecorder) Call(ctx, method, url, da
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call",
 		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).Call), ctx, method, url, data)
+}
+
+// CreateDTree mocks base method.
+func (m *MockOceanASeriesClientInterface) CreateDTree(ctx context.Context,
+	req *client.DTreeCreateRequest) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateDTree", ctx, req)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateDTree indicates an expected call of CreateDTree.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) CreateDTree(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDTree",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).CreateDTree), ctx, req)
+}
+
+// CreateDTreeQuota mocks base method.
+func (m *MockOceanASeriesClientInterface) CreateDTreeQuota(ctx context.Context,
+	req *client.DTreeQuotaRequest) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateDTreeQuota", ctx, req)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateDTreeQuota indicates an expected call of CreateDTreeQuota.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) CreateDTreeQuota(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDTreeQuota",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).CreateDTreeQuota), ctx, req)
 }
 
 // CreateDataTurboShare mocks base method.
@@ -256,6 +288,68 @@ func (mr *MockOceanASeriesClientInterfaceMockRecorder) Delete(ctx, url, data any
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete",
 		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).Delete), ctx, url, data)
+}
+
+// DeleteDTreeByID mocks base method.
+func (m *MockOceanASeriesClientInterface) DeleteDTreeByID(ctx context.Context, vStoreID, dtreeID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDTreeByID", ctx, vStoreID, dtreeID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDTreeByID indicates an expected call of DeleteDTreeByID.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) DeleteDTreeByID(ctx, vStoreID, dtreeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDTreeByID",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).DeleteDTreeByID), ctx, vStoreID, dtreeID)
+}
+
+// DeleteDTreeByName mocks base method.
+func (m *MockOceanASeriesClientInterface) DeleteDTreeByName(ctx context.Context,
+	vStoreID, parentName, dtreeName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDTreeByName", ctx, vStoreID, parentName, dtreeName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDTreeByName indicates an expected call of DeleteDTreeByName.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) DeleteDTreeByName(ctx, vStoreID, parentName, dtreeName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDTreeByName",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).DeleteDTreeByName), ctx, vStoreID, parentName, dtreeName)
+}
+
+// DeleteDTreeQuota mocks base method.
+func (m *MockOceanASeriesClientInterface) DeleteDTreeQuota(ctx context.Context, quotaID, vStoreID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDTreeQuota", ctx, quotaID, vStoreID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDTreeQuota indicates an expected call of DeleteDTreeQuota.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) DeleteDTreeQuota(ctx, quotaID, vStoreID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDTreeQuota",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).DeleteDTreeQuota), ctx, quotaID, vStoreID)
+}
+
+// DeleteDTreeQuotaByParentID mocks base method.
+func (m *MockOceanASeriesClientInterface) DeleteDTreeQuotaByParentID(ctx context.Context,
+	parentID, vStoreID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDTreeQuotaByParentID", ctx, parentID, vStoreID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDTreeQuotaByParentID indicates an expected call of DeleteDTreeQuotaByParentID.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) DeleteDTreeQuotaByParentID(ctx, parentID, vStoreID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDTreeQuotaByParentID",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).DeleteDTreeQuotaByParentID), ctx, parentID, vStoreID)
 }
 
 // DeleteDataTurboShare mocks base method.
@@ -458,6 +552,56 @@ func (mr *MockOceanASeriesClientInterfaceMockRecorder) GetBackendID() *gomock.Ca
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBackendID",
 		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).GetBackendID))
+}
+
+// GetDTreeByID mocks base method.
+func (m *MockOceanASeriesClientInterface) GetDTreeByID(ctx context.Context, dtreeID string) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDTreeByID", ctx, dtreeID)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDTreeByID indicates an expected call of GetDTreeByID.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) GetDTreeByID(ctx, dtreeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDTreeByID",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).GetDTreeByID), ctx, dtreeID)
+}
+
+// GetDTreeByName mocks base method.
+func (m *MockOceanASeriesClientInterface) GetDTreeByName(ctx context.Context,
+	parentName, dtreeName, vstoreId string) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDTreeByName", ctx, parentName, dtreeName, vstoreId)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDTreeByName indicates an expected call of GetDTreeByName.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) GetDTreeByName(ctx, parentName, dtreeName, vstoreId any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDTreeByName",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).GetDTreeByName), ctx, parentName, dtreeName, vstoreId)
+}
+
+// GetDTreeQuota mocks base method.
+func (m *MockOceanASeriesClientInterface) GetDTreeQuota(ctx context.Context, parentID, vStoreID string) (map[string]any,
+	error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDTreeQuota", ctx, parentID, vStoreID)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDTreeQuota indicates an expected call of GetDTreeQuota.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) GetDTreeQuota(ctx, parentID, vStoreID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDTreeQuota",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).GetDTreeQuota), ctx, parentID, vStoreID)
 }
 
 // GetDataTurboShareByPath mocks base method.
@@ -957,6 +1101,38 @@ func (mr *MockOceanASeriesClientInterfaceMockRecorder) SetSystemInfo(ctx any) *g
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSystemInfo",
 		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).SetSystemInfo), ctx)
+}
+
+// UpdateDTree mocks base method.
+func (m *MockOceanASeriesClientInterface) UpdateDTree(ctx context.Context, dtreeID string,
+	req *client.DTreeUpdateRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDTree", ctx, dtreeID, req)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateDTree indicates an expected call of UpdateDTree.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) UpdateDTree(ctx, dtreeID, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDTree",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).UpdateDTree), ctx, dtreeID, req)
+}
+
+// UpdateDTreeQuota mocks base method.
+func (m *MockOceanASeriesClientInterface) UpdateDTreeQuota(ctx context.Context, quotaID string,
+	req *client.DTreeQuotaUpdateRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDTreeQuota", ctx, quotaID, req)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateDTreeQuota indicates an expected call of UpdateDTreeQuota.
+func (mr *MockOceanASeriesClientInterfaceMockRecorder) UpdateDTreeQuota(ctx, quotaID, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDTreeQuota",
+		reflect.TypeOf((*MockOceanASeriesClientInterface)(nil).UpdateDTreeQuota), ctx, quotaID, req)
 }
 
 // UpdateFileSystem mocks base method.

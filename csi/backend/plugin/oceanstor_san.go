@@ -171,6 +171,8 @@ func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
 		if err != nil {
 			return nil, err
 		}
+
+		name = resolveSnapshotLunName(name, parameters)
 	}
 
 	params := getParams(ctx, name, parameters)
@@ -181,6 +183,28 @@ func (p *OceanstorSanPlugin) CreateVolume(ctx context.Context,
 		return nil, err
 	}
 	return volObj, nil
+}
+
+func resolveSnapshotLunName(name string, parameters map[string]any) string {
+	// hyperMetro SAN is not support restore by snapshot lun directly
+	useMetro, ok := utils.GetValue[string](parameters, "hyperMetro")
+	if ok && useMetro == "true" {
+		return name
+	}
+
+	// volume is create from snapshot
+	snapshot, ok := utils.GetValue[string](parameters, "sourceSnapshotName")
+	if !ok || snapshot == "" {
+		return name
+	}
+
+	// volume use snapshot restore mode
+	mode, ok := utils.GetValue[string](parameters, "restoreMode")
+	if ok && mode == constants.RestoreModeSnapshot {
+		return utils.GetSnapshotName(snapshot)
+	}
+
+	return name
 }
 
 // QueryVolume used to query volume

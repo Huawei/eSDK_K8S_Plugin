@@ -91,9 +91,9 @@ func TestSAN_CreateHyperMetroSnapshot_Succeed(t *testing.T) {
 	// arrange
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
-	remoteMockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
 	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
-	remoteCli := mock_client.NewMockOceanstorClientInterface(remoteMockCtrl)
+	remoteCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	san := NewSAN(cli, remoteCli, nil, constants.OceanStorDoradoV6)
 	lunName := "mock-lunName"
 	snapshotName := "mock-snapshotName"
@@ -145,6 +145,7 @@ func TestSAN_CreateHyperMetroSnapshot_Failed(t *testing.T) {
 	// arrange
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
 	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	san := NewSAN(cli, nil, nil, constants.OceanStorDoradoV6)
 	lunName := "mock-lunName"
@@ -170,6 +171,7 @@ func TestSAN_CreateHyperMetro_Succeed(t *testing.T) {
 	// arrange
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
 	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	san := NewSAN(cli, nil, nil, constants.OceanStorDoradoV6)
 	params := map[string]interface{}{
@@ -213,10 +215,230 @@ func TestSAN_CreateHyperMetro_Succeed(t *testing.T) {
 	}
 }
 
+func TestSAN_Create_Success(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	san := NewSAN(cli, nil, nil, constants.OceanStorDoradoV6)
+
+	params := map[string]interface{}{
+		"name":            "test-lun",
+		"storagepool":     "test-pool",
+		"capacity":        int64(1073741824),
+		"applicationtype": "testApp",
+	}
+
+	pool := map[string]interface{}{
+		"ID": "pool-123",
+	}
+	lun := map[string]interface{}{
+		"ID":       "lun-123",
+		"WWN":      "wwn-123456",
+		"CAPACITY": "1073741824",
+	}
+
+	// mock - preCreate
+	cli.EXPECT().GetPoolByName(ctx, "test-pool").Return(pool, nil)
+	cli.EXPECT().MakeLunName("test-lun").Return("k8s_test-lun")
+	cli.EXPECT().GetApplicationTypeByName(ctx, "testApp").Return("1", nil)
+
+	// mock - createLocalLun
+	cli.EXPECT().GetLunByName(ctx, "k8s_test-lun").Return(nil, nil)
+	cli.EXPECT().CreateLun(ctx, gomock.Any()).Return(lun, nil)
+
+	// action
+	vol, err := san.Create(ctx, params)
+
+	// assert
+	assert.NoError(t, err)
+	assert.NotNil(t, vol)
+	assert.Equal(t, "k8s_test-lun", vol.GetVolumeName())
+}
+
+func TestSAN_Create_WithHyperMetro_Success(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	metroCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	san := NewSAN(cli, metroCli, nil, constants.OceanStorDoradoV6)
+
+	params := map[string]interface{}{
+		"name":              "test-lun",
+		"storagepool":       "test-pool",
+		"remotestoragepool": "test-remote-pool",
+		"capacity":          int64(1073741824),
+		"applicationtype":   "testApp",
+		"hypermetro":        true,
+		"metrodomain":       "test-domain",
+	}
+
+	pool := map[string]interface{}{
+		"ID": "pool-123",
+	}
+	remotePool := map[string]interface{}{
+		"ID": "remote-pool-456",
+	}
+	domain := map[string]interface{}{
+		"ID":            "domain-789",
+		"RUNNINGSTATUS": "1",
+	}
+	lun := map[string]interface{}{
+		"ID":       "lun-123",
+		"WWN":      "wwn-123456",
+		"CAPACITY": "1073741824",
+	}
+	remoteLun := map[string]interface{}{
+		"ID":        "remote-lun-456",
+		"WWN":       "remote-wwn-456789",
+		"CAPACITY":  "1073741824",
+		"IOCLASSID": "",
+	}
+
+	// mock - preCreate for local cli
+	cli.EXPECT().GetPoolByName(ctx, "test-pool").Return(pool, nil)
+	cli.EXPECT().MakeLunName("test-lun").Return("k8s_test-lun")
+	cli.EXPECT().GetApplicationTypeByName(ctx, "testApp").Return("1", nil)
+
+	// mock - getHyperMetroParams
+	metroCli.EXPECT().GetPoolByName(ctx, "test-remote-pool").Return(remotePool, nil)
+	metroCli.EXPECT().GetHyperMetroDomainByName(ctx, "test-domain").Return(domain, nil)
+	metroCli.EXPECT().GetApplicationTypeByName(ctx, "testApp").Return("1", nil)
+
+	// mock - createLocalLun
+	cli.EXPECT().GetLunByName(ctx, "k8s_test-lun").Return(nil, nil)
+	cli.EXPECT().CreateLun(ctx, gomock.Any()).Return(lun, nil)
+
+	// mock - createRemoteLun
+	metroCli.EXPECT().GetLunByName(ctx, "k8s_test-lun").Return(nil, nil)
+	metroCli.EXPECT().CreateLun(ctx, gomock.Any()).Return(remoteLun, nil)
+
+	// mock - createHyperMetro
+	cli.EXPECT().GetHyperMetroPairByLocalObjID(ctx, "lun-123").Return(nil, nil)
+	cli.EXPECT().CreateHyperMetroPair(ctx, gomock.Any()).Return(map[string]interface{}{"ID": "pair-123"}, nil)
+	cli.EXPECT().GetHyperMetroPair(ctx, "pair-123").Return(map[string]interface{}{
+		"HEALTHSTATUS":  "1",
+		"RUNNINGSTATUS": hyperMetroPairRunningStatusNormal,
+	}, nil)
+
+	// action
+	vol, err := san.Create(ctx, params)
+
+	// assert
+	assert.NoError(t, err)
+	assert.NotNil(t, vol)
+	assert.Equal(t, "k8s_test-lun", vol.GetVolumeName())
+}
+
+func TestSAN_Create_PreCreateFailed(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	san := NewSAN(cli, nil, nil, constants.OceanStorDoradoV6)
+
+	params := map[string]interface{}{
+		"name":        "test-lun",
+		"capacity":    int64(1073741824),
+		"storagepool": "",
+	}
+
+	// action
+	vol, err := san.Create(ctx, params)
+
+	// assert
+	assert.Nil(t, vol)
+	assert.ErrorContains(t, err, "must specify storage pool")
+}
+
+func TestSAN_Create_LunAlreadyExistsWithInsufficientCapacity(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	san := NewSAN(cli, nil, nil, constants.OceanStorDoradoV6)
+
+	params := map[string]interface{}{
+		"name":        "test-lun",
+		"storagepool": "test-pool",
+		"capacity":    int64(1073741824),
+	}
+
+	pool := map[string]interface{}{
+		"ID": "pool-123",
+	}
+	existingLun := map[string]interface{}{
+		"ID":       "lun-123",
+		"WWN":      "wwn-123456",
+		"CAPACITY": "536870912",
+	}
+
+	// mock - preCreate
+	cli.EXPECT().GetPoolByName(ctx, "test-pool").Return(pool, nil)
+	cli.EXPECT().MakeLunName("test-lun").Return("k8s_test-lun")
+
+	// mock - createLocalLun: lun already exists
+	cli.EXPECT().GetLunByName(ctx, "k8s_test-lun").Return(existingLun, nil)
+
+	// action
+	vol, err := san.Create(ctx, params)
+
+	// assert
+	assert.Nil(t, vol)
+	assert.ErrorContains(t, err, "actual capacity is less than requested capacity")
+}
+
+func TestSAN_Create_LunAlreadyExists(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	san := NewSAN(cli, nil, nil, constants.OceanStorDoradoV6)
+
+	params := map[string]interface{}{
+		"name":        "test-lun",
+		"storagepool": "test-pool",
+		"capacity":    int64(1073741824),
+	}
+
+	pool := map[string]interface{}{
+		"ID": "pool-123",
+	}
+	existingLun := map[string]interface{}{
+		"ID":       "lun-123",
+		"WWN":      "wwn-123456",
+		"CAPACITY": "1073741824",
+	}
+
+	// mock - preCreate
+	cli.EXPECT().GetPoolByName(ctx, "test-pool").Return(pool, nil)
+	cli.EXPECT().MakeLunName("test-lun").Return("k8s_test-lun")
+
+	// mock - createLocalLun: lun already exists
+	cli.EXPECT().GetLunByName(ctx, "k8s_test-lun").Return(existingLun, nil)
+	cli.EXPECT().GetClonePairInfo(ctx, "lun-123").Return(nil, nil)
+	cli.EXPECT().DeleteClonePair(ctx, "lun-123").Return(nil)
+
+	// action
+	vol, err := san.Create(ctx, params)
+
+	// assert
+	assert.NoError(t, err)
+	assert.NotNil(t, vol)
+	assert.Equal(t, "k8s_test-lun", vol.GetVolumeName())
+}
+
 func TestSAN_DeleteSnapshot_WithHyperMetro_Success(t *testing.T) {
 	// arrange
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
 	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	metroCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	san := NewSAN(cli, metroCli, nil, constants.OceanStorDoradoV6)

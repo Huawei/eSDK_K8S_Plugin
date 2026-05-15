@@ -35,6 +35,7 @@ type OceanASeriesClientInterface interface {
 
 	ASeriesVStore
 	ASeriesFilesystem
+	ASeriesDtree
 
 	GetBackendID() string
 	GetDeviceSN() string

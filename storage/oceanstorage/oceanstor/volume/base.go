@@ -279,7 +279,10 @@ func (p *Base) prepareVolObj(ctx context.Context, params, res map[string]interfa
 		}
 	}
 
-	capacity := utils.GetValueOrFallback(params, "capacity", int64(0))
+	capacity := utils.GetValueOrFallback(res, "capacity", int64(0))
+	if capacity == 0 {
+		capacity = utils.GetValueOrFallback(params, "capacity", int64(0))
+	}
 	volObj.SetSize(utils.TransK8SCapacity(capacity, constants.AllocationUnitBytes))
 	return volObj, nil
 }

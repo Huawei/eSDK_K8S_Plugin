@@ -25,7 +25,7 @@ set -o pipefail
 
 # parameters that need to be modified
 # go mod name
-MODULE=huawei-csi-driver
+MODULE=github.com/Huawei/eSDK_K8S_Plugin/v4
 # crd group name
 GROUP=xuanwu
 # code folder location, modify according to your project location

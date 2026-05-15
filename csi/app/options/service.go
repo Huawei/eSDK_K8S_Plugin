@@ -68,6 +68,7 @@ type serviceOptions struct {
 	kubeletVolumeDevicesDirName string
 	reportNodeIP                bool
 	enablePerNodeSecret         bool
+	enableVolumeModify          bool
 }
 
 // NewServiceOptions returns service configurations
@@ -123,6 +124,7 @@ func (opt *serviceOptions) AddFlags(ff *flag.FlagSet) {
 		"The address of exported csi server")
 	ff.BoolVar(&opt.reportNodeIP, "report-node-ip", false, "Whether to report node IP")
 	ff.BoolVar(&opt.enablePerNodeSecret, "enable-per-node-secret", false, `Whether to enable per-node create secret`)
+	ff.BoolVar(&opt.enableVolumeModify, "enable-volume-modify", false, `Whether to enable volume modify feature`)
 }
 
 // ApplyFlags assign the service flags
@@ -151,6 +153,7 @@ func (opt *serviceOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.ExportCsiServerPort = opt.exportCsiServerPort
 	cfg.ReportNodeIP = opt.reportNodeIP
 	cfg.EnablePerNodeSecret = opt.enablePerNodeSecret
+	cfg.EnableVolumeModify = opt.enableVolumeModify
 }
 
 // ValidateFlags validate the service flags

@@ -66,6 +66,8 @@ type serviceConfig struct {
 	KubeletVolumeDevicesDirName string
 	ReportNodeIP                bool
 	EnablePerNodeSecret         bool
+	// EnableVolumeModify indicates whether to enable volume modification feature.
+	EnableVolumeModify bool
 }
 
 type connectorConfig struct {
@@ -117,7 +119,7 @@ type CompletedConfig struct {
 // Complete the AppConfig and return the CompletedConfig
 func (cfg *AppConfig) Complete() (*CompletedConfig, error) {
 	k8sUtils, err := k8sutils.NewK8SUtils(cfg.KubeConfig, cfg.VolumeNamePrefix,
-		map[string]string{"provisioner": cfg.DriverName})
+		map[string]string{"provisioner": cfg.DriverName}, cfg.EnableVolumeModify)
 	if err != nil {
 		logrus.Errorf("k8sutils initialized failed %v", err)
 		return nil, err

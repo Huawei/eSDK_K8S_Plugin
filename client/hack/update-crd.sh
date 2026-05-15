@@ -36,5 +36,5 @@ then
   exit 1;
 fi
 
-MODULE=huawei-csi-driver
+MODULE=github.com/Huawei/eSDK_K8S_Plugin/v4
 $CONTROLLER_GEN paths=${MODULE}/client/apis/xuanwu/v1 crd:crdVersions=v1 output:crd:artifacts:config=deploy/crd

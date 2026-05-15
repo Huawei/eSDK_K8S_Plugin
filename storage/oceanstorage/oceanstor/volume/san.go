@@ -314,17 +314,52 @@ func (p *SAN) createLocalLun(ctx context.Context,
 			return nil, err
 		}
 	} else {
-		err := p.waitCloneFinish(ctx, lun, taskResult)
+		err = checkLunCapacity(params, lun)
+		if err != nil {
+			return nil, err
+		}
+
+		err = p.waitCloneFinish(ctx, lun, taskResult)
 		if err != nil {
 			log.AddContext(ctx).Errorf("Wait clone finish for LUN %s error: %v", lunName, err)
 			return nil, err
 		}
 	}
 
+	capacityStr := utils.GetValueOrFallback(lun, "CAPACITY", "0")
+	capacity, err := strconv.ParseInt(capacityStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
+	if err != nil {
+		return nil, fmt.Errorf("format lun capacity failed, err: %w", err)
+	}
+
 	return map[string]interface{}{
+		"capacity":   capacity,
 		"localLunID": lun["ID"].(string),
 		"lunWWN":     lun["WWN"].(string),
 	}, nil
+}
+
+func checkLunCapacity(requestParams, actualLun map[string]interface{}) error {
+	actualCapacityStr, ok := utils.GetValue[string](actualLun, "CAPACITY")
+	if !ok {
+		return fmt.Errorf("get lun capacity failed, lun: %v", actualLun)
+	}
+	actualCapacity, err := strconv.ParseInt(actualCapacityStr, constants.DefaultIntBase, constants.DefaultIntBitSize)
+	if err != nil {
+		return fmt.Errorf("convert lun capacity to int failed, err: %w, value: %s", err, actualCapacityStr)
+	}
+
+	requestCapacity, ok := utils.GetValue[int64](requestParams, "capacity")
+	if !ok {
+		return fmt.Errorf("get requested capacity failed, params: %v", requestParams)
+	}
+
+	if actualCapacity < requestCapacity {
+		return fmt.Errorf("lun is already exist, but actual capacity is less than requested capacity, "+
+			"requested %d, actual %d", requestCapacity, actualCapacity)
+	}
+
+	return nil
 }
 
 func (p *SAN) clonePair(ctx context.Context, params map[string]interface{}) (map[string]interface{}, error) {

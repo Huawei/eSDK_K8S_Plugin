@@ -21,14 +21,27 @@ package api
 const (
 	// ManageFileSystemPath is the path for managing filesystem.
 	ManageFileSystemPath = "/filesystem"
+
+	// ManageDTreePath is the path for creating, querying, and deleting DTree by name.
+	ManageDTreePath = "/QUOTATREE"
+	// GetDTreeByIDPath is the path for getting, modifying, and deleting DTree by ID.
+	GetDTreeByIDPath = "/QUOTATREE/%s"
+
+	// ManageFileSystemQuotaPath is the path for creating and querying DTree quota (POST/GET /FS_QUOTA).
+	ManageFileSystemQuotaPath = "/FS_QUOTA"
+	// UpdateOrDeleteFileSystemQuotaPath is the path for modifying/deleting DTree quota (PUT/DELETE /FS_QUOTA/{id}).
+	UpdateOrDeleteFileSystemQuotaPath = "/FS_QUOTA/%s"
+
 	// ManageDataTurboShare is the path for managing DataTurbo share.
 	ManageDataTurboShare = "/DATATURBO_SHARE"
 	// DeleteDataTurboShare is the path for deleting a DataTurbo share.
 	DeleteDataTurboShare = "/DATATURBO_SHARE/%s"
-	// ManageDataTurboShareUser is the path for managing DataTurbo share auth user.
+
+	// ManageDataTurboShareUser is the path for managing and querying DataTurbo share auth user.
 	ManageDataTurboShareUser = "/DATATURBO_SHARE_AUTH"
 	// RemoveDataTurboShareUser is the path for removing an auth user from a DataTurbo share.
 	RemoveDataTurboShareUser = "/DATATURBO_SHARE_AUTH/%s"
+
 	// QueryKVCachePath is the path for querying KVCaches.
 	QueryKVCachePath = "/kv_cache_store/batch"
 	// ManageKVCachePath is the path for managing KVCaches.

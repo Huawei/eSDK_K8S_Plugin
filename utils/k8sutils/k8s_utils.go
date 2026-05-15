@@ -26,6 +26,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -74,6 +75,9 @@ type Interface interface {
 	// GetKvCacheStoreIdByVolumeId returns kvCacheStoreId field of PV by volume id
 	GetKvCacheStoreIdByVolumeId(volumeId string) (string, error)
 
+	// UpdateVAsWithHostMap updates VAs with the given host map
+	UpdateVAsWithHostMap(ctx context.Context, volumeId string, hostMap map[string]map[string]interface{}) error
+
 	// Activate the k8s helpers when start the service
 	Activate()
 	// Deactivate the k8s helpers when stop the service
@@ -93,13 +97,15 @@ type KubeClient struct {
 	informerFactory   informers.SharedInformerFactory
 	pvcAccessor       *ResourceAccessor[*corev1.PersistentVolumeClaim]
 	pvAccessor        *ResourceAccessor[*corev1.PersistentVolume]
+	vaAccessor        *ResourceAccessor[*storagev1.VolumeAttachment]
 
 	volumeNamePrefix string
 	volumeLabels     map[string]string
 }
 
 // NewK8SUtils returns an object of Kubernetes utility interface
-func NewK8SUtils(kubeConfig string, volumeNamePrefix string, volumeLabels map[string]string) (Interface, error) {
+func NewK8SUtils(kubeConfig string, volumeNamePrefix string,
+	volumeLabels map[string]string, enableVolumeModify bool) (Interface, error) {
 	var (
 		config    *rest.Config
 		clientset *kubernetes.Clientset
@@ -137,6 +143,13 @@ func NewK8SUtils(kubeConfig string, volumeNamePrefix string, volumeLabels map[st
 	if err = initPVAccessor(helper); err != nil {
 		return nil, err
 	}
+
+	if enableVolumeModify {
+		if err = initVAAccessor(helper); err != nil {
+			return nil, err
+		}
+	}
+
 	return helper, nil
 }
 

@@ -92,7 +92,8 @@ const (
 	DmeCapacityUnitGb int64 = 1024 * 1024 * 1024
 	// DmeCapacityUnitMb default is 1MB, it is the capacity unit for Dme
 	DmeCapacityUnitMb int64 = 1024 * 1024
-
+	// ASeriesDTreeCapacityUnit default is 1 Bytes, it is the capacity unit for FusionStorage DTree quota
+	ASeriesDTreeCapacityUnit int64 = 1
 	// DefaultIntBase is the default value of int base
 	DefaultIntBase = 10
 	// DefaultIntBitSize is the default value of bit size
@@ -126,6 +127,10 @@ const (
 	AuthModeScopeLDAP = "1"
 	// KvCacheStoreId is the id of kvCache
 	KvCacheStoreId = "kvcacheStoreId"
+	// DefaultDescription is the default description
+	DefaultDescription = "Created from Kubernetes CSI"
+	// RescanLabelKey is the label key of va need to rescan
+	RescanLabelKey = "modify.xuanwu.huawei.io/needScan"
 )
 
 var (
@@ -153,4 +158,11 @@ const (
 	AuthClientReadWrite AuthClientAccessVal = 1
 	// AuthClientNoAccess means no access
 	AuthClientNoAccess AuthClientAccessVal = 5
+)
+
+const (
+	// RestoreModeClone defines the volume restore mode of clone (default mode)
+	RestoreModeClone = "clone"
+	// RestoreModeSnapshot defines the volume restore mode of snapshot
+	RestoreModeSnapshot = "snapshot"
 )

@@ -27,24 +27,28 @@ type VolumeModifyContentSpec struct {
 	// +kubebuilder:validation:Required
 	VolumeModifyClaimName string `json:"volumeModifyClaimName" protobuf:"bytes,1,name=volumeModifyClaimName"`
 
+	// PVName used to config the source PersistentVolume name.
+	// +kubebuilder:validation:Optional
+	PVName string `json:"pvName" protobuf:"bytes,2,name=pvName"`
+
 	// SourceVolume used to config the source PersistentVolumeClaim, format is <namespace>/<name>.
 	// +kubebuilder:validation:Required
-	SourceVolume string `json:"sourceVolume" protobuf:"bytes,2,name=sourceVolume"`
+	SourceVolume string `json:"sourceVolume" protobuf:"bytes,3,name=sourceVolume"`
 
 	// VolumeHandle used to config the source PersistentVolumeClaim volumeHandle.
 	// +kubebuilder:validation:Required
-	VolumeHandle string `json:"volumeHandle" protobuf:"bytes,2,name=volumeHandle"`
+	VolumeHandle string `json:"volumeHandle" protobuf:"bytes,4,name=volumeHandle"`
 
 	// Parameters csi driver specific parameters passed in as opaque key-value pairs. This field is OPTIONAL.
 	// The driver is responsible for parsing and validating these parameters.
 	// +optional
 	// +kubebuilder:validation:Optional
-	Parameters map[string]string `json:"parameters,omitempty" protobuf:"bytes,3,opt,name=parameters"`
+	Parameters map[string]string `json:"parameters,omitempty" protobuf:"bytes,5,opt,name=parameters"`
 
 	// StorageClassParameters storageClass parameters
 	// +optional
 	// +kubebuilder:validation:Optional
-	StorageClassParameters map[string]string `json:"storageClassParameters,omitempty" protobuf:"bytes,3,opt,name=storageClassParameters"`
+	StorageClassParameters map[string]string `json:"storageClassParameters,omitempty" protobuf:"bytes,6,opt,name=storageClassParameters"`
 }
 
 // VolumeModifyContentStatus defines the desired status of VolumeModifyContent
@@ -79,6 +83,10 @@ const (
 	// VolumeModifyContentCreating means the VolumeModifyContent has been accepted,
 	// but it is in the process of being modified.
 	VolumeModifyContentCreating VolumeModifyContentPhase = "Creating"
+
+	// VolumeModifyContentStaging means the VolumeModifyContent has been Staging
+	// hypermetro volume, but is configuring the metro business link.
+	VolumeModifyContentStaging VolumeModifyContentPhase = "Staging"
 
 	// VolumeModifyContentCompleted means the VolumeModifyContent have been completed.
 	VolumeModifyContentCompleted VolumeModifyContentPhase = "Completed"

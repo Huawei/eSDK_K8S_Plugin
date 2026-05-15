@@ -43,20 +43,15 @@ func verifyProtocolAndPortals(parameters map[string]interface{}, storage string)
 		return "", []string{}, fmt.Errorf("protocol must be provided for %s backend", storage)
 	}
 
-	if (storage == constants.OceanStorNas || storage == constants.OceanStorDtree) &&
-		(protocol != ProtocolNfs && protocol != ProtocolNfsPlus) {
-		return "", []string{}, fmt.Errorf("protocol must be %s or %s for %s backend", ProtocolNfs,
-			ProtocolNfsPlus, storage)
-	}
-
-	if (storage == constants.FusionNas || storage == constants.FusionDTree) &&
-		(protocol != constants.ProtocolNfs && protocol != constants.ProtocolDpc) {
-		return "", []string{}, fmt.Errorf("protocol must be %s or %s for %s backend", constants.ProtocolNfs,
-			constants.ProtocolDpc, storage)
+	if err := validateProtocol(storage, protocol); err != nil {
+		return "", []string{}, err
 	}
 
 	if protocol == constants.ProtocolDpc {
 		return "", nil, nil
+	}
+	if protocol == constants.ProtocolDtfs {
+		return protocol, nil, nil
 	}
 
 	portals, exist := parameters["portals"].([]interface{})
@@ -72,6 +67,25 @@ func verifyProtocolAndPortals(parameters map[string]interface{}, storage string)
 	}
 
 	return protocol, portalsStrs, nil
+}
+
+// validateProtocol validates protocol for specific storage types
+func validateProtocol(storage, protocol string) error {
+	switch storage {
+	case constants.OceanStorNas, constants.OceanStorDtree:
+		if protocol != ProtocolNfs && protocol != ProtocolNfsPlus {
+			return fmt.Errorf("protocol must be %s or %s for %s backend", ProtocolNfs, ProtocolNfsPlus, storage)
+		}
+	case constants.FusionNas, constants.FusionDTree:
+		if protocol != constants.ProtocolNfs && protocol != constants.ProtocolDpc {
+			return fmt.Errorf("protocol must be %s or %s for %s backend", constants.ProtocolNfs, constants.ProtocolDpc, storage)
+		}
+	case constants.OceanStorASeriesNas, constants.OceanStorASeriesDtree:
+		if protocol != constants.ProtocolNfs && protocol != constants.ProtocolDtfs {
+			return fmt.Errorf("protocol must be %s or %s for %s backend", constants.ProtocolNfs, constants.ProtocolDtfs, storage)
+		}
+	}
+	return nil
 }
 
 func checkNfsPlusPortalsFormat(portals []string) bool {
