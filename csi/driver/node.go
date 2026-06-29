@@ -19,7 +19,6 @@ package driver
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -235,86 +234,119 @@ func (d *CsiDriver) NodeGetCapabilities(ctx context.Context,
 func (d *CsiDriver) NodeGetVolumeStats(ctx context.Context,
 	req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	defer utils.RecoverPanic(ctx)
+
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
-		msg := fmt.Sprintf("no volume ID provided")
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.InvalidArgument, msg)
+		log.AddContext(ctx).Errorln("no volume ID provided")
+		return nil, status.Error(codes.InvalidArgument, "no volume ID provided")
 	}
 
 	volumePath := req.GetVolumePath()
 	if len(volumePath) == 0 {
-		msg := fmt.Sprintf("no volume Path provided")
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.InvalidArgument, msg)
+		log.AddContext(ctx).Errorln("no volume Path provided")
+		return nil, status.Error(codes.InvalidArgument, "no volume Path provided")
 	}
 
+	isBlock, err := utils.IsBlockDevice(volumePath)
+	if err != nil {
+		log.AddContext(ctx).Errorf("check block device for volume %s failed: %v", volumeID, err)
+		return nil, status.Errorf(codes.Internal, "check block device for volume %s failed: %v", volumeID, err)
+	}
+
+	if isBlock {
+		return d.getBlockVolumeStats(ctx, volumeID, volumePath)
+	}
+	return d.getFilesystemVolumeStats(ctx, volumePath)
+}
+
+func (d *CsiDriver) getBlockVolumeStats(ctx context.Context, volumeID, volumePath string) (
+	*csi.NodeGetVolumeStatsResponse, error) {
+	blockSize, err := utils.GetBlockDeviceSize(volumePath)
+	if err != nil {
+		log.AddContext(ctx).Errorf("get block size for volume %s failed: %v", volumeID, err)
+		return nil, status.Errorf(codes.Internal, "get block size for volume %s failed: %v", volumeID, err)
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{{Total: blockSize, Unit: csi.VolumeUsage_BYTES}},
+	}, nil
+}
+
+func (d *CsiDriver) getFilesystemVolumeStats(ctx context.Context, volumePath string) (
+	*csi.NodeGetVolumeStatsResponse, error) {
 	volumeMetrics, err := utils.GetVolumeMetrics(volumePath)
 	if err != nil {
-		msg := fmt.Sprintf("get volume metrics failed, reason %v", err)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.AddContext(ctx).Errorf("get volume metrics failed: %v", err)
+		return nil, status.Errorf(codes.Internal, "get volume metrics failed: %v", err)
 	}
 
-	volumeAvailable, ok := volumeMetrics.Available.AsInt64()
+	bytesUsage, err := d.extractBytesUsage(ctx, volumeMetrics)
+	if err != nil {
+		return nil, err
+	}
+
+	inodesUsage, err := d.extractInodesUsage(ctx, volumeMetrics)
+	if err != nil {
+		return nil, err
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{bytesUsage, inodesUsage},
+	}, nil
+}
+
+func (d *CsiDriver) extractBytesUsage(ctx context.Context, vm *utils.VolumeMetrics) (*csi.VolumeUsage, error) {
+	available, ok := vm.Available.AsInt64()
 	if !ok {
-		msg := fmt.Sprintf("Volume metrics available %v is invalid", volumeMetrics.Available)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.AddContext(ctx).Errorf("Volume metrics available %v is invalid", vm.Available)
+		return nil, status.Errorf(codes.Internal, "Volume metrics available %v is invalid", vm.Available)
 	}
 
-	volumeCapacity, ok := volumeMetrics.Capacity.AsInt64()
+	capacity, ok := vm.Capacity.AsInt64()
 	if !ok {
-		msg := fmt.Sprintf("Volume metrics capacity %v is invalid", volumeMetrics.Capacity)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.AddContext(ctx).Errorf("Volume metrics capacity %v is invalid", vm.Capacity)
+		return nil, status.Errorf(codes.Internal, "Volume metrics capacity %v is invalid", vm.Capacity)
 	}
 
-	volumeUsed, ok := volumeMetrics.Used.AsInt64()
+	used, ok := vm.Used.AsInt64()
 	if !ok {
-		msg := fmt.Sprintf("Volume metrics used %v is invalid", volumeMetrics.Used)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.AddContext(ctx).Errorf("Volume metrics used %v is invalid", vm.Used)
+		return nil, status.Errorf(codes.Internal, "Volume metrics used %v is invalid", vm.Used)
 	}
 
-	volumeInodesFree, ok := volumeMetrics.InodesFree.AsInt64()
+	return &csi.VolumeUsage{
+		Available: available,
+		Total:     capacity,
+		Used:      used,
+		Unit:      csi.VolumeUsage_BYTES,
+	}, nil
+}
+
+func (d *CsiDriver) extractInodesUsage(ctx context.Context, vm *utils.VolumeMetrics) (*csi.VolumeUsage, error) {
+	inodesFree, ok := vm.InodesFree.AsInt64()
 	if !ok {
-		msg := fmt.Sprintf("Volume metrics inodesFree %v is invalid", volumeMetrics.InodesFree)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.AddContext(ctx).Errorf("Volume metrics inodesFree %v is invalid", vm.InodesFree)
+		return nil, status.Errorf(codes.Internal, "Volume metrics inodesFree %v is invalid", vm.InodesFree)
 	}
 
-	volumeInodes, ok := volumeMetrics.Inodes.AsInt64()
+	inodes, ok := vm.Inodes.AsInt64()
 	if !ok {
-		msg := fmt.Sprintf("Volume metrics inodes %v is invalid", volumeMetrics.Inodes)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.AddContext(ctx).Errorf("Volume metrics inodes %v is invalid", vm.Inodes)
+		return nil, status.Errorf(codes.Internal, "Volume metrics inodes %v is invalid", vm.Inodes)
 	}
 
-	volumeInodesUsed, ok := volumeMetrics.InodesUsed.AsInt64()
+	inodesUsed, ok := vm.InodesUsed.AsInt64()
 	if !ok {
-		msg := fmt.Sprintf("Volume metrics inodesUsed %v is invalid", volumeMetrics.InodesUsed)
-		log.AddContext(ctx).Errorln(msg)
-		return nil, status.Error(codes.Internal, msg)
+		log.AddContext(ctx).Errorf("Volume metrics inodesUsed %v is invalid", vm.InodesUsed)
+		return nil, status.Errorf(codes.Internal, "Volume metrics inodesUsed %v is invalid", vm.InodesUsed)
 	}
 
-	response := &csi.NodeGetVolumeStatsResponse{
-		Usage: []*csi.VolumeUsage{
-			{
-				Available: volumeAvailable,
-				Total:     volumeCapacity,
-				Used:      volumeUsed,
-				Unit:      csi.VolumeUsage_BYTES,
-			},
-			{
-				Available: volumeInodesFree,
-				Total:     volumeInodes,
-				Used:      volumeInodesUsed,
-				Unit:      csi.VolumeUsage_INODES,
-			},
-		},
-	}
-	return response, nil
+	return &csi.VolumeUsage{
+		Available: inodesFree,
+		Total:     inodes,
+		Used:      inodesUsed,
+		Unit:      csi.VolumeUsage_INODES,
+	}, nil
 }
 
 // NodeExpandVolume used to node expand volume

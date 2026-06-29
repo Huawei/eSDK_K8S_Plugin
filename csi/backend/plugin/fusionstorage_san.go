@@ -393,3 +393,31 @@ func (p *FusionStorageSanPlugin) verifyFusionStorageSanParam(config map[string]i
 
 	return nil
 }
+
+// GetVolumeStatus get volume health status
+func (p *FusionStorageSanPlugin) GetVolumeStatus(ctx context.Context,
+	query utils.VolumeQuery) utils.VolumeStatus {
+
+	status := utils.VolumeStatus{Abnormal: true}
+	volumeInfo, err := p.cli.QueryVolume(ctx, query.Name)
+	if err != nil {
+		status.Message = fmt.Sprintf("Query volume %s error: %v", query.Name, err)
+		log.AddContext(ctx).Errorln(status.Message)
+		return status
+	}
+
+	if volumeInfo == nil {
+		status.Message = fmt.Sprintf("Volume %s not found", query.Name)
+		return status
+	}
+
+	healthStatus, ok := volumeInfo["health_status"].(float64)
+	if ok && int64(healthStatus) == constants.FusionSanStorageUnHealthStatus {
+		status.Message = fmt.Sprintf("Volume %s health status is fault", query.Name)
+		return status
+	}
+
+	status.Abnormal = false
+	status.Message = fmt.Sprintf("Volume %s is normal", query.Name)
+	return status
+}

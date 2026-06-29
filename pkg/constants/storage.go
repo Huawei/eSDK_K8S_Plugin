@@ -61,7 +61,7 @@ const (
 var (
 	// NasStorageTypes contains all of nas storage types
 	NasStorageTypes = []string{OceanStorNas, OceanStorDtree, FusionNas, FusionDTree, OceanStorASeriesNas,
-		OceanStorASeriesNasDme}
+		OceanStorASeriesNasDme, OceanStorASeriesDtree}
 
 	// FusionstorageProtocol contains all of fusionstorage protocols supported
 	FusionstorageProtocol = []string{ProtocolIscsi, ProtocolScsi}
@@ -157,6 +157,11 @@ const (
 	NoRootSquash = "no_root_squash"
 	// NoRootSquashValue is the value of no root squash when request
 	NoRootSquashValue = 1
+
+	// FusionSanStorageUnHealthStatus is the value of un health status
+	FusionSanStorageUnHealthStatus = 2
+	// DoradoSanStorageUnHealthStatus is the value of un health status
+	DoradoSanStorageUnHealthStatus = "2"
 )
 
 // BackendCapability backend capability

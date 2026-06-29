@@ -253,7 +253,7 @@ func (ctrl *BackendController) handleClaimWork(ctx context.Context, obj interfac
 	if !ok {
 		ctrl.claimQueue.Forget(obj)
 		msg := fmt.Sprintf("expected string in claim workqueue but got %#v", obj)
-		log.AddContext(ctx).Errorf(msg)
+		log.AddContext(ctx).Errorf("%s", msg)
 		return errors.New(msg)
 	}
 
@@ -298,7 +298,7 @@ func (ctrl *BackendController) handleContentWork(ctx context.Context, obj interf
 	if !ok {
 		ctrl.contentQueue.Forget(obj)
 		msg := fmt.Sprintf("expected string in content workqueue but got %#v", obj)
-		log.AddContext(ctx).Errorf(msg)
+		log.AddContext(ctx).Errorf("%s", msg)
 		return errors.New(msg)
 	}
 

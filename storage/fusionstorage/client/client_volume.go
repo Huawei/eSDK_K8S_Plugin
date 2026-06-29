@@ -35,6 +35,7 @@ const (
 type Volume interface {
 	CreateVolume(ctx context.Context, params map[string]interface{}) error
 	GetVolumeByName(ctx context.Context, name string) (map[string]interface{}, error)
+	QueryVolume(ctx context.Context, name string) (map[string]interface{}, error)
 	DeleteVolume(ctx context.Context, name string) error
 	AttachVolume(ctx context.Context, name, ip string) error
 	DetachVolume(ctx context.Context, name, ip string) error
@@ -263,4 +264,30 @@ func (cli *RestClient) GetHostLunId(ctx context.Context, hostName, lunName strin
 		}
 	}
 	return "", nil
+}
+
+// QueryVolume queries volume info by name for health monitoring
+func (cli *RestClient) QueryVolume(ctx context.Context, name string) (map[string]interface{}, error) {
+	url := fmt.Sprintf("/api/v2/block_service/volumes?name=%s", name)
+	resp, err := cli.get(ctx, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("convert response to map failed, result: %+v", resp["result"])
+	}
+
+	code, ok := result["code"].(float64)
+	if ok && (int64(code) == volumeNameNotExist || int64(code) == queryVolumeNotExist) {
+		log.AddContext(ctx).Warningf("Volume of name %s doesn't exist", name)
+		return nil, nil
+	}
+
+	lun, ok := resp["data"].(map[string]interface{})
+	if !ok {
+		return nil, nil
+	}
+	return lun, nil
 }

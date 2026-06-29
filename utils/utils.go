@@ -305,7 +305,7 @@ func CopyMap(srcMap interface{}) map[string]interface{} {
 func StrToBool(ctx context.Context, str string) bool {
 	b, err := strconv.ParseBool(str)
 	if err != nil {
-		log.AddContext(ctx).Warningf("Parse bool string %s error, return false")
+		log.AddContext(ctx).Warningf("Parse bool string %s error, return false", str)
 		return false
 	}
 
@@ -609,8 +609,10 @@ func GetForbiddenMultipath(ctx context.Context,
 func GetRequiredMultipath(ctx context.Context,
 	multipathConfig map[string]interface{},
 	backendConfigs []map[string]interface{}) ([]string, error) {
-	serviceMap := map[string][]string{dmMultiPath: {dmMultipathService}, hwUltraPath: {nxupService},
-		hwUltraPathNVMe: {upudevService, upPlusService}}
+	serviceMap := map[string][]string{
+		dmMultiPath: {dmMultipathService}, hwUltraPath: {nxupService},
+		hwUltraPathNVMe: {upudevService, upPlusService},
+	}
 	var requiredServices []string
 
 	if !multipathConfig["volumeUseMultiPath"].(bool) {
@@ -990,4 +992,9 @@ func IsNil(val any) bool {
 	default:
 		return false
 	}
+}
+
+func StringParseInt(toString string) (int64, error) {
+	toString = strings.TrimSpace(toString)
+	return strconv.ParseInt(toString, constants.DefaultIntBase, constants.DefaultIntBitSize)
 }

@@ -267,7 +267,7 @@ func (p *DTree) checkFSExist(ctx context.Context, params,
 	}
 	if fs == nil {
 		msg := fmt.Sprintf("Filesystem %s does not exist", parentFS)
-		log.AddContext(ctx).Errorf(msg)
+		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
 	var fsID string

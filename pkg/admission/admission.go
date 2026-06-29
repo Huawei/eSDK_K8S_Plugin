@@ -24,7 +24,9 @@ import (
 
 	apiAdmissionsClient "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 )
 
 var (
@@ -64,35 +66,15 @@ func (c *Client) initClient() error {
 
 // setClient instantiates a client.
 func (c *Client) setClient() error {
-	var err error
-
 	if c.config != nil {
-		err = c.loadClient()
-	} else {
-		kubeConfig := os.Getenv("KUBECONFIG")
-		if len(kubeConfig) > 0 {
-			err = c.loadClientFromKubeConfig(kubeConfig)
-		} else {
-			err = c.loadClientFromServiceAccount()
-		}
+		return c.loadClient()
 	}
 
-	return err
-}
+	kubeConfig := os.Getenv("KUBECONFIG")
+	qps := app.GetGlobalConfig().KubeAPIQPS
+	burst := app.GetGlobalConfig().KubeAPIBurst
 
-// loadClientFromServiceAccount loads a k8s client from a ServiceAccount specified in the pod running px
-func (c *Client) loadClientFromServiceAccount() error {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return err
-	}
-
-	c.config = config
-	return c.loadClient()
-}
-
-func (c *Client) loadClientFromKubeConfig(kubeConfig string) error {
-	config, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
+	config, err := k8sutils.BuildConfig(kubeConfig, k8sutils.QPS(qps), k8sutils.Burst(burst))
 	if err != nil {
 		return err
 	}

@@ -19,11 +19,14 @@ package base
 
 import (
 	"context"
+	"errors"
 	"math"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -129,4 +132,141 @@ func TestResponse_AssertErrorWithTolerantErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHostClient_GetHostByID_Success(t *testing.T) {
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
+	hostCli := &HostClient{RestClientInterface: cli}
+	ctx := context.Background()
+	hostID := "123"
+
+	m := gomonkey.ApplyMethodReturn(cli, "Get",
+		Response{
+			Data:  map[string]interface{}{"ID": "123", "NAME": "test-host"},
+			Error: map[string]interface{}{"code": float64(0), "description": ""},
+		}, nil)
+	defer m.Reset()
+
+	host, err := hostCli.GetHostByID(ctx, hostID)
+	require.NoError(t, err)
+	require.Equal(t, map[string]interface{}{"ID": "123", "NAME": "test-host"}, host)
+}
+
+func TestHostClient_GetHostByID_NotFound(t *testing.T) {
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
+	hostCli := &HostClient{RestClientInterface: cli}
+	ctx := context.Background()
+	hostID := "123"
+
+	m := gomonkey.ApplyMethodReturn(cli, "Get",
+		Response{
+			Data:  nil,
+			Error: map[string]interface{}{"code": float64(storage.ObjectNotExist), "description": "not found"},
+		}, nil)
+	defer m.Reset()
+
+	host, err := hostCli.GetHostByID(ctx, hostID)
+	require.NoError(t, err)
+	require.Empty(t, host)
+}
+
+func TestHostClient_GetHostByID_GetError(t *testing.T) {
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
+	hostCli := &HostClient{RestClientInterface: cli}
+	ctx := context.Background()
+	hostID := "123"
+
+	m := gomonkey.ApplyMethodReturn(cli, "Get", Response{}, errors.New("network error"))
+	defer m.Reset()
+
+	_, err := hostCli.GetHostByID(ctx, hostID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "network error")
+}
+
+func TestHostClient_GetHostByID_ResponseError(t *testing.T) {
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
+	hostCli := &HostClient{RestClientInterface: cli}
+	ctx := context.Background()
+	hostID := "123"
+
+	m := gomonkey.ApplyMethodReturn(cli, "Get",
+		Response{
+			Data:  nil,
+			Error: map[string]interface{}{"code": float64(1), "description": "internal error"},
+		}, nil)
+	defer m.Reset()
+
+	_, err := hostCli.GetHostByID(ctx, hostID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "internal error")
+}
+
+func TestHostClient_GetHostByID_ConvertError(t *testing.T) {
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
+	hostCli := &HostClient{RestClientInterface: cli}
+	ctx := context.Background()
+	hostID := "123"
+
+	m := gomonkey.ApplyMethodReturn(cli, "Get",
+		Response{
+			Data:  "invalid data",
+			Error: map[string]interface{}{"code": float64(0), "description": ""},
+		}, nil)
+	defer m.Reset()
+
+	_, err := hostCli.GetHostByID(ctx, hostID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "convert host to map failed")
+}
+
+func TestSystemClient_GetAllPools_PoolNotMap(t *testing.T) {
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
+	systemCli := &SystemClient{RestClientInterface: cli}
+	ctx := context.Background()
+
+	m := gomonkey.ApplyMethodReturn(cli, "Get",
+		Response{
+			Data:  []interface{}{"not a map", 123, true},
+			Error: map[string]interface{}{"code": float64(0), "description": ""},
+		}, nil)
+	defer m.Reset()
+
+	result, err := systemCli.GetAllPools(ctx)
+	require.NoError(t, err)
+	require.Empty(t, result)
+}
+
+func TestSystemClient_GetAllPools_NameNotString(t *testing.T) {
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
+	systemCli := &SystemClient{RestClientInterface: cli}
+	ctx := context.Background()
+
+	m := gomonkey.ApplyMethodReturn(cli, "Get",
+		Response{
+			Data:  []interface{}{map[string]interface{}{"NAME": 123, "ID": "pool-1"}},
+			Error: map[string]interface{}{"code": float64(0), "description": ""},
+		}, nil)
+	defer m.Reset()
+
+	result, err := systemCli.GetAllPools(ctx)
+	require.NoError(t, err)
+	require.Empty(t, result)
+}
+
+func TestSystemClient_GetLicenseFeature_FeatureNotMap(t *testing.T) {
+	cli, _ := NewRestClient(context.Background(), &storage.NewClientConfig{})
+	systemCli := &SystemClient{RestClientInterface: cli}
+	ctx := context.Background()
+
+	m := gomonkey.ApplyMethodReturn(cli, "Get",
+		Response{
+			Data:  []interface{}{"not a map", 123, true},
+			Error: map[string]interface{}{"code": float64(0), "description": ""},
+		}, nil)
+	defer m.Reset()
+
+	result, err := systemCli.GetLicenseFeature(ctx)
+	require.NoError(t, err)
+	require.Empty(t, result)
 }

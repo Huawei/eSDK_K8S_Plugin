@@ -18,7 +18,6 @@ package plugin
 
 import (
 	"context"
-
 	// init the nfs connector
 	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/nfs"
 	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
@@ -51,6 +50,8 @@ type StoragePlugin interface {
 	DeleteDTreeVolume(context.Context, string, string) error
 	ExpandDTreeVolume(context.Context, string, string, int64) (bool, error)
 	GetDTreeParentName() string
+
+	GetVolumeStatus(context.Context, utils.VolumeQuery) utils.VolumeStatus
 
 	// SetOnline sets the online status of plugin
 	SetOnline(bool)
@@ -118,4 +119,9 @@ func (p *basePlugin) GetOnline() bool {
 // GetDTreeParentName gets the parent name of dtree plugin
 func (p *basePlugin) GetDTreeParentName() string {
 	return ""
+}
+
+// GetVolumeStatus get volume status
+func (p *basePlugin) GetVolumeStatus(context.Context, utils.VolumeQuery) utils.VolumeStatus {
+	return utils.VolumeStatus{Abnormal: false}
 }

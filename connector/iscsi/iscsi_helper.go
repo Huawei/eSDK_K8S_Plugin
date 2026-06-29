@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2026. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -65,7 +65,8 @@ type connectResult struct {
 	manualScan bool
 }
 
-type chapInfo struct {
+// ChapInfo represents CHAP authentication information used for iSCSI connections.
+type ChapInfo struct {
 	authUserName string
 	authPassword string
 	authMethod   string
@@ -77,7 +78,7 @@ type connectorInfo struct {
 	tgtIQNs     []string
 	tgtHostLUNs []string
 
-	tgtChapInfo        chapInfo
+	tgtChapInfo        ChapInfo
 	volumeUseMultiPath bool
 	multiPathType      string
 }
@@ -216,7 +217,7 @@ func updateISCSIAdmin(ctx context.Context,
 	return runISCSIAdmin(ctx, tgtPortal, targetIQN, iSCSICmd, nil)
 }
 
-func updateChapInfo(ctx context.Context, tgtPortal, targetIQN string, tgtChapInfo chapInfo) error {
+func updateChapInfo(ctx context.Context, tgtPortal, targetIQN string, tgtChapInfo ChapInfo) error {
 	if tgtChapInfo.authMethod != "" {
 		err := updateISCSIAdmin(ctx, tgtPortal, targetIQN,
 			"node.session.auth.authmethod", tgtChapInfo.authMethod)
@@ -275,7 +276,8 @@ func getAllISCSISession(ctx context.Context) [][]string {
 	return iSCSIInfo
 }
 
-func singleConnectISCSIPortal(ctx context.Context, tgtPortal, targetIQN string, tgtChapInfo chapInfo) (string, bool) {
+// SingleConnectISCSIPortal attempts to establish a single iSCSI connection to the specified iSCSI portal and target IQN.
+func SingleConnectISCSIPortal(ctx context.Context, tgtPortal, targetIQN string, tgtChapInfo ChapInfo) (string, bool) {
 	key := fmt.Sprintf("%s::%s", tgtPortal, targetIQN)
 	res, _ := singleGroup.Do(key, func() (connectResult, error) {
 		result := connectResult{}
@@ -288,7 +290,7 @@ func singleConnectISCSIPortal(ctx context.Context, tgtPortal, targetIQN string, 
 
 func connectISCSIPortal(ctx context.Context,
 	tgtPortal, targetIQN string,
-	tgtChapInfo chapInfo) (string, bool) {
+	tgtChapInfo ChapInfo) (string, bool) {
 	checkExitCode := []string{"exit status 0", "exit status 21", "exit status 255"}
 	// If the host already discovery the target, we do not need to run --op new.
 	// Therefore, we check to see if the target exists, and if we get 255(Not Found), should run --op new.
@@ -470,7 +472,7 @@ func connectVol(ctx context.Context,
 	iSCSIShareData *shareData) {
 	var device string
 
-	session, manualScan := singleConnectISCSIPortal(ctx, tgt.tgtPortal, tgt.tgtIQN, conn.tgtChapInfo)
+	session, manualScan := SingleConnectISCSIPortal(ctx, tgt.tgtPortal, tgt.tgtIQN, conn.tgtChapInfo)
 	if session != "" {
 		var numRescans, secondNextScan int
 		var hostChannelTargetLun []string

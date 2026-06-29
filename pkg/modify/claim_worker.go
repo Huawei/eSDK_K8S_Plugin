@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2026. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -58,8 +58,14 @@ const (
 	// StartCreatingContentReason reason of claim is creating
 	StartCreatingContentReason = "CreatingContent"
 
+	// DeleteFailedReason reason of delete claim failed
+	DeleteFailedReason = "DeletingFailed"
+
 	// ReCreatingScReason reason of storageclass is recreating
 	ReCreatingScReason = "RecreatingStorageClass"
+
+	// StageFailedReason reason of staging volume failed
+	StageFailedReason = "StagingVolumeFailed"
 
 	// ContentReclaimPolicyKey content reclaim policy
 	ContentReclaimPolicyKey = "modify.xuanwu.io/reclaimPolicy"
@@ -236,7 +242,7 @@ func (ctrl *VolumeModifyController) createContents(ctx context.Context, claim *x
 	if len(claimClone.Status.Contents) == 0 {
 		msg := fmt.Sprintf("storageclass %s is not associsted with any bound pvc", claim.Spec.Source.Name)
 		ctrl.eventRecorder.Event(claim, corev1.EventTypeNormal, CreateFailedReason, msg)
-		log.AddContext(ctx).Infof(msg)
+		log.AddContext(ctx).Infof("%s", msg)
 	}
 	claimClone.Status.Parameters = claim.Spec.Parameters
 	claimClone.Status.Ready = generateReadyString(0, len(claimClone.Status.Contents))
@@ -273,6 +279,10 @@ func (ctrl *VolumeModifyController) waitClaimCompleted(ctx context.Context,
 	claimClone := claim.DeepCopy()
 	for i, content := range claim.Status.Contents {
 		modifyContent, err := ctrl.contentLister.Get(content.ModifyContentName)
+		if apiErrors.IsNotFound(err) {
+			completed++
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("query content failed during wait claim completed, error: %w", err)
 		}
@@ -404,6 +414,7 @@ func (ctrl *VolumeModifyController) createContent(ctx context.Context, claim *xu
 		ObjectMeta: metav1.ObjectMeta{Name: contentName},
 		Spec: xuanwuv1.VolumeModifyContentSpec{
 			VolumeModifyClaimName:  claim.Name,
+			PVName:                 volume.Name,
 			VolumeHandle:           volume.Spec.CSI.VolumeHandle,
 			Parameters:             claim.Spec.Parameters,
 			StorageClassParameters: class.Parameters,
@@ -473,6 +484,7 @@ func generateBackupScName(claimName, scName string) string {
 func (ctrl *VolumeModifyController) syncDeleteClaim(ctx context.Context, claim *xuanwuv1.VolumeModifyClaim) error {
 	onceInitDeleteFuncList.Do(func() {
 		deleteFuncList = append(deleteFuncList,
+			ctrl.waitClaimCompleted,
 			ctrl.deleteContent,
 			ctrl.waitClaimDelete,
 		)
@@ -515,6 +527,19 @@ func (ctrl *VolumeModifyController) deleteContent(ctx context.Context,
 	contents, err := ctrl.getRefContentsFromLister(ctx, claim.Name)
 	if err != nil {
 		return nil, fmt.Errorf("query content list error: %w", err)
+	}
+
+	class, err := ctrl.client.StorageV1().StorageClasses().Get(ctx, claim.Spec.Source.Name, metav1.GetOptions{})
+	if err != nil {
+		msg := fmt.Sprintf("fetch storageclass %s error: %v", claim.Spec.Source.Name, err)
+		ctrl.eventRecorder.Event(claim, corev1.EventTypeWarning, DeleteFailedReason, msg)
+		return nil, errors.New(msg)
+	}
+
+	if class.Parameters["volumeType"] == "lun" && claim.Status.Phase == xuanwuv1.VolumeModifyClaimCreating {
+		msg := fmt.Sprintf("can not delete claim %s while creating with lun type, please wait", claim.Name)
+		ctrl.eventRecorder.Event(claim, corev1.EventTypeWarning, DeleteFailedReason, msg)
+		return nil, errors.New(msg)
 	}
 
 	phase := xuanwuv1.VolumeModifyClaimDeleting

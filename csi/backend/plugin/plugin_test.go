@@ -21,9 +21,11 @@ import (
 	"testing"
 
 	"github.com/prashantv/gostub"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -47,4 +49,14 @@ func TestMain(m *testing.M) {
 	ctx = context.Background()
 
 	m.Run()
+}
+
+func TestBasePlugin_GetVolumeStatus_Default(t *testing.T) {
+	p := &basePlugin{}
+
+	query := utils.VolumeQuery{Name: "test-volume"}
+	status := p.GetVolumeStatus(context.Background(), query)
+
+	require.False(t, status.Abnormal)
+	require.Empty(t, status.Message)
 }

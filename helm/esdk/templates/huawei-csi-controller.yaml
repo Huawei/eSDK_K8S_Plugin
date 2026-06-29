@@ -402,8 +402,8 @@ rules:
     resources: [ "volumeattachments" ]
     verbs: [ "get", "list", "watch", "update" ]
   - apiGroups: [ "" ]
-    resources: [ "persistentvolumes"]
-    verbs: [ "get","list"]
+    resources: [ "persistentvolumes" ]
+    verbs: [ "get","list" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -415,6 +415,38 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: huawei-csi-extender-runner
+subjects:
+  - kind: ServiceAccount
+    name: huawei-csi-controller
+    namespace: {{ .Values.kubernetes.namespace }}
+  {{ end }}
+
+  {{ if .Values.controller.healthMonitor.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: external-health-monitor-controller-runner
+rules:
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumes", "persistentvolumeclaims", "nodes", "pods" ]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "get", "list", "watch", "create", "patch" ]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    provisioner: csi.huawei.com
+  name: external-health-monitor-controller-role
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: external-health-monitor-controller-runner
 subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
@@ -525,6 +557,8 @@ spec:
             {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
             - "--leader-election"
             {{ end }}
+            - "--kube-api-qps={{ ((.Values.controller).provisioner).kubeApiQps | default 5 }}"
+            - "--kube-api-burst={{ ((.Values.controller).provisioner).kubeApiBurst | default 10 }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -545,6 +579,8 @@ spec:
             {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
             - "--leader-election"
             {{ end }}
+            - "--kube-api-qps={{ ((.Values.controller).attacher).kubeApiQps | default 5 }}"
+            - "--kube-api-burst={{ ((.Values.controller).attacher).kubeApiBurst | default 10 }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -567,6 +603,8 @@ spec:
             {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
             - "--leader-election"
             {{ end }}
+            - "--kube-api-qps={{ ((.Values.controller).resizer).kubeApiQps | default 5 }}"
+            - "--kube-api-burst={{ ((.Values.controller).resizer).kubeApiBurst | default 10 }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -588,6 +626,8 @@ spec:
             {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
             - "--leader-election"
             {{ end }}
+            - "--kube-api-qps={{ ((.Values.controller).snapshotter).kubeApiQps | default 5 }}"
+            - "--kube-api-burst={{ ((.Values.controller).snapshotter).kubeApiBurst | default 10 }}"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -648,6 +688,8 @@ spec:
             {{ if (.Values.leaderElection).retryPeriod }}
             - "--leader-retry-period={{ .Values.leaderElection.retryPeriod }}"
             {{ end }}
+            - "--kube-api-qps={{ ((.Values.controller).storageBackendController).kubeApiQps | default 5 }}"
+            - "--kube-api-burst={{ ((.Values.controller).storageBackendController).kubeApiBurst | default 10 }}"
           ports:
             - containerPort: {{ int .Values.controller.webhookPort | default 4433 }}
           volumeMounts:
@@ -678,6 +720,8 @@ spec:
             - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
             - "--backend-update-interval={{ .Values.csiDriver.backendUpdateInterval }}"
             - "--dr-endpoint=$(DRCSI_ENDPOINT)"
+            - "--kube-api-qps={{ ((.Values.controller).storageBackendSidecar).kubeApiQps | default 5 }}"
+            - "--kube-api-burst={{ ((.Values.controller).storageBackendSidecar).kubeApiBurst | default 10 }}"
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -708,6 +752,7 @@ spec:
             - "--log-file-size={{ ((.Values.csiDriver).controllerLogging).fileSize | default "20M" }}"
             - "--max-backups={{ int ((.Values.csiDriver).controllerLogging).maxBackups | default 9 }}"
             - "--dr-endpoint=$(DRCSI_ENDPOINT)"
+            - "--enable-volume-modify={{ .Values.controller.csiExtender.volumeModify.enabled | default false}}"
             - "--volume-modify-retry-base-delay={{ ((.Values.csiExtender).volumeModify).retryBaseDelay | default "5s" }}"
             - "--volume-modify-retry-max-delay={{ ((.Values.csiExtender).volumeModify).retryMaxDelay | default "5m" }}"
             - "--volume-modify-reconcile-delay={{ ((.Values.csiExtender).volumeModify).reconcileDelay | default "1s" }}"
@@ -725,6 +770,8 @@ spec:
             {{ if (.Values.leaderElection).retryPeriod }}
             - "--leader-retry-period={{ .Values.leaderElection.retryPeriod }}"
             {{ end }}
+            - "--kube-api-qps={{ ((.Values.controller).huaweiCsiExtender).kubeApiQps | default 5 }}"
+            - "--kube-api-burst={{ ((.Values.controller).huaweiCsiExtender).kubeApiBurst | default 10 }}"
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -749,7 +796,8 @@ spec:
             - "--logging-module={{ .Values.csiDriver.controllerLogging.module }}"
             - "--log-level={{ .Values.csiDriver.controllerLogging.level }}"
             - "--volume-name-prefix={{ default "pvc" (.Values.controller).volumeNamePrefix }}"
-            - "-enable-per-node-secret={{ .Values.csiDriver.enablePerNodeSecret | default false }}"
+            - "--enable-per-node-secret={{ .Values.csiDriver.enablePerNodeSecret | default false }}"
+            - "--health-monitor-enabled={{ ((.Values.controller).healthMonitor).enabled | default false }}"
             - "--enable-volume-modify={{ .Values.controller.csiExtender.volumeModify.enabled | default false}}"
             {{ if eq .Values.csiDriver.controllerLogging.module "file" }}
             - "--log-file-dir={{ .Values.csiDriver.controllerLogging.fileDir }}"
@@ -760,6 +808,8 @@ spec:
             - "--export-csi-service-address=$(POD_IP)"
             - "--export-csi-service-port={{ .Values.controller.exportCsiService.port }}"
             {{ end }}
+            - "--kube-api-qps={{ ((.Values.controller).huaweiCsiDriver).kubeApiQps | default 5 }}"
+            - "--kube-api-burst={{ ((.Values.controller).huaweiCsiDriver).kubeApiBurst | default 10 }}"
           env:
             - name: CSI_ENDPOINT
               value: {{ .Values.csiDriver.endpoint }}
@@ -797,6 +847,30 @@ spec:
           resources:
           {{- toYaml .Values.resources.controller.huaweiCsiDriver | nindent 12 }}
           {{ end }}
+        {{ if .Values.controller.healthMonitor.enabled }}
+        - name: external-health-monitor
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--enable-node-watcher=true"
+            - "--timeout=180s"
+            - "--monitor-interval={{ ((.Values.controller).healthMonitor).monitorInterval | default "60s" }}"
+            - "--worker-threads={{ ((.Values.controller).healthMonitor).workThreads | default 10 }}"
+            {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
+            - "--leader-election"
+            {{ end }}
+          env:
+            - name: ADDRESS
+              value: {{ .Values.csiDriver.endpoint }}
+          image: {{ required "Must provide the health monitor image" .Values.images.sidecar.healthMonitorController  }}
+          imagePullPolicy: {{ .Values.sidecarImagePullPolicy }}
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+          {{ if ((.Values.resources).controller).healthMonitor }}
+          resources:
+          {{- toYaml .Values.resources.controller.healthMonitor | nindent 12 }}
+          {{ end }}
+        {{ end }}
       volumes:
         - emptyDir: null
           name: socket-dir

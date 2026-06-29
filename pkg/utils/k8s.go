@@ -29,8 +29,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	clientV1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 
 	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
@@ -38,6 +36,7 @@ import (
 	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -365,17 +364,13 @@ func SetStorageBackendContentOnlineStatus(ctx context.Context, backendID string,
 
 // GetK8SAndCrdClient return k8sClient, crdClient
 func GetK8SAndCrdClient(ctx context.Context) (*kubernetes.Clientset, *clientSet.Clientset, error) {
-	var config *rest.Config
-	var err error
-	if app.GetGlobalConfig().KubeConfig != "" {
-		config, err = clientcmd.BuildConfigFromFlags("", app.GetGlobalConfig().KubeConfig)
-	} else {
-		config, err = rest.InClusterConfig()
-	}
+	kubeConfig := app.GetGlobalConfig().KubeConfig
+	qps := app.GetGlobalConfig().KubeAPIQPS
+	burst := app.GetGlobalConfig().KubeAPIBurst
 
+	config, err := k8sutils.BuildConfig(kubeConfig, k8sutils.QPS(qps), k8sutils.Burst(burst))
 	if err != nil {
-		log.AddContext(ctx).Errorf("Error getting cluster config, kube config: %s, error %v",
-			app.GetGlobalConfig().KubeConfig, err)
+		log.AddContext(ctx).Errorf("Error getting cluster config, kube config: %s, error %v", kubeConfig, err)
 		return nil, nil, err
 	}
 

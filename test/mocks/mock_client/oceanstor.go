@@ -114,6 +114,35 @@ func (mr *MockOceanstorClientInterfaceMockRecorder) AddHostToGroup(ctx, hostID, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddHostToGroup", reflect.TypeOf((*MockOceanstorClientInterface)(nil).AddHostToGroup), ctx, hostID, hostGroupID)
 }
 
+// AddInitiator mocks base method.
+func (m *MockOceanstorClientInterface) AddInitiator(ctx context.Context, initiator string) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddInitiator", ctx, initiator)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddInitiator indicates an expected call of AddInitiator.
+func (mr *MockOceanstorClientInterfaceMockRecorder) AddInitiator(ctx, initiator any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddInitiator", reflect.TypeOf((*MockOceanstorClientInterface)(nil).AddInitiator), ctx, initiator)
+}
+
+// AddInitiatorToHost mocks base method.
+func (m *MockOceanstorClientInterface) AddInitiatorToHost(ctx context.Context, initiator, hostID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddInitiatorToHost", ctx, initiator, hostID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddInitiatorToHost indicates an expected call of AddInitiatorToHost.
+func (mr *MockOceanstorClientInterfaceMockRecorder) AddInitiatorToHost(ctx, initiator, hostID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddInitiatorToHost", reflect.TypeOf((*MockOceanstorClientInterface)(nil).AddInitiatorToHost), ctx, initiator, hostID)
+}
+
 // AddIscsiInitiator mocks base method.
 func (m *MockOceanstorClientInterface) AddIscsiInitiator(ctx context.Context, initiator string) (map[string]any, error) {
 	m.ctrl.T.Helper()
@@ -155,35 +184,6 @@ func (m *MockOceanstorClientInterface) AddLunToGroup(ctx context.Context, lunID,
 func (mr *MockOceanstorClientInterfaceMockRecorder) AddLunToGroup(ctx, lunID, groupID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddLunToGroup", reflect.TypeOf((*MockOceanstorClientInterface)(nil).AddLunToGroup), ctx, lunID, groupID)
-}
-
-// AddRoCEInitiator mocks base method.
-func (m *MockOceanstorClientInterface) AddInitiator(ctx context.Context, initiator string) (map[string]any, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddInitiator", ctx, initiator)
-	ret0, _ := ret[0].(map[string]any)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// AddRoCEInitiator indicates an expected call of AddRoCEInitiator.
-func (mr *MockOceanstorClientInterfaceMockRecorder) AddRoCEInitiator(ctx, initiator any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddInitiator", reflect.TypeOf((*MockOceanstorClientInterface)(nil).AddInitiator), ctx, initiator)
-}
-
-// AddRoCEInitiatorToHost mocks base method.
-func (m *MockOceanstorClientInterface) AddInitiatorToHost(ctx context.Context, initiator, hostID string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddInitiatorToHost", ctx, initiator, hostID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AddRoCEInitiatorToHost indicates an expected call of AddRoCEInitiatorToHost.
-func (mr *MockOceanstorClientInterfaceMockRecorder) AddRoCEInitiatorToHost(ctx, initiator, hostID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddInitiatorToHost", reflect.TypeOf((*MockOceanstorClientInterface)(nil).AddInitiatorToHost), ctx, initiator, hostID)
 }
 
 // AllowNfsShareAccess mocks base method.
@@ -305,21 +305,6 @@ func (mr *MockOceanstorClientInterfaceMockRecorder) CreateDTree(ctx, params any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDTree", reflect.TypeOf((*MockOceanstorClientInterface)(nil).CreateDTree), ctx, params)
 }
 
-// CreateHyperMetroSnap mocks base method.
-func (m *MockOceanstorClientInterface) CreateHyperMetroSnap(ctx context.Context, name, pairID string) (map[string]any, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateHyperMetroSnap", ctx, name, pairID)
-	ret0, _ := ret[0].(map[string]any)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateHyperMetroSnap indicates an expected call of CreateHyperMetroSnap.
-func (mr *MockOceanstorClientInterfaceMockRecorder) CreateHyperMetroSnap(ctx, name, pairID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHyperMetroSnap", reflect.TypeOf((*MockOceanstorClientInterface)(nil).CreateHyperMetroSnap), ctx, name, pairID)
-}
-
 // CreateFSSnapshot mocks base method.
 func (m *MockOceanstorClientInterface) CreateFSSnapshot(ctx context.Context, name, parentID string) (map[string]any, error) {
 	m.ctrl.T.Helper()
@@ -393,6 +378,21 @@ func (m *MockOceanstorClientInterface) CreateHyperMetroPair(ctx context.Context,
 func (mr *MockOceanstorClientInterfaceMockRecorder) CreateHyperMetroPair(ctx, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHyperMetroPair", reflect.TypeOf((*MockOceanstorClientInterface)(nil).CreateHyperMetroPair), ctx, data)
+}
+
+// CreateHyperMetroSnap mocks base method.
+func (m *MockOceanstorClientInterface) CreateHyperMetroSnap(ctx context.Context, name, pairID string) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateHyperMetroSnap", ctx, name, pairID)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateHyperMetroSnap indicates an expected call of CreateHyperMetroSnap.
+func (mr *MockOceanstorClientInterfaceMockRecorder) CreateHyperMetroSnap(ctx, name, pairID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHyperMetroSnap", reflect.TypeOf((*MockOceanstorClientInterface)(nil).CreateHyperMetroSnap), ctx, name, pairID)
 }
 
 // CreateLun mocks base method.
@@ -1177,6 +1177,21 @@ func (mr *MockOceanstorClientInterfaceMockRecorder) GetFileSystemByName(ctx, nam
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileSystemByName", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetFileSystemByName), ctx, name)
 }
 
+// GetHostByID mocks base method.
+func (m *MockOceanstorClientInterface) GetHostByID(ctx context.Context, id string) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHostByID", ctx, id)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHostByID indicates an expected call of GetHostByID.
+func (mr *MockOceanstorClientInterfaceMockRecorder) GetHostByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHostByID", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetHostByID), ctx, id)
+}
+
 // GetHostByName mocks base method.
 func (m *MockOceanstorClientInterface) GetHostByName(ctx context.Context, name string) (map[string]any, error) {
 	m.ctrl.T.Helper()
@@ -1295,6 +1310,21 @@ func (m *MockOceanstorClientInterface) GetISCSIHostLink(ctx context.Context, hos
 func (mr *MockOceanstorClientInterfaceMockRecorder) GetISCSIHostLink(ctx, hostID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetISCSIHostLink", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetISCSIHostLink), ctx, hostID)
+}
+
+// GetInitiatorByID mocks base method.
+func (m *MockOceanstorClientInterface) GetInitiatorByID(ctx context.Context, initiator string) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetInitiatorByID", ctx, initiator)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetInitiatorByID indicates an expected call of GetInitiatorByID.
+func (mr *MockOceanstorClientInterfaceMockRecorder) GetInitiatorByID(ctx, initiator any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInitiatorByID", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetInitiatorByID), ctx, initiator)
 }
 
 // GetIscsiInitiator mocks base method.
@@ -1597,6 +1627,21 @@ func (mr *MockOceanstorClientInterfaceMockRecorder) GetPoolByName(ctx, name any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPoolByName", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetPoolByName), ctx, name)
 }
 
+// GetPortalByIP mocks base method.
+func (m *MockOceanstorClientInterface) GetPortalByIP(ctx context.Context, tgtPortal string) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPortalByIP", ctx, tgtPortal)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPortalByIP indicates an expected call of GetPortalByIP.
+func (mr *MockOceanstorClientInterfaceMockRecorder) GetPortalByIP(ctx, tgtPortal any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPortalByIP", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetPortalByIP), ctx, tgtPortal)
+}
+
 // GetQosByID mocks base method.
 func (m *MockOceanstorClientInterface) GetQosByID(ctx context.Context, qosID, vStoreID string) (map[string]any, error) {
 	m.ctrl.T.Helper()
@@ -1715,51 +1760,6 @@ func (m *MockOceanstorClientInterface) GetRequest(ctx context.Context, method, u
 func (mr *MockOceanstorClientInterfaceMockRecorder) GetRequest(ctx, method, url, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRequest", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetRequest), ctx, method, url, data)
-}
-
-// GetRoCEInitiator mocks base method.
-func (m *MockOceanstorClientInterface) GetInitiator(ctx context.Context, initiator string) (map[string]any, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetInitiator", ctx, initiator)
-	ret0, _ := ret[0].(map[string]any)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetRoCEInitiator indicates an expected call of GetRoCEInitiator.
-func (mr *MockOceanstorClientInterfaceMockRecorder) GetRoCEInitiator(ctx, initiator any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInitiator", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetInitiator), ctx, initiator)
-}
-
-// GetRoCEInitiatorByID mocks base method.
-func (m *MockOceanstorClientInterface) GetInitiatorByID(ctx context.Context, initiator string) (map[string]any, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetInitiatorByID", ctx, initiator)
-	ret0, _ := ret[0].(map[string]any)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetRoCEInitiatorByID indicates an expected call of GetRoCEInitiatorByID.
-func (mr *MockOceanstorClientInterfaceMockRecorder) GetRoCEInitiatorByID(ctx, initiator any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInitiatorByID", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetInitiatorByID), ctx, initiator)
-}
-
-// GetRoCEPortalByIP mocks base method.
-func (m *MockOceanstorClientInterface) GetPortalByIP(ctx context.Context, tgtPortal string) (map[string]any, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPortalByIP", ctx, tgtPortal)
-	ret0, _ := ret[0].(map[string]any)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetRoCEPortalByIP indicates an expected call of GetRoCEPortalByIP.
-func (mr *MockOceanstorClientInterfaceMockRecorder) GetRoCEPortalByIP(ctx, tgtPortal any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPortalByIP", reflect.TypeOf((*MockOceanstorClientInterface)(nil).GetPortalByIP), ctx, tgtPortal)
 }
 
 // GetStorageVersion mocks base method.

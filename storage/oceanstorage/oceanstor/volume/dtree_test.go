@@ -298,3 +298,53 @@ func Test_ExpandVolume(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestDTree_Expand_FileSystemNotFound(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	dtree := NewDTree(cli)
+
+	parentName := "non-existent-fs"
+	dTreeName := "test-dtree"
+	vStoreID := "fake-vstore"
+	spaceHardQuota := int64(1073741824)
+
+	// mock
+	cli.EXPECT().GetDTreeByName(ctx, "", parentName, vStoreID, dTreeName).Return(nil, nil)
+
+	// action
+	err := dtree.Expand(ctx, parentName, dTreeName, vStoreID, spaceHardQuota)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty dTree")
+}
+
+func TestDTree_checkFSExist_FilesystemNotFound(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	dtree := NewDTree(cli)
+
+	parentName := "non-existent-fs"
+	params := map[string]interface{}{
+		"parentname": parentName,
+	}
+
+	// mock
+	cli.EXPECT().GetFileSystemByName(ctx, parentName).Return(nil, nil)
+
+	// action
+	result, err := dtree.checkFSExist(ctx, params, make(map[string]interface{}))
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Filesystem")
+	assert.Contains(t, err.Error(), "does not exist")
+	assert.Nil(t, result)
+}

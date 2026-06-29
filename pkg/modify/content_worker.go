@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2026. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,7 +30,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -44,6 +46,11 @@ const (
 
 	// UpdateRetryDelay retry delay
 	UpdateRetryDelay = 100 * time.Millisecond
+
+	// contentReconcileDuration is the interval between reconciliation attempts
+	// when waiting for volume scan to complete. This value should be tuned
+	// based on expected storage scan time.
+	contentReconcileDuration = 5 * time.Second
 )
 
 var (
@@ -73,12 +80,16 @@ func (ctrl *VolumeModifyController) syncContentWork(ctx context.Context, name st
 }
 
 func (ctrl *VolumeModifyController) syncContent(ctx context.Context, content *xuanwuv1.VolumeModifyContent) error {
-	// if claim is deleted, canceling content sync
 	if content.Spec.VolumeModifyClaimName != "" {
 		claim, err := ctrl.claimLister.Get(content.Spec.VolumeModifyClaimName)
-		if err != nil && apiErrors.IsNotFound(err) || (err == nil && claim.DeletionTimestamp != nil) {
-			log.AddContext(ctx).Infof("claim: %s is deleted, canceling content: %s sync", claim.Name, content.Name)
-			return nil
+		if (err != nil && apiErrors.IsNotFound(err)) ||
+			(err == nil && claim.DeletionTimestamp != nil) {
+			// for nas, if claim is deleted, canceling all content sync
+			if content.Spec.StorageClassParameters != nil &&
+				content.Spec.StorageClassParameters["volumeType"] != "lun" {
+				log.AddContext(ctx).Infof("claim: %s is deleted, canceling content: %s sync", claim.Name, content.Name)
+				return nil
+			}
 		}
 	}
 
@@ -100,6 +111,7 @@ func (ctrl *VolumeModifyController) initContentFunctions() []syncContentFunction
 			ctrl.setContentFinalizers,
 			ctrl.createContentStatus,
 			ctrl.callVolumeModify,
+			ctrl.waitVolumeStaged,
 		)
 	})
 	return syncContentFunctions
@@ -188,7 +200,49 @@ func (ctrl *VolumeModifyController) callVolumeModify(ctx context.Context,
 	log.AddContext(ctx).Infof("call modify interface end, content:%s, response body: %+v",
 		content.Name, response)
 
-	completedContent, err := ctrl.setContentToCompleted(ctx, content)
+	if response.VolumeAttributes["storage"] == constants.OceanStorSan &&
+		response.VolumeAttributes["needStaging"] == "true" {
+		stagingContent, err := ctrl.setContentStatus(ctx, content, xuanwuv1.VolumeModifyContentStaging)
+		if err != nil {
+			log.AddContext(ctx).Errorf("set content to staging failed, error: %v", err)
+			return nil, err
+		}
+		return stagingContent, nil
+	}
+
+	return ctrl.finishModify(ctx, content)
+}
+
+func (ctrl *VolumeModifyController) waitVolumeStaged(ctx context.Context,
+	content *xuanwuv1.VolumeModifyContent) (*xuanwuv1.VolumeModifyContent, error) {
+	if content.Status.Phase != xuanwuv1.VolumeModifyContentStaging {
+		return content, nil
+	}
+
+	vas, err := app.GetGlobalConfig().K8sUtils.GetVAsByPVName(content.Spec.PVName)
+	if err != nil {
+		return nil, fmt.Errorf("get volumeAttachments by pv %s failed, error: %w", content.Spec.PVName, err)
+	}
+
+	scanFinished := true
+	for _, va := range vas {
+		if va.Labels[constants.RescanLabelKey] == "true" {
+			scanFinished = false
+			break
+		}
+	}
+
+	if !scanFinished {
+		ctrl.contentQueue.AddAfter(content.Name, contentReconcileDuration)
+		return content, nil
+	}
+
+	return ctrl.finishModify(ctx, content)
+}
+
+func (ctrl *VolumeModifyController) finishModify(ctx context.Context,
+	content *xuanwuv1.VolumeModifyContent) (*xuanwuv1.VolumeModifyContent, error) {
+	completedContent, err := ctrl.setContentStatus(ctx, content, xuanwuv1.VolumeModifyContentCompleted)
 	if err != nil {
 		log.AddContext(ctx).Errorf("set content to completed failed, error: %v", err)
 		return nil, err
@@ -200,11 +254,13 @@ func (ctrl *VolumeModifyController) callVolumeModify(ctx context.Context,
 	return completedContent, nil
 }
 
-func (ctrl *VolumeModifyController) setContentToCompleted(ctx context.Context,
-	content *xuanwuv1.VolumeModifyContent) (*xuanwuv1.VolumeModifyContent, error) {
+func (ctrl *VolumeModifyController) setContentStatus(ctx context.Context, content *xuanwuv1.VolumeModifyContent,
+	status xuanwuv1.VolumeModifyContentPhase) (*xuanwuv1.VolumeModifyContent, error) {
 	contentClone := content.DeepCopy()
-	contentClone.Status.CompletedAt = &metav1.Time{Time: time.Now().Local()}
-	contentClone.Status.Phase = xuanwuv1.VolumeModifyContentCompleted
+	contentClone.Status.Phase = status
+	if status == xuanwuv1.VolumeModifyContentCompleted {
+		contentClone.Status.CompletedAt = &metav1.Time{Time: time.Now().Local()}
+	}
 	updatedContent, err := ctrl.contentClient.XuanwuV1().VolumeModifyContents().UpdateStatus(ctx, contentClone,
 		metav1.UpdateOptions{})
 	if err == nil {

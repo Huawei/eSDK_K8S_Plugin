@@ -17,10 +17,17 @@
 package volume
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/test/mocks/mock_client"
 )
 
 func Test_isHyperMetroFromParams(t *testing.T) {
@@ -43,4 +50,94 @@ func Test_isHyperMetroFromParams(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestNAS_Expand_FilesystemNotFound(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	nas := NewNAS(cli, nil, constants.OceanStorDoradoV6, NASHyperMetro{}, false)
+
+	fsName := "non-existent-fs"
+	newSize := int64(1073741824)
+
+	// mock - filesystem not found
+	cli.EXPECT().GetFileSystemByName(ctx, fsName).Return(nil, nil)
+
+	// action
+	err := nas.Expand(ctx, fsName, newSize)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Filesystem")
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+func TestNAS_Expand_GetFileSystemError(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	nas := NewNAS(cli, nil, constants.OceanStorDoradoV6, NASHyperMetro{}, false)
+
+	fsName := "test-fs"
+	newSize := int64(1073741824)
+
+	// mock - get filesystem error
+	cli.EXPECT().GetFileSystemByName(ctx, fsName).Return(nil, errors.New("get fs error"))
+
+	// action
+	err := nas.Expand(ctx, fsName, newSize)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "get fs error")
+}
+
+func TestNAS_CreateSnapshot_FilesystemNotFound(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	nas := NewNAS(cli, nil, constants.OceanStorDoradoV6, NASHyperMetro{}, false)
+
+	fsName := "non-existent-fs"
+	snapshotName := "test-snapshot"
+
+	// mock - filesystem not found
+	cli.EXPECT().GetFileSystemByName(ctx, fsName).Return(nil, nil)
+
+	// action
+	_, err := nas.CreateSnapshot(ctx, fsName, snapshotName)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Filesystem")
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+func TestNAS_CreateSnapshot_GetFileSystemError(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	nas := NewNAS(cli, nil, constants.OceanStorDoradoV6, NASHyperMetro{}, false)
+
+	fsName := "test-fs"
+	snapshotName := "test-snapshot"
+
+	// mock - get filesystem error
+	cli.EXPECT().GetFileSystemByName(ctx, fsName).Return(nil, errors.New("get fs error"))
+
+	// action
+	_, err := nas.CreateSnapshot(ctx, fsName, snapshotName)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "get fs error")
 }

@@ -77,10 +77,12 @@ func mockServiceConfig() serviceConfig {
 		WebHookPort:                 0,
 		WebHookAddress:              "",
 		WorkerThreads:               0,
+		NodeWorkerThreads:           0,
 		BackendUpdateInterval:       0,
 		KubeletVolumeDevicesDirName: "",
 		ReportNodeIP:                false,
 		EnablePerNodeSecret:         false,
+		HealthMonitorEnabled:        false,
 	}
 }
 

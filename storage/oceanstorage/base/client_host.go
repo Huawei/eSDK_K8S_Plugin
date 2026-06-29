@@ -22,6 +22,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/api"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -50,6 +53,8 @@ const (
 type Host interface {
 	// QueryAssociateHostGroup used for query associate host group
 	QueryAssociateHostGroup(ctx context.Context, objType int, objID string) ([]interface{}, error)
+	// GetHostByID used to get host by id
+	GetHostByID(ctx context.Context, id string) (map[string]interface{}, error)
 	// GetHostByName used to get host by name
 	GetHostByName(ctx context.Context, name string) (map[string]interface{}, error)
 	// GetHostGroupByName used for get host group by name
@@ -203,6 +208,35 @@ func (cli *HostClient) UpdateHost(ctx context.Context, id string, alua map[strin
 	}
 
 	return nil
+}
+
+// GetHostByID used to get host by id
+func (cli *HostClient) GetHostByID(ctx context.Context, id string) (map[string]interface{}, error) {
+	url := fmt.Sprintf(api.ManageHost, id)
+	resp, err := cli.Get(ctx, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	code, msg, err := utils.FormatRespErr(resp.Error)
+	if err != nil {
+		return nil, err
+	}
+
+	if code == storage.ObjectNotExist {
+		return map[string]interface{}{}, nil
+	}
+
+	if code != storage.SuccessCode {
+		return nil, fmt.Errorf("get host by id %s failed, error code: %d, error msg: %s", id, code, msg)
+	}
+
+	host, ok := resp.Data.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("convert host to map failed, data: %v", resp.Data)
+	}
+
+	return host, nil
 }
 
 // GetHostByName used to get host by name

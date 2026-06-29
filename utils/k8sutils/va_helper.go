@@ -20,6 +20,7 @@ package k8sutils
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	storagev1 "k8s.io/api/storage/v1"
@@ -55,6 +56,35 @@ func initVAAccessor(helper *KubeClient) error {
 	helper.vaAccessor = vaAccessor
 
 	return err
+}
+
+// GetMappingHostsByVolumeId returns mapping hosts in VAs by volume id
+func (k *KubeClient) GetMappingHostsByVolumeId(volumeId string) ([]string, error) {
+	if volumeId == "" {
+		return nil, fmt.Errorf("volumeId cannot be empty")
+	}
+
+	pvList, err := k.pvAccessor.GetByIndex(volumeIdIndex, volumeId)
+	if err != nil {
+		return nil, fmt.Errorf("get pvList by volumeId %s failed, err: %w", volumeId, err)
+	}
+
+	totalVA := make([]*storagev1.VolumeAttachment, 0)
+	for _, pv := range pvList {
+		vaList, err := k.GetVAsByPVName(pv.Name)
+		if err != nil {
+			return nil, fmt.Errorf("get vaList by pv name %s failed, err: %w", pv.Name, err)
+		}
+
+		totalVA = append(totalVA, vaList...)
+	}
+
+	hosts := make([]string, 0, len(totalVA))
+	for _, va := range totalVA {
+		hosts = append(hosts, va.Spec.NodeName)
+	}
+
+	return hosts, nil
 }
 
 // UpdateVAsWithHostMap updates VAs with the given host map
@@ -161,6 +191,10 @@ func (k *KubeClient) GetVAsByPVName(pvName string) ([]*storagev1.VolumeAttachmen
 	}
 
 	vaList, err := k.vaAccessor.GetByIndex(pvNameIndex, pvName)
+	var notFoundErr NotFoundError
+	if errors.As(err, &notFoundErr) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get VolumeAttachments by index %s failed, err: %w", pvName, err)
 	}

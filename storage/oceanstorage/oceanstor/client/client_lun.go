@@ -445,7 +445,7 @@ func (cli *OceanstorClient) GetHostLunId(ctx context.Context, hostID, lunID stri
 	for _, i := range respData {
 		hostLunInfo, ok := i.(map[string]interface{})
 		if !ok {
-			log.AddContext(ctx).Warningf(fmt.Sprintf("convert hostLunInfo to map failed, data: %v", i))
+			log.AddContext(ctx).Warningf("convert hostLunInfo to map failed, data: %v", i)
 			continue
 		}
 

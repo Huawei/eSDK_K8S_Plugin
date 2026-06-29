@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2025. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2026. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,6 +29,9 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+	k8sInformers "k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/host"
 	connUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/utils"
@@ -40,6 +43,8 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/provider"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/modify"
+	pkgutils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/cert"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
@@ -134,8 +139,56 @@ func runCSINode(ctx context.Context, csiDriver *driver.CsiDriver) {
 		log.Infof("save node info to secret success")
 	}()
 
+	if app.GetGlobalConfig().EnableVolumeModify {
+		k8sClient, _, err := pkgutils.GetK8SAndCrdClient(ctx)
+		if err != nil {
+			log.AddContext(ctx).Errorf("GetK8SAndCrdClient failed, error: %v", err)
+			return
+		}
+
+		recorder := pkgutils.InitRecorder(k8sClient, "va-controller")
+		signalChan := make(chan os.Signal, 1)
+
+		go func() {
+			defer close(signalChan)
+			go runVAController(ctx, k8sClient, recorder, signalChan)
+		}()
+	}
+
 	// register the K8S community CSI service
 	registerCSIServer(csiDriver)
+}
+
+func runVAController(ctx context.Context, k8sClient *kubernetes.Clientset,
+	recorder record.EventRecorder, ch chan os.Signal) {
+	k8sFactory := k8sInformers.NewSharedInformerFactory(k8sClient, 0)
+
+	hostName, err := utils.GetHostName(ctx)
+	if err != nil {
+		log.AddContext(ctx).Errorf("Get hostName failed, err: %v", err)
+		ch <- syscall.SIGINT
+		return
+	}
+
+	controller := modify.NewVAController(modify.VAControllerRequest{
+		KubeClient:    k8sClient,
+		VaInformer:    k8sFactory.Storage().V1().VolumeAttachments(),
+		EventRecorder: recorder,
+		HostName:      hostName,
+	})
+
+	run := func(ctx context.Context) {
+		stopCh := make(chan struct{})
+		k8sFactory.Start(stopCh)
+		go controller.Run(ctx, app.GetGlobalConfig().NodeWorkerThreads, stopCh)
+
+		// Stop the controller when stop signals are received
+		pkgutils.WaitExitSignal(ctx, "node")
+
+		close(stopCh)
+	}
+
+	run(ctx)
 }
 
 func main() {

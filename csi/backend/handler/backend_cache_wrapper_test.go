@@ -19,6 +19,7 @@ package handler
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -99,4 +100,32 @@ func TestCacheWrapper_LoadCacheStoragePools(t *testing.T) {
 	if len(pools) != 0 {
 		t.Errorf("LoadCacheStoragePools want empty, but got = %v", pools)
 	}
+}
+
+func TestCacheWrapper_UpdateCacheBackendStatus_NotFound(t *testing.T) {
+	// arrange
+	instance := NewCacheWrapper()
+
+	// action - should not panic when backend not found
+	instance.UpdateCacheBackendStatus(context.Background(), "notFoundBackend", true)
+}
+
+func TestCacheWrapper_UpdateCacheBackendStatus_Found(t *testing.T) {
+	// arrange
+	instance := NewCacheWrapper()
+	backend := &model.Backend{Name: "test-backend"}
+
+	// mock - add backend to cache first
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(instance), "Store",
+		func(*CacheWrapper, context.Context, string, model.Backend) {})
+	defer patches.Reset()
+
+	// mock - Load returns existing backend
+	patches.ApplyMethod(reflect.TypeOf(instance), "Load",
+		func(*CacheWrapper, string) (model.Backend, bool) {
+			return *backend, true
+		})
+
+	// action
+	instance.UpdateCacheBackendStatus(context.Background(), "test-backend", true)
 }

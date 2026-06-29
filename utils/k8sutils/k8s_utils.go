@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2023. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2020-2026. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"regexp"
 	"strings"
 	"time"
@@ -30,8 +31,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
@@ -78,6 +77,12 @@ type Interface interface {
 	// UpdateVAsWithHostMap updates VAs with the given host map
 	UpdateVAsWithHostMap(ctx context.Context, volumeId string, hostMap map[string]map[string]interface{}) error
 
+	// GetMappingHostsByVolumeId returns mapping hosts in VAs by volume id
+	GetMappingHostsByVolumeId(volumeId string) ([]string, error)
+
+	// GetVAsByPVName returns VAs by pv name
+	GetVAsByPVName(pvName string) ([]*storagev1.VolumeAttachment, error)
+
 	// Activate the k8s helpers when start the service
 	Activate()
 	// Deactivate the k8s helpers when stop the service
@@ -103,53 +108,95 @@ type KubeClient struct {
 	volumeLabels     map[string]string
 }
 
-// NewK8SUtils returns an object of Kubernetes utility interface
-func NewK8SUtils(kubeConfig string, volumeNamePrefix string,
-	volumeLabels map[string]string, enableVolumeModify bool) (Interface, error) {
-	var (
-		config    *rest.Config
-		clientset *kubernetes.Clientset
-		err       error
-	)
+type Option func(*k8sUtilsConfig)
 
-	if kubeConfig != "" {
-		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			return nil, err
-		}
+type k8sUtilsConfig struct {
+	kubeAPIQPS         float32
+	kubeAPIBurst       int
+	volumeNamePrefix   string
+	volumeLabels       map[string]string
+	enableVolumeModify bool
+}
+
+func WithQPS(qps float32) Option {
+	return func(cfg *k8sUtilsConfig) {
+		cfg.kubeAPIQPS = qps
+	}
+}
+
+func WithBurst(burst int) Option {
+	return func(cfg *k8sUtilsConfig) {
+		cfg.kubeAPIBurst = burst
+	}
+}
+
+func WithVolumeNamePrefix(prefix string) Option {
+	return func(cfg *k8sUtilsConfig) {
+		cfg.volumeNamePrefix = prefix
+	}
+}
+
+func WithVolumeLabels(labels map[string]string) Option {
+	return func(cfg *k8sUtilsConfig) {
+		cfg.volumeLabels = labels
+	}
+}
+
+func WithEnableVolumeModify(enable bool) Option {
+	return func(cfg *k8sUtilsConfig) {
+		cfg.enableVolumeModify = enable
+	}
+}
+
+func NewK8SUtils(kubeConfig string, opts ...Option) (Interface, error) {
+	cfg := &k8sUtilsConfig{
+		kubeAPIQPS:         constants.DefaultKubeAPIQPS,
+		kubeAPIBurst:       constants.DefaultKubeAPIBurst,
+		enableVolumeModify: false,
+	}
+	for _, opt := range opts {
+		opt(cfg)
 	}
 
-	clientset, err = kubernetes.NewForConfig(config)
+	config, err := BuildConfig(kubeConfig, QPS(cfg.kubeAPIQPS), Burst(cfg.kubeAPIBurst))
 	if err != nil {
 		return nil, err
 	}
 
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	helper, err := newKubeClientHelper(clientset, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return helper, nil
+}
+
+func newKubeClientHelper(clientset *kubernetes.Clientset, cfg *k8sUtilsConfig) (*KubeClient, error) {
 	helper := &KubeClient{
 		clientSet:         clientset,
 		informersStopChan: make(chan struct{}),
-		volumeNamePrefix:  volumeNamePrefix,
-		volumeLabels:      volumeLabels,
+		volumeNamePrefix:  cfg.volumeNamePrefix,
+		volumeLabels:      cfg.volumeLabels,
 		informerFactory:   informers.NewSharedInformerFactory(clientset, cacheSyncPeriod),
 	}
 
-	if err = initPVCAccessor(helper); err != nil {
+	if err := initPVCAccessor(helper); err != nil {
 		return nil, err
 	}
-	if err = initPVAccessor(helper); err != nil {
+	if err := initPVAccessor(helper); err != nil {
 		return nil, err
 	}
 
-	if enableVolumeModify {
-		if err = initVAAccessor(helper); err != nil {
+	if cfg.enableVolumeModify {
+		if err := initVAAccessor(helper); err != nil {
 			return nil, err
 		}
 	}
-
 	return helper, nil
 }
 

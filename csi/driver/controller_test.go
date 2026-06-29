@@ -30,6 +30,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/model"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
 )
 
@@ -92,4 +93,49 @@ func (f *oceanstorKVCache) backendKVCache() *model.Backend {
 type oceanstorKVCache struct {
 	volName     string
 	BackendName string
+}
+
+func TestCsiDriver_ControllerGetVolume_Normal(t *testing.T) {
+	ctx := context.Background()
+	data := fakeControllerGetVolumeData()
+	kubeClient := &k8sutils.KubeClient{}
+	csiServer := NewServer(constants.DefaultDriverName, constants.ProviderVersion, kubeClient, "node1")
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyMethodReturn(&handler.BackendSelector{}, "SelectBackend", data.backend(), nil).
+		ApplyMethodReturn(&plugin.FusionStorageSanPlugin{}, "GetVolumeStatus", utils.VolumeStatus{Abnormal: false})
+
+	resp, err := csiServer.ControllerGetVolume(ctx, data.request())
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.False(t, resp.Status.VolumeCondition.Abnormal)
+}
+
+type controllerGetVolumeData struct {
+	volName     string
+	backendName string
+}
+
+func fakeControllerGetVolumeData() *controllerGetVolumeData {
+	return &controllerGetVolumeData{
+		volName:     "test-vol",
+		backendName: "test-backend",
+	}
+}
+
+func (d *controllerGetVolumeData) request() *csi.ControllerGetVolumeRequest {
+	return &csi.ControllerGetVolumeRequest{
+		VolumeId: d.backendName + "." + d.volName,
+	}
+}
+
+func (d *controllerGetVolumeData) backend() *model.Backend {
+	return &model.Backend{
+		Name:        d.backendName,
+		ContentName: "test-content",
+		Storage:     "fusionstorage-san",
+		Plugin:      &plugin.FusionStorageSanPlugin{},
+	}
 }

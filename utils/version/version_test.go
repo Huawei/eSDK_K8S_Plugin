@@ -17,8 +17,18 @@
 package version
 
 import (
+	"os"
 	"testing"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
+
+func TestMain(m *testing.M) {
+	log.MockInitLogging("version_test.log")
+	defer log.MockStopLogging("version_test.log")
+
+	m.Run()
+}
 
 func TestCompareVersions(t *testing.T) {
 	tests := []struct {
@@ -48,5 +58,36 @@ func TestCompareVersions(t *testing.T) {
 				t.Errorf("CompareVersions() got = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestInitVersion_FileAlreadyExists(t *testing.T) {
+	// arrange
+	tmpFile, err := os.CreateTemp("", "version_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	// action
+	err = InitVersion(tmpFile.Name(), "1.0.0")
+
+	// assert
+	if err != nil {
+		t.Errorf("InitVersion() error = %v", err)
+	}
+}
+
+func TestInitVersion_OpenFileFailed(t *testing.T) {
+	// arrange
+	invalidPath := "/invalid/path/that/cannot/be/created/version_file"
+
+	// action
+	err := InitVersion(invalidPath, "1.0.0")
+
+	// assert
+	if err == nil {
+		t.Errorf("InitVersion() expected error for invalid path, got nil")
 	}
 }

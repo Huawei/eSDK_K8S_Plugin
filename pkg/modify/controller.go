@@ -65,6 +65,9 @@ const (
 	// contentResource is used uniquely identifies content work queue
 	contentResource = "vmct"
 
+	// vaResource is used uniquely identifies volumeAttachment work queue
+	vaResource = "va"
+
 	// eventResourceName is used to record event
 	eventResourceName = "modify-volume-mgnt"
 )

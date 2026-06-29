@@ -23,9 +23,21 @@ import (
 )
 
 func fsInfo(path string) (*unixFsInfo, error) {
-	return nil, fmt.Errorf("not supporting on windows platform")
+	return nil, fmt.Errorf("not supported on windows platform")
+}
+
+// GetBlockDeviceSize returns the total size in bytes for the given block device path.
+// This is used to determine the capacity of block volume.
+func GetBlockDeviceSize(path string) (int64, error) {
+	return 0, fmt.Errorf("not supported on windows platform")
+}
+
+// IsBlockDevice checks if the given path is a block device.
+// Returns true if the path is a block device, false otherwise.
+func IsBlockDevice(path string) (bool, error) {
+	return false, fmt.Errorf("not supported on windows platform")
 }
 
 func execShellCmd(ctx context.Context, format string, logFilter bool, args ...interface{}) (string, bool, error) {
-	return "", false, fmt.Errorf("not supporting on windows platform")
+	return "", false, fmt.Errorf("not supported on windows platform")
 }

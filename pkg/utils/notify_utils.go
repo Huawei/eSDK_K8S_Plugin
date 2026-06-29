@@ -58,6 +58,6 @@ func Publish(ctx context.Context, key string, args ...interface{}) {
 		}
 		reflect.ValueOf(callBack).Call(in)
 	} else {
-		log.AddContext(ctx).Infof("%s does not have any subscribers")
+		log.AddContext(ctx).Infof("does not have any subscribers")
 	}
 }

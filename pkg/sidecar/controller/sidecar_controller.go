@@ -234,7 +234,7 @@ func (ctrl *backendController) handleContentWork(ctx context.Context, obj interf
 	if !ok {
 		ctrl.contentQueue.Forget(obj)
 		msg := fmt.Sprintf("expected string in content workqueue but got %#v", obj)
-		log.AddContext(ctx).Errorf(msg)
+		log.AddContext(ctx).Errorf("%s", msg)
 		return errors.New(msg)
 	}
 

@@ -248,3 +248,25 @@ func (p *FusionStorageDTreePlugin) SetParentName(parentName string) {
 func (p *FusionStorageDTreePlugin) GetDTreeParentName() string {
 	return p.parentname
 }
+
+// GetVolumeStatus get volume health status
+func (p *FusionStorageDTreePlugin) GetVolumeStatus(ctx context.Context,
+	query utils.VolumeQuery) utils.VolumeStatus {
+
+	status := utils.VolumeStatus{Abnormal: true}
+	volumeInfo, err := p.cli.GetDTreeByName(ctx, query.ParentName, query.Name)
+	if err != nil {
+		status.Message = fmt.Sprintf("Query volume %s error: %v", query.Name, err)
+		log.AddContext(ctx).Errorln(status.Message)
+		return status
+	}
+
+	if volumeInfo == nil {
+		status.Message = fmt.Sprintf("volume %s not found", query.Name)
+		return status
+	}
+
+	status.Abnormal = false
+	status.Message = fmt.Sprintf("volume %s is normal", query.Name)
+	return status
+}

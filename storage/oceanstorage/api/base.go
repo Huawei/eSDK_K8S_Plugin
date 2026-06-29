@@ -23,6 +23,7 @@ const (
 	GetAllQos = "/ioclass"
 )
 
+// NVMe interface urls
 const (
 	// GetRoCENVMeInitiatorByID get roce-nvme initiator filter by initiator id
 	GetRoCENVMeInitiatorByID = "/NVMe_over_RoCE_initiator/%s"
@@ -47,4 +48,10 @@ const (
 
 	// GetIPV6Lif get logical ports of ipv6
 	GetIPV6Lif = "/lif?filter=IPV6ADDR::%s"
+)
+
+// host interface urls
+const (
+	// ManageHost manage single host
+	ManageHost = "/host/%s"
 )

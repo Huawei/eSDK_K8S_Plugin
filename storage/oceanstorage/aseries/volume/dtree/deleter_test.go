@@ -57,6 +57,8 @@ func TestDeleter_DeleteWithNfsProtocol_Success(t *testing.T) {
 
 	// mock
 	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
 	cli.EXPECT().GetNfsShareByPath(ctx, sharePath, fakeVstoreID).
 		Return(map[string]interface{}{"ID": fakeShareID}, nil)
 	cli.EXPECT().DeleteNfsShare(ctx, fakeShareID, fakeVstoreID).Return(nil)
@@ -83,6 +85,8 @@ func TestDeleter_DeleteWithNfsProtocol_NfsShareNotExist(t *testing.T) {
 
 	// mock
 	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
 	cli.EXPECT().GetNfsShareByPath(ctx, sharePath, fakeVstoreID).Return(nil, nil)
 	cli.EXPECT().GetDTreeByName(ctx, fakeParentName, fakeDtreeName, fakeVstoreID).
 		Return(map[string]interface{}{"ID": fakeDtreeID}, nil)
@@ -151,6 +155,8 @@ func TestDeleter_DeleteWithNfsProtocol_DeleteDTreeError(t *testing.T) {
 
 	// mock
 	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
 	cli.EXPECT().GetNfsShareByPath(ctx, sharePath, fakeVstoreID).Return(nil, nil)
 	cli.EXPECT().GetDTreeByName(ctx, fakeParentName, fakeDtreeName, fakeVstoreID).
 		Return(map[string]interface{}{"ID": fakeDtreeID}, nil)
@@ -175,6 +181,8 @@ func TestDeleter_DeleteWithNfsProtocol_GetDTreeError(t *testing.T) {
 
 	// mock
 	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
 	cli.EXPECT().GetNfsShareByPath(ctx, sharePath, fakeVstoreID).Return(nil, nil)
 	cli.EXPECT().GetDTreeByName(ctx, fakeParentName, fakeDtreeName, fakeVstoreID).Return(nil, mockErr)
 
@@ -199,6 +207,8 @@ func TestDeleter_DeleteWithDtfsProtocol_Success(t *testing.T) {
 
 	// mock
 	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
 	cli.EXPECT().GetDataTurboShareByPath(ctx, sharePath, fakeVstoreID).
 		Return(map[string]interface{}{"ID": fakeShareID}, nil)
 	cli.EXPECT().DeleteDataTurboShare(ctx, fakeShareID, fakeVstoreID).Return(nil)
@@ -225,6 +235,8 @@ func TestDeleter_DeleteWithDtfsProtocol_DataTurboShareNotExist(t *testing.T) {
 
 	// mock
 	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
 	cli.EXPECT().GetDataTurboShareByPath(ctx, sharePath, fakeVstoreID).Return(nil, nil)
 	cli.EXPECT().GetDTreeByName(ctx, fakeParentName, fakeDtreeName, fakeVstoreID).
 		Return(map[string]interface{}{"ID": fakeDtreeID}, nil)
@@ -293,6 +305,8 @@ func TestDeleter_DeleteWithDtfsProtocol_DeleteDTreeError(t *testing.T) {
 
 	// mock
 	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
 	cli.EXPECT().GetDataTurboShareByPath(ctx, sharePath, fakeVstoreID).Return(nil, nil)
 	cli.EXPECT().GetDTreeByName(ctx, fakeParentName, fakeDtreeName, fakeVstoreID).
 		Return(map[string]interface{}{"ID": fakeDtreeID}, nil)
@@ -317,8 +331,159 @@ func TestDeleter_DeleteWithDtfsProtocol_GetDTreeError(t *testing.T) {
 
 	// mock
 	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
 	cli.EXPECT().GetDataTurboShareByPath(ctx, sharePath, fakeVstoreID).Return(nil, nil)
 	cli.EXPECT().GetDTreeByName(ctx, fakeParentName, fakeDtreeName, fakeVstoreID).Return(nil, mockErr)
+
+	// action
+	err := deleter.Delete()
+
+	// assert
+	assert.ErrorIs(t, err, mockErr)
+}
+
+func TestDeleter_DeleteNfsShare_IDEmpty(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	deleter := NewDeleter(ctx, cli, fakeParentName, fakeDtreeName, constants.ProtocolNfs)
+
+	sharePath := "/" + fakeParentName + "/" + fakeDtreeName
+
+	// mock
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetNfsShareByPath(ctx, sharePath, fakeVstoreID).
+		Return(map[string]interface{}{}, nil)
+
+	// action
+	err := deleter.Delete()
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid empty ID")
+}
+
+func TestDeleter_DeleteDataTurboShare_IDEmpty(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	deleter := NewDeleter(ctx, cli, fakeParentName, fakeDtreeName, constants.ProtocolDtfs)
+
+	sharePath := "/" + fakeParentName + "/" + fakeDtreeName
+
+	// mock
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetDataTurboShareByPath(ctx, sharePath, fakeVstoreID).
+		Return(map[string]interface{}{"ID": ""}, nil)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil).AnyTimes()
+
+	// action
+	err := deleter.Delete()
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid empty ID")
+}
+
+func TestDeleter_DeleteDTree_ParentFsNotExist(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	deleter := NewDeleter(ctx, cli, fakeParentName, fakeDtreeName, constants.ProtocolNfs)
+
+	// mock
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetNfsShareByPath(ctx, gomock.Any(), fakeVstoreID).Return(nil, nil)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).Return(nil, nil)
+
+	// action
+	err := deleter.Delete()
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func TestDeleter_DeleteDTree_DTreeNotExist(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	deleter := NewDeleter(ctx, cli, fakeParentName, fakeDtreeName, constants.ProtocolNfs)
+
+	// mock
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetNfsShareByPath(ctx, gomock.Any(), fakeVstoreID).Return(nil, nil)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
+	cli.EXPECT().GetDTreeByName(ctx, fakeParentName, fakeDtreeName, fakeVstoreID).Return(nil, nil)
+
+	// action
+	err := deleter.Delete()
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func TestDeleter_DeleteDTree_DTreeIDEmpty(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	deleter := NewDeleter(ctx, cli, fakeParentName, fakeDtreeName, constants.ProtocolNfs)
+
+	// mock
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetNfsShareByPath(ctx, gomock.Any(), fakeVstoreID).Return(nil, nil)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).
+		Return(map[string]interface{}{"ID": fakeFsID}, nil)
+	cli.EXPECT().GetDTreeByName(ctx, fakeParentName, fakeDtreeName, fakeVstoreID).
+		Return(map[string]interface{}{"NAME": fakeDtreeName}, nil)
+
+	// action
+	err := deleter.Delete()
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid DTree ID")
+}
+
+func TestDeleter_SharePath_EmptyNames(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+
+	// action & assert
+	deleter := NewDeleter(ctx, cli, "", fakeDtreeName, constants.ProtocolNfs)
+	assert.Equal(t, "", deleter.sharePath())
+
+	deleter = NewDeleter(ctx, cli, fakeParentName, "", constants.ProtocolNfs)
+	assert.Equal(t, "", deleter.sharePath())
+}
+
+func TestDeleter_DeleteDTree_GetFsError(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanASeriesClientInterface(mockCtrl)
+	deleter := NewDeleter(ctx, cli, fakeParentName, fakeDtreeName, constants.ProtocolNfs)
+
+	// mock
+	cli.EXPECT().GetvStoreID().Return(fakeVstoreID)
+	cli.EXPECT().GetNfsShareByPath(ctx, gomock.Any(), fakeVstoreID).Return(nil, nil)
+	cli.EXPECT().GetFileSystemByName(ctx, fakeParentName, fakeVstoreID).Return(nil, mockErr)
 
 	// action
 	err := deleter.Delete()

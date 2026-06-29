@@ -137,6 +137,14 @@ func (d *Deleter) deleteDataTurboShare() error {
 
 // deleteDTree deletes the DTree itself
 func (d *Deleter) deleteDTree() error {
+	fs, err := d.cli.GetFileSystemByName(d.ctx, d.parentName, d.vstoreId)
+	if err != nil {
+		return fmt.Errorf("failed to check parent filesystem %s: %w", d.parentName, err)
+	}
+	if len(fs) == 0 {
+		log.AddContext(d.ctx).Infof("The parent of dtree %q has been deleted", d.parentName)
+		return nil
+	}
 	dtreeInfo, err := d.cli.GetDTreeByName(d.ctx, d.parentName, d.dtreeName, d.vstoreId)
 	if err != nil {
 		return fmt.Errorf("failed to check DTree %s existence: %w", d.dtreeName, err)

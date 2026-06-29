@@ -21,7 +21,6 @@ import (
 
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 
 	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned/typed/xuanwu/v1"
@@ -116,20 +115,4 @@ func New(c rest.Interface) *Clientset {
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs
-}
-
-// NewBackendUtils creates a new backend Clientset
-func NewBackendUtils(kubeConfig string) (*Clientset, error) {
-	var config *rest.Config
-	var err error
-	if kubeConfig != "" {
-		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
-	} else {
-		config, err = rest.InClusterConfig()
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return NewForConfig(config)
 }

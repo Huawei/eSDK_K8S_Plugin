@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/backend/plugin"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
@@ -43,10 +44,10 @@ func (p *StorageProvider) ModifyVolume(ctx context.Context, req *drcsi.ModifyVol
 	// Other modification operations are extended in a similar way.
 	ret, err := p.modifyHyperMetro(ctx, req)
 	if err != nil {
-		return ret, err
+		return nil, err
 	}
 
-	return &drcsi.ModifyVolumeResponse{}, nil
+	return ret, nil
 }
 
 func (p *StorageProvider) modifyHyperMetro(ctx context.Context, req *drcsi.ModifyVolumeRequest) (
@@ -84,6 +85,7 @@ func (p *StorageProvider) modifyHyperMetro(ctx context.Context, req *drcsi.Modif
 		return nil, errors.New(errMsg)
 	}
 
+	resp := map[string]string{"storage": bk.Storage, "needStaging": "true"}
 	params := pkgUtils.CombineMap(req.MutableParameters, req.StorageClassParameters)
 	remotePool, err := p.backendSelector.SelectRemotePool(ctx, thinVolumeRequestSize, backendName,
 		pkgUtils.ConvertMapString2MapInterface(params))
@@ -96,13 +98,19 @@ func (p *StorageProvider) modifyHyperMetro(ctx context.Context, req *drcsi.Modif
 	if remotePool != nil {
 		params["remoteStoragePool"] = remotePool.Name
 	}
+
 	err = bk.Plugin.ModifyVolume(ctx, req.VolumeId, modifyType, params)
-	if err != nil {
+	var noMappingErr plugin.NoMappingError
+	if err != nil && !errors.As(err, &noMappingErr) {
 		errMsg := fmt.Sprintf("modify volume failed, volume name: %s, modify type: %v, error: %v",
 			volumeName, modifyType, err)
 		log.AddContext(ctx).Errorln(errMsg)
 		return nil, errors.New(errMsg)
 	}
+	if errors.As(err, &noMappingErr) {
+		log.AddContext(ctx).Infof("volume %s has no mapping, no staging needed", volumeName)
+		resp["needStaging"] = "false"
+	}
 
-	return &drcsi.ModifyVolumeResponse{}, nil
+	return &drcsi.ModifyVolumeResponse{VolumeAttributes: resp}, nil
 }

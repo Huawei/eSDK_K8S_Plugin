@@ -637,3 +637,30 @@ func TestBase_getExistingAuthClientAttr_Success(t *testing.T) {
 	assert.NoError(t, gotErr)
 	assert.Equal(t, wantReq, gotReq)
 }
+
+func TestBase_preExpandCheckCapacity_PoolNotFound(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	base := &Base{cli: cli}
+
+	params := map[string]interface{}{
+		"localParentName": "non-existent-pool",
+		"localLunId":      "lun-123",
+	}
+	taskResult := make(map[string]interface{})
+
+	// mock - pool not found
+	cli.EXPECT().GetPoolByName(ctx, "non-existent-pool").Return(nil, nil)
+
+	// action
+	result, err := base.preExpandCheckCapacity(ctx, params, taskResult)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Get storage pool")
+	assert.Contains(t, err.Error(), "non-existent-pool")
+	assert.Nil(t, result)
+}

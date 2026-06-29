@@ -80,6 +80,11 @@ const (
 	// DefaultKubeletVolumeDevicesDirName default kubelet volumeDevice name
 	DefaultKubeletVolumeDevicesDirName = "/volumeDevices/"
 
+	// DefaultKubeAPIQPS is the default QPS limit for Kubernetes API requests
+	DefaultKubeAPIQPS = 5.0
+	// DefaultKubeAPIBurst is the default burst limit for Kubernetes API requests
+	DefaultKubeAPIBurst = 10
+
 	// AllocationUnitBytes default is 512 Bytes, it is the allocation and capacity unit for OceanStor
 	AllocationUnitBytes = 512
 	// FusionAllocUnitBytes default is 1Mi, it is the allocation unit for FusionStorage

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2023-2026. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 package config
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -51,6 +52,7 @@ type serviceConfig struct {
 	// address of webhook server
 	WebHookAddress        string
 	WorkerThreads         int
+	NodeWorkerThreads     int
 	BackendUpdateInterval int
 
 	ExportCsiServerAddress string
@@ -66,8 +68,14 @@ type serviceConfig struct {
 	KubeletVolumeDevicesDirName string
 	ReportNodeIP                bool
 	EnablePerNodeSecret         bool
+	HealthMonitorEnabled        bool
 	// EnableVolumeModify indicates whether to enable volume modification feature.
 	EnableVolumeModify bool
+
+	// KubeAPIQPS is the QPS limit for Kubernetes API requests.
+	KubeAPIQPS float32
+	// KubeAPIBurst is the burst limit for Kubernetes API requests.
+	KubeAPIBurst int
 }
 
 type connectorConfig struct {
@@ -118,14 +126,33 @@ type CompletedConfig struct {
 
 // Complete the AppConfig and return the CompletedConfig
 func (cfg *AppConfig) Complete() (*CompletedConfig, error) {
-	k8sUtils, err := k8sutils.NewK8SUtils(cfg.KubeConfig, cfg.VolumeNamePrefix,
-		map[string]string{"provisioner": cfg.DriverName}, cfg.EnableVolumeModify)
+	if cfg.KubeAPIQPS < 0 {
+		return nil, fmt.Errorf("kube-api-qps must be >= 0, got %.2f", cfg.KubeAPIQPS)
+	}
+	if cfg.KubeAPIBurst < 0 {
+		return nil, fmt.Errorf("kube-api-burst must be >= 0, got %d", cfg.KubeAPIBurst)
+	}
+	if cfg.KubeAPIBurst > 0 && cfg.KubeAPIQPS >= float32(cfg.KubeAPIBurst) {
+		return nil, fmt.Errorf("kube-api-burst (%d) must be > kube-api-qps (%.2f)",
+			cfg.KubeAPIBurst, cfg.KubeAPIQPS)
+	}
+
+	k8sOpts := []k8sutils.Option{
+		k8sutils.WithQPS(cfg.KubeAPIQPS),
+		k8sutils.WithBurst(cfg.KubeAPIBurst),
+		k8sutils.WithVolumeNamePrefix(cfg.VolumeNamePrefix),
+		k8sutils.WithVolumeLabels(map[string]string{"provisioner": cfg.DriverName}),
+		k8sutils.WithEnableVolumeModify(cfg.EnableVolumeModify),
+	}
+	k8sUtils, err := k8sutils.NewK8SUtils(cfg.KubeConfig, k8sOpts...)
 	if err != nil {
 		logrus.Errorf("k8sutils initialized failed %v", err)
 		return nil, err
 	}
 
-	backendUtils, err := clientSet.NewBackendUtils(cfg.KubeConfig)
+	backendUtils, err := k8sutils.NewBackendUtils(cfg.KubeConfig,
+		k8sutils.QPS(cfg.KubeAPIQPS),
+		k8sutils.Burst(cfg.KubeAPIBurst))
 	if err != nil {
 		logrus.Errorf("BackendUtils initialized failed %v", err)
 		return nil, err

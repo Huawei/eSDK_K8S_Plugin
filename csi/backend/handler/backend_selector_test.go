@@ -111,3 +111,31 @@ func TestBackendSelector_SelectLocalPool_TopologyFailed(t *testing.T) {
 		t.Error("SelectBackend want an error, but got error is nil")
 	}
 }
+
+func TestBackendSelector_SelectPoolPair_Success(t *testing.T) {
+	// arrange
+	instance := NewBackendSelector()
+	params := map[string]interface{}{}
+
+	// mock - SelectLocalPool returns pools
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(instance), "SelectLocalPool",
+		func(*BackendSelector, context.Context, int64, map[string]interface{}) ([]*model.StoragePool, error) {
+			return []*model.StoragePool{{Name: "pool-1", Parent: "backend-1"}}, nil
+		}).ApplyMethod(reflect.TypeOf(instance), "SelectRemotePool",
+		func(*BackendSelector, context.Context, int64, string, map[string]interface{}) (*model.StoragePool, error) {
+			return &model.StoragePool{Name: "remote-pool-1"}, nil
+		}).ApplyFunc(backend.WeightPools, func(context.Context, int64, map[string]interface{},
+		[]*model.StoragePool, []model.SelectPoolPair) (*model.StoragePool, *model.StoragePool, error) {
+		return &model.StoragePool{Name: "pool-1"}, &model.StoragePool{Name: "remote-pool-1"}, nil
+	})
+	defer patches.Reset()
+
+	// action
+	result, err := instance.SelectPoolPair(context.Background(), int64(10), params)
+	if err != nil {
+		t.Errorf("SelectPoolPair want err is nil, but got error is %v", err)
+	}
+	if result == nil {
+		t.Error("SelectPoolPair want result, but got nil")
+	}
+}

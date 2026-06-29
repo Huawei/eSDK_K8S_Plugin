@@ -165,7 +165,7 @@ func TestGetVAsByPVName_NotFound(t *testing.T) {
 
 	// assert
 	assert.Empty(t, vaList)
-	assert.Error(t, err)
+	assert.NoError(t, err)
 }
 
 func TestGetVA_Success(t *testing.T) {
@@ -522,4 +522,101 @@ func TestUpdateVAsWithHostMap_FirstHostSuccessSecondVANotFound(t *testing.T) {
 
 	// assert
 	assert.ErrorContains(t, err, "can not find the VA")
+}
+
+func TestGetMappingHostsByVolumeId_VolumeIdEmpty(t *testing.T) {
+	// arrange
+	client := &KubeClient{}
+
+	// action
+	hosts, err := client.GetMappingHostsByVolumeId("")
+
+	// assert
+	assert.Nil(t, hosts)
+	assert.ErrorContains(t, err, "volumeId cannot be empty")
+}
+
+func TestGetMappingHostsByVolumeId_PVAccessorNil(t *testing.T) {
+	// arrange
+	client := &KubeClient{pvAccessor: nil}
+
+	// action & assert - pvAccessor nil causes panic in GetByIndex
+	assert.Panics(t, func() {
+		_, _ = client.GetMappingHostsByVolumeId("vol-123")
+	})
+}
+
+func TestGetMappingHostsByVolumeId_GetVAsByPVNameError(t *testing.T) {
+	// arrange
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	patches.ApplyMethodReturn(&KubeClient{}, "GetVAsByPVName",
+		nil, fmt.Errorf("get va error"))
+
+	fakeClient := buildFakeKubeClientWithVA()
+	defer close(fakeClient.stopCh)
+
+	createPVWithVolumeId(fakeClient.clientSet, "test-pv", "vol-123")
+
+	// action
+	hosts, err := fakeClient.client.GetMappingHostsByVolumeId("vol-123")
+
+	// assert
+	assert.Nil(t, hosts)
+	assert.ErrorContains(t, err, "get vaList by pv name")
+}
+
+func TestGetMappingHostsByVolumeId_Success(t *testing.T) {
+	// arrange
+	fakeClient := buildFakeKubeClientWithVA()
+	defer close(fakeClient.stopCh)
+
+	createPVWithVolumeId(fakeClient.clientSet, "test-pv", "vol-123")
+	createVA(fakeClient.clientSet, "va-node1", "test-pv", "node1")
+	createVA(fakeClient.clientSet, "va-node2", "test-pv", "node2")
+
+	// action
+	hosts, err := fakeClient.client.GetMappingHostsByVolumeId("vol-123")
+
+	// assert
+	assert.NoError(t, err)
+	assert.Len(t, hosts, 2)
+	assert.Contains(t, hosts, "node1")
+	assert.Contains(t, hosts, "node2")
+}
+
+func TestGetMappingHostsByVolumeId_NoVA(t *testing.T) {
+	// arrange
+	fakeClient := buildFakeKubeClientWithVA()
+	defer close(fakeClient.stopCh)
+
+	createPVWithVolumeId(fakeClient.clientSet, "test-pv", "vol-123")
+
+	// action
+	hosts, err := fakeClient.client.GetMappingHostsByVolumeId("vol-123")
+
+	// assert
+	assert.NoError(t, err)
+	assert.Empty(t, hosts)
+}
+
+func TestGetMappingHostsByVolumeId_MultiplePVs(t *testing.T) {
+	// arrange
+	fakeClient := buildFakeKubeClientWithVA()
+	defer close(fakeClient.stopCh)
+
+	createPVWithVolumeId(fakeClient.clientSet, "pv-1", "vol-123")
+	createPVWithVolumeId(fakeClient.clientSet, "pv-2", "vol-123")
+	createVA(fakeClient.clientSet, "va-pv1-node1", "pv-1", "node1")
+	createVA(fakeClient.clientSet, "va-pv2-node2", "pv-2", "node2")
+
+	// action
+	hosts, err := fakeClient.client.GetMappingHostsByVolumeId("vol-123")
+
+	// assert
+	assert.NoError(t, err)
+	assert.Len(t, hosts, 2)
+	assert.Contains(t, hosts, "node1")
+	assert.Contains(t, hosts, "node2")
 }

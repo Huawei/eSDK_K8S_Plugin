@@ -160,7 +160,7 @@ func (d *CsiDriver) ControllerExpandVolume(ctx context.Context, req *csi.Control
 	log.AddContext(ctx).Infof("Volume %s is expanded to %d, nodeExpansionRequired %t",
 		volName, size, nodeExpansionRequired)
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes:         utils.TransK8SCapacity(size, sectorSize),
+		CapacityBytes:         minSize,
 		NodeExpansionRequired: nodeExpansionRequired}, nil
 }
 
@@ -175,7 +175,7 @@ func (d *CsiDriver) ControllerPublishVolume(ctx context.Context, req *csi.Contro
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
 	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
-	if backend == nil {
+	if err != nil || backend == nil {
 		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, status.Error(codes.Internal, msg)
@@ -222,7 +222,7 @@ func (d *CsiDriver) ControllerUnpublishVolume(ctx context.Context, req *csi.Cont
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
 	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
-	if backend == nil {
+	if err != nil || backend == nil {
 		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
 			"CAUTION: volume %s need to manually detach from array.", backendName, volName)
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
@@ -278,44 +278,65 @@ func (d *CsiDriver) ControllerGetCapabilities(ctx context.Context, req *csi.Cont
 	*csi.ControllerGetCapabilitiesResponse, error) {
 	defer utils.RecoverPanic(ctx)
 
-	return &csi.ControllerGetCapabilitiesResponse{
-		Capabilities: []*csi.ControllerServiceCapability{
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
-					},
+	capabilities := []*csi.ControllerServiceCapability{
+		{
+			Type: &csi.ControllerServiceCapability_Rpc{
+				Rpc: &csi.ControllerServiceCapability_RPC{
+					Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 				},
 			},
 		},
+		{
+			Type: &csi.ControllerServiceCapability_Rpc{
+				Rpc: &csi.ControllerServiceCapability_RPC{
+					Type: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+				},
+			},
+		},
+		{
+			Type: &csi.ControllerServiceCapability_Rpc{
+				Rpc: &csi.ControllerServiceCapability_RPC{
+					Type: csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+				},
+			},
+		},
+		{
+			Type: &csi.ControllerServiceCapability_Rpc{
+				Rpc: &csi.ControllerServiceCapability_RPC{
+					Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+				},
+			},
+		},
+		{
+			Type: &csi.ControllerServiceCapability_Rpc{
+				Rpc: &csi.ControllerServiceCapability_RPC{
+					Type: csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
+				},
+			},
+		},
+	}
+
+	if app.GetGlobalConfig().HealthMonitorEnabled {
+		capabilities = append(capabilities,
+			&csi.ControllerServiceCapability{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_GET_VOLUME,
+					},
+				},
+			},
+			&csi.ControllerServiceCapability{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_VOLUME_CONDITION,
+					},
+				},
+			},
+		)
+	}
+
+	return &csi.ControllerGetCapabilitiesResponse{
+		Capabilities: capabilities,
 	}, nil
 }
 
@@ -337,7 +358,7 @@ func (d *CsiDriver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotR
 
 	backendName, volName := utils.SplitVolumeId(volumeId)
 	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
-	if backend == nil {
+	if err != nil || backend == nil {
 		msg := fmt.Sprintf("Backend %s doesn't exist", backendName)
 		log.AddContext(ctx).Errorln(msg)
 		return nil, status.Error(codes.Internal, msg)
@@ -375,7 +396,7 @@ func (d *CsiDriver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotR
 
 	backendName, snapshotParentId, snapshotName := utils.SplitSnapshotId(snapshotId)
 	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
-	if backend == nil {
+	if err != nil || backend == nil {
 		log.AddContext(ctx).Warningf("Backend %s doesn't exist. Ignore this request and return success. "+
 			"CAUTION: snapshot need to manually delete from array.", backendName)
 		return &csi.DeleteSnapshotResponse{}, nil
@@ -400,5 +421,36 @@ func (d *CsiDriver) ListSnapshots(ctx context.Context,
 // ControllerGetVolume is to get volume info, but unimplemented
 func (d *CsiDriver) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (
 	*csi.ControllerGetVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	ctx = log.SetSkipRestLogFlag(ctx)
+	defer utils.RecoverPanic(ctx)
+
+	volumeId := req.GetVolumeId()
+	if volumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "no volume ID provided")
+	}
+
+	backendName, volName := utils.SplitVolumeId(volumeId)
+	backend, err := d.backendSelector.SelectBackend(ctx, backendName)
+	if err != nil || backend == nil {
+		msg := fmt.Sprintf("ControllerGetVolume: SelectBackend %s failed, err：%v", backendName, err)
+		log.AddContext(ctx).Errorln(msg)
+		return nil, status.Error(codes.Internal, msg)
+	}
+
+	var parentName string
+	if constants.IsDtreeStorage(backend.Storage) {
+		parentName, err = app.GetGlobalConfig().K8sUtils.GetDTreeParentNameByVolumeId(volumeId)
+		if err != nil {
+			log.AddContext(ctx).Errorf("ControllerGetVolume: Failed to get parent name by volume id: %v", err)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+
+	volumeStatus := backend.Plugin.GetVolumeStatus(ctx, utils.VolumeQuery{Name: volName, ParentName: parentName})
+	return &csi.ControllerGetVolumeResponse{
+		Status: &csi.ControllerGetVolumeResponse_VolumeStatus{VolumeCondition: &csi.VolumeCondition{
+			Abnormal: volumeStatus.Abnormal,
+			Message:  volumeStatus.Message,
+		}},
+	}, nil
 }

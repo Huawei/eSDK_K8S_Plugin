@@ -100,3 +100,76 @@ func compareConnectorOptions(envCfg *config.AppConfig) error {
 	}
 	return nil
 }
+
+func TestValidateFlags_NegativeQPS(t *testing.T) {
+	// Arrange
+	opt := &serviceOptions{
+		kubeApiQps:   -1.0,
+		kubeApiBurst: 10,
+	}
+
+	// Act
+	errs := opt.ValidateFlags()
+
+	// Assert
+	if len(errs) == 0 {
+		t.Fatal("expected error for negative QPS, got none")
+	}
+	if errs[0].Error() != "kube-api-qps must be >= 0, got -1.00" {
+		t.Errorf("unexpected error message: %s", errs[0].Error())
+	}
+}
+
+func TestValidateFlags_NegativeBurst(t *testing.T) {
+	// Arrange
+	opt := &serviceOptions{
+		kubeApiQps:   5.0,
+		kubeApiBurst: -1,
+	}
+
+	// Act
+	errs := opt.ValidateFlags()
+
+	// Assert
+	if len(errs) == 0 {
+		t.Fatal("expected error for negative Burst, got none")
+	}
+	if errs[0].Error() != "kube-api-burst must be >= 0, got -1" {
+		t.Errorf("unexpected error message: %s", errs[0].Error())
+	}
+}
+
+func TestValidateFlags_QPSGteBurst(t *testing.T) {
+	// Arrange
+	opt := &serviceOptions{
+		kubeApiQps:   10.0,
+		kubeApiBurst: 10,
+	}
+
+	// Act
+	errs := opt.ValidateFlags()
+
+	// Assert
+	if len(errs) == 0 {
+		t.Fatal("expected error for QPS >= Burst, got none")
+	}
+	if errs[0].Error() != "kube-api-burst (10) must be > kube-api-qps (10.00)" {
+		t.Errorf("unexpected error message: %s", errs[0].Error())
+	}
+}
+
+func TestValidateFlags_ValidInput(t *testing.T) {
+	// Arrange
+	opt := &serviceOptions{
+		kubeApiQps:   5.0,
+		kubeApiBurst: 10,
+	}
+
+	// Act
+	errs := opt.ValidateFlags()
+
+	// Assert
+	if len(errs) != 0 {
+		t.Errorf("expected no errors for valid input, got: %v", errs)
+	}
+}

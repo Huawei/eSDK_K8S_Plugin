@@ -22,9 +22,13 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/prashantv/gostub"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
@@ -435,4 +439,257 @@ func TestOceanstorSanPlugin_CreateVolume_Failed(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, vol)
 	assert.Contains(t, err.Error(), "create volume failed")
+}
+
+func TestModifyVolume_UnsupportedModifyType(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{}
+	volumeId := "backend-123"
+	params := map[string]string{"key": "value"}
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.HyperMetro2Local, params)
+
+	// assert
+	assert.ErrorContains(t, err, "unsupported modify type")
+}
+
+func TestModifyVolume_StorageOffline(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{
+		storageOnline:     false,
+		metroRemotePlugin: &OceanstorSanPlugin{storageOnline: true},
+		metroDomain:       "test-domain",
+	}
+	volumeId := "backend-123"
+	params := map[string]string{}
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.Local2HyperMetro, params)
+
+	// assert
+	assert.ErrorContains(t, err, "local storage is offline")
+}
+
+func TestModifyVolume_MetroRemotePluginNil(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{
+		storageOnline:     true,
+		metroRemotePlugin: nil,
+		metroDomain:       "test-domain",
+	}
+	volumeId := "backend-123"
+	params := map[string]string{}
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.Local2HyperMetro, params)
+
+	// assert
+	assert.ErrorContains(t, err, "metro remote plugin not configured")
+}
+
+func TestModifyVolume_RemoteStorageOffline(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{
+		storageOnline:     true,
+		metroRemotePlugin: &OceanstorSanPlugin{storageOnline: false},
+		metroDomain:       "test-domain",
+	}
+	volumeId := "backend-123"
+	params := map[string]string{}
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.Local2HyperMetro, params)
+
+	// assert
+	assert.ErrorContains(t, err, "remote storage is offline")
+}
+
+func TestModifyVolume_MetroDomainEmpty(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{
+		storageOnline:     true,
+		metroRemotePlugin: &OceanstorSanPlugin{storageOnline: true},
+		metroDomain:       "",
+	}
+	volumeId := "backend-123"
+	params := map[string]string{}
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.Local2HyperMetro, params)
+
+	// assert
+	assert.ErrorContains(t, err, "hyper metro domain not configured")
+}
+
+func TestModifyVolume_Success(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{
+		storageOnline:     true,
+		metroRemotePlugin: &OceanstorSanPlugin{storageOnline: true},
+		metroDomain:       "test-domain",
+		OceanstorPlugin: OceanstorPlugin{
+			cli: &client.OceanstorClient{},
+		},
+	}
+	volumeId := "backend-test-lun"
+	params := map[string]string{"description": "test volume"}
+	sanObj := &volume.SAN{}
+
+	// mock
+	k8sUtils := app.GetGlobalConfig().K8sUtils
+	stubs := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer stubs.Reset()
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+
+	mock.ApplyFuncReturn(volume.NewSAN, sanObj).
+		ApplyMethodReturn(sanObj, "Modify", nil, nil).
+		ApplyMethodReturn(k8sUtils, "GetMappingHostsByVolumeId", []string{"host1"}, nil).
+		ApplyMethodReturn(plugin, "AttachVolume", map[string]interface{}{"target": "iqn.1"}, nil).
+		ApplyMethodReturn(k8sUtils, "UpdateVAsWithHostMap", nil)
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.Local2HyperMetro, params)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func TestModifyVolume_ModifyFailed(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{
+		storageOnline:     true,
+		metroRemotePlugin: &OceanstorSanPlugin{storageOnline: true},
+		metroDomain:       "test-domain",
+		OceanstorPlugin: OceanstorPlugin{
+			cli: &client.OceanstorClient{},
+		},
+	}
+	volumeId := "backend-test-lun"
+	params := map[string]string{}
+	sanObj := &volume.SAN{}
+
+	// mock
+	stubs := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer stubs.Reset()
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+
+	mock.ApplyFuncReturn(volume.NewSAN, sanObj).
+		ApplyMethodReturn(sanObj, "Modify", nil, errors.New("modify error"))
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.Local2HyperMetro, params)
+
+	// assert
+	assert.ErrorContains(t, err, "build hypermetro relation failed")
+	assert.ErrorContains(t, err, "modify error")
+}
+
+func TestModifyVolume_GetLunMappingHostsFailed(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{
+		storageOnline:     true,
+		metroRemotePlugin: &OceanstorSanPlugin{storageOnline: true},
+		metroDomain:       "test-domain",
+		OceanstorPlugin: OceanstorPlugin{
+			cli: &client.OceanstorClient{},
+		},
+	}
+	volumeId := "backend-test-lun"
+	params := map[string]string{}
+	sanObj := &volume.SAN{}
+
+	// mock
+	k8sUtils := app.GetGlobalConfig().K8sUtils
+	stubs := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer stubs.Reset()
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+
+	mock.ApplyFuncReturn(volume.NewSAN, sanObj).
+		ApplyMethodReturn(sanObj, "Modify", nil, nil).
+		ApplyMethodReturn(k8sUtils, "GetMappingHostsByVolumeId", nil, errors.New("get hosts error"))
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.Local2HyperMetro, params)
+
+	// assert
+	assert.ErrorContains(t, err, "get local mapping hosts failed")
+	assert.ErrorContains(t, err, "get hosts error")
+}
+
+func TestModifyVolume_UpdateVAsFailed(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{
+		storageOnline:     true,
+		metroRemotePlugin: &OceanstorSanPlugin{storageOnline: true},
+		metroDomain:       "test-domain",
+		OceanstorPlugin: OceanstorPlugin{
+			cli: &client.OceanstorClient{},
+		},
+	}
+	volumeId := "backend-test-lun"
+	params := map[string]string{}
+	sanObj := &volume.SAN{}
+
+	// mock
+	k8sUtils := app.GetGlobalConfig().K8sUtils
+	stubs := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer stubs.Reset()
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+
+	mock.ApplyFuncReturn(volume.NewSAN, sanObj).
+		ApplyMethodReturn(sanObj, "Modify", nil, nil).
+		ApplyMethodReturn(k8sUtils, "GetMappingHostsByVolumeId", []string{"host1"}, nil).
+		ApplyMethodReturn(plugin, "AttachVolume", map[string]interface{}{"target": "iqn.1"}, nil).
+		ApplyMethodReturn(k8sUtils, "UpdateVAsWithHostMap", errors.New("update VA error"))
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.Local2HyperMetro, params)
+
+	// assert
+	assert.ErrorContains(t, err, "update VA resources failed")
+	assert.ErrorContains(t, err, "update VA error")
+}
+
+func TestModifyVolume_NoMapping(t *testing.T) {
+	// arrange
+	plugin := &OceanstorSanPlugin{
+		storageOnline:     true,
+		metroRemotePlugin: &OceanstorSanPlugin{storageOnline: true},
+		metroDomain:       "test-domain",
+		OceanstorPlugin: OceanstorPlugin{
+			cli: &client.OceanstorClient{},
+		},
+	}
+	volumeId := "backend-test-lun"
+	params := map[string]string{}
+	sanObj := &volume.SAN{}
+
+	// mock
+	k8sUtils := app.GetGlobalConfig().K8sUtils
+	stubs := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer stubs.Reset()
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+
+	mock.ApplyFuncReturn(volume.NewSAN, sanObj).
+		ApplyMethodReturn(sanObj, "Modify", nil, nil).
+		ApplyMethodReturn(k8sUtils, "GetMappingHostsByVolumeId", []string{}, nil)
+
+	// act
+	err := plugin.ModifyVolume(ctx, volumeId, pkgVolume.Local2HyperMetro, params)
+
+	// assert
+	assert.Error(t, err)
+	var noMappingErr NoMappingError
+	assert.ErrorAs(t, err, &noMappingErr)
 }

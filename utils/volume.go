@@ -116,3 +116,15 @@ func (vol *volume) SetKvCacheStoreId(kvcacheStoreId string) {
 func (vol *volume) GetKvcacheStoreId() string {
 	return vol.kvcacheStoreId
 }
+
+// VolumeStatus represents the health status of a volume
+type VolumeStatus struct {
+	Abnormal bool
+	Message  string
+}
+
+// VolumeQuery represents the query parameters for volume status
+type VolumeQuery struct {
+	Name       string
+	ParentName string
+}

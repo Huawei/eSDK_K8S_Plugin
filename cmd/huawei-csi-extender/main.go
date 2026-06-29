@@ -72,6 +72,7 @@ func main() {
 		return
 	}
 
+	app.GetGlobalConfig().K8sUtils.Activate()
 	recorder := utils.InitRecorder(k8sClient, eventComponentName)
 	signalChan := make(chan os.Signal, 1)
 	defer close(signalChan)

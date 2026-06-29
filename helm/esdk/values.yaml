@@ -15,6 +15,7 @@ images:
     livenessProbe: registry.k8s.io/sig-storage/livenessprobe:v2.15.0
     snapshotter: registry.k8s.io/sig-storage/csi-snapshotter:v8.2.0
     snapshotController: registry.k8s.io/sig-storage/snapshot-controller:v8.2.0
+    healthMonitorController: registry.k8s.io/sig-storage/csi-external-health-monitor-controller:v0.17.0
 
 # Default image pull policy for sidecar container images, support [IfNotPresent, Always, Never]
 sidecarImagePullPolicy: "IfNotPresent"
@@ -101,6 +102,9 @@ controller:
     #   false: disable volume snapshot feature(do not install resizer sidecar)
     # Default value: None
     enabled: true
+    # CSI community csi-resizer container kube-api rate limiting configuration
+    kubeApiQps: 5
+    kubeApiBurst: 10
 
   csiExtender:
     # volume modify feature
@@ -129,6 +133,20 @@ controller:
     # You can change the port to another port that is not occupied.
     port: 9090
 
+  healthMonitor:
+    # enabled: Enable/Disable health monitor feature
+    # Allowed values:
+    #   true: enable health monitor feature
+    #   false: disable health monitor feature
+    # Default value: false
+    enabled: false
+    # monitorInterval: Health monitor polling interval
+    # Default value: 60s
+    monitorInterval: 60s
+    # number of pv monitor worker threads
+    # Default value: 10
+    workThreads: 10
+
   # nodeSelector: Define node selection constraints for controller pods.
   # For the pod to be eligible to run on a node, the node must have each
   # of the indicated key-value pairs as labels.
@@ -155,6 +173,42 @@ controller:
 
   # affinity: constrain which nodes your Pod can be scheduled on based on node labels
   affinity: {}
+
+  # CSI community csi-provisioner container kube-api rate limiting configuration
+  provisioner:
+    kubeApiQps: 5
+    kubeApiBurst: 10
+
+  # CSI community csi-attacher container kube-api rate limiting configuration
+  attacher:
+    kubeApiQps: 5
+    kubeApiBurst: 10
+
+
+  # CSI community csi-snapshotter container kube-api rate limiting configuration
+  snapshotter:
+    kubeApiQps: 5
+    kubeApiBurst: 10
+
+  # Huawei storage-backend-controller container kube-api rate limiting configuration
+  storageBackendController:
+    kubeApiQps: 5
+    kubeApiBurst: 10
+
+  # Huawei storage-backend-sidecar container kube-api rate limiting configuration
+  storageBackendSidecar:
+    kubeApiQps: 5
+    kubeApiBurst: 10
+
+  # Huawei huawei-csi-extender container kube-api rate limiting configuration
+  huaweiCsiExtender:
+    kubeApiQps: 5
+    kubeApiBurst: 10
+
+  # Huawei huawei-csi-driver container kube-api rate limiting configuration
+  huaweiCsiDriver:
+    kubeApiQps: 5
+    kubeApiBurst: 10
 
 node:
   # maxVolumesPerNode: Defines the maximum number of volumes that can be used by a node.
@@ -206,6 +260,11 @@ node:
   # After successful MountVolume for block volume, publish directory structure will be like below
   # /var/lib/kubelet/plugins/kubernetes.io/csi/{kubeletVolumeDevicesDirName}/publish/{specName}/{podUID}
   kubeletVolumeDevicesDirName: volumeDevices
+
+  # Huawei huawei-csi-driver container kube-api rate limiting configuration
+  huaweiCsiDriver:
+    kubeApiQps: 5
+    kubeApiBurst: 10
 
 
 # The CSI driver parameter configuration
@@ -367,6 +426,13 @@ resources:
       limits:
         cpu: 500m
         memory: 1Gi
+      requests:
+        cpu: 50m
+        memory: 128Mi
+    healthMonitor:
+      limits:
+        cpu: 300m
+        memory: 512Mi
       requests:
         cpu: 50m
         memory: 128Mi

@@ -45,6 +45,9 @@ const (
 
 	// TagName use to mark tag for log printer
 	TagName = "tag"
+
+	// SkipRestLogKey is used to mark whether to skip logging RESTful calls.
+	SkipRestLogKey key = "csi.skipPrintRestLog"
 )
 
 // LoggingInterface is an interface exposes logging functionality
@@ -365,6 +368,10 @@ func FilteredLog(ctx context.Context, isSkip, isDebug bool, msg string) {
 		return
 	}
 
+	if GetSkipRestLogFlag(ctx) {
+		return
+	}
+
 	if isDebug {
 		AddContext(ctx).Debugln(msg)
 	} else {
@@ -419,4 +426,21 @@ func SetRequestInfoWithTag(ctx context.Context, tag string) (context.Context, er
 	}
 
 	return context.WithValue(requestCtx, TagNameKey, tagName), nil
+}
+
+// SetSkipRestLogFlag sets a flag in the context to determine whether to skip logging RESTful calls.
+func SetSkipRestLogFlag(ctx context.Context) context.Context {
+	return context.WithValue(ctx, SkipRestLogKey, true)
+}
+
+// GetSkipRestLogFlag retrieves the skip RESTful log flag from the context.
+// It returns true if RESTful calls should not be logged, false otherwise.
+func GetSkipRestLogFlag(ctx context.Context) bool {
+	val := ctx.Value(SkipRestLogKey)
+	if val != nil {
+		if skipLog, ok := val.(bool); ok {
+			return skipLog
+		}
+	}
+	return false
 }

@@ -173,7 +173,7 @@ func (c *Controller) serve(w http.ResponseWriter, r *http.Request, admit admitHa
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
 		msg := fmt.Sprintf("contentType=%s, expect application/json", contentType)
-		log.AddContext(ctx).Errorf(msg)
+		log.AddContext(ctx).Errorf("%s", msg)
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}

@@ -19,6 +19,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -54,6 +55,38 @@ func fsInfo(path string) (*unixFsInfo, error) {
 		capacity:   capacity,
 		usage:      used,
 	}, nil
+}
+
+// GetBlockDeviceSize returns the total size in bytes for the given block device path.
+// This is used to determine the capacity of block volume.
+func GetBlockDeviceSize(path string) (int64, error) {
+	args := []string{"--getsize64", path}
+	cmd := fmt.Sprintf("blockdev %s", strings.Join(args, " "))
+	out, err := execShellCmdTimeout(context.Background(), execShellCmd, cmd, true)
+	if err != nil {
+		return 0, err
+	}
+
+	sizeInBytes, err := StringParseInt(out)
+	if err != nil {
+		return 0, err
+	}
+
+	return sizeInBytes, nil
+}
+
+// IsBlockDevice checks if the given path is a block device.
+// Returns true if the path is a block device, false otherwise.
+func IsBlockDevice(path string) (bool, error) {
+	var stat unix.Stat_t
+	err := unix.Stat(path, &stat)
+	if errors.Is(err, unix.ENOENT) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+
+	return (stat.Mode & unix.S_IFMT) == unix.S_IFBLK, nil
 }
 
 func execShellCmd(ctx context.Context, format string, logFilter bool, args ...any) (string, bool, error) {
@@ -96,7 +129,7 @@ func execShellCmd(ctx context.Context, format string, logFilter bool, args ...an
 			return
 		}
 
-		if !commandComplete {
+		if !commandComplete && shCmd.Process != nil {
 			err = shCmd.Process.Kill()
 		}
 	})

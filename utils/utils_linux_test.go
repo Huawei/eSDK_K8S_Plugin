@@ -139,3 +139,68 @@ func Test_ExecShellCmd_Timeout(t *testing.T) {
 	assert.Empty(t, gotOutput)
 	assert.True(t, gotTimeout)
 }
+
+func Test_GetBlockDeviceSize_WithError(t *testing.T) {
+	// arrange
+	path := "/dev/nonexistent"
+
+	// action
+	gotSize, gotErr := GetBlockDeviceSize(path)
+
+	// assert
+	assert.Error(t, gotErr)
+	assert.Equal(t, int64(0), gotSize)
+}
+
+func Test_GetBlockDeviceSize_ParseError(t *testing.T) {
+	// arrange
+	app.GetGlobalConfig().ExecCommandTimeout = 10
+	nonNumericOutput := "invalid"
+
+	// mock
+	patches := gomonkey.ApplyMethodReturn(&exec.Cmd{}, "CombinedOutput", []byte(nonNumericOutput), nil)
+	defer patches.Reset()
+
+	// action
+	gotSize, gotErr := GetBlockDeviceSize("/dev/sda")
+
+	// assert
+	assert.Error(t, gotErr)
+	assert.Equal(t, int64(0), gotSize)
+}
+
+func Test_CheckBlockDevice_Zero(t *testing.T) {
+	// arrange
+	path := "/dev/zero"
+
+	// action
+	gotIsBlock, gotErr := IsBlockDevice(path)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.False(t, gotIsBlock)
+}
+
+func Test_CheckBlockDevice_False(t *testing.T) {
+	// arrange
+	path := "/proc/self/exe"
+
+	// action
+	gotIsBlock, gotErr := IsBlockDevice(path)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.False(t, gotIsBlock)
+}
+
+func Test_CheckBlockDevice_NotExist(t *testing.T) {
+	// arrange
+	path := "/dev/nonexistent"
+
+	// action
+	gotIsBlock, gotErr := IsBlockDevice(path)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.False(t, gotIsBlock)
+}

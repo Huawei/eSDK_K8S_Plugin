@@ -69,3 +69,19 @@ func TestNeedUpdateClaimStatusTrue(t *testing.T) {
 		t.Error("TestNeedUpdateClaimStatusTrue failed, want true")
 	}
 }
+
+func TestHandleClaimWork_ObjNotString(t *testing.T) {
+	ctrl := initController()
+	err := ctrl.handleClaimWork(context.Background(), 123)
+	if err == nil {
+		t.Error("TestHandleClaimWork_ObjNotString want error, got nil")
+	}
+}
+
+func TestHandleContentWork_ObjNotString(t *testing.T) {
+	ctrl := initController()
+	err := ctrl.handleContentWork(context.Background(), 123)
+	if err == nil {
+		t.Error("TestHandleContentWork_ObjNotString want error, got nil")
+	}
+}

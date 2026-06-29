@@ -312,3 +312,15 @@ func TestIsNil(t *testing.T) {
 		})
 	}
 }
+
+func TestStrToBool_InvalidString(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	invalidBoolStr := "not-a-boolean"
+
+	// action
+	result := StrToBool(ctx, invalidBoolStr)
+
+	// assert
+	assert.False(t, result)
+}

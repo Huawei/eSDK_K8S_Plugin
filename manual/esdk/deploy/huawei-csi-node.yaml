@@ -187,6 +187,8 @@ spec:
             - "--kubelet-volume-devices-dir-name=/volumeDevices/"
             - "--report-node-ip=false"
             - "--enable-per-node-secret=false"
+            - "--kube-api-qps=5"
+            - "--kube-api-burst=10"
           env:
             - name: CSI_NODENAME
               valueFrom:

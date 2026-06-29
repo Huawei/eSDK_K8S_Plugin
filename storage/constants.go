@@ -100,4 +100,10 @@ const (
 
 	// CharsetUtf8 defines a constant representing the UTF-8 character set
 	CharsetUtf8 = "UTF_8"
+
+	// LunGroupPrefix defines prefix of lun group
+	LunGroupPrefix = "k8s_csi_lungroup_"
+
+	// HostPrefix defines prefix of host
+	HostPrefix = "k8s_"
 )

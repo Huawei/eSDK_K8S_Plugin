@@ -399,7 +399,35 @@ subjects:
   - kind: ServiceAccount
     name: huawei-csi-controller
     namespace: huawei-csi
-
+---
+#apiVersion: rbac.authorization.k8s.io/v1
+#kind: ClusterRole
+#metadata:
+#  labels:
+#    provisioner: csi.huawei.com
+#  name: external-health-monitor-controller-runner
+#rules:
+#  - apiGroups: [ "" ]
+#    resources: [ "persistentvolumes", "persistentvolumeclaims", "nodes", "pods" ]
+#    verbs: [ "get", "list", "watch" ]
+#  - apiGroups: [ "" ]
+#    resources: [ "events" ]
+#    verbs: [ "get", "list", "watch", "create", "patch" ]
+#---
+#apiVersion: rbac.authorization.k8s.io/v1
+#kind: ClusterRoleBinding
+#metadata:
+#  labels:
+#    provisioner: csi.huawei.com
+#  name: external-health-monitor-controller-role
+#roleRef:
+#  apiGroup: rbac.authorization.k8s.io
+#  kind: ClusterRole
+#  name: external-health-monitor-controller-runner
+#subjects:
+#  - kind: ServiceAccount
+#    name: huawei-csi-controller
+#    namespace: huawei-csi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -449,6 +477,8 @@ spec:
             - "--feature-gates=Topology=false"
             - "--volume-name-prefix=pvc"
             - "--leader-election"
+            - "--kube-api-qps=5"
+            - "--kube-api-burst=10"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -468,6 +498,8 @@ spec:
           args:
             - "--csi-address=$(ADDRESS)"
             - "--leader-election"
+            - "--kube-api-qps=5"
+            - "--kube-api-burst=10"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -489,6 +521,8 @@ spec:
             - "--csi-address=$(ADDRESS)"
             - "--handle-volume-inuse-error=false"
             - "--leader-election"
+            - "--kube-api-qps=5"
+            - "--kube-api-burst=10"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -509,6 +543,8 @@ spec:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
             - "--leader-election"
+            - "--kube-api-qps=5"
+            - "--kube-api-burst=10"
           env:
             - name: ADDRESS
               value: /csi/csi.sock
@@ -562,6 +598,8 @@ spec:
             - "--leader-lease-duration=8s"
             - "--leader-renew-deadline=6s"
             - "--leader-retry-period=2s"
+            - "--kube-api-qps=5"
+            - "--kube-api-burst=10"
           ports:
             - containerPort: 4433
           volumeMounts:
@@ -599,6 +637,8 @@ spec:
             - "--leader-lease-duration=8s"
             - "--leader-renew-deadline=6s"
             - "--leader-retry-period=2s"
+            - "--kube-api-qps=5"
+            - "--kube-api-burst=10"
           volumeMounts:
             - mountPath: /csi
               name: socket-dir
@@ -629,6 +669,9 @@ spec:
             - "--log-file-size=20M"
             - "--max-backups=9"
             - "--enable-per-node-secret=false"
+            - "--health-monitor-enabled=false"
+            - "--kube-api-qps=5"
+            - "--kube-api-burst=10"
           env:
             - name: CSI_ENDPOINT
               value: /csi/csi.sock
@@ -665,6 +708,29 @@ spec:
             requests:
               cpu: 50m
               memory: 128Mi
+#        - name: external-health-monitor
+#          args:
+#            - "--csi-address=$(ADDRESS)"
+#            - "--enable-node-watcher=true"
+#            - "--timeout=180s"
+#            - "--monitor-interval=60s"
+#            - "--worker-threads=10"
+#            - "--leader-election"
+#          env:
+#            - name: ADDRESS
+#              value: /csi/csi.sock
+#          image: registry.k8s.io/sig-storage/csi-external-health-monitor-controller:v0.17.0
+#          imagePullPolicy: "IfNotPresent"
+#          volumeMounts:
+#            - mountPath: /csi
+#              name: socket-dir
+#          resources:
+#            limits:
+#              cpu: 300m
+#              memory: 512Mi
+#            requests:
+#              cpu: 50m
+#              memory: 128Mi
       volumes:
         - emptyDir: null
           name: socket-dir

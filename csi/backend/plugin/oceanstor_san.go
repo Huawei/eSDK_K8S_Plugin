@@ -27,7 +27,9 @@ import (
 	"sync"
 
 	xuanwuV1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/proto"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/attacher"
@@ -54,6 +56,14 @@ var (
 	oceanStorSanProtocolsWithPortals = []string{constants.ProtocolIscsi,
 		constants.ProtocolRoce, constants.ProtocolRoceNVMe, constants.ProtocolTCPNVMe}
 )
+
+// NoMappingError represents an error when there is no mapping relationship in the current storage
+type NoMappingError struct{}
+
+// Error returns the error message for NoMappingError
+func (e NoMappingError) Error() string {
+	return "no mapping relationship on current storage"
+}
 
 // OceanstorSanPlugin implements storage StoragePlugin interface
 type OceanstorSanPlugin struct {
@@ -723,12 +733,137 @@ func (p *OceanstorSanPlugin) ExpandDTreeVolume(context.Context, string, string, 
 }
 
 // ModifyVolume used to modify volume hyperMetro status
-func (p *OceanstorSanPlugin) ModifyVolume(ctx context.Context, volumeName string,
-	modifyType pkgVolume.ModifyVolumeType, param map[string]string) error {
-	return errors.New("fusion storage does not support modify volume feature")
+func (p *OceanstorSanPlugin) ModifyVolume(ctx context.Context, volumeId string,
+	modifyType pkgVolume.ModifyVolumeType, params map[string]string) error {
+	log.AddContext(ctx).Infof("Start to modify volume, volumeId: %s, param: %v", volumeId, params)
+	if modifyType != pkgVolume.Local2HyperMetro {
+		return fmt.Errorf("unsupported modify type: %s", modifyType)
+	}
+
+	if err := p.canModifyVolume(); err != nil {
+		return err
+	}
+
+	_, lunName := utils.SplitVolumeId(volumeId)
+	modifyParams := p.convertModifyParams(ctx, lunName, params)
+	san := p.getSanObj()
+	_, err := san.Modify(ctx, modifyParams)
+	if err != nil {
+		return fmt.Errorf("build hypermetro relation failed: %w", err)
+	}
+
+	hostNames, err := app.GetGlobalConfig().K8sUtils.GetMappingHostsByVolumeId(volumeId)
+	if err != nil {
+		return fmt.Errorf("get local mapping hosts failed: %w", err)
+	}
+
+	if len(hostNames) == 0 {
+		log.AddContext(ctx).Infof("There is no mapping for volume %s, no staging needed", volumeId)
+		return NoMappingError{}
+	}
+
+	hostMap, err := p.modifyMappings(ctx, hostNames, lunName)
+	if err != nil {
+		return fmt.Errorf("modify mappings failed: %w", err)
+	}
+
+	err = app.GetGlobalConfig().K8sUtils.UpdateVAsWithHostMap(ctx, volumeId, hostMap)
+	if err != nil {
+		return fmt.Errorf("update VA resources failed: %w", err)
+	}
+
+	log.AddContext(ctx).Infof("Modify volume success, volumeId: %s", volumeId)
+	return nil
+}
+
+// canModifyVolume checks if modify volume is allowed
+func (p *OceanstorSanPlugin) canModifyVolume() error {
+	if !p.storageOnline {
+		return errors.New("local storage is offline")
+	}
+
+	if p.metroRemotePlugin == nil {
+		return errors.New("metro remote plugin not configured")
+	}
+
+	if !p.metroRemotePlugin.storageOnline {
+		return errors.New("remote storage is offline")
+	}
+
+	if p.metroDomain == "" {
+		return errors.New("hyper metro domain not configured")
+	}
+
+	return nil
+}
+
+// convertModifyParams converts modify parameters to internal params format
+func (p *OceanstorSanPlugin) convertModifyParams(ctx context.Context,
+	lunName string, params map[string]string) map[string]interface{} {
+	formatParams := pkgUtils.ConvertMapString2MapInterface(params)
+	formatParams["hyperMetro"] = "true"
+	formatParams["metroDomain"] = p.metroDomain
+	if formatParams["description"] == nil {
+		formatParams["description"] = constants.DefaultDescription
+	}
+
+	ret := map[string]any{
+		"name": lunName,
+	}
+
+	toLowerParams(formatParams, ret)
+	processBoolParams(ctx, formatParams, ret)
+	log.AddContext(ctx).Infof("getParams finish, parameters: %v", ret)
+
+	return ret
+}
+
+// modifyMappings modifies lun mappings by host list
+func (p *OceanstorSanPlugin) modifyMappings(ctx context.Context, hostNames []string,
+	lunName string) (map[string]map[string]interface{}, error) {
+	ret := map[string]map[string]interface{}{}
+	for _, hostName := range hostNames {
+		attachParams := map[string]interface{}{"HostName": hostName}
+		mappingInfo, err := p.AttachVolume(ctx, lunName, attachParams)
+		if err != nil {
+			return nil, fmt.Errorf("attach lun %s to host %s failed, err: %w", lunName, hostName, err)
+		}
+
+		ret[hostName] = mappingInfo
+	}
+
+	return ret, nil
 }
 
 // SetStorageOnline sets the online status of plugin
 func (p *OceanstorSanPlugin) SetStorageOnline(online bool) {
 	p.storageOnline = online
+}
+
+// GetVolumeStatus get volume health status
+func (p *OceanstorSanPlugin) GetVolumeStatus(ctx context.Context,
+	query utils.VolumeQuery) utils.VolumeStatus {
+
+	status := utils.VolumeStatus{Abnormal: true}
+	lunInfo, err := p.cli.GetLunByName(ctx, query.Name)
+	if err != nil {
+		status.Message = fmt.Sprintf("Query volume %s error: %v", query.Name, err)
+		log.AddContext(ctx).Errorln(status.Message)
+		return status
+	}
+
+	if lunInfo == nil {
+		status.Message = fmt.Sprintf("Volume %s not found", query.Name)
+		return status
+	}
+
+	healthStatus, ok := lunInfo["HEALTHSTATUS"].(string)
+	if ok && healthStatus == constants.DoradoSanStorageUnHealthStatus {
+		status.Message = fmt.Sprintf("Volume %s health status is fault", query.Name)
+		return status
+	}
+
+	status.Abnormal = false
+	status.Message = fmt.Sprintf("Volume %s is normal", query.Name)
+	return status
 }

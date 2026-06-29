@@ -75,7 +75,7 @@ func (resp *Response) AssertErrorWithTolerations(ctx context.Context, toleration
 			return code == toleration.Code
 		})
 		if tolerantIndex != -1 {
-			log.AddContext(ctx).Infof(tolerations[tolerantIndex].Reason)
+			log.AddContext(ctx).Infof("%s", tolerations[tolerantIndex].Reason)
 			return nil
 		}
 

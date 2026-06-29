@@ -107,12 +107,12 @@ func (cli *SystemClient) GetAllPools(ctx context.Context) (map[string]interface{
 	for _, p := range respData {
 		pool, ok := p.(map[string]interface{})
 		if !ok {
-			log.AddContext(ctx).Warningf(fmt.Sprintf("convert pool to map failed, data: %v", p))
+			log.AddContext(ctx).Warningf("convert pool to map failed, data: %v", p)
 			continue
 		}
 		name, ok := pool["NAME"].(string)
 		if !ok {
-			log.AddContext(ctx).Warningf(fmt.Sprintf("convert name to map failed, data: %v", pool["NAME"]))
+			log.AddContext(ctx).Warningf("convert name to map failed, data: %v", pool["NAME"])
 			continue
 		}
 		pools[name] = pool
@@ -147,7 +147,7 @@ func (cli *SystemClient) GetLicenseFeature(ctx context.Context) (map[string]int,
 	for _, i := range respData {
 		feature, ok := i.(map[string]interface{})
 		if !ok {
-			log.AddContext(ctx).Warningf(fmt.Sprintf("convert feature to map failed, data: %v", i))
+			log.AddContext(ctx).Warningf("convert feature to map failed, data: %v", i)
 			continue
 		}
 		for k, v := range feature {

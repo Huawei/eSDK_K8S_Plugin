@@ -101,7 +101,7 @@ func (p *QoS) AddQoS(ctx context.Context, volName string, params map[string]int)
 
 		err := p.RemoveQoS(ctx, volName)
 		if err != nil {
-			log.AddContext(ctx).Errorf("Revert Create qos %s error: %v", params, err)
+			log.AddContext(ctx).Errorf("Revert Create qos %v error: %v", params, err)
 			return "", err
 		}
 

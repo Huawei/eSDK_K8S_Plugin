@@ -14,7 +14,7 @@ ENTRYPOINT ["/huawei-csi"]
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/base:latest as storage-backend-controller
+FROM gcr.io/distroless/base-nossl:latest as storage-backend-controller
 LABEL version="${VERSION}"
 LABEL maintainers="Huawei eSDK CSI development team"
 LABEL description="Storage Backend Controller"
@@ -24,7 +24,7 @@ COPY ${binary} storage-backend-controller
 ENTRYPOINT ["/storage-backend-controller"]
 
 
-FROM gcr.io/distroless/base:latest as storage-backend-sidecar
+FROM gcr.io/distroless/base-nossl:latest as storage-backend-sidecar
 LABEL version="${VERSION}"
 LABEL maintainers="Huawei eSDK CSI development team"
 LABEL description="Storage Backend Sidecar"
@@ -34,7 +34,7 @@ COPY ${binary} storage-backend-sidecar
 ENTRYPOINT ["/storage-backend-sidecar"]
 
 
-FROM gcr.io/distroless/base:latest as huawei-csi-extender
+FROM gcr.io/distroless/base-nossl:latest as huawei-csi-extender
 LABEL version="${VERSION}"
 LABEL maintainers="Huawei eSDK CSI development team"
 LABEL description="Huawei CSI Extender"

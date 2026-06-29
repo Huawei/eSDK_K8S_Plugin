@@ -77,6 +77,14 @@ func NewResourceAccessor[T runtime.Object](informer cache.SharedIndexInformer,
 	return watcher, nil
 }
 
+// NotFoundError represents an error when there is no resource found in caches
+type NotFoundError struct{}
+
+// Error returns the error message for NotFoundError
+func (e NotFoundError) Error() string {
+	return "no resources found in caches"
+}
+
 // GetByIndex gets resource by index.
 // To use this method, you must add the indexer first.
 func (rw *ResourceAccessor[T]) GetByIndex(indexName, indexValue string) ([]T, error) {
@@ -113,7 +121,7 @@ func (rw *ResourceAccessor[T]) getByIndex(indexName, indexValue string) ([]T, er
 	}
 
 	if len(res) == 0 {
-		return nil, fmt.Errorf("%T object not found in cache by index %s", value, indexValue)
+		return nil, fmt.Errorf("%T object not found in cache by index %s, err: %w", value, indexValue, NotFoundError{})
 	}
 
 	return res, nil

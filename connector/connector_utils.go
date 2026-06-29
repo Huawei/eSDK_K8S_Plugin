@@ -815,7 +815,14 @@ func ResizeBlock(ctx context.Context, tgtLunWWN string, requiredBytes int64) err
 }
 
 func isResized(curSize string, requiredBytes int64) bool {
-	return curSize != "" && strconv.FormatInt(requiredBytes, constants.DefaultIntBase) == curSize
+	if curSize == "" {
+		return false
+	}
+	curSizeInt, err := strconv.ParseInt(curSize, constants.DefaultIntBase, constants.DefaultIntBitSize)
+	if err != nil {
+		return false
+	}
+	return curSizeInt >= requiredBytes
 }
 
 func rescanUseDMMultipath(ctx context.Context, virtualDevice string) error {

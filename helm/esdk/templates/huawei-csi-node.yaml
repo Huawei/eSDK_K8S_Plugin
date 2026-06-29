@@ -59,6 +59,9 @@ rules:
   - apiGroups: [ "" ]
     resources: [ "pods" ]
     verbs: [ "list","get" ]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: [ "volumeattachments", "volumeattachments/status" ]
+    verbs: [ "get", "list", "watch", "update" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -158,6 +161,7 @@ spec:
             - "--connector-threads={{ .Values.csiDriver.connectorThreads }}"
             - "--volume-use-multipath={{ .Values.csiDriver.volumeUseMultipath }}"
             - "--all-path-online={{ default false .Values.csiDriver.allPathOnline }}"
+            - "--enable-volume-modify={{ .Values.controller.csiExtender.volumeModify.enabled | default false}}"
             - "--kubelet-volume-devices-dir-name=/{{ default "volumeDevices" .Values.node.kubeletVolumeDevicesDirName }}/"
             {{ if .Values.csiDriver.volumeUseMultipath }}
             - "--scsi-multipath-type={{ .Values.csiDriver.scsiMultipathType }}"
@@ -182,6 +186,8 @@ spec:
             {{ end }}
             - "-report-node-ip={{ .Values.csiDriver.reportNodeIP | default false }}"
             - "-enable-per-node-secret={{ .Values.csiDriver.enablePerNodeSecret | default false }}"
+            - "--kube-api-qps={{ ((.Values.node).huaweiCsiDriver).kubeApiQps | default 5 }}"
+            - "--kube-api-burst={{ ((.Values.node).huaweiCsiDriver).kubeApiBurst | default 10 }}"
           env:
             - name: CSI_NODENAME
               valueFrom:

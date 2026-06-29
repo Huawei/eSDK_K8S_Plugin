@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+ *  Copyright (c) Huawei Technologies Co., Ltd. 2024-2026. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,11 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/assert"
+	storagev1 "k8s.io/api/storage/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 
 	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
@@ -181,4 +184,244 @@ func TestModifyClaimController_setClaimCreating_WhenPhaseIsPending(t *testing.T)
 			t.Errorf("clean test data faild, claim name: %s", claim.Name)
 		}
 	})
+}
+
+func TestDeleteContent_PhaseEmpty(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	ctrl := &VolumeModifyController{}
+	claim := &xuanwuv1.VolumeModifyClaim{
+		Status: xuanwuv1.VolumeModifyClaimStatus{Phase: ""},
+	}
+
+	// act
+	result, err := ctrl.deleteContent(ctx, claim)
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, claim, result)
+}
+
+func TestDeleteContent_PhaseDeleting(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	ctrl := &VolumeModifyController{}
+	claim := &xuanwuv1.VolumeModifyClaim{
+		Status: xuanwuv1.VolumeModifyClaimStatus{Phase: xuanwuv1.VolumeModifyClaimDeleting},
+	}
+
+	// act
+	result, err := ctrl.deleteContent(ctx, claim)
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, claim, result)
+}
+
+func TestDeleteContent_PhaseRollback(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	ctrl := &VolumeModifyController{}
+	claim := &xuanwuv1.VolumeModifyClaim{
+		Status: xuanwuv1.VolumeModifyClaimStatus{Phase: xuanwuv1.VolumeModifyClaimRollback},
+	}
+
+	// act
+	result, err := ctrl.deleteContent(ctx, claim)
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, claim, result)
+}
+
+func TestDeleteContent_GetRefContentsError(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	factory := backendInformers.NewSharedInformerFactory(&clientSet.Clientset{}, 10*time.Second)
+	contentLister := factory.Xuanwu().V1().VolumeModifyContents().Lister()
+
+	ctrl := &VolumeModifyController{contentLister: contentLister}
+	claim := &xuanwuv1.VolumeModifyClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-claim"},
+		Status:     xuanwuv1.VolumeModifyClaimStatus{Phase: xuanwuv1.VolumeModifyClaimCompleted},
+	}
+
+	// mock
+	patches := gomonkey.ApplyMethodReturn(contentLister, "List", nil, errors.New("lister error"))
+	defer patches.Reset()
+
+	// act
+	result, err := ctrl.deleteContent(ctx, claim)
+
+	// assert
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "query content list error")
+}
+
+func TestDeleteContent_FetchStorageClassError(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	k8sClient := k8sfake.NewSimpleClientset()
+	factory := backendInformers.NewSharedInformerFactory(&clientSet.Clientset{}, 10*time.Second)
+	contentLister := factory.Xuanwu().V1().VolumeModifyContents().Lister()
+	recorder := record.NewFakeRecorder(1000)
+
+	ctrl := &VolumeModifyController{
+		client:        k8sClient,
+		contentLister: contentLister,
+		eventRecorder: recorder,
+	}
+	claim := &xuanwuv1.VolumeModifyClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-claim"},
+		Spec: xuanwuv1.VolumeModifyClaimSpec{
+			Source: &xuanwuv1.VolumeModifySpecSource{Name: "test-sc"},
+		},
+		Status: xuanwuv1.VolumeModifyClaimStatus{Phase: xuanwuv1.VolumeModifyClaimCompleted},
+	}
+
+	// act
+	result, err := ctrl.deleteContent(ctx, claim)
+
+	// assert
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "fetch storageclass test-sc error")
+
+	warningEvent := <-recorder.Events
+	assert.Contains(t, warningEvent, DeleteFailedReason)
+}
+
+func TestDeleteContent_LunTypeCreatingCannotDelete(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	sc := &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-sc"},
+		Parameters: map[string]string{"volumeType": "lun"},
+	}
+	k8sClient := k8sfake.NewSimpleClientset(sc)
+	factory := backendInformers.NewSharedInformerFactory(&clientSet.Clientset{}, 10*time.Second)
+	contentLister := factory.Xuanwu().V1().VolumeModifyContents().Lister()
+	recorder := record.NewFakeRecorder(1000)
+
+	ctrl := &VolumeModifyController{
+		client:        k8sClient,
+		contentLister: contentLister,
+		eventRecorder: recorder,
+	}
+	claim := &xuanwuv1.VolumeModifyClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-claim"},
+		Spec: xuanwuv1.VolumeModifyClaimSpec{
+			Source: &xuanwuv1.VolumeModifySpecSource{Name: "test-sc"},
+		},
+		Status: xuanwuv1.VolumeModifyClaimStatus{Phase: xuanwuv1.VolumeModifyClaimCreating},
+	}
+
+	// act
+	result, err := ctrl.deleteContent(ctx, claim)
+
+	// assert
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "can not delete claim test-claim while creating with lun type")
+
+	warningEvent := <-recorder.Events
+	assert.Contains(t, warningEvent, DeleteFailedReason)
+}
+
+func TestDeleteContent_NonLunTypeCreatingRollback(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	sc := &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-sc"},
+		Parameters: map[string]string{"volumeType": "fs"},
+	}
+	k8sClient := k8sfake.NewSimpleClientset(sc)
+	csClient := fake.NewSimpleClientset()
+	factory := backendInformers.NewSharedInformerFactory(&clientSet.Clientset{}, 10*time.Second)
+	contentLister := factory.Xuanwu().V1().VolumeModifyContents().Lister()
+	claimLister := factory.Xuanwu().V1().VolumeModifyClaims().Lister()
+	recorder := record.NewFakeRecorder(1000)
+
+	ctrl := &VolumeModifyController{
+		client:        k8sClient,
+		clientSet:     csClient,
+		contentClient: csClient,
+		contentLister: contentLister,
+		claimLister:   claimLister,
+		eventRecorder: recorder,
+	}
+	claim := &xuanwuv1.VolumeModifyClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-claim"},
+		Spec: xuanwuv1.VolumeModifyClaimSpec{
+			Source: &xuanwuv1.VolumeModifySpecSource{Name: "test-sc"},
+		},
+		Status: xuanwuv1.VolumeModifyClaimStatus{Phase: xuanwuv1.VolumeModifyClaimCreating},
+	}
+
+	_, err := csClient.XuanwuV1().VolumeModifyClaims().Create(ctx, &xuanwuv1.VolumeModifyClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-claim"},
+		Status:     xuanwuv1.VolumeModifyClaimStatus{Phase: xuanwuv1.VolumeModifyClaimCreating},
+	}, metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(contentLister, "List", []*xuanwuv1.VolumeModifyContent{}, nil)
+	patches.ApplyMethodReturn(claimLister, "Get", claim, nil)
+
+	// act
+	result, err := ctrl.deleteContent(ctx, claim)
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, xuanwuv1.VolumeModifyClaimRollback, result.Status.Phase)
+}
+
+func TestDeleteContent_CompletedPhaseDeleting(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	sc := &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-sc"},
+		Parameters: map[string]string{"volumeType": "fs"},
+	}
+	k8sClient := k8sfake.NewSimpleClientset(sc)
+	csClient := fake.NewSimpleClientset()
+	factory := backendInformers.NewSharedInformerFactory(&clientSet.Clientset{}, 10*time.Second)
+	contentLister := factory.Xuanwu().V1().VolumeModifyContents().Lister()
+	claimLister := factory.Xuanwu().V1().VolumeModifyClaims().Lister()
+	recorder := record.NewFakeRecorder(1000)
+
+	ctrl := &VolumeModifyController{
+		client:        k8sClient,
+		clientSet:     csClient,
+		contentClient: csClient,
+		contentLister: contentLister,
+		claimLister:   claimLister,
+		eventRecorder: recorder,
+	}
+	claim := &xuanwuv1.VolumeModifyClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-claim"},
+		Spec: xuanwuv1.VolumeModifyClaimSpec{
+			Source: &xuanwuv1.VolumeModifySpecSource{Name: "test-sc"},
+		},
+		Status: xuanwuv1.VolumeModifyClaimStatus{Phase: xuanwuv1.VolumeModifyClaimCompleted},
+	}
+
+	_, err := csClient.XuanwuV1().VolumeModifyClaims().Create(ctx, &xuanwuv1.VolumeModifyClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-claim"},
+		Status:     xuanwuv1.VolumeModifyClaimStatus{Phase: xuanwuv1.VolumeModifyClaimCompleted},
+	}, metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	// mock
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(contentLister, "List", []*xuanwuv1.VolumeModifyContent{}, nil)
+	patches.ApplyMethodReturn(claimLister, "Get", claim, nil)
+
+	// act
+	result, err := ctrl.deleteContent(ctx, claim)
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, xuanwuv1.VolumeModifyClaimDeleting, result.Status.Phase)
 }

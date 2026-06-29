@@ -354,7 +354,7 @@ func (p *SAN) Expand(ctx context.Context, name string, newSize int64) (bool, err
 	}
 	if lun == nil {
 		msg := fmt.Sprintf("Lun %s to expand does not exist", name)
-		log.AddContext(ctx).Errorf(msg)
+		log.AddContext(ctx).Errorf("%s", msg)
 		return false, errors.New(msg)
 	}
 
@@ -394,7 +394,7 @@ func (p *SAN) preExpandCheckCapacity(ctx context.Context,
 	}
 	pool, err := p.cli.GetPoolById(ctx, localParentId)
 	if err != nil || pool == nil {
-		log.AddContext(ctx).Errorf("Get storage pool %s info error: %v", localParentId, err)
+		log.AddContext(ctx).Errorf("Get storage pool %v info error: %v", localParentId, err)
 		return nil, err
 	}
 

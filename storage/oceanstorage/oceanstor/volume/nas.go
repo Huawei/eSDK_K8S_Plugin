@@ -479,7 +479,7 @@ func (p *NAS) Expand(ctx context.Context, fsName string, newSize int64) error {
 
 	if fs == nil {
 		msg := fmt.Sprintf("Filesystem %s to expand does not exist", fsName)
-		log.AddContext(ctx).Errorf(msg)
+		log.AddContext(ctx).Errorln(msg)
 		return errors.New(msg)
 	}
 
@@ -1182,7 +1182,7 @@ func (p *NAS) getFilesystemByName(ctx context.Context,
 	}
 	if fsMap == nil {
 		msg := fmt.Sprintf("Filesystem %s to create snapshot does not exist", name)
-		log.AddContext(ctx).Errorf(msg)
+		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
 

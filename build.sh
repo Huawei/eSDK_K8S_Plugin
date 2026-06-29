@@ -47,7 +47,7 @@ fi
 
 echo "Start to pull busybox image with architecture ${PULL_FLAG}"
 docker pull ${PULL_FLAG} busybox:stable-glibc
-docker pull ${PULL_FLAG} gcr.io/distroless/base:latest
+docker pull ${PULL_FLAG} gcr.io/distroless/base-nossl:latest
 
 echo "Start to build image with Dockerfile"
 rm -rf build_dir

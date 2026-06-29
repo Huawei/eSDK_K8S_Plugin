@@ -179,8 +179,7 @@ func getDeviceWwn(ctx context.Context, volumeId, targetPath string,
 	if err != nil || wwn == "" {
 		wwn, err = connector.GetWwnFromTargetPath(ctx, volumeId, targetPath, checkDevRef)
 		if err != nil {
-			log.AddContext(ctx).Errorf("get wwn form targetPath failed, error: %v",
-				targetPath, err)
+			log.AddContext(ctx).Errorf("get wwn form targetPath %s failed, error: %v", targetPath, err)
 			return "", err
 		}
 		if saveToDisk {
@@ -295,7 +294,7 @@ func stageForBlock(ctx context.Context, parameters map[string]interface{}) error
 
 	err := connUtils.BindMountRawBlockDevice(ctx, devPath, mountPoint, nil)
 	if err != nil {
-		log.AddContext(ctx).Errorln("create system link failed, error: %v", err)
+		log.AddContext(ctx).Errorf("create system link failed, error: %v", err)
 		return err
 	}
 

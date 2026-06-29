@@ -311,3 +311,36 @@ func clearWwnFileGeneratedByTest() {
 		return
 	}
 }
+
+func TestGetDeviceWwn_ReadWwnFileEmpty_GetWwnFromTargetPathError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	patches.ApplyFuncReturn(utils.ReadWwnFile, "", nil)
+	patches.ApplyFuncReturn(connector.GetWwnFromTargetPath, "", errors.New("get wwn from target path error"))
+
+	wwn, err := getDeviceWwn(context.Background(), "test-volume-id", "/test/target/path", false, false)
+	if err == nil {
+		t.Errorf("TestGetDeviceWwn_ReadWwnFileEmpty_GetWwnFromTargetPathError want error, got nil")
+	}
+	if wwn != "" {
+		t.Errorf("TestGetDeviceWwn_ReadWwnFileEmpty_GetWwnFromTargetPathError want empty wwn, got %s", wwn)
+	}
+}
+
+func TestStageForBlock_BindMountRawBlockDeviceError(t *testing.T) {
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+
+	patches.ApplyFuncReturn(connUtils.BindMountRawBlockDevice, errors.New("bind mount error"))
+
+	parameters := map[string]interface{}{
+		"stagingPath": "/test/staging/path",
+		"devPath":     "/test/dev/path",
+	}
+
+	err := stageForBlock(context.Background(), parameters)
+	if err == nil {
+		t.Errorf("TestStageForBlock_BindMountRawBlockDeviceError want error, got nil")
+	}
+}

@@ -806,3 +806,30 @@ func (p *OceanstorNasPlugin) SetNfsAutoAuthClient(enabled bool, cidrs []string) 
 		CIDRs:   cidrs,
 	}
 }
+
+// GetVolumeStatus get volume health status
+func (p *OceanstorNasPlugin) GetVolumeStatus(ctx context.Context,
+	query utils.VolumeQuery) utils.VolumeStatus {
+	status := utils.VolumeStatus{Abnormal: true}
+	fsInfo, err := p.cli.GetFileSystemByName(ctx, query.Name)
+	if err != nil {
+		status.Message = fmt.Sprintf("Query volume %s error: %v", query.Name, err)
+		log.AddContext(ctx).Errorln(status.Message)
+		return status
+	}
+
+	if fsInfo == nil {
+		status.Message = fmt.Sprintf("volume %s not found", query.Name)
+		return status
+	}
+
+	healthStatus, ok := fsInfo["HEALTHSTATUS"].(string)
+	if ok && healthStatus == "2" {
+		status.Message = fmt.Sprintf("volume %s health status is fault", query.Name)
+		return status
+	}
+
+	status.Abnormal = false
+	status.Message = fmt.Sprintf("volume %s is normal", query.Name)
+	return status
+}

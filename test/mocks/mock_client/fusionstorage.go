@@ -11,13 +11,13 @@
 package mock_client
 
 import (
-	context "context"
-	reflect "reflect"
+	"context"
+	"reflect"
 
-	gomock "go.uber.org/mock/gomock"
+	"go.uber.org/mock/gomock"
 
-	client "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
-	types "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/types"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/types"
 )
 
 // MockIRestClient is a mock of IRestClient interface.
@@ -1115,6 +1115,22 @@ func (mr *MockIRestClientMockRecorder) QueryQuotaByFsId(ctx, fsID any) *gomock.C
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryQuotaByFsId",
 		reflect.TypeOf((*MockIRestClient)(nil).QueryQuotaByFsId), ctx, fsID)
+}
+
+// QueryVolume mocks base method.
+func (m *MockIRestClient) QueryVolume(ctx context.Context, name string) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryVolume", ctx, name)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryVolume indicates an expected call of QueryVolume.
+func (mr *MockIRestClientMockRecorder) QueryVolume(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryVolume",
+		reflect.TypeOf((*MockIRestClient)(nil).QueryVolume), ctx, name)
 }
 
 // ReLogin mocks base method.

@@ -51,9 +51,9 @@ func UpdateClaim(ctx context.Context, client clientSet.Interface, storageBackend
 func UpdateClaimStatus(ctx context.Context, client clientSet.Interface, storageBackend *xuanwuv1.StorageBackendClaim) (
 	*xuanwuv1.StorageBackendClaim, error) {
 
-	log.AddContext(ctx).Infof("Start to update claim %s with status %s.",
+	log.AddContext(ctx).Infof("Start to update claim %s with status %v.",
 		StorageBackendClaimKey(storageBackend), storageBackend.Status)
-	defer log.AddContext(ctx).Infof("Finished update claim %s with status %s.",
+	defer log.AddContext(ctx).Infof("Finished update claim %s with status %v.",
 		StorageBackendClaimKey(storageBackend), storageBackend.Status)
 
 	return client.XuanwuV1().StorageBackendClaims(storageBackend.Namespace).UpdateStatus(

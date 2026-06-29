@@ -198,7 +198,7 @@ func (p *Base) preExpandCheckCapacity(ctx context.Context,
 	pool, err := p.cli.GetPoolByName(ctx, localParentName)
 	if err != nil || pool == nil {
 		msg := fmt.Sprintf("Get storage pool %s info error: %v", localParentName, err)
-		log.AddContext(ctx).Errorf(msg)
+		log.AddContext(ctx).Errorln(msg)
 		return nil, errors.New(msg)
 	}
 

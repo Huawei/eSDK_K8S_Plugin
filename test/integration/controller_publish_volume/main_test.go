@@ -37,6 +37,9 @@ var (
 func TestMain(m *testing.M) {
 	kubeClient := &k8sutils.KubeClient{}
 	csiServer = driver.NewServer(constants.DefaultDriverName, constants.ProviderVersion, kubeClient, "node1")
+	if csiServer == nil {
+		return
+	}
 
 	log.MockInitLogging("test")
 	defer log.MockStopLogging("test")

@@ -1723,6 +1723,66 @@ func TestGetLunCountOfMapping(t *testing.T) {
 	}
 }
 
+func TestGetHostLunId(t *testing.T) {
+	var cases = []struct {
+		name         string
+		responseBody string
+		wantErr      bool
+	}{
+		{
+			"Normal",
+			"{\"data\":[{\"ID\":\"lun-001\",\"ASSOCIATEMETADATA\":\"{\\\"HostLUNID\\\":1}\"}],\"error\":" +
+				"{\"code\":0,\"description\":\"0\"}}",
+			false,
+		},
+		{
+			"Data item is not map",
+			"{\"data\":[\"not a map\"],\"error\":{\"code\":0,\"description\":\"0\"}}",
+			true,
+		},
+		{
+			"Lun not found",
+			"{\"data\":[],\"error\":{\"code\":0,\"description\":\"0\"}}",
+			true,
+		},
+		{
+			"Response data is not array",
+			"{\"data\":{},\"error\":{\"code\":0,\"description\":\"0\"}}",
+			true,
+		},
+		{
+			"Error code not zero",
+			"{\"data\":[],\"error\":{\"code\":1,\"description\":\"error\"}}",
+			true,
+		},
+	}
+
+	g := gomonkey.ApplyFunc(pkgUtils.GetPasswordFromBackendID,
+		func(ctx context.Context, backendID string) (string, error) {
+			return "mock", nil
+		})
+	defer g.Reset()
+
+	for _, s := range cases {
+		if testClient == nil {
+			t.Fatalf("testClient is nil")
+		}
+		d := gomonkey.ApplyMethod(reflect.TypeOf(testClient.Client), "Do",
+			func(*http.Client, *http.Request) (*http.Response, error) {
+				r := ioutil.NopCloser(bytes.NewReader([]byte(s.responseBody)))
+				return &http.Response{
+					StatusCode: 200,
+					Body:       r,
+				}, nil
+			})
+
+		_, err := testClient.GetHostLunId(context.TODO(), "host-001", "lun-001")
+		assert.Equal(t, s.wantErr, err != nil, "%s, err:%v", s.name, err)
+
+		d.Reset()
+	}
+}
+
 func TestMain(m *testing.M) {
 	log.MockInitLogging(logName)
 	defer log.MockStopLogging(logName)
@@ -1730,7 +1790,8 @@ func TestMain(m *testing.M) {
 	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
 	defer getGlobalConfig.Reset()
 
-	testClient, _ = NewClient(context.Background(), &NewClientConfig{
+	var newClientErr error
+	testClient, newClientErr = NewClient(context.Background(), &NewClientConfig{
 		Urls:            []string{"https://127.0.0.1:8088"},
 		User:            "dev-account",
 		SecretName:      "mock-sec-name",
@@ -1739,6 +1800,9 @@ func TestMain(m *testing.M) {
 		BackendID:       "mock-backend-id",
 		VstoreName:      "dev-vStore",
 	})
+	if testClient == nil || newClientErr != nil {
+		panic("init testClient failed: " + newClientErr.Error())
+	}
 
 	m.Run()
 }

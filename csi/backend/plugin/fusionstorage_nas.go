@@ -248,3 +248,25 @@ func (p *FusionStorageNasPlugin) verifyFusionStorageNasParam(ctx context.Context
 
 	return nil
 }
+
+// GetVolumeStatus get volume health status
+func (p *FusionStorageNasPlugin) GetVolumeStatus(ctx context.Context,
+	query utils.VolumeQuery) utils.VolumeStatus {
+
+	status := utils.VolumeStatus{Abnormal: true}
+	volumeInfo, err := p.cli.GetFileSystemByName(ctx, query.Name)
+	if err != nil {
+		status.Message = fmt.Sprintf("Query volume %s error: %v", query.Name, err)
+		log.AddContext(ctx).Errorln(status.Message)
+		return status
+	}
+
+	if volumeInfo == nil {
+		status.Message = fmt.Sprintf("Volume %s not found", query.Name)
+		return status
+	}
+
+	status.Abnormal = false
+	status.Message = fmt.Sprintf("Volume %s exists and is normal", query.Name)
+	return status
+}
