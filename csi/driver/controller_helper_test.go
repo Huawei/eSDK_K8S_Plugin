@@ -166,6 +166,42 @@ func TestCreateVolume(t *testing.T) {
 	}
 }
 
+func TestProcessDescriptionWithPVCInfo(t *testing.T) {
+	t.Run("default description with pvc info", func(t *testing.T) {
+		parameters := map[string]interface{}{
+			constants.PVCNamespaceKey: "default",
+			constants.PVCNameKey:      "data-pvc",
+		}
+
+		err := processDescription(context.TODO(), parameters)
+
+		require.NoError(t, err)
+		assert.Equal(t, "Created from Kubernetes CSI, PVC: default/data-pvc", parameters["description"])
+	})
+
+	t.Run("storage class description with pvc info", func(t *testing.T) {
+		parameters := map[string]interface{}{
+			"description":             "database volume",
+			constants.PVCNamespaceKey: "prod",
+			constants.PVCNameKey:      "mysql-data",
+		}
+
+		err := processDescription(context.TODO(), parameters)
+
+		require.NoError(t, err)
+		assert.Equal(t, "database volume, PVC: prod/mysql-data", parameters["description"])
+	})
+
+	t.Run("description without pvc info", func(t *testing.T) {
+		parameters := map[string]interface{}{"description": "database volume"}
+
+		err := processDescription(context.TODO(), parameters)
+
+		require.NoError(t, err)
+		assert.Equal(t, "database volume", parameters["description"])
+	})
+}
+
 func TestImportVolumeWithoutBackend(t *testing.T) {
 	driver := initDriver()
 	req := mockCreateRequest()
