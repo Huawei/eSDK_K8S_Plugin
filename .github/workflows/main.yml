@@ -91,6 +91,6 @@ jobs:
           body: TODO New Release.
           draft: true
           files: |
-            eSDK-Storage-Plugins_CSI-V${{ steps.branch-names.outputs.tag }}_Linux-X86-64.zip
-            eSDK-Storage-Plugins_CSI-V${{ steps.branch-names.outputs.tag }}_Linux-ARM-64.zip
-            eSDK-Storage-Plugins_CSI-V${{ steps.branch-names.outputs.tag }}_Linux-PPC64LE-64.zip
+            eSDK-Storage-Plugins_CSI-${{ steps.branch-names.outputs.tag }}_Linux-X86-64.zip
+            eSDK-Storage-Plugins_CSI-${{ steps.branch-names.outputs.tag }}_Linux-ARM-64.zip
+            eSDK-Storage-Plugins_CSI-${{ steps.branch-names.outputs.tag }}_Linux-PPC64LE-64.zip
