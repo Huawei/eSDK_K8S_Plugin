@@ -17,7 +17,10 @@
 // Package storage provide base operations for  storage
 package storage
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // Error Code
 const (
@@ -107,3 +110,6 @@ const (
 	// HostPrefix defines prefix of host
 	HostPrefix = "k8s_"
 )
+
+// ErrUnconnected is the sentinel error for unconnected errors, used with errors.Is().
+var ErrUnconnected = errors.New(Unconnected)

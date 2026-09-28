@@ -27,15 +27,29 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 )
 
+// isFlagSet checks whether the named flag was explicitly set on the FlagSet.
+func isFlagSet(ff *flag.FlagSet, name string) bool {
+	if ff == nil {
+		return false
+	}
+	found := false
+	ff.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
+}
+
 const (
 	defaultRpcTimeout                   = 1 * time.Minute
 	defaultWorkerThreads                = 10
 	maxWorkerThreads                    = 100
 	defaultNodeWorkerThreads            = 4
 	defaultReSyncPeriods                = 2 * time.Minute
-	defaultLeaderRetryPeriod            = 2 * time.Second
-	defaultLeaderRenewDeadline          = 6 * time.Second
-	defaultLeaderLeaseDuration          = 8 * time.Second
+	defaultLeaderRetryPeriod            = 5 * time.Second
+	defaultLeaderRenewDeadline          = 10 * time.Second
+	defaultLeaderLeaseDuration          = 15 * time.Second
 	defaultBackendUpdateIntervalSeconds = 60
 	defaultExportCsiServerPort          = 9090
 )
@@ -52,6 +66,7 @@ type serviceOptions struct {
 	nodeName         string
 	kubeletRootDir   string
 	volumeNamePrefix string
+	hostNamePrefix   string
 
 	maxVolumesPerNode     int
 	webHookPort           int
@@ -60,8 +75,9 @@ type serviceOptions struct {
 	workerThreads         int
 	nodeWorkerThreads     int
 
-	exportCsiServerAddress string
-	exportCsiServerPort    int
+	exportCsiServerAddress   string
+	exportCsiServerPort      int
+	exportCsiServiceAudience string
 
 	leaderLeaseDuration time.Duration
 	leaderRenewDeadline time.Duration
@@ -170,12 +186,17 @@ func (opt *serviceOptions) addExportServiceFlags(ff *flag.FlagSet) {
 		"The port of exported csi server")
 	ff.StringVar(&opt.exportCsiServerAddress, "export-csi-service-address", "",
 		"The address of exported csi server")
+	ff.StringVar(&opt.exportCsiServiceAudience, "export-csi-service-audience", "csi.huawei.com",
+		"The audience for validating CSI export service tokens")
 }
 
 func (opt *serviceOptions) addFeatureFlags(ff *flag.FlagSet) {
 	ff.BoolVar(&opt.reportNodeIP, "report-node-ip", false, "Whether to report node IP")
 	ff.BoolVar(&opt.enablePerNodeSecret, "enable-per-node-secret", false, `Whether to enable per-node create secret`)
 	ff.BoolVar(&opt.enableVolumeModify, "enable-volume-modify", false, `Whether to enable volume modify feature`)
+	ff.StringVar(&opt.hostNamePrefix, "host-name-prefix", "",
+		"Prefix to apply to the host name on the storage side."+
+			" Default is k8s_ for OceanStor/OceanDisk, and empty for other storages.")
 }
 
 func (opt *serviceOptions) addRateLimitingFlags(ff *flag.FlagSet) {
@@ -188,7 +209,7 @@ func (opt *serviceOptions) addHealthMonitorFlag(ff *flag.FlagSet) {
 }
 
 // ApplyFlags assign the service flags
-func (opt *serviceOptions) ApplyFlags(cfg *config.AppConfig) {
+func (opt *serviceOptions) ApplyFlags(cfg *config.AppConfig, ff *flag.FlagSet) {
 	cfg.Endpoint = opt.endpoint
 	cfg.DrEndpoint = opt.drEndpoint
 	cfg.Controller = opt.controller
@@ -198,6 +219,8 @@ func (opt *serviceOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.NodeName = opt.nodeName
 	cfg.KubeletRootDir = opt.kubeletRootDir
 	cfg.VolumeNamePrefix = opt.volumeNamePrefix
+	cfg.HostNamePrefix = opt.hostNamePrefix
+	cfg.HostNamePrefixSet = isFlagSet(ff, "host-name-prefix")
 	cfg.MaxVolumesPerNode = opt.maxVolumesPerNode
 	cfg.WebHookPort = opt.webHookPort
 	cfg.WebHookAddress = opt.webHookAddress
@@ -212,6 +235,7 @@ func (opt *serviceOptions) ApplyFlags(cfg *config.AppConfig) {
 	cfg.KubeletVolumeDevicesDirName = opt.kubeletVolumeDevicesDirName
 	cfg.ExportCsiServerAddress = opt.exportCsiServerAddress
 	cfg.ExportCsiServerPort = opt.exportCsiServerPort
+	cfg.ExportCsiServiceAudience = opt.exportCsiServiceAudience
 	cfg.ReportNodeIP = opt.reportNodeIP
 	cfg.EnablePerNodeSecret = opt.enablePerNodeSecret
 	cfg.EnableVolumeModify = opt.enableVolumeModify

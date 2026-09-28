@@ -304,6 +304,132 @@ func Test_VerifySectorSize_CapacityNotMultiple(t *testing.T) {
 	assert.ErrorContains(t, err, "is not an integer or not multiple of")
 }
 
+func Test_processParentName_NotExist(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{}
+
+	// action
+	err := processParentName(ctx, parameters)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func Test_processParentName_EmptyString(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{"parentname": ""}
+
+	// action
+	err := processParentName(ctx, parameters)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func Test_processParentName_NotString(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{"parentname": 123}
+
+	// action
+	err := processParentName(ctx, parameters)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "parentname in StorageClass must be a string type")
+}
+
+func Test_processParentName_WithoutBackend(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{"parentname": "parent-vol"}
+
+	// action
+	err := processParentName(ctx, parameters)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"when parentname is configured in StorageClass, backend must be configured together")
+}
+
+func Test_processParentName_WithBackend(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{"parentname": "parent-vol", "backend": "backend-name"}
+
+	// action
+	err := processParentName(ctx, parameters)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func Test_processEnableKVCache_NotExist(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{}
+
+	// action
+	err := processEnableKVCache(ctx, parameters)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func Test_processEnableKVCache_FalseValue(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{"enableKVCache": "false"}
+
+	// action
+	err := processEnableKVCache(ctx, parameters)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func Test_processEnableKVCache_NotString(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{"enableKVCache": 123}
+
+	// action
+	err := processEnableKVCache(ctx, parameters)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "enableKVCache in StorageClass must be a string type")
+}
+
+func Test_processEnableKVCache_TrueWithoutBackend(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{"enableKVCache": "true"}
+
+	// action
+	err := processEnableKVCache(ctx, parameters)
+
+	// assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"when enableKVCache is configured in StorageClass, backend must be configured together")
+}
+
+func Test_processEnableKVCache_TrueWithBackend(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	parameters := map[string]interface{}{"enableKVCache": "true", "backend": "backend-name"}
+
+	// action
+	err := processEnableKVCache(ctx, parameters)
+
+	// assert
+	assert.NoError(t, err)
+}
+
 func Test_isSupportExpandVolume_NasSuccess(t *testing.T) {
 	// arrange
 	req := &csi.ControllerExpandVolumeRequest{VolumeId: "backend.pvc_test_volume_id"}
@@ -319,4 +445,60 @@ func Test_isSupportExpandVolume_NasSuccess(t *testing.T) {
 	if !res {
 		t.Errorf("Test_isSupportExpandVolume_NasSuccess failed, wantRes = %v, gotRes = %v", true, res)
 	}
+}
+
+func TestVerifySectorSize_WarningLogWithRequestID(t *testing.T) {
+	// arrange
+	backend := &model.Backend{
+		Plugin: plugin.GetPlugin("oceanstor-nas"),
+	}
+	minSize := int64(1024 * 1024 * 1024)
+	volumeId := "backend.pvc_test_volume_id"
+
+	// mock
+	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer getGlobalConfig.Reset()
+
+	patches := gomonkey.ApplyMethodReturn(&plugin.OceanstorNasPlugin{},
+		"GetSectorSize", int64(constants.AllocationUnitBytes)).
+		ApplyMethodReturn(app.GetGlobalConfig().K8sUtils,
+			"GetVolumeAttrsByVolumeId", nil, assert.AnError)
+	defer patches.Reset()
+
+	// action - when GetVolumeAttrsByVolumeId fails, log.AddContext(ctx).Warningf is called
+	err := verifySectorSize(context.Background(), volumeId, backend, minSize)
+
+	// assert - verifySectorSize returns nil when GetVolumeAttrsByVolumeId fails
+	// (it logs a warning and skips verification)
+	assert.NoError(t, err)
+}
+
+func TestVerifySectorSize_ConflictingAttrsWarningWithRequestID(t *testing.T) {
+	// arrange
+	backend := &model.Backend{
+		Plugin: plugin.GetPlugin("oceanstor-nas"),
+	}
+	minSize := int64(1024 * 1024 * 1024)
+	volumeId := "backend.pvc_test_volume_id"
+
+	// mock
+	getGlobalConfig := gostub.StubFunc(&app.GetGlobalConfig, cfg.MockCompletedConfig())
+	defer getGlobalConfig.Reset()
+
+	patches := gomonkey.ApplyMethodReturn(&plugin.OceanstorNasPlugin{},
+		"GetSectorSize", int64(constants.AllocationUnitBytes)).
+		ApplyMethodReturn(app.GetGlobalConfig().K8sUtils,
+			"GetVolumeAttrsByVolumeId",
+			[]map[string]string{
+				{constants.DisableVerifyCapacityKey: "false"},
+				{constants.DisableVerifyCapacityKey: "true"},
+			}, nil).
+		ApplyFuncReturn(utils.GetValueOrFallback[string], "true")
+	defer patches.Reset()
+
+	// action - conflicting DisableVerifyCapacityKey values trigger Warningf
+	err := verifySectorSize(context.Background(), volumeId, backend, minSize)
+
+	// assert - conflict causes early return nil
+	assert.NoError(t, err)
 }

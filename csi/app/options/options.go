@@ -54,10 +54,10 @@ func (opt *optionsManager) AddFlags(ff *flag.FlagSet) {
 }
 
 // ApplyFlags assign the flags
-func (opt *optionsManager) ApplyFlags(cfg *config.AppConfig) {
+func (opt *optionsManager) ApplyFlags(cfg *config.AppConfig, ff *flag.FlagSet) {
 	opt.logOption.ApplyFlags(cfg)
 	opt.connectorOption.ApplyFlags(cfg)
-	opt.serviceOption.ApplyFlags(cfg)
+	opt.serviceOption.ApplyFlags(cfg, ff)
 	opt.k8sOption.ApplyFlags(cfg)
 	opt.extenderOption.ApplyFlags(cfg)
 }
@@ -81,12 +81,12 @@ func (opt *optionsManager) ValidateFlags() error {
 }
 
 // Config set all configuration
-func (opt *optionsManager) Config() (*config.AppConfig, error) {
+func (opt *optionsManager) Config(ff *flag.FlagSet) (*config.AppConfig, error) {
 	if err := opt.ValidateFlags(); err != nil {
 		return nil, err
 	}
 
 	cfg := config.AppConfig{}
-	opt.ApplyFlags(&cfg)
+	opt.ApplyFlags(&cfg, ff)
 	return &cfg, nil
 }

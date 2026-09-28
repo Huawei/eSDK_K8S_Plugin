@@ -78,6 +78,31 @@ func (p *DMEASeriesPlugin) Init(ctx context.Context, config map[string]interface
 
 	p.name = clientConfig.Name
 	p.cli = cli
+
+	var zoneSN string
+	if v, exists := config[constants.ZoneSNKey]; exists {
+		var ok bool
+		zoneSN, ok = v.(string)
+		if !ok {
+			return fmt.Errorf("zoneSN must be a string, got %T", v)
+		}
+	}
+	if zoneSN != "" {
+		if err = p.initZone(ctx, cli, zoneSN); err != nil {
+			cli.Logout(ctx)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (p *DMEASeriesPlugin) initZone(ctx context.Context, cli *client.DMEASeriesClient, zoneSN string) error {
+	zoneInfo, err := cli.QueryZoneBySN(ctx, zoneSN)
+	if err != nil {
+		return fmt.Errorf("query zone by SN %s failed: %w", zoneSN, err)
+	}
+	cli.SetZoneID(zoneInfo.NativeID)
 	return nil
 }
 
@@ -150,12 +175,33 @@ func (p *DMEASeriesPlugin) CreateVolume(ctx context.Context, name string,
 		return nil, fmt.Errorf("convert parameters to struct failed when create volume: %w", err)
 	}
 
-	model, err := params.genCreateVolumeModel(name, p.protocol, p.GetSectorSize())
+	enableKVCache := params.EnableKVCache == "true"
+	hasZone := p.cli.IsLocalMode()
+	if enableKVCache && !hasZone {
+		return nil, fmt.Errorf(
+			"enableKVCache is enabled but zoneSN is not configured in the backend; " +
+				"KVCache requires a local zone, please configure zoneSN in the backend")
+	}
+	if hasZone && !enableKVCache {
+		return nil, fmt.Errorf(
+			"zoneSN is configured but enableKVCache is not enabled in StorageClass; " +
+				"local filesystem without KVCache is not supported, " +
+				"please set enableKVCache=true in the StorageClass parameters")
+	}
+
+	model, err := params.genCreateVolumeModel(name, p.protocol, p.GetSectorSize(), hasZone)
 	if err != nil {
 		return nil, err
 	}
 
-	return volume.NewCreator(ctx, p.cli, model).Create()
+	var handler volume.ModeHandler
+	if p.cli.IsLocalMode() {
+		handler = &volume.LocalVolumeHandler{Cli: p.cli}
+	} else {
+		handler = &volume.GlobalVolumeHandler{Cli: p.cli, Name: name, Protocol: p.protocol}
+	}
+
+	return volume.NewCreator(ctx, p.cli, model, handler).Create()
 }
 
 // QueryVolume used to query volume
@@ -168,12 +214,25 @@ func (p *DMEASeriesPlugin) QueryVolume(ctx context.Context, name string,
 }
 
 // DeleteVolume used to delete volume
-func (p *DMEASeriesPlugin) DeleteVolume(ctx context.Context, name string, _ map[string]interface{}) error {
-	model := &volume.DeleteVolumeModel{
-		Protocol: p.protocol,
-		Name:     name,
+func (p *DMEASeriesPlugin) DeleteVolume(ctx context.Context, name string, params map[string]interface{}) error {
+	var kvCacheStoreId string
+	if params != nil {
+		if v, exists := params[constants.KvCacheStoreId]; exists {
+			var ok bool
+			kvCacheStoreId, ok = v.(string)
+			if !ok {
+				return fmt.Errorf("kvcacheStoreId must be a string, got %T", v)
+			}
+		}
 	}
-	return volume.NewDeleter(ctx, p.cli, model).Delete()
+
+	var handler volume.ModeHandler
+	if kvCacheStoreId != "" {
+		handler = &volume.LocalVolumeHandler{Cli: p.cli, KvCacheStoreId: kvCacheStoreId}
+	} else {
+		handler = &volume.GlobalVolumeHandler{Cli: p.cli, Name: name, Protocol: p.protocol}
+	}
+	return volume.NewDeleter(ctx, handler).Delete()
 }
 
 // ExpandVolume used to expand volume
@@ -182,7 +241,15 @@ func (p *DMEASeriesPlugin) ExpandVolume(ctx context.Context, name string, size i
 		Name:     name,
 		Capacity: size * p.GetSectorSize(),
 	}
-	return false, volume.NewExpander(ctx, p.cli, model).Expand()
+
+	var handler volume.ModeHandler
+	if p.cli.IsLocalMode() {
+		handler = &volume.LocalVolumeHandler{Cli: p.cli}
+	} else {
+		handler = &volume.GlobalVolumeHandler{Cli: p.cli, Name: name, Protocol: p.protocol}
+	}
+
+	return false, volume.NewExpander(ctx, p.cli, model, handler).Expand()
 }
 
 // ModifyVolume used to modify volume hyperMetro status

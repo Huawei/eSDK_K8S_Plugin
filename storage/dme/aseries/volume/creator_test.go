@@ -84,7 +84,8 @@ func TestCreator_CreateWithNfsProtocol_Success(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 	cli := mock_client.NewMockDMEASeriesClientInterface(mockCtrl)
-	creator := NewCreator(ctx, cli, fakeCreateNfsModel)
+	handler := &GlobalVolumeHandler{Cli: cli, Name: fakeFsName, Protocol: constants.ProtocolNfs}
+	creator := NewCreator(ctx, cli, fakeCreateNfsModel, handler)
 
 	// mock
 	pool := &client.HyperScalePool{RawId: fakePoolRawID}
@@ -117,9 +118,10 @@ func TestCreator_CreateWithNfsProtocol_Success(t *testing.T) {
 	}
 	cli.EXPECT().CreateFileSystem(creator.ctx, createFsParam).Return(nil)
 	cli.EXPECT().GetStorageID().Return(fakeStorageID).AnyTimes()
+	cli.EXPECT().GetZoneID().Return(fakeStorageID).AnyTimes()
 	nfsShare := &client.NfsShareInfo{ID: fakeShareID}
 	cli.EXPECT().GetNfsShareByPath(creator.ctx, creator.params.sharePath()).Return(nfsShare, nil).AnyTimes()
-	cli.EXPECT().DeleteNfsShare(creator.ctx, nfsShare.ID).Return(nil)
+	cli.EXPECT().SyncDeleteNfsShare(creator.ctx, nfsShare.ID).Return(nil)
 
 	// action
 	volume, err := creator.Create()
@@ -130,18 +132,25 @@ func TestCreator_CreateWithNfsProtocol_Success(t *testing.T) {
 	assert.Equal(t, fakeFsName, volume.GetVolumeName())
 	assert.Equal(t, fakeFsID, creator.fsId)
 }
+
 func TestCreator_CreateWithNfsProtocol_Error(t *testing.T) {
 	// arrange
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 	cli := mock_client.NewMockDMEASeriesClientInterface(mockCtrl)
-	creator := NewCreator(ctx, cli, fakeCreateNfsModel)
+	handler := &GlobalVolumeHandler{Cli: cli, Name: fakeFsName, Protocol: constants.ProtocolNfs}
+	creator := NewCreator(ctx, cli, fakeCreateNfsModel, handler)
 
 	// mock
 	pool := &client.HyperScalePool{RawId: fakePoolRawID}
+	cli.EXPECT().GetStorageID().Return(fakeStorageID).AnyTimes()
+	cli.EXPECT().GetZoneID().Return(fakeStorageID).AnyTimes()
 	cli.EXPECT().GetHyperScalePoolByName(creator.ctx, creator.params.PoolName).Return(pool, nil)
-	cli.EXPECT().GetFileSystemByName(creator.ctx, creator.params.Name).Return(nil, nil).Times(2)
+	cli.EXPECT().GetFileSystemByName(creator.ctx, creator.params.Name).Return(nil, nil).AnyTimes()
+	cli.EXPECT().GetNfsShareByPath(creator.ctx, creator.params.sharePath()).Return(nil, nil).AnyTimes()
+	cli.EXPECT().GetDataTurboShareByPath(creator.ctx, creator.params.sharePath()).Return(nil, nil).AnyTimes()
+	cli.EXPECT().SyncDeleteNfsShare(creator.ctx, gomock.Any()).Return(nil).AnyTimes()
 
 	createFsParam := &client.CreateFilesystemParams{
 		SnapshotDirVisible: creator.params.SnapshotDirVisible,
@@ -166,13 +175,6 @@ func TestCreator_CreateWithNfsProtocol_Error(t *testing.T) {
 		Tuning:              &client.Tuning{AllocationType: creator.params.AllocationType},
 	}
 	cli.EXPECT().CreateFileSystem(creator.ctx, createFsParam).Return(mockErr)
-	cli.EXPECT().GetStorageID().Return(fakeStorageID).AnyTimes()
-	nfsShare := &client.NfsShareInfo{ID: fakeShareID}
-	cli.EXPECT().GetNfsShareByPath(creator.ctx, creator.params.sharePath()).Return(nfsShare, nil).Times(2)
-	cli.EXPECT().DeleteNfsShare(creator.ctx, nfsShare.ID).Return(nil).Times(2)
-	dtfsShare := &client.DataTurboShare{ID: fakeShareID}
-	cli.EXPECT().GetDataTurboShareByPath(creator.ctx, creator.params.sharePath()).Return(dtfsShare, nil).AnyTimes()
-	cli.EXPECT().DeleteDataTurboShare(creator.ctx, dtfsShare.ID).Return(nil)
 
 	// action
 	volume, err := creator.Create()
@@ -181,13 +183,15 @@ func TestCreator_CreateWithNfsProtocol_Error(t *testing.T) {
 	assert.ErrorIs(t, err, mockErr)
 	assert.Nil(t, volume)
 }
+
 func TestCreator_CreateWithDtfsProtocol_Success(t *testing.T) {
 	// arrange
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 	cli := mock_client.NewMockDMEASeriesClientInterface(mockCtrl)
-	creator := NewCreator(ctx, cli, fakeCreateDtfsModel)
+	handler := &GlobalVolumeHandler{Cli: cli, Name: fakeFsName, Protocol: constants.ProtocolDtfs}
+	creator := NewCreator(ctx, cli, fakeCreateDtfsModel, handler)
 
 	// mock
 	pool := &client.HyperScalePool{RawId: fakePoolRawID}
@@ -212,6 +216,7 @@ func TestCreator_CreateWithDtfsProtocol_Success(t *testing.T) {
 	}
 	cli.EXPECT().CreateFileSystem(creator.ctx, createDtfsParam).Return(nil)
 	cli.EXPECT().GetStorageID().Return(fakeStorageID).AnyTimes()
+	cli.EXPECT().GetZoneID().Return(fakeStorageID).AnyTimes()
 	dtfsShare := &client.DataTurboShare{ID: fakeShareID}
 	cli.EXPECT().GetDataTurboShareByPath(creator.ctx, creator.params.sharePath()).Return(dtfsShare, nil).AnyTimes()
 	cli.EXPECT().DeleteDataTurboShare(creator.ctx, dtfsShare.ID).Return(nil)
@@ -227,18 +232,28 @@ func TestCreator_CreateWithDtfsProtocol_Success(t *testing.T) {
 	assert.Equal(t, fakeFsName, volume.GetVolumeName())
 	assert.Equal(t, fakeFsID, creator.fsId)
 }
+
 func TestCreator_CreateWithDtfsProtocol_Error(t *testing.T) {
 	// arrange
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 	cli := mock_client.NewMockDMEASeriesClientInterface(mockCtrl)
-	creator := NewCreator(ctx, cli, fakeCreateDtfsModel)
+	handler := &GlobalVolumeHandler{Cli: cli, Name: fakeFsName, Protocol: constants.ProtocolDtfs}
+	creator := NewCreator(ctx, cli, fakeCreateDtfsModel, handler)
 
 	// mock
 	pool := &client.HyperScalePool{RawId: fakePoolRawID}
+	dtfsShare := &client.DataTurboShare{ID: fakeShareID}
+	adminInfo := &client.DataTurboAdmin{ID: fakeAuthUser}
+	cli.EXPECT().GetStorageID().Return(fakeStorageID).AnyTimes()
+	cli.EXPECT().GetZoneID().Return(fakeStorageID).AnyTimes()
 	cli.EXPECT().GetHyperScalePoolByName(creator.ctx, creator.params.PoolName).Return(pool, nil)
-	cli.EXPECT().GetFileSystemByName(creator.ctx, creator.params.Name).Return(nil, nil).Times(2)
+	cli.EXPECT().GetFileSystemByName(creator.ctx, creator.params.Name).Return(nil, nil).AnyTimes()
+	cli.EXPECT().GetNfsShareByPath(creator.ctx, creator.params.sharePath()).Return(nil, nil).AnyTimes()
+	cli.EXPECT().GetDataTurboShareByPath(creator.ctx, creator.params.sharePath()).Return(dtfsShare, nil).AnyTimes()
+	cli.EXPECT().DeleteDataTurboShare(creator.ctx, dtfsShare.ID).Return(nil).AnyTimes()
+	cli.EXPECT().GetDataTurboUserByName(creator.ctx, creator.params.AuthUsers[0]).Return(adminInfo, nil)
 
 	createDtfsParam := &client.CreateFilesystemParams{
 		SnapshotDirVisible: creator.params.SnapshotDirVisible,
@@ -255,15 +270,6 @@ func TestCreator_CreateWithDtfsProtocol_Error(t *testing.T) {
 		Tuning: &client.Tuning{AllocationType: creator.params.AllocationType},
 	}
 	cli.EXPECT().CreateFileSystem(creator.ctx, createDtfsParam).Return(mockErr)
-	cli.EXPECT().GetStorageID().Return(fakeStorageID).AnyTimes()
-	nfsShare := &client.NfsShareInfo{ID: fakeShareID}
-	cli.EXPECT().GetNfsShareByPath(creator.ctx, creator.params.sharePath()).Return(nfsShare, nil).AnyTimes()
-	cli.EXPECT().DeleteNfsShare(creator.ctx, nfsShare.ID).Return(nil)
-	dtfsShare := &client.DataTurboShare{ID: fakeShareID}
-	cli.EXPECT().GetDataTurboShareByPath(creator.ctx, creator.params.sharePath()).Return(dtfsShare, nil).Times(2)
-	cli.EXPECT().DeleteDataTurboShare(creator.ctx, dtfsShare.ID).Return(nil).Times(2)
-	adminInfo := &client.DataTurboAdmin{ID: fakeAuthUser}
-	cli.EXPECT().GetDataTurboUserByName(creator.ctx, creator.params.AuthUsers[0]).Return(adminInfo, nil)
 
 	// action
 	volume, err := creator.Create()
@@ -280,7 +286,7 @@ func Test_validateAndPrepareParams_WithNFS_NoAuthClients(t *testing.T) {
 		Protocol:    constants.ProtocolNfs,
 		AuthClients: nil,
 		AuthUsers:   nil,
-	})
+	}, nil)
 	wantErr := fmt.Errorf("authClient parameter must be provided in StorageClass for nfs protocol")
 
 	// action
@@ -296,7 +302,7 @@ func Test_validateAndPrepareParams_WithNFS_WithAuthClients(t *testing.T) {
 		Protocol:    constants.ProtocolNfs,
 		AuthClients: []string{"fake-auth-client"},
 		AuthUsers:   nil,
-	})
+	}, nil)
 
 	// mock setPool to return nil
 	patches := gomonkey.ApplyPrivateMethod(c, "setPool", func(c *Creator) error {
@@ -317,7 +323,7 @@ func Test_validateAndPrepareParams_WithDTFS_NoAuthUsers(t *testing.T) {
 		Protocol:    constants.ProtocolDtfs,
 		AuthClients: nil,
 		AuthUsers:   nil,
-	})
+	}, nil)
 	wantErr := fmt.Errorf("authUser parameter must be provided in StorageClass for dtfs protocol")
 
 	// action
@@ -333,7 +339,7 @@ func Test_validateAndPrepareParams_WithDTFS_WithAuthUsers(t *testing.T) {
 		Protocol:    constants.ProtocolDtfs,
 		AuthClients: nil,
 		AuthUsers:   []string{"fake-auth-user"},
-	})
+	}, nil)
 
 	// mock setPool to return nil
 	patches := gomonkey.ApplyPrivateMethod(c, "setPool", func(c *Creator) error {
@@ -346,4 +352,336 @@ func Test_validateAndPrepareParams_WithDTFS_WithAuthUsers(t *testing.T) {
 
 	// assert
 	assert.NoError(t, gotErr)
+}
+
+func TestCreator_Create_WithKVCache(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	model := &CreateVolumeModel{
+		Protocol:          constants.ProtocolNfs,
+		Name:              "test-vol",
+		PoolName:          "pool1",
+		Capacity:          10 * 1024 * 1024 * 1024,
+		EnableKVCache:     true,
+		EnableTimeAwareGC: false,
+		AuthClients:       []string{"client1"},
+		VstoreName:        "myVstore",
+	}
+
+	handler := &LocalVolumeHandler{Cli: mockCli}
+	mockCli.EXPECT().GetStoragePoolByName(gomock.Any(), "pool1", gomock.Any()).Return(&client.StoragePool{Name: "pool1",
+		RawID: "1"}, nil)
+	mockCli.EXPECT().GetStorageID().Return("storage-1").AnyTimes()
+	mockCli.EXPECT().GetZoneID().Return("zone-1").AnyTimes()
+	mockCli.EXPECT().QueryVstores(gomock.Any(), gomock.Any()).Return([]*client.VstoreInfo{{ID: "vstore-1",
+		Name: "myVstore"}}, nil)
+	mockCli.EXPECT().QueryKVCache(gomock.Any(), gomock.Any()).Return(nil, nil)
+	mockCli.EXPECT().CreateKVCache(gomock.Any(), gomock.Any()).Return(&client.KVCacheStore{ID: "kv-id-1"}, nil)
+
+	creator := NewCreator(context.Background(), mockCli, model, handler)
+	vol, err := creator.Create()
+	assert.NoError(t, err)
+	assert.Equal(t, "kv-id-1", vol.GetKvcacheStoreId())
+}
+
+func TestCreator_Create_WithKVCache_AlreadyExists(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	model := &CreateVolumeModel{
+		Protocol:      constants.ProtocolNfs,
+		Name:          "test-vol",
+		PoolName:      "pool1",
+		Capacity:      10 * 1024 * 1024 * 1024,
+		EnableKVCache: true,
+		AuthClients:   []string{"client1"},
+		VstoreName:    "myVstore",
+	}
+
+	handler := &LocalVolumeHandler{Cli: mockCli}
+	mockCli.EXPECT().GetStoragePoolByName(gomock.Any(), "pool1", gomock.Any()).Return(&client.StoragePool{Name: "pool1",
+		RawID: "1"}, nil)
+	mockCli.EXPECT().GetStorageID().Return("storage-1").AnyTimes()
+	mockCli.EXPECT().GetZoneID().Return("zone-1").AnyTimes()
+	mockCli.EXPECT().QueryVstores(gomock.Any(), gomock.Any()).Return([]*client.VstoreInfo{{ID: "vstore-1",
+		Name: "myVstore"}}, nil)
+	mockCli.EXPECT().QueryKVCache(gomock.Any(), gomock.Any()).Return(&client.KVCacheStore{ID: "kv-id-1"}, nil)
+
+	creator := NewCreator(context.Background(), mockCli, model, handler)
+	vol, err := creator.Create()
+	assert.NoError(t, err)
+	assert.Equal(t, "kv-id-1", vol.GetKvcacheStoreId())
+}
+
+func TestCreator_Create_KVCache_WithoutVstoreName(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	model := &CreateVolumeModel{
+		Protocol:      constants.ProtocolNfs,
+		Name:          "test-vol",
+		PoolName:      "pool1",
+		Capacity:      10 * 1024 * 1024 * 1024,
+		EnableKVCache: true,
+		AuthClients:   []string{"client1"},
+		VstoreName:    "",
+	}
+	model.VstoreName = storage.DefaultVStore
+
+	handler := &LocalVolumeHandler{Cli: mockCli}
+	mockCli.EXPECT().GetStoragePoolByName(gomock.Any(), "pool1", gomock.Any()).Return(&client.StoragePool{Name: "pool1",
+		RawID: "1"}, nil)
+	mockCli.EXPECT().GetStorageID().Return("storage-1").AnyTimes()
+	mockCli.EXPECT().GetZoneID().Return("zone-1").AnyTimes()
+	mockCli.EXPECT().QueryVstores(gomock.Any(), &client.VstoreQueryParams{
+		Name:      storage.DefaultVStore,
+		StorageID: "storage-1",
+		ZoneID:    "zone-1",
+	}).Return([]*client.VstoreInfo{{ID: "vstore-default", Name: storage.DefaultVStore}}, nil)
+	mockCli.EXPECT().QueryKVCache(gomock.Any(), gomock.Any()).Return(nil, nil)
+	mockCli.EXPECT().CreateKVCache(gomock.Any(), gomock.Any()).Return(&client.KVCacheStore{ID: "kv-id-default"}, nil)
+
+	creator := NewCreator(context.Background(), mockCli, model, handler)
+	vol, err := creator.Create()
+	assert.NoError(t, err)
+	assert.Equal(t, "kv-id-default", vol.GetKvcacheStoreId())
+	assert.Equal(t, storage.DefaultVStore, creator.params.VstoreName)
+}
+
+func TestCreator_Create_WithoutKVCache(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	model := &CreateVolumeModel{
+		Protocol:      constants.ProtocolNfs,
+		Name:          "test-vol",
+		PoolName:      "pool1",
+		Capacity:      10 * 1024 * 1024 * 1024,
+		EnableKVCache: false,
+		AuthClients:   []string{"client1"},
+	}
+
+	handler := &GlobalVolumeHandler{Cli: mockCli, Name: "test-vol", Protocol: constants.ProtocolNfs}
+	mockCli.EXPECT().GetHyperScalePoolByName(gomock.Any(), "pool1").Return(&client.HyperScalePool{Name: "pool1"}, nil)
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), gomock.Any()).Return(&client.FileSystemInfo{ID: "fs-1"},
+		nil).Times(1)
+	mockCli.EXPECT().CreateFileSystem(gomock.Any(), gomock.Any()).Return(nil)
+	mockCli.EXPECT().GetStorageID().Return("storage-1").AnyTimes()
+	mockCli.EXPECT().GetZoneID().Return("storage-1").AnyTimes()
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), gomock.Any()).Return(&client.NfsShareInfo{ID: "share-1"},
+		nil).AnyTimes()
+	mockCli.EXPECT().SyncDeleteNfsShare(gomock.Any(), gomock.Any()).Return(nil)
+
+	creator := NewCreator(context.Background(), mockCli, model, handler)
+	vol, err := creator.Create()
+	assert.NoError(t, err)
+	assert.Equal(t, "", vol.GetKvcacheStoreId())
+}
+
+func TestCreator_rollbackKVCache_EmptyStoreId(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	creator := NewCreator(context.Background(), mockCli, &CreateVolumeModel{
+		Name: "test-vol",
+	}, nil)
+	creator.kvcacheStoreId = ""
+
+	// Should not call any CLI methods
+	creator.rollbackKVCache()
+}
+
+func TestCreator_rollbackKVCache_DeleteKVCacheFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	creator := NewCreator(context.Background(), mockCli, &CreateVolumeModel{
+		Name: "test-vol",
+	}, nil)
+	creator.kvcacheStoreId = "kv-id-1"
+
+	mockCli.EXPECT().DeleteKVCache(gomock.Any(), "kv-id-1").Return(mockErr)
+
+	creator.rollbackKVCache()
+}
+
+func TestCreator_Create_KVCache_CreateFailed_TriggersCleanup(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	model := &CreateVolumeModel{
+		Protocol:      constants.ProtocolNfs,
+		Name:          "test-vol",
+		PoolName:      "pool1",
+		Capacity:      10 * 1024 * 1024 * 1024,
+		EnableKVCache: true,
+		AuthClients:   []string{"client1"},
+		VstoreName:    "myVstore",
+	}
+
+	handler := &LocalVolumeHandler{Cli: mockCli}
+
+	// Step 0: validateAndPrepareParams
+	mockCli.EXPECT().GetStoragePoolByName(gomock.Any(), "pool1", gomock.Any()).Return(&client.StoragePool{
+		Name: "pool1", RawID: "1"}, nil)
+	mockCli.EXPECT().GetStorageID().Return("storage-1").AnyTimes()
+	mockCli.EXPECT().GetZoneID().Return("zone-1").AnyTimes()
+	mockCli.EXPECT().QueryVstores(gomock.Any(), gomock.Any()).Return([]*client.VstoreInfo{
+		{ID: "vstore-1", Name: "myVstore"}}, nil)
+
+	// Step 2: createKVCache - idempotency check finds nothing, CreateKVCache fails
+	mockCli.EXPECT().QueryKVCache(gomock.Any(), gomock.Any()).Return(nil, nil)
+	mockCli.EXPECT().CreateKVCache(gomock.Any(), gomock.Any()).Return(nil, mockErr)
+
+	// Rollback (step 1's onRollback): cleanupKVCacheFilesystem cleans up partial resources
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), "test-vol").Return(&client.FileSystemInfo{
+		ID: "fs-partial"}, nil)
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-vol/").Return(&client.NfsShareInfo{
+		ID: "share-partial"}, nil)
+	mockCli.EXPECT().DeleteNfsPrivateShare(gomock.Any(), "share-partial").Return(nil)
+	mockCli.EXPECT().SyncDeleteFileSystem(gomock.Any(), "fs-partial").Return(nil)
+
+	creator := NewCreator(context.Background(), mockCli, model, handler)
+	vol, err := creator.Create()
+	assert.Error(t, err)
+	assert.Nil(t, vol)
+}
+
+func TestCreator_Create_KVCache_CreateFailed_CleanupNoResidual(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	model := &CreateVolumeModel{
+		Protocol:      constants.ProtocolNfs,
+		Name:          "test-vol",
+		PoolName:      "pool1",
+		Capacity:      10 * 1024 * 1024 * 1024,
+		EnableKVCache: true,
+		AuthClients:   []string{"client1"},
+		VstoreName:    "myVstore",
+	}
+
+	handler := &LocalVolumeHandler{Cli: mockCli}
+
+	// Step 0: validateAndPrepareParams
+	mockCli.EXPECT().GetStoragePoolByName(gomock.Any(), "pool1", gomock.Any()).Return(&client.StoragePool{
+		Name: "pool1", RawID: "1"}, nil)
+	mockCli.EXPECT().GetStorageID().Return("storage-1").AnyTimes()
+	mockCli.EXPECT().GetZoneID().Return("zone-1").AnyTimes()
+	mockCli.EXPECT().QueryVstores(gomock.Any(), gomock.Any()).Return([]*client.VstoreInfo{
+		{ID: "vstore-1", Name: "myVstore"}}, nil)
+
+	// Step 2: createKVCache - idempotency check finds nothing, CreateKVCache fails
+	mockCli.EXPECT().QueryKVCache(gomock.Any(), gomock.Any()).Return(nil, nil)
+	mockCli.EXPECT().CreateKVCache(gomock.Any(), gomock.Any()).Return(nil, mockErr)
+
+	// Rollback: cleanupKVCacheFilesystem finds no partial resources
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), "test-vol").Return(nil, nil)
+
+	creator := NewCreator(context.Background(), mockCli, model, handler)
+	vol, err := creator.Create()
+	assert.Error(t, err)
+	assert.Nil(t, vol)
+}
+
+func TestCreator_cleanupKVCacheFilesystem_QueryFsFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	creator := NewCreator(context.Background(), mockCli, &CreateVolumeModel{
+		Name: "test-vol",
+	}, nil)
+
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), "test-vol").Return(nil, mockErr)
+
+	creator.cleanupKVCacheFilesystem()
+}
+
+func TestCreator_cleanupKVCacheFilesystem_FsNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	creator := NewCreator(context.Background(), mockCli, &CreateVolumeModel{
+		Name: "test-vol",
+	}, nil)
+
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), "test-vol").Return(nil, nil)
+
+	creator.cleanupKVCacheFilesystem()
+}
+
+func TestCreator_cleanupKVCacheFilesystem_QueryNfsShareFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	creator := NewCreator(context.Background(), mockCli, &CreateVolumeModel{
+		Name: "test-vol",
+	}, nil)
+
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), "test-vol").Return(&client.FileSystemInfo{
+		ID: "fs-id-1",
+	}, nil)
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-vol/").Return(nil, mockErr)
+	mockCli.EXPECT().SyncDeleteFileSystem(gomock.Any(), "fs-id-1").Return(nil)
+
+	creator.cleanupKVCacheFilesystem()
+}
+
+func TestCreator_cleanupKVCacheFilesystem_DeleteNfsShareFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	creator := NewCreator(context.Background(), mockCli, &CreateVolumeModel{
+		Name: "test-vol",
+	}, nil)
+
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), "test-vol").Return(&client.FileSystemInfo{
+		ID: "fs-id-1",
+	}, nil)
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-vol/").Return(&client.NfsShareInfo{
+		ID: "share-id-1",
+	}, nil)
+	mockCli.EXPECT().DeleteNfsPrivateShare(gomock.Any(), "share-id-1").Return(mockErr)
+	mockCli.EXPECT().SyncDeleteFileSystem(gomock.Any(), "fs-id-1").Return(nil)
+
+	creator.cleanupKVCacheFilesystem()
+}
+
+func TestCreator_cleanupKVCacheFilesystem_DeleteFsFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	creator := NewCreator(context.Background(), mockCli, &CreateVolumeModel{
+		Name: "test-vol",
+	}, nil)
+
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), "test-vol").Return(&client.FileSystemInfo{
+		ID: "fs-id-1",
+	}, nil)
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-vol/").Return(&client.NfsShareInfo{
+		ID: "share-id-1",
+	}, nil)
+	mockCli.EXPECT().DeleteNfsPrivateShare(gomock.Any(), "share-id-1").Return(nil)
+	mockCli.EXPECT().SyncDeleteFileSystem(gomock.Any(), "fs-id-1").Return(mockErr)
+
+	creator.cleanupKVCacheFilesystem()
+}
+
+func TestCreator_cleanupKVCacheFilesystem_NfsShareNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockDMEASeriesClientInterface(ctrl)
+
+	creator := NewCreator(context.Background(), mockCli, &CreateVolumeModel{
+		Name: "test-vol",
+	}, nil)
+
+	mockCli.EXPECT().GetFileSystemByName(gomock.Any(), "test-vol").Return(&client.FileSystemInfo{
+		ID: "fs-id-1",
+	}, nil)
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-vol/").Return(nil, nil)
+	mockCli.EXPECT().SyncDeleteFileSystem(gomock.Any(), "fs-id-1").Return(nil)
+
+	creator.cleanupKVCacheFilesystem()
 }

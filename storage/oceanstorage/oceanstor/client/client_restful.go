@@ -73,7 +73,7 @@ func NewRestClient(ctx context.Context, param *NewClientConfig) (*RestClient, er
 
 	parallelCount, err = strconv.Atoi(param.ParallelNum)
 	if err != nil || parallelCount > MaxParallelCount || parallelCount < MinParallelCount {
-		log.Infof("the config parallelNum %d is invalid, set it to the default value %d",
+		log.AddContext(ctx).Infof("The config parallelNum %d is invalid, set it to the default value %d",
 			parallelCount, DefaultParallelCount)
 		parallelCount = DefaultParallelCount
 	}

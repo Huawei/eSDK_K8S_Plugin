@@ -19,6 +19,7 @@ package delete_volume
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -55,6 +56,113 @@ func TestDeleteVolume_OceanstorDTree_Success(t *testing.T) {
 	cli.EXPECT().GetNfsShareByPath(ctx, data.sharePath(), data.FakeVstoreID).
 		Return(map[string]any{"ID": data.FakeShareID}, nil)
 	cli.EXPECT().DeleteNfsShare(ctx, data.FakeShareID, data.FakeVstoreID).Return(nil)
+	cli.EXPECT().DeleteDTreeByName(ctx, data.ParentName, data.DTreeName, data.FakeVstoreID).Return(nil)
+	cli.EXPECT().Logout(ctx)
+
+	// action
+	resp, err := csiServer.DeleteVolume(ctx, data.request())
+
+	// assert
+	require.NoError(t, err)
+	require.Equal(t, data.response(), resp)
+}
+
+func TestDeleteVolume_OceanstorDTree_GetDTreeParentNameFailed(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	data := fakeOceanstorDtreeSuccess()
+	mockCtrl := gomock.NewController(t)
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	cache.BackendCacheProvider.Store(ctx, data.BackendName, data.backend(cli))
+	defer cache.BackendCacheProvider.Delete(ctx, data.BackendName)
+
+	// mock - K8sUtils.GetVolumeAttrsByVolumeId fails, so GetDTreeParentNameByVolumeId fails
+	p := gomonkey.NewPatches().ApplyMethodReturn(
+		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId",
+		nil, fmt.Errorf("pv not found"))
+	defer p.Reset()
+	cli.EXPECT().Logout(ctx)
+
+	// action
+	_, err := csiServer.DeleteVolume(ctx, data.request())
+
+	// assert
+	require.Error(t, err)
+}
+
+func TestDeleteVolume_OceanstorDTree_ParentFsNotExist(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	data := fakeOceanstorDtreeSuccess()
+	mockCtrl := gomock.NewController(t)
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	cache.BackendCacheProvider.Store(ctx, data.BackendName, data.backend(cli))
+	defer cache.BackendCacheProvider.Delete(ctx, data.BackendName)
+
+	// mock
+	p := gomonkey.NewPatches().ApplyMethodReturn(
+		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId",
+		data.fakeVolumeAttributes(), nil)
+	defer p.Reset()
+	// parent filesystem not found -> dtree considered not exist -> idempotent success
+	cli.EXPECT().GetFileSystemByName(ctx, data.ParentName).Return(nil, nil)
+	cli.EXPECT().Logout(ctx)
+
+	// action
+	resp, err := csiServer.DeleteVolume(ctx, data.request())
+
+	// assert
+	require.NoError(t, err)
+	require.Equal(t, data.response(), resp)
+}
+
+func TestDeleteVolume_OceanstorDTree_DTreeNotExist(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	data := fakeOceanstorDtreeSuccess()
+	mockCtrl := gomock.NewController(t)
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	cache.BackendCacheProvider.Store(ctx, data.BackendName, data.backend(cli))
+	defer cache.BackendCacheProvider.Delete(ctx, data.BackendName)
+
+	// mock
+	p := gomonkey.NewPatches().ApplyMethodReturn(
+		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId",
+		data.fakeVolumeAttributes(), nil)
+	defer p.Reset()
+	cli.EXPECT().GetFileSystemByName(ctx, data.ParentName).Return(map[string]any{"ID": "1"}, nil)
+	// dtree not found -> idempotent success
+	cli.EXPECT().GetDTreeByName(ctx, "0", data.ParentName, data.FakeVstoreID,
+		data.DTreeName).Return(nil, nil)
+	cli.EXPECT().Logout(ctx)
+
+	// action
+	resp, err := csiServer.DeleteVolume(ctx, data.request())
+
+	// assert
+	require.NoError(t, err)
+	require.Equal(t, data.response(), resp)
+}
+
+func TestDeleteVolume_OceanstorDTree_ShareNotExist(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	data := fakeOceanstorDtreeSuccess()
+	mockCtrl := gomock.NewController(t)
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	cache.BackendCacheProvider.Store(ctx, data.BackendName, data.backend(cli))
+	defer cache.BackendCacheProvider.Delete(ctx, data.BackendName)
+
+	// mock
+	p := gomonkey.NewPatches().ApplyMethodReturn(
+		app.GetGlobalConfig().K8sUtils, "GetVolumeAttrsByVolumeId",
+		data.fakeVolumeAttributes(), nil)
+	defer p.Reset()
+	cli.EXPECT().GetFileSystemByName(ctx, data.ParentName).Return(map[string]any{"ID": "2"}, nil)
+	cli.EXPECT().GetDTreeByName(ctx, "0", data.ParentName, data.FakeVstoreID,
+		data.DTreeName).Return(data.fakeDtreeInfo(), nil)
+	// share not exist -> skip share deletion, proceed to delete dtree
+	cli.EXPECT().GetNfsShareByPath(ctx, data.sharePath(), data.FakeVstoreID).Return(nil, nil)
 	cli.EXPECT().DeleteDTreeByName(ctx, data.ParentName, data.DTreeName, data.FakeVstoreID).Return(nil)
 	cli.EXPECT().Logout(ctx)
 

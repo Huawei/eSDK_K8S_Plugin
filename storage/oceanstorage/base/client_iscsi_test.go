@@ -20,6 +20,7 @@ package base
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -68,4 +69,28 @@ func TestIscsiClient_GetIscsiInitiatorByID_Success(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, gotData)
 	assert.Equal(t, "iqn.xxxx.com.xxxx:xxxx.xxxx.com", gotData["ID"])
+}
+
+func TestIscsiClient_GetIscsiInitiatorByID_NotExist(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	initiator := "iqn.xxxx.com.xxxx:xxxx.xxxx.com"
+	notExistRespBody := fmt.Sprintf(`{
+		"data": {},
+		"error": {
+			"code": %d,
+			"description": "Object does not exist"
+		}
+	}`, storage.ObjectNotExist)
+
+	// mock
+	mockClient := getMockIscsiClient(200, notExistRespBody)
+
+	// action
+	gotData, err := mockClient.GetIscsiInitiatorByID(ctx, initiator)
+
+	// assert
+	assert.Nil(t, err)
+	assert.NotNil(t, gotData)
+	assert.Empty(t, gotData)
 }

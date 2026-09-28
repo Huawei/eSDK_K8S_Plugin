@@ -38,11 +38,12 @@ const (
 
 func newOceanStorAttacher(config VolumeAttacherConfig) VolumeAttacherPlugin {
 	baseAttacherConfig := attacher.AttachmentManagerConfig{
-		Cli:      config.Cli,
-		Protocol: config.Protocol,
-		Invoker:  config.Invoker,
-		Portals:  config.Portals,
-		Alua:     config.Alua,
+		Cli:                    config.Cli,
+		Protocol:               config.Protocol,
+		Invoker:                config.Invoker,
+		Portals:                config.Portals,
+		Alua:                   config.Alua,
+		AllowTruncatedHostname: true,
 	}
 	baseAttacher := attacher.NewAttachmentManager(baseAttacherConfig)
 

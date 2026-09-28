@@ -25,7 +25,11 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
+	baseAttacher "github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base/attacher"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -182,7 +186,8 @@ func TestVolumeAttacher_getMappingProperties_DynamicPortalsSuccess(t *testing.T)
 	mock := gomonkey.NewPatches()
 	defer mock.Reset()
 	mock.ApplyPrivateMethod(attacher, "getTargetPortalsDynamic", func(
-		_ context.Context, hostName, poolName string) ([]string, []string, error) {
+		_ context.Context, hostName, poolName string,
+	) ([]string, []string, error) {
 		return mockPortals, mockIQNs, nil
 	})
 
@@ -212,7 +217,8 @@ func TestVolumeAttacher_getMappingProperties_DynamicPortalsError(t *testing.T) {
 	mock := gomonkey.NewPatches()
 	defer mock.Reset()
 	mock.ApplyPrivateMethod(attacher, "getTargetPortalsDynamic", func(
-		_ context.Context, hostName, poolName string) ([]string, []string, error) {
+		_ context.Context, hostName, poolName string,
+	) ([]string, []string, error) {
 		return nil, nil, wantErr
 	})
 
@@ -347,24 +353,388 @@ func TestVolumeAttacher_getLunInfo_GetPoolError(t *testing.T) {
 	assert.Nil(t, gotLun)
 }
 
-func TestVolumeAttacher_getLunInfo_PoolNameNotFound(t *testing.T) {
-	// arrange
-	attacher := NewAttacher(VolumeAttacherConfig{Cli: testClient})
-	lunMap := map[string]interface{}{
-		"wwn":    "wwn1",
-		"poolId": float64(1),
+func TestVolumeAttacher_getHostName_EmptyPrefix(t *testing.T) {
+	origGetGlobalConfig := app.GetGlobalConfig
+	defer func() { app.GetGlobalConfig = origGetGlobalConfig }()
+
+	mockCfg := cfg.MockCompletedConfig()
+	mockCfg.HostNamePrefix = ""
+	mockCfg.HostNamePrefixSet = false
+	app.GetGlobalConfig = func() *cfg.CompletedConfig {
+		return mockCfg
 	}
-	poolMap := map[string]interface{}{}
+
+	attacher := &VolumeAttacher{}
+
+	got := attacher.getHostNameWithPrefix("mynode")
+	assert.Equal(t, "mynode", got)
+}
+
+func TestVolumeAttacher_getHostName_ExplicitEmptyPrefix(t *testing.T) {
+	origGetGlobalConfig := app.GetGlobalConfig
+	defer func() { app.GetGlobalConfig = origGetGlobalConfig }()
+
+	// When --host-name-prefix="" is explicitly set, FusionStorage should still have no prefix
+	mockCfg := cfg.MockCompletedConfig()
+	mockCfg.HostNamePrefix = ""
+	mockCfg.HostNamePrefixSet = true
+	app.GetGlobalConfig = func() *cfg.CompletedConfig {
+		return mockCfg
+	}
+
+	attacher := &VolumeAttacher{}
+
+	got := attacher.getHostNameWithPrefix("mynode")
+	assert.Equal(t, "mynode", got) // no prefix for FusionStorage
+}
+
+func TestVolumeAttacher_getHostName_CustomPrefix(t *testing.T) {
+	origGetGlobalConfig := app.GetGlobalConfig
+	defer func() { app.GetGlobalConfig = origGetGlobalConfig }()
+
+	mockCfg := cfg.MockCompletedConfig()
+	mockCfg.HostNamePrefix = "prod_"
+	mockCfg.HostNamePrefixSet = true
+	app.GetGlobalConfig = func() *cfg.CompletedConfig {
+		return mockCfg
+	}
+
+	attacher := &VolumeAttacher{}
+
+	got := attacher.getHostNameWithPrefix("mynode")
+	assert.Equal(t, "prod_mynode", got)
+}
+
+func TestVolumeAttacher_getHostName_LongHostNameNoTruncation(t *testing.T) {
+	origGetGlobalConfig := app.GetGlobalConfig
+	defer func() { app.GetGlobalConfig = origGetGlobalConfig }()
+
+	mockCfg := cfg.MockCompletedConfig()
+	mockCfg.HostNamePrefix = "k8s_"
+	mockCfg.HostNamePrefixSet = true
+	app.GetGlobalConfig = func() *cfg.CompletedConfig {
+		return mockCfg
+	}
+
+	attacher := &VolumeAttacher{}
+	longHostname := "a-really-very-long-hostname-that-exceeds-limit"
+
+	got := attacher.getHostNameWithPrefix(longHostname)
+	assert.Equal(t, "k8s_"+longHostname, got)
+	// FusionStorage does not truncate
+	assert.Greater(t, len(got), 31)
+}
+
+func TestVolumeAttacher_getRawHostName_Success(t *testing.T) {
+	attacher := &VolumeAttacher{}
+	parameters := map[string]interface{}{"HostName": "mynode"}
+
+	got, err := attacher.getRawHostName(parameters)
+	assert.Nil(t, err)
+	assert.Equal(t, "mynode", got)
+}
+
+func TestVolumeAttacher_getRawHostName_HostNameNotFound(t *testing.T) {
+	attacher := &VolumeAttacher{}
+	parameters := map[string]interface{}{}
+
+	got, err := attacher.getRawHostName(parameters)
+	assert.ErrorContains(t, err, "can not find host name")
+	assert.Empty(t, got)
+}
+
+func TestVolumeAttacher_getRawHostName_HostNameNotString(t *testing.T) {
+	attacher := &VolumeAttacher{}
+	parameters := map[string]interface{}{"HostName": 123}
+
+	got, err := attacher.getRawHostName(parameters)
+	assert.ErrorContains(t, err, "can not find host name")
+	assert.Empty(t, got)
+}
+
+func TestVolumeAttacher_ControllerAttach_iSCSISuccess(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient, protocol: "iscsi"}
+	mockMapping := map[string]interface{}{"tgtLunWWN": "wwn1"}
 
 	mock := gomonkey.NewPatches()
 	defer mock.Reset()
-	mock.ApplyMethodReturn(testClient, "GetVolumeByName", lunMap, nil)
-	mock.ApplyMethodReturn(testClient, "GetPoolById", poolMap, nil)
+	mock.ApplyPrivateMethod(attacher, "getLunInfo",
+		func(_ *VolumeAttacher, _ context.Context, _ string) (*lunInfo, error) {
+			return &lunInfo{name: "lun1", wwn: "wwn1", poolName: "pool1"}, nil
+		})
+	mock.ApplyPrivateMethod(attacher, "iSCSIControllerAttach",
+		func(_ *VolumeAttacher, _ context.Context, _ *lunInfo, _ map[string]any) (map[string]any, error) {
+			return mockMapping, nil
+		})
+
+	gotProps, gotErr := attacher.ControllerAttach(context.Background(),
+		"lun1", map[string]any{"HostName": "mynode"})
+	assert.Nil(t, gotErr)
+	assert.Equal(t, mockMapping, gotProps)
+}
+
+func TestVolumeAttacher_ControllerAttach_SCSISuccess(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient, protocol: "fc", hosts: map[string]string{"mynode": "10.0.0.1"}}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyPrivateMethod(attacher, "getLunInfo",
+		func(_ *VolumeAttacher, _ context.Context, _ string) (*lunInfo, error) {
+			return &lunInfo{name: "lun1", wwn: "wwn1", poolName: "pool1"}, nil
+		})
+	mock.ApplyMethodReturn(testClient, "AttachVolume", nil)
+
+	gotProps, gotErr := attacher.ControllerAttach(context.Background(),
+		"lun1", map[string]interface{}{"HostName": "mynode"})
+	assert.Nil(t, gotErr)
+	assert.Equal(t, "wwn1", gotProps["tgtLunWWN"])
+}
+
+func TestVolumeAttacher_SCSIControllerAttach_Success(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient, hosts: map[string]string{"mynode": "10.0.0.1"}}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyMethodReturn(testClient, "AttachVolume", nil)
+
+	wwn, gotErr := attacher.SCSIControllerAttach(context.Background(),
+		&lunInfo{name: "lun1", wwn: "wwn1"}, map[string]any{"HostName": "mynode"})
+	assert.Nil(t, gotErr)
+	assert.Equal(t, "wwn1", wwn)
+}
+
+func TestVolumeAttacher_ControllerDetach_Success(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyPrivateMethod(attacher, "doUnmapping",
+		func(_ *VolumeAttacher, _ context.Context, _, _ string) (string, error) {
+			return "wwn1", nil
+		})
+
+	wwn, gotErr := attacher.ControllerDetach(context.Background(),
+		"lun1", map[string]interface{}{"HostName": "mynode"})
+	assert.Nil(t, gotErr)
+	assert.Equal(t, "wwn1", wwn)
+}
+
+func TestVolumeAttacher_doUnmapping_iSCSIVolumeAdded(t *testing.T) {
+	origGetGlobalConfig := app.GetGlobalConfig
+	defer func() { app.GetGlobalConfig = origGetGlobalConfig }()
+	mockCfg := cfg.MockCompletedConfig()
+	mockCfg.HostNamePrefix = ""
+	mockCfg.HostNamePrefixSet = false
+	app.GetGlobalConfig = func() *cfg.CompletedConfig { return mockCfg }
+
+	attacher := &VolumeAttacher{cli: testClient, protocol: "iscsi"}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyPrivateMethod(attacher, "getLunInfo",
+		func(_ *VolumeAttacher, _ context.Context, _ string) (*lunInfo, error) {
+			return &lunInfo{name: "lun1", wwn: "wwn1"}, nil
+		})
+	mock.ApplyPrivateMethod(attacher, "isVolumeAddToHost",
+		func(_ *VolumeAttacher, _ context.Context, _, _ string) (bool, error) {
+			return true, nil
+		})
+	mock.ApplyMethodReturn(testClient, "DeleteLunFromHost", nil)
+
+	wwn, gotErr := attacher.doUnmapping(context.Background(), "lun1", "host1")
+	assert.Nil(t, gotErr)
+	assert.Equal(t, "wwn1", wwn)
+}
+
+func TestVolumeAttacher_doUnmapping_FC(t *testing.T) {
+	attacher := &VolumeAttacher{
+		cli:      testClient,
+		protocol: "fc",
+		hosts:    map[string]string{"host1": "10.0.0.1"},
+	}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyPrivateMethod(attacher, "getLunInfo",
+		func(_ *VolumeAttacher, _ context.Context, _ string) (*lunInfo, error) {
+			return &lunInfo{name: "lun1", wwn: "wwn1"}, nil
+		})
+	mock.ApplyMethodReturn(testClient, "DetachVolume", nil)
+
+	wwn, gotErr := attacher.doUnmapping(context.Background(), "lun1", "host1")
+	assert.Nil(t, gotErr)
+	assert.Equal(t, "wwn1", wwn)
+}
+
+func TestVolumeAttacher_getTargetPortalsStatic_Success(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient, portals: []string{"192.168.1.1"}}
+	portalResult := []map[string]interface{}{
+		{
+			"status": "successful",
+			"iscsiPortalList": []interface{}{
+				map[string]interface{}{
+					"iscsiStatus": "active",
+					"iscsiPortal": "192.168.1.1:3260",
+					"targetName":  "iqn.test:t1",
+				},
+			},
+		},
+	}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyMethodReturn(testClient, "QueryIscsiPortal", portalResult, nil)
+
+	tgtPortals, tgtIQNs, gotErr := attacher.getTargetPortalsStatic(context.Background())
+	assert.Nil(t, gotErr)
+	assert.Equal(t, []string{"192.168.1.1:3260"}, tgtPortals)
+	assert.Equal(t, []string{"iqn.test:t1"}, tgtIQNs)
+}
+
+func TestVolumeAttacher_getTargetPortalsStatic_QueryError(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient, portals: []string{"192.168.1.1"}}
+	wantErr := errors.New("query failed")
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyMethodReturn(testClient, "QueryIscsiPortal", nil, wantErr)
+
+	_, _, gotErr := attacher.getTargetPortalsStatic(context.Background())
+	assert.ErrorIs(t, gotErr, wantErr)
+}
+
+func TestVolumeAttacher_getTargetPortalsStatic_AllPortalsInvalid(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient, portals: []string{"10.0.0.1"}}
+	portalResult := []map[string]interface{}{
+		{"status": "successful", "iscsiPortalList": []interface{}{}},
+	}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyMethodReturn(testClient, "QueryIscsiPortal", portalResult, nil)
+
+	_, _, gotErr := attacher.getTargetPortalsStatic(context.Background())
+	assert.ErrorContains(t, gotErr, "All config portal")
+}
+
+func TestVolumeAttacher_attachIscsiInitiatorToHost_CreateInitiator(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyFuncReturn(baseAttacher.GetSingleInitiator, "iqn.test:123456", nil)
+	mock.ApplyMethodReturn(testClient, "GetInitiatorByName", nil, nil)
+	mock.ApplyMethodReturn(testClient, "CreateInitiator", nil)
+	mock.ApplyMethodReturn(testClient, "AddPortToHost", nil)
+
+	gotErr := attacher.attachIscsiInitiatorToHost(context.Background(), "host1", "rawhost1")
+	assert.Nil(t, gotErr)
+}
+
+func TestVolumeAttacher_isVolumeAddToHost_True(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyMethodReturn(testClient, "QueryHostOfVolume",
+		[]map[string]interface{}{{"hostName": "host1"}}, nil)
+
+	added, gotErr := attacher.isVolumeAddToHost(context.Background(), "lun1", "host1")
+	assert.Nil(t, gotErr)
+	assert.True(t, added)
+}
+
+func TestVolumeAttacher_createIscsiHost_CreateNew(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyMethodReturn(testClient, "GetHostByName", nil, nil)
+	mock.ApplyFuncReturn(utils.GetAlua, nil)
+	mock.ApplyMethodReturn(testClient, "CreateHost", nil)
+
+	gotErr := attacher.createIscsiHost(context.Background(), "host1")
+	assert.Nil(t, gotErr)
+}
+
+func TestVolumeAttacher_needUpdateIscsiHost_Changed(t *testing.T) {
+	attacher := &VolumeAttacher{}
+	host := map[string]interface{}{"switchoverMode": "old"}
+	hostAlua := map[string]interface{}{"switchoverMode": "new"}
+
+	assert.True(t, attacher.needUpdateIscsiHost(host, hostAlua))
+}
+
+func TestVolumeAttacher_parseISCSIPortal_Active(t *testing.T) {
+	attacher := &VolumeAttacher{}
+	portal := map[string]interface{}{"iscsiStatus": "active", "iscsiPortal": "192.168.1.1:3260"}
+
+	ip := attacher.parseISCSIPortal(context.Background(), portal)
+	assert.Equal(t, "192.168.1.1", ip)
+}
+
+func TestVolumeAttacher_parseiSCSIPortalList_Success(t *testing.T) {
+	attacher := &VolumeAttacher{}
+	validIPs := make(map[string]bool)
+	validIQNs := make(map[string]string)
+
+	portalList := []interface{}{
+		map[string]interface{}{
+			"iscsiStatus": "active",
+			"iscsiPortal": "192.168.1.1:3260",
+			"targetName":  "iqn.test:t1",
+		},
+	}
+
+	gotErr := attacher.parseiSCSIPortalList(context.Background(), portalList, validIPs, validIQNs)
+	assert.Nil(t, gotErr)
+	assert.True(t, validIPs["192.168.1.1"])
+}
+
+func TestVolumeAttacher_iSCSIControllerAttach_GetRawHostNameError(t *testing.T) {
+	attacher := &VolumeAttacher{cli: testClient}
+
+	// getRawHostName will fail because parameters has no HostName
 
 	// act
-	gotLun, gotErr := attacher.getLunInfo(context.Background(), "lun1")
+	gotProps, gotErr := attacher.iSCSIControllerAttach(context.Background(), &lunInfo{}, map[string]interface{}{})
 
 	// assert
-	assert.ErrorContains(t, gotErr, "can not find poolName in pool")
-	assert.Nil(t, gotLun)
+	assert.ErrorContains(t, gotErr, "can not find host name")
+	assert.Nil(t, gotProps)
+}
+
+func TestVolumeAttacher_iSCSIControllerAttach_AttachInitiatorError(t *testing.T) {
+	origGetGlobalConfig := app.GetGlobalConfig
+	defer func() { app.GetGlobalConfig = origGetGlobalConfig }()
+
+	mockCfg := cfg.MockCompletedConfig()
+	mockCfg.HostNamePrefix = "prod_"
+	mockCfg.HostNamePrefixSet = true
+	app.GetGlobalConfig = func() *cfg.CompletedConfig {
+		return mockCfg
+	}
+
+	attacher := &VolumeAttacher{cli: testClient}
+	wantErr := errors.New("attach initiator failed")
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyPrivateMethod(attacher, "createIscsiHost",
+		func(_ *VolumeAttacher, _ context.Context, _ string) error {
+			return nil
+		})
+	mock.ApplyPrivateMethod(attacher, "attachIscsiInitiatorToHost",
+		func(_ *VolumeAttacher, _ context.Context, _, _ string) error {
+			return wantErr
+		})
+
+	parameters := map[string]interface{}{"HostName": "mynode"}
+
+	// act
+	gotProps, gotErr := attacher.iSCSIControllerAttach(context.Background(), &lunInfo{}, parameters)
+
+	// assert
+	assert.ErrorIs(t, gotErr, wantErr)
+	assert.Nil(t, gotProps)
 }

@@ -42,16 +42,12 @@ func TestFusionStorageDTreePlugin_Init(t *testing.T) {
 		"provisioner": constants.DefaultDriverName, "secretName": backendId, "secretNamespace": "huawei-csi",
 		"storage": constants.FusionDTree, "urls": []any{"test-urls"}, "user": "test-user", "userCert": false}
 	parameters := map[string]any{"parentname": parentName, "portals": []interface{}{"test-portals"}, "protocol": "nfs"}
-	mockCtrl := gomock.NewController(t)
-	cli := mock_client.NewMockIRestClient(mockCtrl)
 
-	// mock
-	patch := gomonkey.NewPatches().ApplyFuncReturn(client.NewIRestClient, cli)
+	// mock - ApplyMethodReturn on concrete type (*RestClient), not ApplyFuncReturn on NewIRestClient
+	patch := gomonkey.NewPatches()
 	defer patch.Reset()
-	cli.EXPECT().Login(ctx).Return(nil)
-	cli.EXPECT().SetAccountId(ctx)
-
-	// mock
+	patch.ApplyMethodReturn((*client.RestClient)(nil), "Login", nil)
+	patch.ApplyMethodReturn((*client.RestClient)(nil), "SetAccountId", nil)
 
 	// action
 	err := p.Init(ctx, config, parameters, true)
@@ -125,14 +121,13 @@ func TestFusionStorageDTreePlugin_Validate(t *testing.T) {
 		"parameters":  map[string]any{"parentname": parentName, "portals": []any{"test-portals"}, "protocol": "nfs"},
 		"provisioner": constants.DefaultDriverName, "secretName": backendId, "secretNamespace": "huawei-csi",
 		"storage": constants.FusionDTree, "urls": []any{"test-urls"}, "user": "test-user", "userCert": false}
-	mockCtrl := gomock.NewController(t)
-	cli := mock_client.NewMockIRestClient(mockCtrl)
 
-	// mock
-	patch := gomonkey.NewPatches().ApplyFuncReturn(client.NewIRestClient, cli)
+	// mock - ApplyMethodReturn on concrete type (*RestClient), not ApplyFuncReturn on NewIRestClient
+	patch := gomonkey.NewPatches()
 	defer patch.Reset()
-	cli.EXPECT().ValidateLogin(ctx).Return(nil)
-	cli.EXPECT().Logout(ctx)
+	patch.ApplyMethodReturn((*client.RestClient)(nil), "ValidateLogin", nil)
+	patch.ApplyMethod((*client.RestClient)(nil), "Logout",
+		func(cli *client.RestClient, ctx context.Context) {})
 
 	// action
 	err := p.Validate(ctx, config)

@@ -49,7 +49,7 @@ func TestConfig(t *testing.T) {
 	optManager.AddFlags(flagSet)
 
 	var err error
-	envCfg, err := optManager.Config()
+	envCfg, err := optManager.Config(flagSet)
 	if err != nil {
 		logrus.Fatalf("Failed to get configuration, %v", err)
 	}

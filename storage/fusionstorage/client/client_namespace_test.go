@@ -17,8 +17,12 @@
 package client
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -30,6 +34,19 @@ import (
 const (
 	logName = "clientNamespaceTest.log"
 )
+
+// capturingTransport is a mock HTTP transport that captures request body data
+type capturingTransport struct {
+	response  *http.Response
+	onRequest func(req *http.Request)
+}
+
+func (t *capturingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.onRequest != nil {
+		t.onRequest(req)
+	}
+	return t.response, nil
+}
 
 func TestAllowNfsShareAccess(t *testing.T) {
 	t.Run("Normal", func(t *testing.T) {
@@ -194,7 +211,7 @@ func TestRestClient_CreateNfsShare(t *testing.T) {
 				"description": "Test NFS Share",
 			},
 			mockResponse: `{"result":{"code":0},"data":{"share_path":"/path/to/share",
-"file_system_id":"12345","description":"Test NFS Share","account_id":"1"}}`,
+	"file_system_id":"12345","description":"Test NFS Share","account_id":"1"}}`,
 			expectedData: map[string]interface{}{
 				"share_path":     "/path/to/share",
 				"file_system_id": "12345",
@@ -397,4 +414,132 @@ func TestGetNfsShareAccess(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, expectedResponse["data"], result)
 	})
+}
+
+func TestRestClient_CreateFileSystem_AdvancedOptions(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name               string
+		params             map[string]interface{}
+		expectedDataFields map[string]interface{}
+		unexpectedDataKeys []string
+		expectedErr        bool
+	}{
+		{
+			name: "Trash and audit params via advancedOptions",
+			params: map[string]interface{}{
+				"name":   "testFS",
+				"poolId": int64(1),
+				"advancedoptions": `{"is_trash_enable":true,"checkpoint_trash":30,` +
+					`"interval_trash":7,"is_trash_visible":true,` +
+					`"audit_log_switch":1,"audit_log_rule":1}`,
+			},
+			expectedDataFields: map[string]interface{}{
+				"is_trash_enable":  true,
+				"checkpoint_trash": float64(30),
+				"interval_trash":   float64(7),
+				"is_trash_visible": true,
+				"audit_log_switch": float64(1),
+				"audit_log_rule":   float64(1),
+			},
+			unexpectedDataKeys: nil,
+		},
+		{
+			name: "AdvancedOptions does not override existing keys",
+			params: map[string]interface{}{
+				"name":            "testFS",
+				"poolId":          int64(1),
+				"protocol":        "dpc",
+				"advancedoptions": `{"forbidden_dpc":999}`,
+			},
+			expectedDataFields: map[string]interface{}{
+				"forbidden_dpc": float64(notForbidden),
+			},
+			unexpectedDataKeys: nil,
+		},
+		{
+			name: "No advancedOptions",
+			params: map[string]interface{}{
+				"name":     "testFS",
+				"poolId":   int64(1),
+				"protocol": "dpc",
+			},
+			expectedDataFields: nil,
+			unexpectedDataKeys: []string{
+				"is_trash_enable", "checkpoint_trash", "interval_trash",
+				"is_trash_visible", "audit_log_switch", "audit_log_rule",
+			},
+		},
+		{
+			name: "Invalid JSON in advancedOptions returns error",
+			params: map[string]interface{}{
+				"name":            "testFS",
+				"poolId":          int64(1),
+				"advancedoptions": `{invalid}`,
+			},
+			expectedDataFields: nil,
+			unexpectedDataKeys: nil,
+			expectedErr:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capturedData map[string]interface{}
+			var parseErr error
+
+			// mock HTTP transport to capture the request body and return a success response
+			transport := &capturingTransport{
+				response: &http.Response{
+					StatusCode: 200,
+					Body: io.NopCloser(bytes.NewBufferString(
+						`{"result":{"code":0},"data":{"id":"123"}}`)),
+				},
+				onRequest: func(req *http.Request) {
+					if req.Body != nil {
+						bodyBytes, err := io.ReadAll(req.Body)
+						if err != nil {
+							parseErr = err
+							return
+						}
+						parseErr = json.Unmarshal(bodyBytes, &capturedData)
+					}
+				},
+			}
+			testClient.client = &http.Client{Transport: transport}
+
+			// action
+			_, err := testClient.CreateFileSystem(ctx, tt.params)
+
+			// assert
+			if tt.expectedErr {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NoError(t, parseErr, "failed to parse request body")
+
+			if capturedData != nil {
+				for key, expectedVal := range tt.expectedDataFields {
+					actualVal, exists := capturedData[key]
+					if exists {
+						assert.Equal(t, expectedVal, actualVal, "value mismatch for key %s", key)
+					} else {
+						assert.Failf(t, "key missing", "expected key %s to exist in API data", key)
+					}
+				}
+
+				for _, key := range tt.unexpectedDataKeys {
+					_, exists := capturedData[key]
+					if exists {
+						assert.Failf(t, "unexpected key", "unexpected key %s should not exist in API data", key)
+					}
+				}
+			} else {
+				assert.Fail(t, "capturedData should not be nil")
+			}
+		})
+	}
 }

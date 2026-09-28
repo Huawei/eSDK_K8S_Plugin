@@ -37,6 +37,7 @@ const (
 func MockCompletedConfig() *CompletedConfig {
 	k8sClient := &k8sutils.KubeClient{}
 	k8sClient.SetClient(fake.NewClientset())
+	fakeClientSet := fake.NewClientset()
 	return &CompletedConfig{
 		AppConfig: &AppConfig{
 			mockLoggingConfig(),
@@ -45,8 +46,9 @@ func MockCompletedConfig() *CompletedConfig {
 			mockK8sConfig(),
 			mockExtenderConfig(),
 		},
-		K8sUtils:     k8sClient,
-		BackendUtils: &clientSet.Clientset{},
+		K8sUtils:          k8sClient,
+		BackendUtils:      &clientSet.Clientset{},
+		TokenReviewClient: fakeClientSet.AuthenticationV1().TokenReviews(),
 	}
 }
 
@@ -72,6 +74,7 @@ func mockServiceConfig() serviceConfig {
 		NodeName:         "",
 		KubeletRootDir:   "",
 		VolumeNamePrefix: "",
+		HostNamePrefix:   "",
 
 		MaxVolumesPerNode:           0,
 		WebHookPort:                 0,
@@ -83,6 +86,7 @@ func mockServiceConfig() serviceConfig {
 		ReportNodeIP:                false,
 		EnablePerNodeSecret:         false,
 		HealthMonitorEnabled:        false,
+		ExportCsiServiceAudience:    "csi.huawei.com",
 	}
 }
 

@@ -19,9 +19,11 @@ package plugin
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/dme/aseries/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
@@ -40,12 +42,25 @@ type CreateDmeVolumeParameter struct {
 	AllocType                   string `json:"allocType"`
 	Description                 string `json:"description"`
 	Size                        int64  `json:"size"`
+	EnableKVCache               string `json:"enableKVCache"`
+	EnableTimeAwareGc           string `json:"enableTimeAwareGc"`
+	GcTimeThreshold             string `json:"gcTimeThreshold"`
+	ZoneVstoreName              string `json:"zoneVstoreName"`
 }
 
 func (p *CreateDmeVolumeParameter) genCreateVolumeModel(name, protocol string,
-	sectorSize int64) (*volume.CreateVolumeModel, error) {
-	if err := p.validate(protocol); err != nil {
+	sectorSize int64, isLocalMode bool) (*volume.CreateVolumeModel, error) {
+	if err := p.validateCommon(); err != nil {
 		return nil, err
+	}
+	if isLocalMode {
+		if err := p.validateLocal(protocol); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := p.validateGlobal(protocol); err != nil {
+			return nil, err
+		}
 	}
 
 	model := &volume.CreateVolumeModel{
@@ -58,6 +73,7 @@ func (p *CreateDmeVolumeParameter) genCreateVolumeModel(name, protocol string,
 		AllSquash:          constants.NoAllSquashValue,
 		RootSquash:         constants.NoRootSquashValue,
 		AllocationType:     p.AllocType,
+		VstoreName:         p.ZoneVstoreName,
 	}
 
 	if p.AuthClient != "" {
@@ -76,20 +92,25 @@ func (p *CreateDmeVolumeParameter) genCreateVolumeModel(name, protocol string,
 		model.RootSquash = constants.RootSquashValue
 	}
 
+	if p.EnableKVCache == "true" {
+		model.EnableKVCache = true
+		model.EnableTimeAwareGC = p.EnableTimeAwareGc == "true"
+		if model.EnableTimeAwareGC {
+			threshold, err := strconv.ParseInt(p.GcTimeThreshold, constants.DefaultIntBase, constants.DefaultIntBitSize)
+			if err != nil {
+				return nil, fmt.Errorf("invalid gcTimeThreshold value %q: %w", p.GcTimeThreshold, err)
+			}
+			model.GCTimeThreshold = threshold
+		}
+		if model.VstoreName == "" {
+			model.VstoreName = storage.DefaultVStore
+		}
+	}
+
 	return model, nil
 }
 
-func (p *CreateDmeVolumeParameter) validate(protocol string) error {
-	if protocol == constants.ProtocolNfs && p.AuthClient == "" {
-		return fmt.Errorf("authClient field in StorageClass cannot be empty when create volume with %s protocol",
-			constants.ProtocolNfs)
-	}
-
-	if protocol == constants.ProtocolDtfs && p.AuthUser == "" {
-		return fmt.Errorf("authUser field in StorageClass cannot be empty when create volume with %s protocol",
-			constants.ProtocolDtfs)
-	}
-
+func (p *CreateDmeVolumeParameter) validateCommon() error {
 	if p.AllSquash != "" &&
 		p.AllSquash != constants.AllSquash &&
 		p.AllSquash != constants.NoAllSquash {
@@ -109,6 +130,35 @@ func (p *CreateDmeVolumeParameter) validate(protocol string) error {
 		p.SnapshotDirectoryVisibility != snapshotDirInvisible {
 		return fmt.Errorf("if the snapshotDirectoryVisibility field in StorageClass is set, "+
 			"it must be set to %q or %q", snapshotDirVisible, snapshotDirInvisible)
+	}
+
+	return nil
+}
+
+// validateGlobal validates parameters for global (non-KVCache) mode.
+func (p *CreateDmeVolumeParameter) validateGlobal(protocol string) error {
+	if protocol == constants.ProtocolNfs && p.AuthClient == "" {
+		return fmt.Errorf("authClient field in StorageClass cannot be empty when create volume with %s protocol",
+			constants.ProtocolNfs)
+	}
+
+	if protocol == constants.ProtocolDtfs && p.AuthUser == "" {
+		return fmt.Errorf("authUser field in StorageClass cannot be empty when create volume with %s protocol",
+			constants.ProtocolDtfs)
+	}
+
+	return nil
+}
+
+// validateLocal validates parameters for local (KVCache) mode.
+func (p *CreateDmeVolumeParameter) validateLocal(protocol string) error {
+	if protocol == constants.ProtocolDtfs && p.AuthUser == "" {
+		return fmt.Errorf("authUser field in StorageClass cannot be empty when create volume with %s protocol",
+			constants.ProtocolDtfs)
+	}
+
+	if p.EnableTimeAwareGc == "true" && p.GcTimeThreshold == "" {
+		return fmt.Errorf("gcTimeThreshold must be provided in StorageClass when enableTimeAwareGc is true")
 	}
 
 	return nil

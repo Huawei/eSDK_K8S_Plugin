@@ -26,7 +26,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
@@ -72,12 +71,22 @@ func main() {
 		return
 	}
 
+	leaderElectionClient, err := utils.GetLeaderElectionClient()
+	if err != nil {
+		log.AddContext(ctx).Errorf("GetLeaderElectionClient failed, error: %v", err)
+		return
+	}
+
 	app.GetGlobalConfig().K8sUtils.Activate()
 	recorder := utils.InitRecorder(k8sClient, eventComponentName)
 	signalChan := make(chan os.Signal, 1)
 	defer close(signalChan)
 
-	startWithLeaderElectionOnCondition(ctx, k8sClient, crdClient, recorder, signalChan)
+	leaderElectionConf := utils.LeaderElectionConf{
+		Client:   leaderElectionClient,
+		Recorder: recorder,
+	}
+	startWithLeaderElectionOnCondition(ctx, k8sClient, crdClient, leaderElectionConf, signalChan)
 
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGILL, syscall.SIGKILL, syscall.SIGTERM)
 	stopSignal := <-signalChan
@@ -130,21 +139,19 @@ func runController(ctx context.Context, crdClient *clientSet.Clientset, k8sClien
 }
 
 func startWithLeaderElectionOnCondition(ctx context.Context, k8sClient *kubernetes.Clientset,
-	crdClient *clientSet.Clientset, recorder record.EventRecorder, ch chan os.Signal) {
+	crdClient *clientSet.Clientset, leaderElectionConf utils.LeaderElectionConf, ch chan os.Signal) {
 	if !app.GetGlobalConfig().EnableLeaderElection {
 		log.AddContext(ctx).Infoln("Start controller without leader election.")
 		go runController(ctx, crdClient, k8sClient, ch)
 	} else {
-		leaderElection := utils.LeaderElectionConf{
-			LeaderName:    leaderLockObjectName,
-			LeaseDuration: app.GetGlobalConfig().LeaderLeaseDuration,
-			RenewDeadline: app.GetGlobalConfig().LeaderRenewDeadline,
-			RetryPeriod:   app.GetGlobalConfig().LeaderRetryPeriod,
-		}
+		leaderElectionConf.LeaderName = leaderLockObjectName
+		leaderElectionConf.LeaseDuration = app.GetGlobalConfig().LeaderLeaseDuration
+		leaderElectionConf.RenewDeadline = app.GetGlobalConfig().LeaderRenewDeadline
+		leaderElectionConf.RetryPeriod = app.GetGlobalConfig().LeaderRetryPeriod
 
 		runFunc := func(ctx context.Context, ch chan os.Signal) {
 			runController(ctx, crdClient, k8sClient, ch)
 		}
-		go utils.RunWithLeaderElection(ctx, leaderElection, k8sClient, recorder, runFunc, ch)
+		go utils.RunWithLeaderElection(ctx, leaderElectionConf, runFunc, ch)
 	}
 }

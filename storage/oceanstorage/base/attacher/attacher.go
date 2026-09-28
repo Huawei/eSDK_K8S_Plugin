@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/connector/fcnvme"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
@@ -33,10 +34,10 @@ import (
 )
 
 const (
-	splitIqnLength    = 6
-	maxHostNameLength = 31
-	roceProtocolType  = "64"
-	tcpProtocolType   = "16384"
+	splitIqnLength         = 6
+	maxHostNameLengthForV5 = 31
+	roceProtocolType       = "64"
+	tcpProtocolType        = "16384"
 )
 
 // BaseAttacherClientInterface defines client interfaces need to be implemented for base attacher
@@ -50,11 +51,12 @@ type BaseAttacherClientInterface interface {
 
 // AttachmentManager provides base operations for attach
 type AttachmentManager struct {
-	Cli      BaseAttacherClientInterface
-	Protocol string
-	Invoker  string
-	Portals  []string
-	Alua     map[string]interface{}
+	Cli                    BaseAttacherClientInterface
+	Protocol               string
+	Invoker                string
+	Portals                []string
+	Alua                   map[string]interface{}
+	AllowTruncatedHostname bool
 }
 
 // AttachmentManagerConfig defines the configurations of AttachmentManager
@@ -64,26 +66,24 @@ type AttachmentManagerConfig struct {
 	Invoker  string
 	Portals  []string
 	Alua     map[string]interface{}
+	// Only Oceanstor V5 is allowed to use truncated hostname
+	AllowTruncatedHostname bool
 }
 
 // NewAttachmentManager init a new AttachmentManager
 func NewAttachmentManager(config AttachmentManagerConfig) *AttachmentManager {
 	return &AttachmentManager{
-		Cli:      config.Cli,
-		Protocol: config.Protocol,
-		Invoker:  config.Invoker,
-		Portals:  config.Portals,
-		Alua:     config.Alua,
+		Cli:                    config.Cli,
+		Protocol:               config.Protocol,
+		Invoker:                config.Invoker,
+		Portals:                config.Portals,
+		Alua:                   config.Alua,
+		AllowTruncatedHostname: config.AllowTruncatedHostname,
 	}
 }
 
 func (p *AttachmentManager) getHostName(postfix string) string {
-	host := fmt.Sprintf("k8s_%s", postfix)
-	if len(host) <= maxHostNameLength {
-		return host
-	}
-
-	return host[:maxHostNameLength]
+	return p.getHostNamePrefix() + postfix
 }
 
 func (p *AttachmentManager) getHostGroupName(postfix string) string {
@@ -94,41 +94,235 @@ func (p *AttachmentManager) getMappingName(postfix string) string {
 	return fmt.Sprintf("k8s_%s_mapping_%s", p.Invoker, postfix)
 }
 
-// GetHost gets an exist host or create a new host by host name from params
-func (p *AttachmentManager) GetHost(ctx context.Context,
-	parameters map[string]interface{},
-	toCreate bool) (map[string]interface{}, error) {
-	var err error
+// getHostNamePrefix returns the configured host name prefix, or "k8s_" as default.
+func (p *AttachmentManager) getHostNamePrefix() string {
+	prefix := app.GetGlobalConfig().HostNamePrefix
+	if !app.GetGlobalConfig().HostNamePrefixSet {
+		// In earlier versions, the fixed prefix is "k8s_"
+		prefix = "k8s_"
+	}
+	return prefix
+}
 
+// GetHost gets an exist host or create a new host by host name from params.
+// Lookup strategy: fullName first, then truncatedName fallback + initiator ownership
+// verification → creation with fallback on name-too-long error.
+func (p *AttachmentManager) GetHost(ctx context.Context,
+	parameters map[string]any, toCreate bool) (map[string]any, error) {
 	hostname, exist := parameters["HostName"].(string)
 	if !exist {
-		log.AddContext(ctx).Errorf("Get hostname error: %v", err)
-		return nil, err
+		return nil, errors.New("hostname not found in parameters")
 	}
 
-	hostToQuery := p.getHostName(hostname)
-	host, err := p.Cli.GetHostByName(ctx, hostToQuery)
+	fullName, truncatedName := p.getHostName(hostname), ""
+	if len(fullName) > maxHostNameLengthForV5 {
+		truncatedName = fullName[:maxHostNameLengthForV5]
+	}
+
+	// Try fullName lookup
+	host, err := p.Cli.GetHostByName(ctx, fullName)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get host %s error: %v", hostToQuery, err)
-		return nil, err
+		return nil, fmt.Errorf("get host %s by full name failed: %w", fullName, err)
 	}
-	if host == nil && toCreate {
-		host, err = p.Cli.CreateHost(ctx, hostToQuery)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Create host %s error: %v", hostToQuery, err)
-			return nil, err
-		}
-	}
-
 	if host != nil {
 		return host, nil
 	}
 
+	// Try truncatedName fallback with initiator ownership verification
+	if truncatedName != "" {
+		host, err = p.lookupTruncatedHost(ctx, truncatedName, parameters, toCreate)
+		if err != nil {
+			return nil, err
+		}
+		if host != nil {
+			return host, nil
+		}
+	}
+
+	if !toCreate {
+		return nil, nil
+	}
+
+	return p.createHostWithFallback(ctx, fullName, truncatedName)
+}
+
+// lookupTruncatedHost tries to find a host by truncated name with ownership verification.
+// Returns:
+//   - (host, nil): found and usable host
+//   - (nil, nil): not found or belongs to another node (caller should proceed to creation)
+//   - (nil, error): verification or lookup error
+func (p *AttachmentManager) lookupTruncatedHost(ctx context.Context,
+	truncatedName string, parameters map[string]any, toCreate bool) (map[string]any, error) {
+	host, err := p.Cli.GetHostByName(ctx, truncatedName)
+	if err != nil {
+		return nil, fmt.Errorf("get host %s by truncated name failed: %w", truncatedName, err)
+	}
+	if host == nil {
+		return nil, nil
+	}
+
+	log.AddContext(ctx).Infof("Truncated name of host %s exists, need to verify host ownership.", truncatedName)
+	isReuse, verifyErr := p.isReuseHost(ctx, host, parameters)
+	if verifyErr != nil {
+		if toCreate {
+			return nil, fmt.Errorf("cannot verify host ownership for %s: %w", truncatedName, verifyErr)
+		}
+		log.AddContext(ctx).Warningf("Verify host ownership failed for %s, degrade to use: %v",
+			truncatedName, verifyErr)
+		return host, nil
+	}
+
+	if isReuse {
+		return host, nil
+	}
+
 	if toCreate {
-		return nil, fmt.Errorf("cannot create host %s", hostToQuery)
+		log.AddContext(ctx).Infof("Truncated name host %s belongs to another node, skip and create",
+			truncatedName)
 	}
 
 	return nil, nil
+}
+
+// isReuseHost checks whether the given host belongs to the current node
+// by verifying initiator ownership. Returns true if the host is owned by the
+// current node or is empty (reusable). Returns false if the host belongs to
+// another node. Returns error if initiator fetch fails.
+func (p *AttachmentManager) isReuseHost(ctx context.Context,
+	host map[string]any, parameters map[string]any) (bool, error) {
+	hostID, ok := utils.GetValue[string](host, "ID")
+	if !ok || hostID == "" {
+		return false, fmt.Errorf("host ID is missing or not a string: %v", host["ID"])
+	}
+
+	switch p.Protocol {
+	case constants.ProtocolIscsi:
+		return p.verifyIscsiInitiatorOwnedByHost(ctx, hostID, parameters)
+	case constants.ProtocolFC, constants.ProtocolFCNVMe:
+		return p.verifyFCInitiatorOwnedByHost(ctx, hostID, parameters)
+	case constants.ProtocolRoce, constants.ProtocolRoceNVMe, constants.ProtocolTCPNVMe:
+		return p.verifyNVMeInitiatorHost(ctx, hostID, parameters)
+	default:
+		return true, nil
+	}
+}
+
+func (p *AttachmentManager) verifyIscsiInitiatorOwnedByHost(ctx context.Context,
+	hostID string, parameters map[string]any) (bool, error) {
+	initiatorName, err := GetSingleInitiator(ctx, ISCSI, parameters)
+	if err != nil {
+		return false, err
+	}
+
+	initiator, err := p.Cli.GetIscsiInitiatorByID(ctx, initiatorName)
+	if err != nil {
+		return false, err
+	}
+	if len(initiator) == 0 {
+		return false, nil
+	}
+
+	return whetherHostOwnedInitiator(initiator, hostID)
+}
+
+func (p *AttachmentManager) verifyFCInitiatorOwnedByHost(ctx context.Context,
+	hostID string, parameters map[string]any) (bool, error) {
+	fcInitiators, err := GetMultipleInitiators(ctx, FC, parameters)
+	if err != nil {
+		return false, err
+	}
+
+	// Per spec: any initiator matching any WWN = verified as owned.
+	// A WWN bound to another host does not disprove ownership if another WWN matches.
+	for _, wwn := range fcInitiators {
+		initiator, err := p.Cli.GetFCInitiatorByID(ctx, wwn)
+		if err != nil {
+			return false, err
+		}
+		if len(initiator) == 0 {
+			continue
+		}
+
+		owned, err := whetherHostOwnedInitiator(initiator, hostID)
+		if err != nil {
+			return false, err
+		}
+
+		if owned {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (p *AttachmentManager) verifyNVMeInitiatorHost(ctx context.Context,
+	hostID string, parameters map[string]any) (bool, error) {
+	initiatorID, err := GetSingleInitiator(ctx, NVME, parameters)
+	if err != nil {
+		return false, err
+	}
+
+	initiator, err := p.Cli.GetInitiatorByID(ctx, initiatorID)
+	if err != nil {
+		return false, err
+	}
+	if len(initiator) == 0 {
+		return false, nil
+	}
+
+	return whetherHostOwnedInitiator(initiator, hostID)
+}
+
+// whetherHostOwnedInitiator determines the ownership relationship of an initiator
+// relative to the given hostID by checking ISFREE and PARENTID fields.
+func whetherHostOwnedInitiator(initiator map[string]any, hostID string) (bool, error) {
+	isFree, ok := utils.GetValue[string](initiator, "ISFREE")
+	if !ok {
+		return false, fmt.Errorf("initiator ISFREE field is not a string: %v", initiator["ISFREE"])
+	}
+	if isFree == "true" {
+		return false, nil
+	}
+
+	parentID, ok := utils.GetValue[string](initiator, "PARENTID")
+	if !ok {
+		return false, fmt.Errorf("initiator PARENTID field is not a string: %v", initiator["PARENTID"])
+	}
+	if parentID == "" {
+		return false, nil
+	}
+
+	if parentID == hostID {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// createHostWithFallback tries to create a host with fullName first.
+// If the storage returns HostNameTooLong error, falls back to truncatedName.
+// Note: CreateHost in the client layer handles objectNameAlreadyExist by
+// calling GetHostByName internally. For fullName this is correct (concurrent creation).
+// For truncatedName, the returned host may belong to another node (collision).
+func (p *AttachmentManager) createHostWithFallback(ctx context.Context,
+	fullName, truncatedName string) (map[string]any, error) {
+	if p.AllowTruncatedHostname && truncatedName != "" {
+		log.AddContext(ctx).Infof("Create host %s failed with name too long, fallback to %s",
+			fullName, truncatedName)
+		host, err := p.Cli.CreateHost(ctx, truncatedName)
+		if err != nil {
+			return nil, fmt.Errorf("create host %s failed: %w", truncatedName, err)
+		}
+		return host, nil
+	}
+
+	host, err := p.Cli.CreateHost(ctx, fullName)
+	if err == nil {
+		return host, nil
+	}
+
+	return nil, fmt.Errorf("create host %s failed: %v", fullName, err)
 }
 
 // CreateMapping creates mapping by hostID
@@ -595,6 +789,10 @@ func (p *AttachmentManager) AttachFC(ctx context.Context,
 		}
 
 		hostInitiators = append(hostInitiators, initiator)
+	}
+
+	if len(hostInitiators) == 0 {
+		return nil, fmt.Errorf("no valid FC initiator found for host %s", hostID)
 	}
 
 	for _, wwn := range addWWNs {

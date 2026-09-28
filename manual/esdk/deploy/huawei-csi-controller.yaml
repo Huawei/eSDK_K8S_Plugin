@@ -384,6 +384,9 @@ rules:
   - apiGroups: [ "" ]
     resources: [ "secrets" ]
     verbs: [ "get" ]
+  - apiGroups: [ "authentication.k8s.io" ]
+    resources: [ "tokenreviews" ]
+    verbs: [ "create" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -595,9 +598,9 @@ spec:
             - "--web-hook-port=4433"
             - "--web-hook-address=$(POD_IP)"
             - "--enable-leader-election=true"
-            - "--leader-lease-duration=8s"
-            - "--leader-renew-deadline=6s"
-            - "--leader-retry-period=2s"
+            - "--leader-lease-duration=15s"
+            - "--leader-renew-deadline=10s"
+            - "--leader-retry-period=5s"
             - "--kube-api-qps=5"
             - "--kube-api-burst=10"
           ports:
@@ -634,9 +637,9 @@ spec:
             - "--backend-update-interval=60"
             - "--dr-endpoint=$(DRCSI_ENDPOINT)"
             - "--enable-leader-election=true"
-            - "--leader-lease-duration=8s"
-            - "--leader-renew-deadline=6s"
-            - "--leader-retry-period=2s"
+            - "--leader-lease-duration=15s"
+            - "--leader-renew-deadline=10s"
+            - "--leader-retry-period=5s"
             - "--kube-api-qps=5"
             - "--kube-api-burst=10"
           volumeMounts:
@@ -672,6 +675,10 @@ spec:
             - "--health-monitor-enabled=false"
             - "--kube-api-qps=5"
             - "--kube-api-burst=10"
+            # Uncomment the following lines to enable CSI export service with authentication
+            # - "--export-csi-service-address=$(POD_IP)"
+            # - "--export-csi-service-port=9090"
+            # - "--export-csi-service-audience=csi.huawei.com"
           env:
             - name: CSI_ENDPOINT
               value: /csi/csi.sock

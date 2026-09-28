@@ -72,8 +72,9 @@ type HyperMetroFsRequiredOptions struct {
 // HyperMetroFsCreator is the filesystem creator that implement VolumeCreator interface.
 type HyperMetroFsCreator struct {
 	*BaseCreator
-	active  SingleVolumeCreator
-	standby StandbyVolumeCreator
+	active     SingleVolumeCreator
+	standby    StandbyVolumeCreator
+	standbyCli client.OceanstorClientInterface
 }
 
 // NewHyperMetroCreatorFromParams returns an instance of HyperMetroFsCreator
@@ -86,8 +87,6 @@ func NewHyperMetroCreatorFromParams(
 	// the nfs share and qos of HyperMetro filesystem must be created after creating hyper metro pair,
 	// so, it'll skip nfs share and qos creation when create the filesystem on active and standby storage.
 	params.SetIsSkipNfsShare(true)
-	qos := params.QoS()
-	params.SetQos(nil)
 	params.SetWaitForSplit(true)
 	activeCreator := newSingle(params, activeCli)
 	standbyCreator := NewFsCreatorFromParams(standbyCli, params)
@@ -95,7 +94,6 @@ func NewHyperMetroCreatorFromParams(
 	standbyCreator.storagePoolId = params.RemotePoolId()
 	// after creating hyper metro pair, enable the nfs and qos share creation.
 	params.SetIsSkipNfsShare(false)
-	params.SetQos(qos)
 
 	base := &BaseCreator{cli: activeCli}
 	base.Init(params)
@@ -103,6 +101,7 @@ func NewHyperMetroCreatorFromParams(
 		BaseCreator: base,
 		active:      activeCreator,
 		standby:     standbyCreator,
+		standbyCli:  standbyCli,
 	}
 
 	for _, opt := range opts {
@@ -114,9 +113,8 @@ func NewHyperMetroCreatorFromParams(
 
 // CreateVolume creates a hyper metro filesystem volume on the storage backend.
 func (creator *HyperMetroFsCreator) CreateVolume(ctx context.Context) (utils.Volume, error) {
-	var activeFs utils.Volume
-	var activeFsId string
-	var standbyFs utils.Volume
+	var activeFs, standbyFs utils.Volume
+	var activeFsId, standbyFsId string
 	creator.transaction.Then(func() error {
 		var err error
 		activeFs, err = creator.active.CreateVolume(ctx)
@@ -135,6 +133,7 @@ func (creator *HyperMetroFsCreator) CreateVolume(ctx context.Context) (utils.Vol
 		if err != nil {
 			return err
 		}
+		standbyFsId = standbyFs.GetID()
 		if activeFs.GetVolumeName() != standbyFs.GetVolumeName() {
 			return fmt.Errorf("the volume of active end and that of the standby end not match")
 		}
@@ -155,6 +154,7 @@ func (creator *HyperMetroFsCreator) CreateVolume(ctx context.Context) (utils.Vol
 	})
 	creator.addNfsShareTransactionStep(ctx, &activeFsId, creator.fsName, creator.description, creator.vStoreId)
 	creator.addQoSTransactionStep(ctx, &activeFsId, creator.vStoreId)
+	creator.addQoSTransactionStep(ctx, &standbyFsId, creator.standbyCli.GetvStoreID(), creator.standbyCli)
 	err := creator.transaction.Commit()
 	if err != nil {
 		creator.rollback(ctx)

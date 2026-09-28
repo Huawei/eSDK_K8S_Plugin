@@ -537,7 +537,6 @@ func (p *OceanstorSanPlugin) DeleteSnapshot(ctx context.Context,
 	snapshotParentID, snapshotName string) error {
 	san := p.getSanObj()
 
-	snapshotName = utils.GetSnapshotName(snapshotName)
 	err := san.DeleteSnapshot(ctx, snapshotName)
 	if err != nil {
 		return err

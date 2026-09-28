@@ -26,6 +26,7 @@ import (
 
 	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/iscsi"
 	_ "github.com/Huawei/eSDK_K8S_Plugin/v4/connector/local"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base/attacher"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
@@ -74,10 +75,14 @@ func NewAttacher(config VolumeAttacherConfig) *VolumeAttacher {
 	}
 }
 
-func (p *VolumeAttacher) getHostName(ctx context.Context, parameters map[string]interface{}) (string, error) {
+func (p *VolumeAttacher) getHostNameWithPrefix(rawHostName string) string {
+	return app.GetGlobalConfig().HostNamePrefix + rawHostName
+}
+
+func (p *VolumeAttacher) getRawHostName(parameters map[string]any) (string, error) {
 	hostName, ok := parameters["HostName"].(string)
 	if !ok {
-		return "", fmt.Errorf("can not find host name,parameters:%v", parameters)
+		return "", fmt.Errorf("can not find host name, parameters:%v", parameters)
 	}
 
 	return hostName, nil
@@ -247,9 +252,9 @@ func (p *VolumeAttacher) parseiSCSIPortalList(ctx context.Context,
 	return nil
 }
 
-func (p *VolumeAttacher) attachIscsiInitiatorToHost(ctx context.Context, hostName string) error {
-	parameters := map[string]interface{}{
-		"HostName": hostName,
+func (p *VolumeAttacher) attachIscsiInitiatorToHost(ctx context.Context, hostName, rawHostName string) error {
+	parameters := map[string]any{
+		"HostName": rawHostName,
 	}
 
 	initiatorName, err := attacher.GetSingleInitiator(ctx, attacher.ISCSI, parameters)
@@ -309,45 +314,6 @@ func (p *VolumeAttacher) isVolumeAddToHost(ctx context.Context, lunName, hostNam
 	return false, nil
 }
 
-func (p *VolumeAttacher) doMapping(ctx context.Context, lunName, hostName string) (string, error) {
-	lun, err := p.cli.GetVolumeByName(ctx, lunName)
-	if err != nil {
-		log.AddContext(ctx).Errorf("Get lun %s error: %v", lunName, err)
-		return "", err
-	}
-	if lun == nil {
-		msg := fmt.Sprintf("Lun %s not exist for attaching", lunName)
-		log.AddContext(ctx).Errorln(msg)
-		return "", errors.New(msg)
-	}
-
-	if p.protocol == "iscsi" {
-		isAdded, err := p.isVolumeAddToHost(ctx, lunName, hostName)
-		if err != nil {
-			return "", err
-		}
-
-		if !isAdded {
-			err := p.cli.AddLunToHost(ctx, lunName, hostName)
-			if err != nil {
-				return "", err
-			}
-		}
-	} else {
-		manageIP, exist := p.hosts[hostName]
-		if !exist {
-			return "", fmt.Errorf("no manage IP configured for host %s", hostName)
-		}
-
-		err := p.cli.AttachVolume(ctx, lunName, manageIP)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return lun["wwn"].(string), nil
-}
-
 func (p *VolumeAttacher) doUnmapping(ctx context.Context, lunName, hostName string) (string, error) {
 	lun, err := p.getLunInfo(ctx, lunName)
 	if lun == nil {
@@ -355,13 +321,14 @@ func (p *VolumeAttacher) doUnmapping(ctx context.Context, lunName, hostName stri
 	}
 
 	if p.protocol == "iscsi" {
-		isAdded, err := p.isVolumeAddToHost(ctx, lunName, hostName)
+		hostNameWithPrefix := p.getHostNameWithPrefix(hostName)
+		isAdded, err := p.isVolumeAddToHost(ctx, lunName, hostNameWithPrefix)
 		if err != nil {
 			return "", err
 		}
 
 		if isAdded {
-			err := p.cli.DeleteLunFromHost(ctx, lunName, hostName)
+			err := p.cli.DeleteLunFromHost(ctx, lunName, hostNameWithPrefix)
 			if err != nil {
 				return "", err
 			}
@@ -408,18 +375,20 @@ func (p *VolumeAttacher) getMappingProperties(ctx context.Context, lun *lunInfo,
 		"tgtLunWWN":   lun.wwn,
 		"tgtPortals":  tgtPortals,
 		"tgtIQNs":     tgtIQNs,
-		"tgtHostLUNs": tgtHostLUNs}
+		"tgtHostLUNs": tgtHostLUNs,
+	}
 
 	return connectInfo, nil
 }
 
 func (p *VolumeAttacher) iSCSIControllerAttach(ctx context.Context, lun *lunInfo,
 	parameters map[string]interface{}) (map[string]interface{}, error) {
-	hostName, err := p.getHostName(ctx, parameters)
+	rawHostName, err := p.getRawHostName(parameters)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get host name error: %v", err)
 		return nil, err
 	}
+
+	hostName := p.getHostNameWithPrefix(rawHostName)
 
 	// create host with alua
 	err = p.createIscsiHost(ctx, hostName)
@@ -429,7 +398,7 @@ func (p *VolumeAttacher) iSCSIControllerAttach(ctx context.Context, lun *lunInfo
 	}
 
 	// add initiator to host
-	err = p.attachIscsiInitiatorToHost(ctx, hostName)
+	err = p.attachIscsiInitiatorToHost(ctx, hostName, rawHostName)
 	if err != nil {
 		return nil, err
 	}
@@ -458,10 +427,9 @@ func (p *VolumeAttacher) iSCSIControllerAttach(ctx context.Context, lun *lunInfo
 
 // SCSIControllerAttach used to attach volume to host
 func (p *VolumeAttacher) SCSIControllerAttach(ctx context.Context, lun *lunInfo,
-	parameters map[string]interface{}) (string, error) {
-	hostName, err := p.getHostName(ctx, parameters)
+	parameters map[string]any) (string, error) {
+	hostName, err := p.getRawHostName(parameters)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get host name error: %v", err)
 		return "", err
 	}
 
@@ -482,10 +450,9 @@ func (p *VolumeAttacher) SCSIControllerAttach(ctx context.Context, lun *lunInfo,
 func (p *VolumeAttacher) ControllerDetach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (string, error) {
-	hostName, err := p.getHostName(ctx, parameters)
+	hostName, err := p.getRawHostName(parameters)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Get host name error: %v", err)
-		return "", err
+		return "", fmt.Errorf("get host name error: %w", err)
 	}
 	if hostName == "" {
 		log.AddContext(ctx).Infof("Host doesn't exist while detaching %s", lunName)
@@ -494,8 +461,7 @@ func (p *VolumeAttacher) ControllerDetach(ctx context.Context,
 
 	wwn, err := p.doUnmapping(ctx, lunName, hostName)
 	if err != nil {
-		log.AddContext(ctx).Errorf("Unmapping LUN %s from host %s error: %v", lunName, hostName, err)
-		return "", err
+		return "", fmt.Errorf("unmapping LUN %s from host %s error: %w", lunName, hostName, err)
 	}
 
 	return wwn, nil
@@ -505,7 +471,6 @@ func (p *VolumeAttacher) ControllerDetach(ctx context.Context,
 func (p *VolumeAttacher) ControllerAttach(ctx context.Context,
 	lunName string,
 	parameters map[string]interface{}) (map[string]interface{}, error) {
-
 	var mappingInfo map[string]interface{}
 
 	lun, err := p.getLunInfo(ctx, lunName)

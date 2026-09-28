@@ -46,6 +46,7 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/modify"
 	pkgutils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/auth"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/cert"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/iputils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
@@ -264,8 +265,18 @@ func registerServerOnService(ctx context.Context, listener net.Listener, d *driv
 	if err != nil {
 		notify.Stop("start Huawei CSI driver on service error: %v", err)
 	}
+
+	cfg := app.GetGlobalConfig()
+	authInterceptor, err := auth.NewInterceptor(cfg.TokenReviewClient, cfg.ExportCsiServiceAudience)
+	if err != nil {
+		notify.Stop("create auth interceptor error: %v", err)
+	}
+
 	opts := []grpc.ServerOption{
-		grpc.UnaryInterceptor(log.EnsureGRPCContext),
+		grpc.ChainUnaryInterceptor(
+			authInterceptor.ValidateToken,
+			log.EnsureGRPCContext,
+		),
 		grpc.Creds(cred),
 	}
 	server := grpc.NewServer(opts...)

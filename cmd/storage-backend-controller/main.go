@@ -78,6 +78,12 @@ func main() {
 		return
 	}
 
+	leaderElectionClient, err := utils.GetLeaderElectionClient()
+	if err != nil {
+		log.AddContext(ctx).Errorf("GetLeaderElectionClient failed, error: %v", err)
+		return
+	}
+
 	// start the webhook
 	recorder := initRecorder(k8sClient)
 	webHook := initWebhookController(recorder)
@@ -90,7 +96,11 @@ func main() {
 	signalChan := make(chan os.Signal, 1)
 	defer close(signalChan)
 
-	startWithLeaderElectionOnCondition(ctx, k8sClient, crdClient, recorder, signalChan)
+	leaderElectionConf := utils.LeaderElectionConf{
+		Client:   leaderElectionClient,
+		Recorder: recorder,
+	}
+	startWithLeaderElectionOnCondition(ctx, crdClient, leaderElectionConf, signalChan)
 
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGILL, syscall.SIGKILL, syscall.SIGTERM)
 	stopSignal := <-signalChan
@@ -184,23 +194,21 @@ func ensureCRDExist(ctx context.Context, client *clientSet.Clientset) error {
 	return nil
 }
 
-func startWithLeaderElectionOnCondition(ctx context.Context, k8sClient *kubernetes.Clientset,
-	crdClient *clientSet.Clientset, recorder record.EventRecorder, ch chan os.Signal) {
+func startWithLeaderElectionOnCondition(ctx context.Context, crdClient *clientSet.Clientset,
+	leaderElectionConf utils.LeaderElectionConf, ch chan os.Signal) {
 	if !app.GetGlobalConfig().EnableLeaderElection {
 		log.AddContext(ctx).Infoln("Start controller without leader election.")
-		go runController(ctx, crdClient, recorder, ch)
+		go runController(ctx, crdClient, leaderElectionConf.Recorder, ch)
 	} else {
-		leaderElection := utils.LeaderElectionConf{
-			LeaderName:    leaderLockObjectName,
-			LeaseDuration: app.GetGlobalConfig().LeaderLeaseDuration,
-			RenewDeadline: app.GetGlobalConfig().LeaderRenewDeadline,
-			RetryPeriod:   app.GetGlobalConfig().LeaderRetryPeriod,
-		}
+		leaderElectionConf.LeaderName = leaderLockObjectName
+		leaderElectionConf.LeaseDuration = app.GetGlobalConfig().LeaderLeaseDuration
+		leaderElectionConf.RenewDeadline = app.GetGlobalConfig().LeaderRenewDeadline
+		leaderElectionConf.RetryPeriod = app.GetGlobalConfig().LeaderRetryPeriod
 
 		runFun := func(ctx context.Context, ch chan os.Signal) {
-			runController(ctx, crdClient, recorder, ch)
+			runController(ctx, crdClient, leaderElectionConf.Recorder, ch)
 		}
 
-		go utils.RunWithLeaderElection(ctx, leaderElection, k8sClient, recorder, runFun, ch)
+		go utils.RunWithLeaderElection(ctx, leaderElectionConf, runFun, ch)
 	}
 }

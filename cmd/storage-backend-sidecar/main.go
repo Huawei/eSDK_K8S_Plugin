@@ -87,6 +87,12 @@ func main() {
 		return
 	}
 
+	leaderElectionClient, err := utils.GetLeaderElectionClient()
+	if err != nil {
+		log.AddContext(ctx).Errorf("GetLeaderElectionClient failed, error: %v", err)
+		return
+	}
+
 	// init the recorder
 	recorder := initRecorder(k8sClient)
 	connect, providerName = initProvider()
@@ -102,14 +108,15 @@ func main() {
 			LeaseDuration: app.GetGlobalConfig().LeaderLeaseDuration,
 			RenewDeadline: app.GetGlobalConfig().LeaderRenewDeadline,
 			RetryPeriod:   app.GetGlobalConfig().LeaderRetryPeriod,
+			Client:        leaderElectionClient,
+			Recorder:      recorder,
 		}
 
 		runFun := func(ctx context.Context, ch chan os.Signal) {
 			runController(ctx, crdClient, recorder, ch)
 		}
 
-		go utils.RunWithLeaderElection(ctx, leaderElection, k8sClient, recorder,
-			runFun, signalChan)
+		go utils.RunWithLeaderElection(ctx, leaderElection, runFun, signalChan)
 	}
 
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGILL, syscall.SIGKILL, syscall.SIGTERM)
@@ -126,7 +133,7 @@ func initRecorder(client kubernetes.Interface) record.EventRecorder {
 func runController(ctx context.Context, crdClient *clientSet.Clientset,
 	eventRecorder record.EventRecorder, ch chan os.Signal) {
 	if ch == nil {
-		log.Errorln("the channel should not be nil")
+		log.AddContext(ctx).Errorln("The channel should not be nil")
 		return
 	}
 

@@ -1343,7 +1343,7 @@ func CheckConnectSuccess(ctx context.Context, device, tgtLunWWN string) bool {
 func ClearUnavailableDevice(ctx context.Context, device, lunWWN string) string {
 	if !CheckConnectSuccess(ctx, device, lunWWN) {
 		if err := DeleteSDDev(ctx, device); err != nil {
-			log.Warningf("clear device %s for lun %s error: %v", device, lunWWN, err)
+			log.AddContext(ctx).Warningf("Clear device %s for lun %s error: %v", device, lunWWN, err)
 		}
 		device = ""
 	}

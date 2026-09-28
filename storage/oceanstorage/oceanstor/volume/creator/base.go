@@ -248,12 +248,17 @@ func (c *BaseCreator) RollbackShareAccess(ctx context.Context, shareId, vStoreId
 }
 
 // CreateQoS creates qos for filesystem.
-func (c *BaseCreator) CreateQoS(ctx context.Context, fsID, vStoreId string) (string, error) {
+func (c *BaseCreator) CreateQoS(ctx context.Context, fsID, vStoreId string,
+	cli ...client.OceanstorClientInterface) (string, error) {
 	if !c.isCreateQoS || c.qos == nil {
 		return "", nil
 	}
 
-	smartX := smartx.NewSmartX(c.cli)
+	clientInterface := c.cli
+	if len(cli) > 0 && cli[0] != nil {
+		clientInterface = cli[0]
+	}
+	smartX := smartx.NewSmartX(clientInterface)
 	qosID, err := smartX.CreateQos(ctx, fsID, FilesystemObjectType, vStoreId, c.qos)
 	if err != nil {
 		return "", fmt.Errorf("create qos %v for fs %s error: %w", c.qos, fsID, err)
@@ -263,12 +268,17 @@ func (c *BaseCreator) CreateQoS(ctx context.Context, fsID, vStoreId string) (str
 }
 
 // RollbackQoS rollbacks qos resource.
-func (c *BaseCreator) RollbackQoS(ctx context.Context, qosId, fsId, vStoreId string) error {
+func (c *BaseCreator) RollbackQoS(ctx context.Context, qosId, fsId, vStoreId string,
+	cli ...client.OceanstorClientInterface) error {
 	if !c.isCreateQoS || c.qos == nil {
 		return nil
 	}
 
-	smartX := smartx.NewSmartX(c.cli)
+	clientInterface := c.cli
+	if len(cli) > 0 && cli[0] != nil {
+		clientInterface = cli[0]
+	}
+	smartX := smartx.NewSmartX(clientInterface)
 	if err := smartX.DeleteQos(ctx, qosId, fsId, FilesystemObjectType, vStoreId); err != nil {
 		return fmt.Errorf("delete qos %v for fs %s error: %w", qosId, fsId, err)
 	}
@@ -311,7 +321,8 @@ func (c *BaseCreator) addNfsShareTransactionStep(
 		)
 }
 
-func (c *BaseCreator) addQoSTransactionStep(ctx context.Context, fsId *string, vStoreId string) {
+func (c *BaseCreator) addQoSTransactionStep(ctx context.Context, fsId *string, vStoreId string,
+	cli ...client.OceanstorClientInterface) {
 	if !c.isCreateQoS || c.qos == nil {
 		return
 	}
@@ -322,13 +333,13 @@ func (c *BaseCreator) addQoSTransactionStep(ctx context.Context, fsId *string, v
 		Then(
 			func() error {
 				if fsId == nil {
-					return errors.New("create qos share failed. filesystem id is nil")
+					return errors.New("create qos failed. filesystem id is nil")
 				}
-				qosId, err = c.CreateQoS(ctx, *fsId, vStoreId)
+				qosId, err = c.CreateQoS(ctx, *fsId, vStoreId, cli...)
 				return err
 			},
 			func() {
-				if err := c.RollbackQoS(ctx, qosId, *fsId, vStoreId); err != nil {
+				if err := c.RollbackQoS(ctx, qosId, *fsId, vStoreId, cli...); err != nil {
 					log.AddContext(ctx).Errorln(err)
 				}
 			})

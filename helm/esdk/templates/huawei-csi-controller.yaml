@@ -467,6 +467,9 @@ rules:
   - apiGroups: [ "storage.k8s.io" ]
     resources: [ "volumeattachments", "volumeattachments/status" ]
     verbs: [ "get", "list", "watch", "update" ]
+  - apiGroups: [ "authentication.k8s.io" ]
+    resources: [ "tokenreviews" ]
+    verbs: [ "create" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -552,7 +555,10 @@ spec:
             - "--csi-address=$(ADDRESS)"
             - "--timeout=6h"
             - "--extra-create-metadata=true"
-            - "--feature-gates=Topology=false"
+            - "--feature-gates=Topology={{ ((.Values.controller).provisioner).topology | default false }}"
+            {{ if and ((.Values.controller).provisioner).topology ((.Values.controller).provisioner).strictTopology }}
+            - "--strict-topology"
+            {{ end }}
             - "--volume-name-prefix={{ default "pvc" (.Values.controller).volumeNamePrefix }}"
             {{ if gt ( (.Values.controller).controllerCount | int ) 1 }}
             - "--leader-election"
@@ -797,6 +803,9 @@ spec:
             - "--logging-module={{ .Values.csiDriver.controllerLogging.module }}"
             - "--log-level={{ .Values.csiDriver.controllerLogging.level }}"
             - "--volume-name-prefix={{ default "pvc" (.Values.controller).volumeNamePrefix }}"
+            {{ if hasKey .Values.controller "hostNamePrefix" }}
+            - "--host-name-prefix={{ .Values.controller.hostNamePrefix }}"
+            {{ end }}
             - "--enable-per-node-secret={{ .Values.csiDriver.enablePerNodeSecret | default false }}"
             - "--health-monitor-enabled={{ ((.Values.controller).healthMonitor).enabled | default false }}"
             - "--enable-volume-modify={{ .Values.controller.csiExtender.volumeModify.enabled | default false}}"
@@ -808,6 +817,7 @@ spec:
             {{ if .Values.controller.exportCsiService.enabled }}
             - "--export-csi-service-address=$(POD_IP)"
             - "--export-csi-service-port={{ .Values.controller.exportCsiService.port }}"
+            - "--export-csi-service-audience={{ .Values.controller.exportCsiService.audience }}"
             {{ end }}
             - "--kube-api-qps={{ ((.Values.controller).huaweiCsiDriver).kubeApiQps | default 5 }}"
             - "--kube-api-burst={{ ((.Values.controller).huaweiCsiDriver).kubeApiBurst | default 10 }}"

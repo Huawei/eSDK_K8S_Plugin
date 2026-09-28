@@ -36,7 +36,8 @@ import (
 
 const (
 	csiFlagContainer = "huawei-csi-driver"
-	csmFlagContainer = "cmi-controller"
+	csmPromContainer = "prometheus-collector"
+	csmTopoContainer = "topo-service"
 
 	progressBarLength = 100
 
@@ -74,7 +75,7 @@ type NodeLogCollector struct {
 	display *Display
 
 	// collectedDirMap record collected dir
-	collectedDirMap map[string]bool
+	collectedDirMap sync.Map
 }
 
 // Status Collection status display
@@ -200,7 +201,7 @@ func checkCSIPod(pod *coreV1.Pod) bool {
 
 func checkCSMPod(pod *coreV1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
-		if container.Name == csmFlagContainer {
+		if container.Name == csmPromContainer || container.Name == csmTopoContainer {
 			return true
 		}
 	}
@@ -228,10 +229,9 @@ func NewNodeLogsCollector(podList []coreV1.Pod, transmitter *helper.TaskHandler,
 		completionStatus: Status{
 			total: len(podList),
 		},
-		transmitter:     transmitter,
-		fileLogsOnce:    make([]helper.Once, len(podList)),
-		display:         display,
-		collectedDirMap: make(map[string]bool),
+		transmitter:  transmitter,
+		fileLogsOnce: make([]helper.Once, len(podList)),
+		display:      display,
 	}
 }
 
@@ -260,66 +260,98 @@ func (n *NodeLogCollector) processPod(pod *coreV1.Pod, localIdx int) {
 
 func (n *NodeLogCollector) collectPodLogs(pod *coreV1.Pod, onceIdx int) {
 	ctx := context.WithValue(context.Background(), "tag", pod.Name)
-	var isRunning = pod.Status.Phase == coreV1.PodRunning
 	fileLogCollector, err := LoadSupportedCollector(getPodType(pod))
 	if err != nil {
 		_ = helper.LogWarningf(ctx, "unknown pod types, error: %v", err)
 		return
 	}
 
-	if !isRunning {
-		logPath, err := getPodFileLogPaths(pod)
-		if err != nil {
-			return
-		}
-
-		msg := fmt.Sprintf("Failed to collect [%s] file logs on node [%s], please collect logs manually,"+
-			" file logs path is [%s]", pod.Name, pod.Spec.NodeName, logPath)
-		n.display.Add("", func() {
-			fmt.Printf("%c[1;40;31m%s%c[0m\n", colorHexCode, msg, colorHexCode)
-		})
-		_ = helper.LogWarningf(ctx, "error: %v", errors.New(msg))
+	if pod.Status.Phase != coreV1.PodRunning {
+		n.warnNotRunningPod(ctx, pod)
+		return
 	}
 
 	for idx := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[idx]
-		getConsoleLogs(ctx, getLogArgs(pod.Namespace, container.Name, pod.Name, pod.Spec.NodeName, false))
-		getConsoleLogs(ctx, getLogArgs(pod.Namespace, container.Name, pod.Name, pod.Spec.NodeName, true))
-		if isRunning && onceIdx < len(n.fileLogsOnce) {
-			n.fileLogsOnce[onceIdx].Do(func() error {
-				fileLogPath, err := getContainerFileLogPaths(container)
-				if err != nil {
-					log.Errorf("get container file Log paths failed, error: %v", err)
-					return err
-				}
-				isCollected := n.isCollected(fileLogPath)
-				if isCollected {
-					log.Infof("log path [%v] is already collected, process next", fileLogPath)
-					return nil
-				}
-
-				err = fileLogCollector.GetFileLogs(pod.Namespace, pod.Name, container.Name, fileLogPath)
-				if err == nil {
-					n.transmitter.AddTask(newTransmitTask(pod.Namespace, pod.Spec.NodeName, pod.Name, container.Name,
-						fileLogCollector))
-				}
-				return err
-			})
-
-			n.hostInformationOnce.Do(func() error {
-				return fileLogCollector.GetHostInformation(pod.Namespace, container.Name, pod.Spec.NodeName, pod.Name)
-			})
+		n.collectConsoleLogs(ctx, pod, container)
+		if onceIdx < len(n.fileLogsOnce) {
+			n.collectFileLogs(pod, container, onceIdx, fileLogCollector)
 		}
 	}
 }
 
-func (n *NodeLogCollector) isCollected(fileLogPath string) bool {
-	if value, exist := n.collectedDirMap[fileLogPath]; exist && value {
-		return true
+// warnNotRunningPod logs a warning for non-running pods with file log path hints.
+func (n *NodeLogCollector) warnNotRunningPod(ctx context.Context, pod *coreV1.Pod) {
+	logPath, err := getPodFileLogPaths(pod)
+	if err != nil {
+		return
 	}
 
-	n.collectedDirMap[fileLogPath] = true
-	return false
+	msg := fmt.Sprintf("Failed to collect [%s] file logs on node [%s], please collect logs manually,"+
+		" file logs path is [%s]", pod.Name, pod.Spec.NodeName, logPath)
+	n.display.Add("", func() {
+		fmt.Printf("%c[1;40;31m%s%c[0m\n", colorHexCode, msg, colorHexCode)
+	})
+	_ = helper.LogWarningf(ctx, "error: %v", errors.New(msg))
+}
+
+// collectConsoleLogs collects both current and previous console logs for a container.
+func (n *NodeLogCollector) collectConsoleLogs(ctx context.Context, pod *coreV1.Pod, container *coreV1.Container) {
+	getConsoleLogs(ctx, getLogArgs(pod.Namespace, container.Name, pod.Name, pod.Spec.NodeName, false))
+	getConsoleLogs(ctx, getLogArgs(pod.Namespace, container.Name, pod.Name, pod.Spec.NodeName, true))
+}
+
+// collectFileLogs collects file logs for a container within the Once coordination.
+func (n *NodeLogCollector) collectFileLogs(pod *coreV1.Pod, container *coreV1.Container,
+	onceIdx int, fileLogCollector FileLogsCollect) {
+
+	n.fileLogsOnce[onceIdx].Do(func() (retErr error) {
+		defer func() {
+			if r := recover(); r != nil {
+				retErr = fmt.Errorf("panic occurred during file log collection: %v", r)
+				log.Errorf("panic occurred during file log collection for pod [%s]: %v", pod.Name, r)
+			}
+		}()
+		return n.doCollectFileLogs(pod, container, fileLogCollector)
+	})
+
+	n.hostInformationOnce.Do(func() error {
+		return fileLogCollector.GetHostInformation(pod.Namespace, container.Name, pod.Spec.NodeName, pod.Name)
+	})
+}
+
+// doCollectFileLogs performs the actual file log collection for a container.
+func (n *NodeLogCollector) doCollectFileLogs(pod *coreV1.Pod, container *coreV1.Container,
+	fileLogCollector FileLogsCollect) error {
+
+	fileLogPath, err := getContainerFileLogPaths(container)
+	if err != nil {
+		log.Errorf("get container file Log paths failed, error: %v", err)
+		return err
+	}
+	if n.isCollected(fileLogPath) {
+		log.Infof("log path [%v] is already collected, process next", fileLogPath)
+		return nil
+	}
+
+	err = fileLogCollector.GetFileLogs(pod.Namespace, pod.Name, container.Name, fileLogPath)
+	if err != nil {
+		log.Errorf("get container file logs failed, error: %v", err)
+		return err
+	}
+	n.markCollected(fileLogPath)
+	n.transmitter.AddTask(newTransmitTask(pod.Namespace, pod.Spec.NodeName, pod.Name, container.Name,
+		fileLogCollector))
+	return nil
+}
+
+func (n *NodeLogCollector) isCollected(fileLogPath string) bool {
+	_, exist := n.collectedDirMap.Load(fileLogPath)
+	return exist
+}
+
+func (n *NodeLogCollector) markCollected(fileLogPath string) {
+	n.collectedDirMap.Store(fileLogPath, true)
 }
 
 type consoleLogArgs struct {

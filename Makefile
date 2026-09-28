@@ -11,9 +11,9 @@ RELEASE_VER=RELEASE_VER
 export GO111MODULE=on
 
 ifeq (${RELEASE_VER}, RELEASE_VER)
-	export PACKAGE=eSDK_Storage_CSI_V${VER}_${PLATFORM}_64
+	export PACKAGE=eSDK-Storage-Plugins_CSI-${VER}_Linux-${PLATFORM}-64
 else
-	export PACKAGE=eSDK_Storage_${RELEASE_VER}_CSI_V${VER}_${PLATFORM}_64
+	export PACKAGE=eSDK-Storage-Plugins_${RELEASE_VER}_CSI-${VER}_Linux-${PLATFORM}-64
 endif
 
 # Platform [X86, ARM, PPC64LE], default value is [X86]

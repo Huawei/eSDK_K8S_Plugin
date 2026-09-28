@@ -78,6 +78,11 @@ controller:
   # Examples: "volumes", "vol"
   volumeNamePrefix: pvc
 
+  # hostNamePrefix: Define a prefix for host names on the storage side.
+  # For OceanStor/OceanDisk, the default is k8s_ (used as fallback when not configured).
+  # For other storages, the default is empty (no prefix). Set this value if needs a prefix.
+  # hostNamePrefix:
+
   # Port used by the webhook service. The default port is 4433.
   # You can change the port to another port that is not occupied.
   webhookPort: 4433
@@ -137,6 +142,10 @@ controller:
     # Port used by the CSI server when it is exported on service. The default port is 9090.
     # You can change the port to another port that is not occupied.
     port: 9090
+    # Audience for validating CSI export service tokens via Kubernetes TokenReview API.
+    # Client Pods must configure a projected ServiceAccount token volume with matching audience.
+    # Default value: csi.huawei.com
+    audience: csi.huawei.com
 
   healthMonitor:
     # enabled: Enable/Disable health monitor feature
@@ -179,10 +188,34 @@ controller:
   # affinity: constrain which nodes your Pod can be scheduled on based on node labels
   affinity: {}
 
-  # CSI community csi-provisioner container kube-api rate limiting configuration
+  # CSI community csi-provisioner container configuration
   provisioner:
+    # kube-api rate limiting configuration
     kubeApiQps: 5
     kubeApiBurst: 10
+    # topology: Enable/Disable topology-aware provisioning for csi-provisioner
+    # Maps to --feature-gates=Topology. When enabled, provisioner passes
+    # AccessibilityRequirements (Requisite/Preferred topology) to CSI driver
+    # during CreateVolume, and the CSI driver uses topology constraints to
+    # filter and prioritize storage pools.
+    # Allowed values:
+    #   true: enable topology-aware provisioning (provisioner passes topology constraints)
+    #   false: disable topology-aware provisioning (no topology constraints)
+    # Default value: false
+    topology: false
+    # strictTopology: Enable/Disable strict topology mode for delayed binding
+    # Maps to --strict-topology. Only takes effect when topology is true and
+    # StorageClass volumeBindingMode is WaitForFirstConsumer. This parameter
+    # is ignored when topology is false (--strict-topology will not be passed
+    # to csi-provisioner even if strictTopology is set to true).
+    # Allowed values:
+    #   true: Requisite=Preferred=selected node topology only, volume must be
+    #         created in that exact topology segment with no fallback
+    #   false: Requisite=aggregated cluster topology (or allowedTopologies from
+    #          StorageClass), Preferred=Requisite with selected node topology
+    #          first, allowing fallback to other topology segments
+    # Default value: false
+    strictTopology: false
 
   # CSI community csi-attacher container kube-api rate limiting configuration
   attacher:
@@ -339,9 +372,9 @@ csiDriver:
 
 # leaderElection configuration
 leaderElection:
-  leaseDuration: 8s
-  renewDeadline: 6s
-  retryPeriod: 2s
+  leaseDuration: 15s
+  renewDeadline: 10s
+  retryPeriod: 5s
 
 # The parameter service used to configure dual-IP protocol stack.
 # ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services

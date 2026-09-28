@@ -28,12 +28,14 @@ type DMEASeriesClientInterface interface {
 	BaseClientInterface
 	Filesystem
 	System
+	DTree
 }
 
 // DMEASeriesClient implements DMEASeriesClientInterface
 type DMEASeriesClient struct {
 	*FilesystemClient
 	*SystemClient
+	*DTreeClient
 	*BaseClient
 }
 
@@ -47,6 +49,7 @@ func NewClient(ctx context.Context, param *storage.NewClientConfig) (*DMEASeries
 	return &DMEASeriesClient{
 		FilesystemClient: &FilesystemClient{BaseClientInterface: resetClient},
 		SystemClient:     &SystemClient{BaseClientInterface: resetClient},
+		DTreeClient:      &DTreeClient{BaseClientInterface: resetClient},
 		BaseClient:       resetClient,
 	}, nil
 }

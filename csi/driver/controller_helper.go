@@ -138,7 +138,7 @@ func verifySectorSize(ctx context.Context, volumeId string, backend *model.Backe
 	volumeAttrs, err := app.GetGlobalConfig().K8sUtils.GetVolumeAttrsByVolumeId(volumeId)
 	if err != nil {
 		// skip the verification when get volume attrs failed.
-		log.Warningf("Get volume attrs failed: %v", err)
+		log.AddContext(ctx).Warningf("Get volume attrs failed: %v", err)
 		return nil
 	}
 
@@ -149,7 +149,7 @@ func verifySectorSize(ctx context.Context, volumeId string, backend *model.Backe
 	value := volumeAttrs[0][constants.DisableVerifyCapacityKey]
 	for _, volumeAttr := range volumeAttrs {
 		if value != volumeAttr[constants.DisableVerifyCapacityKey] {
-			log.Warningf("Attrs %s in pvs with same volume ID %s is confict",
+			log.AddContext(ctx).Warningf("Attrs %s in pvs with same volume ID %s is confict",
 				constants.DisableVerifyCapacityKey, volumeId)
 			return nil
 		}
@@ -420,6 +420,27 @@ func processParentName(ctx context.Context, parameters map[string]interface{}) e
 	return nil
 }
 
+func processEnableKVCache(ctx context.Context, parameters map[string]interface{}) error {
+	enableKVCacheParam, exist := parameters["enableKVCache"]
+	if !exist {
+		return nil
+	}
+
+	enableKVCache, ok := enableKVCacheParam.(string)
+	if !ok {
+		return fmt.Errorf("enableKVCache in StorageClass must be a string type, but got: %v", parameters["enableKVCache"])
+	}
+	if enableKVCache != "true" {
+		return nil
+	}
+
+	if _, exist := parameters["backend"]; !exist {
+		return fmt.Errorf("when enableKVCache is configured in StorageClass, backend must be configured together")
+	}
+
+	return nil
+}
+
 func checkReservedSnapshotSpaceRatio(ctx context.Context, parameters map[string]interface{}) error {
 	reservedSnapshotSpaceRatioString, exist := parameters["reservedSnapshotSpaceRatio"].(string)
 	if !exist {
@@ -503,6 +524,10 @@ func processCreateVolumeParameters(ctx context.Context, req *csi.CreateVolumeReq
 	}
 
 	if err := processParentName(ctx, parameters); err != nil {
+		return nil, err
+	}
+
+	if err := processEnableKVCache(ctx, parameters); err != nil {
 		return nil, err
 	}
 
@@ -670,17 +695,22 @@ func getBackendFilesystemMode(ctx context.Context, bk *model.Backend, volName st
 	return ""
 }
 
-func (d *CsiDriver) getASeriesNasDeleteParams(volNameId string) (map[string]interface{}, error) {
-	kvcacheStoreId, err := app.GetGlobalConfig().K8sUtils.GetKvCacheStoreIdByVolumeId(volNameId)
+// buildDeleteVolumeParams constructs delete parameters based on storage type.
+// For NAS backends (A-Series NAS, DME), it queries the KVCache store ID from the PV annotation.
+// For other storage types, it returns nil.
+func (d *CsiDriver) buildDeleteVolumeParams(bk *model.Backend, volumeId string) (map[string]interface{}, error) {
+	if bk.Storage != constants.OceanStorASeriesNas && bk.Storage != constants.OceanStorASeriesNasDme {
+		return nil, nil
+	}
+
+	kvcacheStoreId, err := app.GetGlobalConfig().K8sUtils.GetKvCacheStoreIdByVolumeId(volumeId)
 	if err != nil {
 		return nil, err
 	}
 
 	params := map[string]interface{}{}
-
 	if kvcacheStoreId != "" {
 		params[constants.KvCacheStoreId] = kvcacheStoreId
 	}
-
 	return params, nil
 }

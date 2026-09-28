@@ -40,7 +40,6 @@ import (
 
 const (
 	localCompressedLogsPrefixPath = "/tmp"
-	localOceanctlLogPath          = "/var/log/huawei/oceanctl-log"
 
 	logsSeparator       = "-"
 	logsSeparatorLength = 35
@@ -243,7 +242,7 @@ func compressLocalLogs(nodeList map[string][]coreV1.Pod, fileName string) error 
 	for node := range nodeList {
 		nodeLogsDirList = append(nodeLogsDirList, path.Join(localLogsPrefixPath, node))
 	}
-	nodeLogsDirList = append(nodeLogsDirList, localOceanctlLogPath)
+	nodeLogsDirList = append(nodeLogsDirList, path.Join(config.LogDir, "oceanctl-log"))
 
 	return zipMultiFiles(path.Join(localCompressedLogsPrefixPath, fileName), nodeLogsDirList...)
 }

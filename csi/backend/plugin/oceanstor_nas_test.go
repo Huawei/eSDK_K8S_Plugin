@@ -26,10 +26,12 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/test/mocks/mock_client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 func TestInit(t *testing.T) {
@@ -350,17 +352,34 @@ func Test_OceanstorNasPlugin_AttachVolume_WithNFSDisabled(t *testing.T) {
 
 func Test_OceanstorNasPlugin_AttachVolume_Success(t *testing.T) {
 	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorNasPlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
 	}
 	mockRes := make(map[string]any)
 
-	// mock
-	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", nil)
+	// mock - patch getFilteredIPs
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil)
 	defer patches.Reset()
+
+	// mock - isLogicPortRunningOnOwnSite calls
+	mockCli.EXPECT().GetCurrentLifWwn().AnyTimes().Return("")
+	mockCli.EXPECT().GetCurrentSiteWwn().AnyTimes().Return("")
+	// mock - autoManageAuthClient: share exists, no existing auth client, create succeeds
+	mockCli.EXPECT().GetvStoreID().AnyTimes().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-volume/", "").
+		Return(map[string]any{"ID": "share-001"}, nil)
+	mockCli.EXPECT().GetNfsShareAccess(gomock.Any(), "share-001", "192.168.1.1", "").
+		Return(nil, nil)
+	mockCli.EXPECT().GetNfsShareAccessRange(gomock.Any(), "share-001", "", int64(0), int64(1)).
+		Return([]any{}, nil)
+	mockCli.EXPECT().AllowNfsShareAccess(gomock.Any(), gomock.Any()).Return(nil)
 
 	// action
 	gotRes, gotErr := p.AttachVolume(context.Background(), "test-volume", nil)
@@ -393,17 +412,28 @@ func Test_OceanstorNasPlugin_AttachVolume_GetFilteredIPsError(t *testing.T) {
 
 func Test_OceanstorNasPlugin_AttachVolume_AutoManageAuthClientError(t *testing.T) {
 	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorNasPlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
 	}
-	wantErr := fmt.Errorf("auto manage auth client error")
+	wantErr := fmt.Errorf("get share error")
 
-	// mock
-	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", wantErr)
+	// mock - patch getFilteredIPs
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil)
 	defer patches.Reset()
+
+	// mock - isLogicPortRunningOnOwnSite calls
+	mockCli.EXPECT().GetCurrentLifWwn().AnyTimes().Return("")
+	mockCli.EXPECT().GetCurrentSiteWwn().AnyTimes().Return("")
+	// mock - autoManageAuthClient fails at GetNfsShareByPath
+	mockCli.EXPECT().GetvStoreID().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-volume/", "").Return(nil, wantErr)
 
 	// action
 	gotRes, gotErr := p.AttachVolume(context.Background(), "test-volume", nil)
@@ -451,17 +481,28 @@ func Test_OceanstorNasPlugin_DetachVolume_GetFilteredIPsError(t *testing.T) {
 
 func Test_OceanstorNasPlugin_DetachVolume_AutoManageAuthClientError(t *testing.T) {
 	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorNasPlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
 	}
-	wantErr := fmt.Errorf("auto manage auth client error")
+	wantErr := fmt.Errorf("get share error")
 
-	// mock
-	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", wantErr)
+	// mock - patch getFilteredIPs
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil)
 	defer patches.Reset()
+
+	// mock - isLogicPortRunningOnOwnSite calls
+	mockCli.EXPECT().GetCurrentLifWwn().AnyTimes().Return("")
+	mockCli.EXPECT().GetCurrentSiteWwn().AnyTimes().Return("")
+	// mock - autoManageAuthClient fails at GetNfsShareByPath
+	mockCli.EXPECT().GetvStoreID().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-volume/", "").Return(nil, wantErr)
 
 	// action
 	gotErr := p.DetachVolume(context.Background(), "test-volume", nil)
@@ -472,7 +513,12 @@ func Test_OceanstorNasPlugin_DetachVolume_AutoManageAuthClientError(t *testing.T
 
 func Test_OceanstorNasPlugin_DetachVolume_IOIsolation(t *testing.T) {
 	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorNasPlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
@@ -481,11 +527,20 @@ func Test_OceanstorNasPlugin_DetachVolume_IOIsolation(t *testing.T) {
 		"IOIsolation": true,
 	}
 
-	// mock
-	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", nil).
-		ApplyMethodReturn(&volume.NAS{}, "CheckAllClientsStatus", nil)
+	// mock - patch getFilteredIPs
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil)
 	defer patches.Reset()
+
+	// mock - isLogicPortRunningOnOwnSite calls
+	mockCli.EXPECT().GetCurrentLifWwn().AnyTimes().Return("")
+	mockCli.EXPECT().GetCurrentSiteWwn().AnyTimes().Return("")
+	// mock - autoManageAuthClient: share not found, NoAccess returns nil immediately
+	mockCli.EXPECT().GetvStoreID().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-volume/", "").Return(nil, nil)
+	// mock - checkAllClientsStatus: GetvStoreID + CheckNfsShareAccessStatus succeeds
+	mockCli.EXPECT().GetvStoreID().Return("")
+	mockCli.EXPECT().CheckNfsShareAccessStatus(gomock.Any(), "/test-volume",
+		"192.168.1.1", "", gomock.Any()).Return(false, nil)
 
 	// action
 	gotErr := p.DetachVolume(context.Background(), "test-volume", parameters)
@@ -496,7 +551,12 @@ func Test_OceanstorNasPlugin_DetachVolume_IOIsolation(t *testing.T) {
 
 func Test_OceanstorNasPlugin_DetachVolume_CheckAllClientsStatusError(t *testing.T) {
 	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorNasPlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
@@ -504,17 +564,126 @@ func Test_OceanstorNasPlugin_DetachVolume_CheckAllClientsStatusError(t *testing.
 	parameters := map[string]interface{}{
 		"IOIsolation": true,
 	}
-	wantErr := errors.New("fake error")
+	wantErr := errors.New("check status failed")
 
-	// mock
+	// mock - patch getFilteredIPs and WaitUntil (simulate checkAllClientsStatus failure)
 	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.NAS{}, "AutoManageAuthClient", nil).
-		ApplyMethodReturn(&volume.NAS{}, "CheckAllClientsStatus", wantErr)
+		ApplyFuncReturn(utils.WaitUntil, wantErr)
 	defer patches.Reset()
+
+	// mock - isLogicPortRunningOnOwnSite calls
+	mockCli.EXPECT().GetCurrentLifWwn().AnyTimes().Return("")
+	mockCli.EXPECT().GetCurrentSiteWwn().AnyTimes().Return("")
+	// mock - autoManageAuthClient: share not found, NoAccess returns nil immediately
+	mockCli.EXPECT().GetvStoreID().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/test-volume/", "").Return(nil, nil)
 
 	// action
 	gotErr := p.DetachVolume(context.Background(), "test-volume", parameters)
 
 	// assert
-	assert.ErrorIs(t, gotErr, wantErr)
+	assert.ErrorContains(t, gotErr, "failed to check i/o isolation")
+}
+
+func Test_OceanstorNasPlugin_CreateSnapshot_V5ConvertsSnapshotName(t *testing.T) {
+	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	p := &OceanstorNasPlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli:     mockCli,
+			product: constants.OceanStorV5,
+		},
+	}
+	ctx := context.Background()
+	fsName := "test-fs"
+	snapshotName := "snap-with-dash"
+	convertedSnapshotName := "snap_with_dash"
+
+	// mock - isLogicPortRunningOnOwnSite calls
+	mockCli.EXPECT().GetCurrentLifWwn().AnyTimes().Return("")
+	mockCli.EXPECT().GetCurrentSiteWwn().AnyTimes().Return("")
+	// mock - getFilesystemByName
+	mockCli.EXPECT().GetFileSystemByName(ctx, fsName).
+		Return(map[string]any{"ID": "fs-001", "CAPACITY": "1073741824", "HEALTHSTATUS": "1"}, nil)
+	// mock - GetFSSnapshotByName with converted name (V5 converts - to _)
+	mockCli.EXPECT().GetFSSnapshotByName(ctx, "fs-001", convertedSnapshotName).Return(nil, nil)
+	// mock - CreateFSSnapshot with converted name
+	mockCli.EXPECT().CreateFSSnapshot(ctx, convertedSnapshotName, "fs-001").
+		Return(map[string]any{
+			"ID": "snap-001", "NAME": convertedSnapshotName,
+			"TIMESTAMP": "1234567890", "PARENTID": "fs-001",
+		}, nil)
+
+	// action
+	_, err := p.CreateSnapshot(ctx, fsName, snapshotName, nil)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func Test_OceanstorNasPlugin_CreateSnapshot_V6ConvertsSnapshotName(t *testing.T) {
+	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	p := &OceanstorNasPlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli:     mockCli,
+			product: constants.OceanStorDoradoV6,
+		},
+	}
+	ctx := context.Background()
+	fsName := "test-fs"
+	snapshotName := "snap-with-dash"
+	convertedSnapshotName := "snap_with_dash"
+
+	// mock - isLogicPortRunningOnOwnSite calls
+	mockCli.EXPECT().GetCurrentLifWwn().AnyTimes().Return("")
+	mockCli.EXPECT().GetCurrentSiteWwn().AnyTimes().Return("")
+	// mock - getFilesystemByName
+	mockCli.EXPECT().GetFileSystemByName(ctx, fsName).
+		Return(map[string]any{"ID": "fs-001", "CAPACITY": "1073741824", "HEALTHSTATUS": "1"}, nil)
+	// mock - GetFSSnapshotByName with converted name (V6 also converts - to _)
+	mockCli.EXPECT().GetFSSnapshotByName(ctx, "fs-001", convertedSnapshotName).Return(nil, nil)
+	// mock - CreateFSSnapshot with converted name
+	mockCli.EXPECT().CreateFSSnapshot(ctx, convertedSnapshotName, "fs-001").
+		Return(map[string]any{
+			"ID": "snap-001", "NAME": convertedSnapshotName,
+			"TIMESTAMP": "1234567890", "PARENTID": "fs-001",
+		}, nil)
+
+	// action
+	_, err := p.CreateSnapshot(ctx, fsName, snapshotName, nil)
+
+	// assert
+	assert.NoError(t, err)
+}
+
+func Test_OceanstorNasPlugin_DeleteSnapshot_PluginDoesNotConvertName(t *testing.T) {
+	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	p := &OceanstorNasPlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli:     mockCli,
+			product: constants.OceanStorDoradoV6,
+		},
+	}
+	ctx := context.Background()
+	snapshotParentId := "fs-001"
+	snapshotName := "snap-with-dash"
+
+	// mock - isLogicPortRunningOnOwnSite calls
+	mockCli.EXPECT().GetCurrentLifWwn().AnyTimes().Return("")
+	mockCli.EXPECT().GetCurrentSiteWwn().AnyTimes().Return("")
+	// mock - plugin does NOT convert snapshot name; NAS layer tries original name first
+	mockCli.EXPECT().GetFSSnapshotByName(ctx, snapshotParentId, snapshotName).Return(nil, nil)
+	// mock - NAS layer fallback: try converted name for CSI-created snapshots
+	mockCli.EXPECT().GetFSSnapshotByName(ctx, snapshotParentId, "snap_with_dash").Return(nil, nil)
+
+	// action
+	err := p.DeleteSnapshot(ctx, snapshotParentId, snapshotName)
+
+	// assert - snapshot not found is not an error for delete
+	assert.NoError(t, err)
 }

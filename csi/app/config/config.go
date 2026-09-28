@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/client-go/kubernetes"
+	authv1client "k8s.io/client-go/kubernetes/typed/authentication/v1"
 
 	clientSet "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/client/clientset/versioned"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/k8sutils"
@@ -39,13 +41,15 @@ type serviceConfig struct {
 	Controller           bool
 	EnableLeaderElection bool
 
-	Endpoint         string
-	DrEndpoint       string
-	DriverName       string
-	KubeConfig       string
-	NodeName         string
-	KubeletRootDir   string
-	VolumeNamePrefix string
+	Endpoint          string
+	DrEndpoint        string
+	DriverName        string
+	KubeConfig        string
+	NodeName          string
+	KubeletRootDir    string
+	VolumeNamePrefix  string
+	HostNamePrefix    string
+	HostNamePrefixSet bool
 
 	MaxVolumesPerNode int
 	WebHookPort       int
@@ -55,8 +59,9 @@ type serviceConfig struct {
 	NodeWorkerThreads     int
 	BackendUpdateInterval int
 
-	ExportCsiServerAddress string
-	ExportCsiServerPort    int
+	ExportCsiServerAddress   string
+	ExportCsiServerPort      int
+	ExportCsiServiceAudience string
 
 	LeaderLeaseDuration time.Duration
 	LeaderRenewDeadline time.Duration
@@ -120,8 +125,9 @@ type AppConfig struct {
 // CompletedConfig contains the env and config
 type CompletedConfig struct {
 	*AppConfig
-	K8sUtils     k8sutils.Interface
-	BackendUtils clientSet.Interface
+	K8sUtils          k8sutils.Interface
+	BackendUtils      clientSet.Interface
+	TokenReviewClient authv1client.TokenReviewInterface
 }
 
 // Complete the AppConfig and return the CompletedConfig
@@ -158,10 +164,28 @@ func (cfg *AppConfig) Complete() (*CompletedConfig, error) {
 		return nil, err
 	}
 
+	// Create TokenReview client only when exportCsiService is enabled
+	var tokenReviewClient authv1client.TokenReviewInterface
+	if cfg.ExportCsiServerAddress != "" {
+		k8sConfig, err := k8sutils.BuildConfig(cfg.KubeConfig,
+			k8sutils.QPS(cfg.KubeAPIQPS),
+			k8sutils.Burst(cfg.KubeAPIBurst))
+		if err != nil {
+			return nil, err
+		}
+		k8sClientSet, err := kubernetes.NewForConfig(k8sConfig)
+		if err != nil {
+			logrus.Errorf("TokenReview client initialized failed %v", err)
+			return nil, err
+		}
+		tokenReviewClient = k8sClientSet.AuthenticationV1().TokenReviews()
+	}
+
 	return &CompletedConfig{
-		AppConfig:    cfg,
-		K8sUtils:     k8sUtils,
-		BackendUtils: backendUtils,
+		AppConfig:         cfg,
+		K8sUtils:          k8sUtils,
+		BackendUtils:      backendUtils,
+		TokenReviewClient: tokenReviewClient,
 	}, nil
 }
 

@@ -121,15 +121,23 @@ func TestDMEASeriesPlugin_VerifyPortals_PortalsInvalid(t *testing.T) {
 
 func TestDmeASeriesPlugin_CreateVolume_Success(t *testing.T) {
 	// arrange
-	p := &DMEASeriesPlugin{}
 	ctx := context.Background()
 	name := "test"
 	parameters := map[string]interface{}{}
 
+	config := map[string]any{"urls": []any{"https://127.0.0.1:8088"}, "user": "test_user",
+		"secretName": "test_secret_name", "secretNamespace": "test_secret_ns", "name": "test_name",
+		"backendID": "test_bk_id", "maxClientThreads": "30", "storage": constants.OceanStorASeriesNasDme}
+	clientConfig, err := formatBaseClientConfig(config)
+	assert.NoError(t, err)
+	cli, err := client.NewClient(ctx, clientConfig)
+	assert.NoError(t, err)
+	p := &DMEASeriesPlugin{cli: cli}
+	// No zone set → IsLocalMode() returns false → non-KVCache path
+
 	// mock
 	patch := gomonkey.NewPatches()
 	defer patch.Reset()
-
 	patch.ApplyMethodReturn((*dmeVol.Creator)(nil), "Create", utils.NewVolume(name), nil)
 
 	// act
@@ -193,7 +201,7 @@ func TestDmeASeriesPlugin_DeleteVolume(t *testing.T) {
 	// mock
 	patch := gomonkey.NewPatches()
 	defer patch.Reset()
-	patch.ApplyMethodReturn((*dmeVol.Deleter)(nil), "Delete", nil)
+	patch.ApplyMethodReturn((*dmeVol.GlobalVolumeHandler)(nil), "Delete", nil)
 
 	// act
 	err := p.DeleteVolume(ctx, name, nil)
@@ -204,15 +212,27 @@ func TestDmeASeriesPlugin_DeleteVolume(t *testing.T) {
 
 func TestDmeASeriesPlugin_ExpandVolume(t *testing.T) {
 	// arrange
-	p := &DMEASeriesPlugin{}
 	ctx := context.Background()
 	name := "test"
 	size := int64(32)
 
+	config := map[string]any{"urls": []any{"https://127.0.0.1:8088"}, "user": "test_user",
+		"secretName": "test_secret_name", "secretNamespace": "test_secret_ns", "name": "test_name",
+		"backendID": "test_bk_id", "maxClientThreads": "30", "storage": constants.OceanStorASeriesNasDme}
+	clientConfig, err := formatBaseClientConfig(config)
+	assert.NoError(t, err)
+	cli, err := client.NewClient(ctx, clientConfig)
+	assert.NoError(t, err)
+	p := &DMEASeriesPlugin{cli: cli}
+
 	// mock
 	patch := gomonkey.NewPatches()
 	defer patch.Reset()
-	patch.ApplyMethodReturn((*dmeVol.Expander)(nil), "Expand", nil)
+	patch.ApplyMethodReturn((*client.FilesystemClient)(nil), "GetFileSystemByName", &client.FileSystemInfo{
+		ID: "fs-1", TotalCapacityInByte: size * 512, StoragePoolName: "pool1"}, nil)
+	patch.ApplyMethodReturn((*client.SystemClient)(nil), "GetHyperScalePoolByName",
+		&client.HyperScalePool{RawId: "pool-raw-1"}, nil)
+	patch.ApplyMethodReturn((*client.FilesystemClient)(nil), "UpdateFileSystem", nil)
 
 	// act
 	expandRet, err := p.ExpandVolume(ctx, name, size)
@@ -382,7 +402,7 @@ func TestDmeASeriesPlugin_ReLogin(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestDmeASeriesPlugin_Validate_Success(t *testing.T) {
+func TestDmeASeriesPlugin_Validate_GlobalMode_Success(t *testing.T) {
 	// arrange
 	p := &DMEASeriesPlugin{}
 	ctx := context.Background()
@@ -403,6 +423,32 @@ func TestDmeASeriesPlugin_Validate_Success(t *testing.T) {
 
 	// assert
 	assert.NoError(t, err)
+	assert.Equal(t, constants.ProtocolDtfs, p.protocol)
+}
+
+func TestDmeASeriesPlugin_Validate_LocalMode_Success(t *testing.T) {
+	// arrange
+	p := &DMEASeriesPlugin{}
+	ctx := context.Background()
+	config := map[string]any{"urls": []any{"https://127.0.0.1:8088"}, "user": "test_user",
+		"secretName": "test_secret_name", "secretNamespace": "test_secret_ns", "name": "test_name",
+		"backendID": "test_bk_id", "maxClientThreads": "30", "storage": constants.OceanStorASeriesNasDme,
+		"parameters":        map[string]any{"protocol": constants.ProtocolDtfs},
+		constants.ZoneSNKey: "zone-1"}
+
+	// mock
+	patch := gomonkey.NewPatches()
+	defer patch.Reset()
+	patch.ApplyMethodReturn((*client.BaseClient)(nil), "ValidateLogin", nil)
+	patch.ApplyMethod((*client.BaseClient)(nil), "Logout",
+		func(cli *client.BaseClient, ctx context.Context) {})
+
+	// act
+	err := p.Validate(ctx, config)
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, constants.ProtocolDtfs, p.protocol)
 }
 
 func TestDmeASeriesPlugin_DeleteDTreeVolume(t *testing.T) {
@@ -439,4 +485,206 @@ func TestDmeASeriesPlugin_GetSectorSize(t *testing.T) {
 
 	// assert
 	assert.Equal(t, SectorSize, size)
+}
+
+func TestDmeASeriesPlugin_CreateVolume_EnableKVCacheWithoutZoneSN(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	name := "test"
+	parameters := map[string]interface{}{
+		"enableKVCache": "true",
+		"authClient":    "client1",
+	}
+
+	config := map[string]any{"urls": []any{"https://127.0.0.1:8088"}, "user": "test_user",
+		"secretName": "test_secret_name", "secretNamespace": "test_secret_ns", "name": "test_name",
+		"backendID": "test_bk_id", "maxClientThreads": "30", "storage": constants.OceanStorASeriesNasDme}
+	clientConfig, err := formatBaseClientConfig(config)
+	assert.NoError(t, err)
+	cli, err := client.NewClient(ctx, clientConfig)
+	assert.NoError(t, err)
+	p := &DMEASeriesPlugin{cli: cli}
+	// No zone set → IsLocalMode() returns false → enableKVCache without zone error
+
+	// act
+	vol, err := p.CreateVolume(ctx, name, parameters)
+
+	// assert
+	assert.Error(t, err)
+	assert.Nil(t, vol)
+	assert.Contains(t, err.Error(), "enableKVCache is enabled but zoneSN is not configured")
+}
+
+func TestDmeASeriesPlugin_CreateVolume_ZoneSNWithoutEnableKVCache(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	name := "test"
+	parameters := map[string]interface{}{
+		"authClient": "client1",
+	}
+
+	config := map[string]any{"urls": []any{"https://127.0.0.1:8088"}, "user": "test_user",
+		"secretName": "test_secret_name", "secretNamespace": "test_secret_ns", "name": "test_name",
+		"backendID": "test_bk_id", "maxClientThreads": "30", "storage": constants.OceanStorASeriesNasDme}
+	clientConfig, err := formatBaseClientConfig(config)
+	assert.NoError(t, err)
+	cli, err := client.NewClient(ctx, clientConfig)
+	assert.NoError(t, err)
+	cli.SetZoneID("test-zone-id") // zone set → IsLocalMode() returns true
+	p := &DMEASeriesPlugin{cli: cli}
+
+	// act
+	vol, err := p.CreateVolume(ctx, name, parameters)
+
+	// assert
+	assert.Error(t, err)
+	assert.Nil(t, vol)
+	assert.Contains(t, err.Error(), "zoneSN is configured but enableKVCache is not enabled in StorageClass")
+}
+
+func TestDmeASeriesPlugin_Init_ZoneSNNotString(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	p := GetPlugin(constants.OceanStorASeriesNasDme)
+
+	parameters := map[string]any{"protocol": constants.ProtocolDtfs}
+	config := map[string]any{"urls": []any{"https://127.0.0.1:8088"}, "user": "test_user",
+		"storageDeviceSN": "test_sn", "secretName": "test_secret_name", "secretNamespace": "test_secret_ns",
+		"name": "test_name", "backendID": "test_bk_id", "maxClientThreads": "30",
+		"storage": constants.OceanStorASeriesNasDme, constants.ZoneSNKey: 12345}
+
+	patch := gomonkey.NewPatches()
+	defer patch.Reset()
+	patch.ApplyMethodReturn((*client.BaseClient)(nil), "Login", nil)
+	patch.ApplyMethod((*client.BaseClient)(nil), "Logout",
+		func(cli *client.BaseClient, ctx context.Context) {})
+	patch.ApplyMethodReturn((*client.BaseClient)(nil), "SetSystemInfo", nil)
+
+	// Act
+	err := p.Init(ctx, config, parameters, false)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "zoneSN must be a string")
+}
+
+func TestDmeASeriesPlugin_Init_InitZoneError(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	p := GetPlugin(constants.OceanStorASeriesNasDme)
+
+	parameters := map[string]any{"protocol": constants.ProtocolDtfs}
+	config := map[string]any{"urls": []any{"https://127.0.0.1:8088"}, "user": "test_user",
+		"storageDeviceSN": "test_sn", "secretName": "test_secret_name", "secretNamespace": "test_secret_ns",
+		"name": "test_name", "backendID": "test_bk_id", "maxClientThreads": "30",
+		"storage": constants.OceanStorASeriesNasDme, constants.ZoneSNKey: "zone-1"}
+
+	zoneErr := errors.New("query zone failed")
+	patch := gomonkey.NewPatches()
+	defer patch.Reset()
+	patch.ApplyMethodReturn((*client.BaseClient)(nil), "Login", nil)
+	patch.ApplyMethod((*client.BaseClient)(nil), "Logout",
+		func(cli *client.BaseClient, ctx context.Context) {})
+	patch.ApplyMethodReturn((*client.BaseClient)(nil), "SetSystemInfo", nil)
+	patch.ApplyMethodReturn((*client.SystemClient)(nil), "QueryZoneBySN", nil, zoneErr)
+
+	// Act
+	err := p.Init(ctx, config, parameters, false)
+
+	// Assert
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, zoneErr)
+}
+
+func TestDmeASeriesPlugin_Init_WithZoneSN(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	p := GetPlugin(constants.OceanStorASeriesNasDme)
+
+	parameters := map[string]any{"protocol": constants.ProtocolDtfs}
+	config := map[string]any{"urls": []any{"https://127.0.0.1:8088"}, "user": "test_user",
+		"storageDeviceSN": "test_sn", "secretName": "test_secret_name", "secretNamespace": "test_secret_ns",
+		"name": "test_name", "backendID": "test_bk_id", "maxClientThreads": "30",
+		"storage": constants.OceanStorASeriesNasDme, constants.ZoneSNKey: "zone-1"}
+
+	patch := gomonkey.NewPatches()
+	defer patch.Reset()
+	patch.ApplyMethodReturn((*client.BaseClient)(nil), "Login", nil)
+	patch.ApplyMethod((*client.BaseClient)(nil), "Logout",
+		func(cli *client.BaseClient, ctx context.Context) {})
+	patch.ApplyMethodReturn((*client.BaseClient)(nil), "SetSystemInfo", nil)
+	patch.ApplyMethodReturn((*client.SystemClient)(nil), "QueryZoneBySN",
+		&client.ZoneInfo{NativeID: "zone-native-1"}, nil)
+	patch.ApplyMethod((*client.BaseClient)(nil), "SetZoneID",
+		func(cli *client.BaseClient, id string) {})
+
+	// Act
+	err := p.Init(ctx, config, parameters, false)
+
+	// Assert
+	assert.NoError(t, err)
+}
+
+func TestDmeASeriesPlugin_DeleteVolume_KvCacheStoreIdNotString(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	p := &DMEASeriesPlugin{}
+	params := map[string]interface{}{constants.KvCacheStoreId: 12345}
+
+	// Act
+	err := p.DeleteVolume(ctx, "test-vol", params)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "kvcacheStoreId must be a string")
+}
+
+func TestDmeASeriesPlugin_DeleteVolume_WithKvCacheStoreId(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	p := &DMEASeriesPlugin{}
+	params := map[string]interface{}{constants.KvCacheStoreId: "kv-id-1"}
+
+	patch := gomonkey.NewPatches()
+	defer patch.Reset()
+	patch.ApplyMethodReturn((*dmeVol.LocalVolumeHandler)(nil), "Delete", nil)
+
+	// Act
+	err := p.DeleteVolume(ctx, "test-vol", params)
+
+	// Assert
+	assert.NoError(t, err)
+}
+
+func TestDmeASeriesPlugin_CreateVolume_WithZoneSNAndKVCache(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	name := "test"
+	parameters := map[string]interface{}{
+		"enableKVCache": "true",
+		"authClient":    "client1",
+	}
+
+	config := map[string]any{"urls": []any{"https://127.0.0.1:8088"}, "user": "test_user",
+		"secretName": "test_secret_name", "secretNamespace": "test_secret_ns", "name": "test_name",
+		"backendID": "test_bk_id", "maxClientThreads": "30", "storage": constants.OceanStorASeriesNasDme}
+	clientConfig, err := formatBaseClientConfig(config)
+	assert.NoError(t, err)
+	cli, err := client.NewClient(ctx, clientConfig)
+	assert.NoError(t, err)
+	cli.SetZoneID("test-zone-id") // zone set → IsLocalMode() returns true
+	p := &DMEASeriesPlugin{cli: cli}
+
+	// mock
+	patch := gomonkey.NewPatches()
+	defer patch.Reset()
+	patch.ApplyMethodReturn((*dmeVol.Creator)(nil), "Create", utils.NewVolume(name), nil)
+
+	// act
+	vol, err := p.CreateVolume(ctx, name, parameters)
+
+	// assert
+	assert.NoError(t, err)
+	assert.NotNil(t, vol)
+	assert.Equal(t, name, vol.GetVolumeName())
 }

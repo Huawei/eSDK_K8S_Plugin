@@ -56,7 +56,7 @@ func commandFunc(flagSet *flag.FlagSet) *cobra.Command {
 			logrus.Fatalf("Unknown command, %v", cmdArgs)
 		}
 
-		envCfg, err := optManager.Config()
+		envCfg, err := optManager.Config(flagSet)
 		if err != nil {
 			logrus.Fatalf("Failed to get configuration, %v", err)
 		}

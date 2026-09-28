@@ -859,3 +859,16 @@ func TestResizeBlock_NVMeNativeControllerDevice(t *testing.T) {
 	// assert
 	assert.NoError(t, err)
 }
+
+func TestClearUnavailableDevice_ConnectFail_DeleteError_LogsWarningWithRequestID(t *testing.T) {
+	// mock
+	patches := gomonkey.ApplyFuncReturn(CheckConnectSuccess, false).
+		ApplyFuncReturn(DeleteSDDev, errors.New("delete error"))
+	defer patches.Reset()
+
+	// action
+	result := ClearUnavailableDevice(context.Background(), "sdc", "wwn.test")
+
+	// assert
+	assert.Equal(t, "", result)
+}

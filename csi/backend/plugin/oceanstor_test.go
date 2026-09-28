@@ -17,12 +17,16 @@
 package plugin
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/test/mocks/mock_client"
 )
 
 func Test_validateVolumeName(t *testing.T) {
@@ -94,4 +98,26 @@ func Test_newExtraCreateMetadataFromParameters(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestUpdateBackendCapabilities_ErrorLogWithRequestID(t *testing.T) {
+	// mock
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+
+	plugin := &OceanstorPlugin{
+		product: constants.OceanStorV5,
+	}
+	plugin.SetCli(cli)
+
+	wantErr := errors.New("license feature error")
+	cli.EXPECT().GetLicenseFeature(ctx).Return(nil, wantErr)
+
+	// action - GetLicenseFeature fails, log.AddContext(ctx).Errorf is called
+	capabilities, gotErr := plugin.updateBackendCapabilities(ctx)
+
+	// assert
+	assert.Nil(t, capabilities)
+	assert.ErrorIs(t, gotErr, wantErr)
 }

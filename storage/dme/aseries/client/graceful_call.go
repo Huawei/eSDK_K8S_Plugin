@@ -33,6 +33,20 @@ const (
 	offLineCode     = "4012"
 	noAuthenticated = "4011"
 
+	// apiNotFoundCode is the error code returned when DME does not support the sync API
+	apiNotFoundCode = "49401026001"
+
+	// DME login credential exception IDs - indicate authentication/authorization failures
+	// that should mark the backend as offline
+	loginExceptionUserOrValueInvalid            = "user.login.user_or_value_invalid"
+	loginExceptionUserOrValueInvalidLockDefault = "user.login.user_or_value_invalid_lock_default"
+	loginExceptionPolicyViolationLock           = "user.user.policy_violation_lock"
+	loginExceptionUserOrValueInvalidLock        = "user.login.user_or_value_invalid_lock"
+	loginExceptionPwdExpired                    = "user.pwd.expired"
+	loginExceptionPolicyViolationStop           = "user.user.policy_violation_stop"
+	loginExceptionTouchOnlineLimit              = "user.login.touch_online_limit"
+	loginExceptionPolicyViolationLockDefault    = "user.user.policy_violation_lock_default"
+
 	// maxRetryTime define the max retry duration of dme async task
 	maxRetryTime = 30 * time.Minute
 
@@ -69,7 +83,7 @@ type TaskResponse struct {
 // BusinessError defines the error response of business type
 type BusinessError struct {
 	ErrorCode    string `json:"error_code"`
-	ErrorMessage string `json:"error_message"`
+	ErrorMessage string `json:"error_msg"`
 }
 
 // Error implements the error interface, and return the formated error info of BusinessError
@@ -110,13 +124,87 @@ type AuthBusinessError struct {
 	*LoginError    `json:",inline"`
 }
 
+var loginCredentialExceptionIds = []string{
+	loginExceptionUserOrValueInvalid,
+	loginExceptionUserOrValueInvalidLockDefault,
+	loginExceptionPolicyViolationLock,
+	loginExceptionUserOrValueInvalidLock,
+	loginExceptionPwdExpired,
+	loginExceptionPolicyViolationStop,
+	loginExceptionTouchOnlineLimit,
+	loginExceptionPolicyViolationLockDefault,
+}
+
+// isCredentialError checks whether the login error is caused by invalid credentials
+func isCredentialError(err error) bool {
+	// Context cancellation and deadline errors are transient
+	if err == nil || errors.Is(err, storage.ErrUnconnected) || errors.Is(err, context.Canceled) || errors.Is(err,
+		context.DeadlineExceeded) {
+		return false
+	}
+	// AuthError with session-related codes (4012/4011) is retriable, not credential
+	var authErr AuthError
+	if errors.As(err, &authErr) {
+		return !authErr.NeedRetry()
+	}
+	// LoginError with credential exception IDs is a credential error
+	var loginErr LoginError
+	if errors.As(err, &loginErr) {
+		for _, id := range loginCredentialExceptionIds {
+			if loginErr.ExceptionId == id {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// LegacyError defines the error response from old DME versions (camelCase fields)
+type LegacyError struct {
+	ErrorCode     string `json:"errorCode"`
+	ExceptionInfo string `json:"exceptionInfo"`
+}
+
+func (e LegacyError) Error() string {
+	return fmt.Sprintf("code: %s, err message: %s", e.ErrorCode, e.ExceptionInfo)
+}
+
+// IsApiNotFound returns true if the error indicates the sync API is not supported by DME
+func (e LegacyError) IsApiNotFound() bool {
+	return e.ErrorCode == apiNotFoundCode
+}
+
+// SyncFallbackUrls defines sync and async URL pair for gracefulCallWithSyncFallback
+type SyncFallbackUrls struct {
+	SyncUrl  string
+	AsyncUrl string
+}
+
+// gracefulCallWithSyncFallback tries the sync API first; if DME does not support it
+// (errorCode 49401026001), falls back to the async API for backward compatibility.
+func gracefulCallWithSyncFallback(ctx context.Context, cli BaseClientInterface, method string,
+	urls *SyncFallbackUrls, reqData any) error {
+	_, err := gracefulCall[struct{}](ctx, cli, method, urls.SyncUrl, reqData)
+	if err == nil {
+		return nil
+	}
+
+	var legacyErr LegacyError
+	if errors.As(err, &legacyErr) && legacyErr.IsApiNotFound() {
+		return gracefulCallWithTaskWait(ctx, cli, method, urls.AsyncUrl, reqData)
+	}
+
+	return err
+}
+
 func gracefulCallWithTaskWait(ctx context.Context, cli BaseClientInterface, method, url string, reqData any) error {
 	task, err := gracefulCall[TaskResponse](ctx, cli, method, url, reqData)
 	if err != nil {
 		return err
 	}
 
-	if task.TaskID == "" {
+	if task == nil || task.TaskID == "" {
 		return errors.New("run task failed with empty return")
 	}
 
@@ -166,7 +254,7 @@ func calculateNextSleepTime(currentInterval, maxInterval time.Duration) time.Dur
 func gracefulCall[T any](ctx context.Context, cli BaseClientInterface, method, url string, reqData any) (*T, error) {
 	resp, err := gracefulCallAndMarshal[T](ctx, cli, method, url, reqData)
 	if err != nil {
-		if err.Error() == storage.Unconnected {
+		if errors.Is(err, storage.ErrUnconnected) {
 			return gracefulRetryCall[T](ctx, cli, method, url, reqData)
 		}
 
@@ -204,6 +292,10 @@ func gracefulCallAndMarshal[T any](ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	if len(respBody) == 0 {
+		var resp T
+		return &resp, nil
+	}
 
 	if !IsArr(respBody) {
 		var resp AuthBusinessError
@@ -223,6 +315,11 @@ func gracefulCallAndMarshal[T any](ctx context.Context,
 		if resp.LoginError != nil && resp.LoginError.ExceptionId != "" {
 			return nil, fmt.Errorf("login failed: %w", *resp.LoginError)
 		}
+	}
+
+	var legacyErr LegacyError
+	if json.Unmarshal(respBody, &legacyErr) == nil && legacyErr.ErrorCode != "" {
+		return nil, legacyErr
 	}
 
 	var resp T

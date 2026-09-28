@@ -11,3 +11,8 @@ docs/site/go.sum
 docs/site/public
 docs/site/resources
 docs/site/.hugo_build.lock
+.cac
+.codegraph
+.codemate
+.opencode
+.superpowers

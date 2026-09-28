@@ -18,6 +18,7 @@ package volume
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -965,4 +966,132 @@ func TestSAN_Expand_LunNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "Lun")
 	assert.Contains(t, err.Error(), "does not exist")
 	assert.False(t, isAttached)
+}
+
+func TestGetLunSnapshotByNameWithFallback_TruncatedNameFound(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+
+	snapshotName := "snapshot-abc123"
+	snapshot := map[string]interface{}{"ID": "1", "NAME": snapshotName}
+
+	cli.EXPECT().GetLunSnapshotByName(ctx, snapshotName).Return(snapshot, nil)
+
+	result, err := getLunSnapshotByNameWithFallback(ctx, cli, snapshotName)
+	assert.NoError(t, err)
+	assert.Equal(t, snapshot, result)
+}
+
+func TestGetLunSnapshotByNameWithFallback_TruncatedFoundButFullNotFound(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+
+	fullSnapshotName := "snapshot-77d479a2-1354-4d03-8b6c-7366e971fb25"
+	truncatedName := utils.GetSnapshotName(fullSnapshotName)
+	snapshot := map[string]interface{}{"ID": "1", "NAME": truncatedName}
+
+	cli.EXPECT().GetLunSnapshotByName(ctx, truncatedName).Return(snapshot, nil)
+
+	result, err := getLunSnapshotByNameWithFallback(ctx, cli, fullSnapshotName)
+	assert.NoError(t, err)
+	assert.Equal(t, snapshot, result)
+}
+
+func TestGetLunSnapshotByNameWithFallback_TruncatedNotFoundFullFound(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+
+	fullSnapshotName := "pre-provisioned-snapshot-longer-than-thirtyone"
+	truncatedName := utils.GetSnapshotName(fullSnapshotName)
+	snapshot := map[string]interface{}{"ID": "86", "NAME": fullSnapshotName}
+
+	cli.EXPECT().GetLunSnapshotByName(ctx, truncatedName).Return(nil, nil)
+	cli.EXPECT().GetLunSnapshotByName(ctx, fullSnapshotName).Return(snapshot, nil)
+
+	result, err := getLunSnapshotByNameWithFallback(ctx, cli, fullSnapshotName)
+	assert.NoError(t, err)
+	assert.Equal(t, snapshot, result)
+}
+
+func TestGetLunSnapshotByNameWithFallback_BothNotFound(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+
+	fullSnapshotName := "snapshot-not-exist-longer-than-thirtyone"
+	truncatedName := utils.GetSnapshotName(fullSnapshotName)
+
+	cli.EXPECT().GetLunSnapshotByName(ctx, truncatedName).Return(nil, nil)
+	cli.EXPECT().GetLunSnapshotByName(ctx, fullSnapshotName).Return(nil, nil)
+
+	result, err := getLunSnapshotByNameWithFallback(ctx, cli, fullSnapshotName)
+	assert.NoError(t, err)
+	assert.Nil(t, result)
+}
+
+func TestGetLunSnapshotByNameWithFallback_ShortNameNoFallback(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+
+	snapshotName := "short-snap"
+
+	cli.EXPECT().GetLunSnapshotByName(ctx, snapshotName).Return(nil, nil)
+
+	result, err := getLunSnapshotByNameWithFallback(ctx, cli, snapshotName)
+	assert.NoError(t, err)
+	assert.Nil(t, result)
+}
+
+func TestGetLunSnapshotByNameWithFallback_FirstQueryError(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+
+	fullSnapshotName := "snapshot-longer-than-thirtyone-chars-test"
+	truncatedName := utils.GetSnapshotName(fullSnapshotName)
+
+	cli.EXPECT().GetLunSnapshotByName(ctx, truncatedName).Return(nil, errors.New("query error"))
+
+	result, err := getLunSnapshotByNameWithFallback(ctx, cli, fullSnapshotName)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+}
+
+func TestSAN_Delete_SnapShotExists(t *testing.T) {
+	// arrange
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	cli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
+	san := NewSAN(cli, nil, nil, constants.OceanStorDoradoV6)
+	lunName := "test-lun"
+
+	rssData, err := json.Marshal(map[string]string{"SnapShot": "TRUE"})
+	assert.NoError(t, err)
+	lun := map[string]interface{}{
+		"ID":           "lun-123",
+		"HASRSSOBJECT": string(rssData),
+	}
+
+	// mock
+	cli.EXPECT().MakeLunName(lunName).Return("k8s_" + lunName)
+	cli.EXPECT().GetLunByName(ctx, "k8s_"+lunName).Return(lun, nil)
+
+	// action
+	err = san.Delete(ctx, lunName)
+
+	// assert
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "snapshots exist")
+	assert.ErrorContains(t, err, lunName)
 }

@@ -20,6 +20,8 @@ package client
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -180,6 +182,168 @@ func TestBaseClient_Login_Fail(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
+func TestIsCredentialError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "ErrUnconnected is not credential error",
+			err:      storage.ErrUnconnected,
+			expected: false,
+		},
+		{
+			name:     "wrapped ErrUnconnected is not credential error",
+			err:      fmt.Errorf("wrapped: %w", storage.ErrUnconnected),
+			expected: false,
+		},
+		{
+			name:     "context.Canceled is not credential error",
+			err:      context.Canceled,
+			expected: false,
+		},
+		{
+			name:     "context.DeadlineExceeded is not credential error",
+			err:      context.DeadlineExceeded,
+			expected: false,
+		},
+		{
+			name:     "generic error is not credential error",
+			err:      errors.New("some error"),
+			expected: false,
+		},
+		{
+			name:     "BusinessError is not credential error",
+			err:      BusinessError{ErrorCode: "12345", ErrorMessage: "some error"},
+			expected: false,
+		},
+		{
+			name:     "AuthError 4012 (session expired) is not credential error",
+			err:      AuthError{Code: offLineCode, Description: "offline"},
+			expected: false,
+		},
+		{
+			name:     "AuthError 4011 (not authenticated) is not credential error",
+			err:      AuthError{Code: noAuthenticated, Description: "not authenticated"},
+			expected: false,
+		},
+		{
+			name:     "AuthError 400 (wrong password) is credential error",
+			err:      AuthError{Code: "400", Description: "user name or password error"},
+			expected: true,
+		},
+		{
+			name:     "AuthError 403 (account disabled) is credential error",
+			err:      AuthError{Code: "403", Description: "login restricted"},
+			expected: true,
+		},
+		{
+			name: "LoginError with credential exceptionId (user_or_value_invalid)",
+			err: fmt.Errorf("login failed: %w",
+				LoginError{ExceptionId: "user.login.user_or_value_invalid", ExceptionType: "ROA_EXFRAME_EXCEPTION"}),
+			expected: true,
+		},
+		{
+			name: "LoginError with credential exceptionId (policy_violation_lock)",
+			err: fmt.Errorf("login failed: %w",
+				LoginError{ExceptionId: "user.user.policy_violation_lock", ExceptionType: "ROA_EXFRAME_EXCEPTION"}),
+			expected: true,
+		},
+		{
+			name: "LoginError with credential exceptionId (pwd_expired)",
+			err: fmt.Errorf("login failed: %w",
+				LoginError{ExceptionId: "user.pwd.expired", ExceptionType: "ROA_EXFRAME_EXCEPTION"}),
+			expected: true,
+		},
+		{
+			name: "LoginError with non-credential exceptionId",
+			err: fmt.Errorf("login failed: %w",
+				LoginError{ExceptionId: "unknown.exception", ExceptionType: "ROA_EXFRAME_EXCEPTION"}),
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isCredentialError(tt.err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestBaseClient_Login_TransientError_SkipsOffline(t *testing.T) {
+	// When login fails with Unconnected (network error), SetOffline and Logout should NOT be called
+	cli := &BaseClient{urls: []string{sessionUrl}}
+	patch := gomonkey.NewPatches()
+	defer patch.Reset()
+	patch.ApplyFuncReturn(storage.NewHTTPClientByBackendID, &http.Client{}, nil)
+	patch.ApplyFuncReturn(pkgUtils.GetAuthInfoFromBackendID,
+		&pkgUtils.BackendAuthInfo{User: "1", Password: "1"}, nil)
+
+	// Mock Call to return Unconnected error (simulating network failure)
+	patch.ApplyMethod((*BaseClient)(nil), "Call",
+		func(_ *BaseClient, _ context.Context, _ string, _ string, _ any) ([]byte, error) {
+			return nil, storage.ErrUnconnected
+		})
+
+	logoutCalled := false
+	patch.ApplyMethod((*BaseClient)(nil), "Logout",
+		func(_ *BaseClient, _ context.Context) {
+			logoutCalled = true
+		})
+
+	setOfflineCalled := false
+	patch.ApplyFunc(pkgUtils.SetStorageBackendContentOnlineStatus,
+		func(_ context.Context, _ string, _ bool) error {
+			setOfflineCalled = true
+			return nil
+		})
+
+	err := cli.Login(context.Background())
+	assert.NotNil(t, err)
+	assert.False(t, logoutCalled, "Logout should not be called for transient errors")
+	assert.False(t, setOfflineCalled, "SetStorageBackendContentOnlineStatus should not be called for transient errors")
+}
+
+func TestBaseClient_Login_CredentialError_SetsOffline(t *testing.T) {
+	// When login fails with a credential error (AuthError 400), SetOffline and Logout SHOULD be called
+	cli := &BaseClient{urls: []string{sessionUrl}}
+	patch := gomonkey.NewPatches()
+	defer patch.Reset()
+	patch.ApplyFuncReturn(storage.NewHTTPClientByBackendID, &http.Client{}, nil)
+	patch.ApplyFuncReturn(pkgUtils.GetAuthInfoFromBackendID,
+		&pkgUtils.BackendAuthInfo{User: "1", Password: "1"}, nil)
+
+	// Mock Call to return AuthError with non-retriable code (credential failure)
+	patch.ApplyMethod((*BaseClient)(nil), "Call",
+		func(_ *BaseClient, _ context.Context, _ string, _ string, _ any) ([]byte, error) {
+			return nil, AuthError{Code: "400", Description: "user name or password error"}
+		})
+
+	logoutCalled := false
+	patch.ApplyMethod((*BaseClient)(nil), "Logout",
+		func(_ *BaseClient, _ context.Context) {
+			logoutCalled = true
+		})
+
+	setOfflineCalled := false
+	patch.ApplyFunc(pkgUtils.SetStorageBackendContentOnlineStatus,
+		func(_ context.Context, _ string, _ bool) error {
+			setOfflineCalled = true
+			return nil
+		})
+
+	err := cli.Login(context.Background())
+	assert.NotNil(t, err)
+	assert.True(t, logoutCalled, "Logout should be called for credential errors")
+	assert.True(t, setOfflineCalled, "SetStorageBackendContentOnlineStatus should be called for credential errors")
+}
+
 func TestBaseClient_Call_Success(t *testing.T) {
 	cli := getMockClient(200, `{"accessSession": "xxx"}`)
 	_, err := cli.Call(context.Background(), "GET", sessionUrl, nil)
@@ -247,4 +411,123 @@ func TestBaseClient_GetBackendID_Success(t *testing.T) {
 
 	// assert
 	assert.Equal(t, wantBackendID, gotBackendID)
+}
+
+func TestBaseClient_Zone_Defaults(t *testing.T) {
+	// Arrange
+	cli := &BaseClient{storageID: "test-storage-id"}
+
+	// Act
+	zoneID := cli.GetZoneID()
+
+	// Assert
+	assert.Equal(t, "test-storage-id", zoneID)
+}
+
+func TestBaseClient_SetZoneInfo(t *testing.T) {
+	// Arrange
+	cli := &BaseClient{storageID: "test-storage-id"}
+
+	// Act
+	cli.SetZoneID("zone-id-456")
+
+	// Assert
+	assert.Equal(t, "zone-id-456", cli.GetZoneID())
+	assert.True(t, cli.IsLocalMode())
+}
+
+func TestBaseClient_IsLocalMode_False(t *testing.T) {
+	// Arrange
+	cli := &BaseClient{storageID: "test-storage-id"}
+
+	// Act
+	isLocal := cli.IsLocalMode()
+
+	// Assert
+	assert.False(t, isLocal)
+}
+
+func TestFormatRequestBody_NilData(t *testing.T) {
+	// Arrange
+	var data any = nil
+
+	// Act
+	result := formatRequestBody(data)
+
+	// Assert
+	assert.Equal(t, "", result)
+}
+
+func TestFormatRequestBody_BasicString(t *testing.T) {
+	// Arrange
+	data := "hello"
+
+	// Act
+	result := formatRequestBody(data)
+
+	// Assert
+	assert.Equal(t, `"hello"`, result)
+}
+
+func TestFormatRequestBody_StructWithPointerFields(t *testing.T) {
+	// Arrange
+	inner := &DTreeCreateQuotaParam{
+		QuotaType:      "directory",
+		SpaceHardQuota: 10240,
+	}
+	params := &CreateDTreeParams{
+		CreateDtreesParam: []*CreateDtreeParam{
+			{DtreeName: "dtree-01", Count: 1},
+		},
+		QuotaSwitch:      true,
+		StorageID:        "storage-001",
+		FsID:             "fs-001",
+		CreateQuotaParam: []*DTreeCreateQuotaParam{inner},
+		CreateNfsShareParam: &DTreeNfsShareParam{
+			SharePath:   "/fs/dtree-01",
+			Description: "test share",
+		},
+		DataturboShare: &DTreeDpcShareParam{
+			Description: "dpc share",
+			Charset:     "UTF-8",
+		},
+	}
+
+	// Act
+	result := formatRequestBody(params)
+
+	// Assert
+	assert.NotContains(t, result, "0x", "body should not contain hex pointer addresses")
+	assert.Contains(t, result, `"dtree_name":"dtree-01"`, "slice-of-pointer field should be serialized")
+	assert.Contains(t, result, `"quota_switch":true`, "bool field should be serialized")
+	assert.Contains(t, result, `"storage_id":"storage-001"`, "string field should be serialized")
+	assert.Contains(t, result, `"quota_type":"directory"`, "nested pointer slice field should be serialized")
+	assert.Contains(t, result, `"share_path":"/fs/dtree-01"`, "pointer struct field should be serialized")
+	assert.Contains(t, result, `"description":"dpc share"`, "pointer struct field should be serialized")
+}
+
+func TestFormatRequestBody_EmptyStruct(t *testing.T) {
+	// Arrange
+	params := &QueryKVCacheParams{
+		ID:        "test-id",
+		StorageID: "storage-001",
+	}
+
+	// Act
+	result := formatRequestBody(params)
+
+	// Assert
+	assert.Contains(t, result, `"id":"test-id"`)
+	assert.Contains(t, result, `"storage_id":"storage-001"`)
+}
+
+func TestFormatRequestBody_FallbackToSprintf(t *testing.T) {
+	// Arrange
+	data := make(chan int)
+
+	// Act
+	result := formatRequestBody(data)
+
+	// Assert
+	assert.Contains(t, result, "0x", "should fall back to %+v formatting for unmarshallable types")
 }

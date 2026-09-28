@@ -61,7 +61,7 @@ const (
 var (
 	// NasStorageTypes contains all of nas storage types
 	NasStorageTypes = []string{OceanStorNas, OceanStorDtree, FusionNas, FusionDTree, OceanStorASeriesNas,
-		OceanStorASeriesNasDme, OceanStorASeriesDtree}
+		OceanStorASeriesNasDme, OceanStorASeriesDtree, OceanStorASeriesDtreeDme}
 
 	// FusionstorageProtocol contains all of fusionstorage protocols supported
 	FusionstorageProtocol = []string{ProtocolIscsi, ProtocolScsi}
@@ -77,7 +77,8 @@ func IsNVMeProtocol(protocol string) bool {
 
 // IsDtreeStorage checks whether the storage type is dtree
 func IsDtreeStorage(storage string) bool {
-	return storage == OceanStorDtree || storage == FusionDTree || storage == OceanStorASeriesDtree
+	return storage == OceanStorDtree || storage == FusionDTree ||
+		storage == OceanStorASeriesDtree || storage == OceanStorASeriesDtreeDme
 }
 
 const (
@@ -102,6 +103,8 @@ const (
 	OceanStorASeriesDtree = "oceanstor-a-series-dtree"
 	// OceanStorASeriesNasDme storage type is "oceanstor-a-series-nas-dme"
 	OceanStorASeriesNasDme = "oceanstor-a-series-nas-dme"
+	// OceanStorASeriesDtreeDme storage type is "oceanstor-a-series-dtree-dme"
+	OceanStorASeriesDtreeDme = "oceanstor-a-series-dtree-dme"
 	// FusionSan storage type is fusionstorage-san
 	FusionSan = "fusionstorage-san"
 	// FusionNas storage type is fusionstorage-nas

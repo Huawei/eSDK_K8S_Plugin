@@ -69,11 +69,81 @@ func (m *MockDMEASeriesClientInterface) Call(ctx context.Context, method, url st
 // Call indicates an expected call of Call.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) Call(ctx, method, url, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).Call), ctx, method, url, data)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Call",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).Call), ctx, method, url, data)
+}
+
+// CreateDTree mocks base method.
+func (m *MockDMEASeriesClientInterface) CreateDTree(ctx context.Context,
+	params *client.CreateDTreeParams) (*client.CreateDTreeResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateDTree", ctx, params)
+	ret0, _ := ret[0].(*client.CreateDTreeResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateDTree indicates an expected call of CreateDTree.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) CreateDTree(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDTree",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).CreateDTree), ctx, params)
+}
+
+// CreateDTreeQuota mocks base method.
+func (m *MockDMEASeriesClientInterface) CreateDTreeQuota(ctx context.Context,
+	params *client.CreateQuotaParams) (*client.QuotaInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateDTreeQuota", ctx, params)
+	ret0, _ := ret[0].(*client.QuotaInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateDTreeQuota indicates an expected call of CreateDTreeQuota.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) CreateDTreeQuota(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDTreeQuota",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).CreateDTreeQuota), ctx, params)
+}
+
+// CreateDTreeDpcShare mocks base method.
+func (m *MockDMEASeriesClientInterface) CreateDTreeDpcShare(ctx context.Context,
+	params client.CreateDpcShareParams) (*client.DTreeDpcShareInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateDTreeDpcShare", ctx, params)
+	ret0, _ := ret[0].(*client.DTreeDpcShareInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateDTreeDpcShare indicates an expected call of CreateDTreeDpcShare.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) CreateDTreeDpcShare(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDTreeDpcShare",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).CreateDTreeDpcShare), ctx, params)
+}
+
+// CreateDTreeNfsShare mocks base method.
+func (m *MockDMEASeriesClientInterface) CreateDTreeNfsShare(ctx context.Context,
+	params client.CreateNfsShareRequestBody) (*client.DTreeNfsShareInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateDTreeNfsShare", ctx, params)
+	ret0, _ := ret[0].(*client.DTreeNfsShareInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateDTreeNfsShare indicates an expected call of CreateDTreeNfsShare.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) CreateDTreeNfsShare(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDTreeNfsShare",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).CreateDTreeNfsShare), ctx, params)
 }
 
 // CreateFileSystem mocks base method.
-func (m *MockDMEASeriesClientInterface) CreateFileSystem(ctx context.Context, params *client.CreateFilesystemParams) error {
+func (m *MockDMEASeriesClientInterface) CreateFileSystem(ctx context.Context,
+	params *client.CreateFilesystemParams) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateFileSystem", ctx, params)
 	ret0, _ := ret[0].(error)
@@ -83,7 +153,85 @@ func (m *MockDMEASeriesClientInterface) CreateFileSystem(ctx context.Context, pa
 // CreateFileSystem indicates an expected call of CreateFileSystem.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) CreateFileSystem(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateFileSystem", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).CreateFileSystem), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateFileSystem",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).CreateFileSystem), ctx, params)
+}
+
+// CreateKVCache mocks base method.
+func (m *MockDMEASeriesClientInterface) CreateKVCache(ctx context.Context,
+	params *client.CreateKVCacheParams) (*client.KVCacheStore, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateKVCache", ctx, params)
+	ret0, _ := ret[0].(*client.KVCacheStore)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateKVCache indicates an expected call of CreateKVCache.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) CreateKVCache(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateKVCache",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).CreateKVCache), ctx, params)
+}
+
+// DeleteDTreeByID mocks base method.
+func (m *MockDMEASeriesClientInterface) DeleteDTreeByID(ctx context.Context, dtreeID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDTreeByID", ctx, dtreeID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDTreeByID indicates an expected call of DeleteDTreeByID.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) DeleteDTreeByID(ctx, dtreeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDTreeByID",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteDTreeByID), ctx, dtreeID)
+}
+
+// DeleteDTreeDataTurboShare mocks base method.
+func (m *MockDMEASeriesClientInterface) DeleteDTreeDataTurboShare(ctx context.Context, dpcShareID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDTreeDataTurboShare", ctx, dpcShareID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDTreeDataTurboShare indicates an expected call of DeleteDTreeDataTurboShare.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) DeleteDTreeDataTurboShare(ctx, dpcShareID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDTreeDataTurboShare",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteDTreeDataTurboShare), ctx, dpcShareID)
+}
+
+// DeleteDTreeNfsShare mocks base method.
+func (m *MockDMEASeriesClientInterface) DeleteDTreeNfsShare(ctx context.Context, nfsShareID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDTreeNfsShare", ctx, nfsShareID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDTreeNfsShare indicates an expected call of DeleteDTreeNfsShare.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) DeleteDTreeNfsShare(ctx, nfsShareID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDTreeNfsShare",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteDTreeNfsShare), ctx, nfsShareID)
+}
+
+// DeleteDTreeQuota mocks base method.
+func (m *MockDMEASeriesClientInterface) DeleteDTreeQuota(ctx context.Context, quotaID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDTreeQuota", ctx, quotaID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDTreeQuota indicates an expected call of DeleteDTreeQuota.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) DeleteDTreeQuota(ctx, quotaID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDTreeQuota",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteDTreeQuota), ctx, quotaID)
 }
 
 // DeleteDataTurboShare mocks base method.
@@ -97,7 +245,8 @@ func (m *MockDMEASeriesClientInterface) DeleteDataTurboShare(ctx context.Context
 // DeleteDataTurboShare indicates an expected call of DeleteDataTurboShare.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) DeleteDataTurboShare(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDataTurboShare", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteDataTurboShare), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDataTurboShare",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteDataTurboShare), ctx, id)
 }
 
 // DeleteFileSystem mocks base method.
@@ -111,7 +260,37 @@ func (m *MockDMEASeriesClientInterface) DeleteFileSystem(ctx context.Context, fs
 // DeleteFileSystem indicates an expected call of DeleteFileSystem.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) DeleteFileSystem(ctx, fsID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFileSystem", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteFileSystem), ctx, fsID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFileSystem",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteFileSystem), ctx, fsID)
+}
+
+// DeleteKVCache mocks base method.
+func (m *MockDMEASeriesClientInterface) DeleteKVCache(ctx context.Context, kvcacheStoreId string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteKVCache", ctx, kvcacheStoreId)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteKVCache indicates an expected call of DeleteKVCache.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) DeleteKVCache(ctx, kvcacheStoreId any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteKVCache",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteKVCache), ctx, kvcacheStoreId)
+}
+
+// DeleteNfsPrivateShare mocks base method.
+func (m *MockDMEASeriesClientInterface) DeleteNfsPrivateShare(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteNfsPrivateShare", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteNfsPrivateShare indicates an expected call of DeleteNfsPrivateShare.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) DeleteNfsPrivateShare(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNfsPrivateShare", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteNfsPrivateShare), ctx, id)
 }
 
 // DeleteNfsShare mocks base method.
@@ -125,7 +304,38 @@ func (m *MockDMEASeriesClientInterface) DeleteNfsShare(ctx context.Context, id s
 // DeleteNfsShare indicates an expected call of DeleteNfsShare.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) DeleteNfsShare(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNfsShare", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteNfsShare), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNfsShare",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).DeleteNfsShare), ctx, id)
+}
+
+// SyncDeleteFileSystem mocks base method.
+func (m *MockDMEASeriesClientInterface) SyncDeleteFileSystem(ctx context.Context, fsID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncDeleteFileSystem", ctx, fsID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SyncDeleteFileSystem indicates an expected call of SyncDeleteFileSystem.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) SyncDeleteFileSystem(ctx, fsID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncDeleteFileSystem",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).SyncDeleteFileSystem), ctx, fsID)
+}
+
+// SyncDeleteNfsShare mocks base method.
+func (m *MockDMEASeriesClientInterface) SyncDeleteNfsShare(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncDeleteNfsShare", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SyncDeleteNfsShare indicates an expected call of SyncDeleteNfsShare.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) SyncDeleteNfsShare(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncDeleteNfsShare",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).SyncDeleteNfsShare), ctx, id)
 }
 
 // GetBackendID mocks base method.
@@ -139,11 +349,64 @@ func (m *MockDMEASeriesClientInterface) GetBackendID() string {
 // GetBackendID indicates an expected call of GetBackendID.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetBackendID() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBackendID", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetBackendID))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBackendID",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetBackendID))
+}
+
+// GetDTreeByName mocks base method.
+func (m *MockDMEASeriesClientInterface) GetDTreeByName(ctx context.Context, fsID, dtreeName string) (*client.DTreeInfo,
+	error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDTreeByName", ctx, fsID, dtreeName)
+	ret0, _ := ret[0].(*client.DTreeInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDTreeByName indicates an expected call of GetDTreeByName.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetDTreeByName(ctx, fsID, dtreeName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDTreeByName",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetDTreeByName), ctx, fsID, dtreeName)
+}
+
+// GetDTreeQuotaByRawID mocks base method.
+func (m *MockDMEASeriesClientInterface) GetDTreeQuotaByRawID(ctx context.Context,
+	parentRawID string) (*client.QuotaInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDTreeQuotaByRawID", ctx, parentRawID)
+	ret0, _ := ret[0].(*client.QuotaInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDTreeQuotaByRawID indicates an expected call of GetDTreeQuotaByRawID.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetDTreeQuotaByRawID(ctx, parentRawID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDTreeQuotaByRawID",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetDTreeQuotaByRawID), ctx, parentRawID)
+}
+
+// GetDataTurboShareByDTreePath mocks base method.
+func (m *MockDMEASeriesClientInterface) GetDataTurboShareByDTreePath(ctx context.Context,
+	sharePath string) (*client.DTreeDpcShareInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDataTurboShareByDTreePath", ctx, sharePath)
+	ret0, _ := ret[0].(*client.DTreeDpcShareInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDataTurboShareByDTreePath indicates an expected call of GetDataTurboShareByDTreePath.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetDataTurboShareByDTreePath(ctx, sharePath any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataTurboShareByDTreePath",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetDataTurboShareByDTreePath), ctx, sharePath)
 }
 
 // GetDataTurboShareByPath mocks base method.
-func (m *MockDMEASeriesClientInterface) GetDataTurboShareByPath(ctx context.Context, path string) (*client.DataTurboShare, error) {
+func (m *MockDMEASeriesClientInterface) GetDataTurboShareByPath(ctx context.Context,
+	path string) (*client.DataTurboShare, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDataTurboShareByPath", ctx, path)
 	ret0, _ := ret[0].(*client.DataTurboShare)
@@ -154,11 +417,13 @@ func (m *MockDMEASeriesClientInterface) GetDataTurboShareByPath(ctx context.Cont
 // GetDataTurboShareByPath indicates an expected call of GetDataTurboShareByPath.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetDataTurboShareByPath(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataTurboShareByPath", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetDataTurboShareByPath), ctx, path)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataTurboShareByPath",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetDataTurboShareByPath), ctx, path)
 }
 
 // GetDataTurboUserByName mocks base method.
-func (m *MockDMEASeriesClientInterface) GetDataTurboUserByName(ctx context.Context, name string) (*client.DataTurboAdmin, error) {
+func (m *MockDMEASeriesClientInterface) GetDataTurboUserByName(ctx context.Context,
+	name string) (*client.DataTurboAdmin, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDataTurboUserByName", ctx, name)
 	ret0, _ := ret[0].(*client.DataTurboAdmin)
@@ -169,7 +434,8 @@ func (m *MockDMEASeriesClientInterface) GetDataTurboUserByName(ctx context.Conte
 // GetDataTurboUserByName indicates an expected call of GetDataTurboUserByName.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetDataTurboUserByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataTurboUserByName", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetDataTurboUserByName), ctx, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataTurboUserByName",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetDataTurboUserByName), ctx, name)
 }
 
 // GetDeviceSN mocks base method.
@@ -183,11 +449,13 @@ func (m *MockDMEASeriesClientInterface) GetDeviceSN() string {
 // GetDeviceSN indicates an expected call of GetDeviceSN.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetDeviceSN() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeviceSN", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetDeviceSN))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeviceSN",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetDeviceSN))
 }
 
 // GetFileSystemByID mocks base method.
-func (m *MockDMEASeriesClientInterface) GetFileSystemByID(ctx context.Context, fsID string) (*client.FileSystemInfo, error) {
+func (m *MockDMEASeriesClientInterface) GetFileSystemByID(ctx context.Context, fsID string) (*client.FileSystemInfo,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetFileSystemByID", ctx, fsID)
 	ret0, _ := ret[0].(*client.FileSystemInfo)
@@ -198,11 +466,13 @@ func (m *MockDMEASeriesClientInterface) GetFileSystemByID(ctx context.Context, f
 // GetFileSystemByID indicates an expected call of GetFileSystemByID.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetFileSystemByID(ctx, fsID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileSystemByID", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetFileSystemByID), ctx, fsID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileSystemByID",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetFileSystemByID), ctx, fsID)
 }
 
 // GetFileSystemByName mocks base method.
-func (m *MockDMEASeriesClientInterface) GetFileSystemByName(ctx context.Context, name string) (*client.FileSystemInfo, error) {
+func (m *MockDMEASeriesClientInterface) GetFileSystemByName(ctx context.Context, name string) (*client.FileSystemInfo,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetFileSystemByName", ctx, name)
 	ret0, _ := ret[0].(*client.FileSystemInfo)
@@ -213,11 +483,13 @@ func (m *MockDMEASeriesClientInterface) GetFileSystemByName(ctx context.Context,
 // GetFileSystemByName indicates an expected call of GetFileSystemByName.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetFileSystemByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileSystemByName", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetFileSystemByName), ctx, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileSystemByName",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetFileSystemByName), ctx, name)
 }
 
 // GetHyperScalePoolByName mocks base method.
-func (m *MockDMEASeriesClientInterface) GetHyperScalePoolByName(ctx context.Context, name string) (*client.HyperScalePool, error) {
+func (m *MockDMEASeriesClientInterface) GetHyperScalePoolByName(ctx context.Context,
+	name string) (*client.HyperScalePool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetHyperScalePoolByName", ctx, name)
 	ret0, _ := ret[0].(*client.HyperScalePool)
@@ -228,7 +500,8 @@ func (m *MockDMEASeriesClientInterface) GetHyperScalePoolByName(ctx context.Cont
 // GetHyperScalePoolByName indicates an expected call of GetHyperScalePoolByName.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetHyperScalePoolByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHyperScalePoolByName", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetHyperScalePoolByName), ctx, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHyperScalePoolByName",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetHyperScalePoolByName), ctx, name)
 }
 
 // GetHyperScalePools mocks base method.
@@ -243,11 +516,30 @@ func (m *MockDMEASeriesClientInterface) GetHyperScalePools(ctx context.Context) 
 // GetHyperScalePools indicates an expected call of GetHyperScalePools.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetHyperScalePools(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHyperScalePools", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetHyperScalePools), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHyperScalePools",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetHyperScalePools), ctx)
+}
+
+// GetNfsShareByDTreePath mocks base method.
+func (m *MockDMEASeriesClientInterface) GetNfsShareByDTreePath(ctx context.Context,
+	sharePath string) (*client.DTreeNfsShareInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNfsShareByDTreePath", ctx, sharePath)
+	ret0, _ := ret[0].(*client.DTreeNfsShareInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNfsShareByDTreePath indicates an expected call of GetNfsShareByDTreePath.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetNfsShareByDTreePath(ctx, sharePath any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNfsShareByDTreePath",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetNfsShareByDTreePath), ctx, sharePath)
 }
 
 // GetNfsShareByPath mocks base method.
-func (m *MockDMEASeriesClientInterface) GetNfsShareByPath(ctx context.Context, path string) (*client.NfsShareInfo, error) {
+func (m *MockDMEASeriesClientInterface) GetNfsShareByPath(ctx context.Context, path string) (*client.NfsShareInfo,
+	error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNfsShareByPath", ctx, path)
 	ret0, _ := ret[0].(*client.NfsShareInfo)
@@ -258,7 +550,8 @@ func (m *MockDMEASeriesClientInterface) GetNfsShareByPath(ctx context.Context, p
 // GetNfsShareByPath indicates an expected call of GetNfsShareByPath.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetNfsShareByPath(ctx, path any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNfsShareByPath", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetNfsShareByPath), ctx, path)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNfsShareByPath",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetNfsShareByPath), ctx, path)
 }
 
 // GetStorageID mocks base method.
@@ -272,7 +565,42 @@ func (m *MockDMEASeriesClientInterface) GetStorageID() string {
 // GetStorageID indicates an expected call of GetStorageID.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetStorageID() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStorageID", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetStorageID))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStorageID",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetStorageID))
+}
+
+// GetStoragePoolByName mocks base method.
+func (m *MockDMEASeriesClientInterface) GetStoragePoolByName(ctx context.Context,
+	name, zoneID string) (*client.StoragePool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStoragePoolByName", ctx, name, zoneID)
+	ret0, _ := ret[0].(*client.StoragePool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetStoragePoolByName indicates an expected call of GetStoragePoolByName.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetStoragePoolByName(ctx, name, zoneID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStoragePoolByName",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetStoragePoolByName), ctx, name, zoneID)
+}
+
+// GetStoragePools mocks base method.
+func (m *MockDMEASeriesClientInterface) GetStoragePools(ctx context.Context, zoneID string) ([]*client.StoragePool,
+	error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStoragePools", ctx, zoneID)
+	ret0, _ := ret[0].([]*client.StoragePool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetStoragePools indicates an expected call of GetStoragePools.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetStoragePools(ctx, zoneID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStoragePools",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetStoragePools), ctx, zoneID)
 }
 
 // GetTaskInfos mocks base method.
@@ -287,7 +615,38 @@ func (m *MockDMEASeriesClientInterface) GetTaskInfos(ctx context.Context, taskID
 // GetTaskInfos indicates an expected call of GetTaskInfos.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetTaskInfos(ctx, taskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskInfos", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetTaskInfos), ctx, taskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskInfos",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetTaskInfos), ctx, taskID)
+}
+
+// GetZoneID mocks base method.
+func (m *MockDMEASeriesClientInterface) GetZoneID() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetZoneID")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetZoneID indicates an expected call of GetZoneID.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) GetZoneID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetZoneID",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).GetZoneID))
+}
+
+// IsLocalMode mocks base method.
+func (m *MockDMEASeriesClientInterface) IsLocalMode() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsLocalMode")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsLocalMode indicates an expected call of IsLocalMode.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) IsLocalMode() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsLocalMode",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).IsLocalMode))
 }
 
 // Login mocks base method.
@@ -301,7 +660,8 @@ func (m *MockDMEASeriesClientInterface) Login(ctx context.Context) error {
 // Login indicates an expected call of Login.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) Login(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Login", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).Login), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Login",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).Login), ctx)
 }
 
 // Logout mocks base method.
@@ -313,7 +673,58 @@ func (m *MockDMEASeriesClientInterface) Logout(ctx context.Context) {
 // Logout indicates an expected call of Logout.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) Logout(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Logout", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).Logout), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Logout",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).Logout), ctx)
+}
+
+// QueryKVCache mocks base method.
+func (m *MockDMEASeriesClientInterface) QueryKVCache(ctx context.Context,
+	params *client.QueryKVCacheParams) (*client.KVCacheStore, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryKVCache", ctx, params)
+	ret0, _ := ret[0].(*client.KVCacheStore)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryKVCache indicates an expected call of QueryKVCache.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) QueryKVCache(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryKVCache",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).QueryKVCache), ctx, params)
+}
+
+// QueryVstores mocks base method.
+func (m *MockDMEASeriesClientInterface) QueryVstores(ctx context.Context,
+	params *client.VstoreQueryParams) ([]*client.VstoreInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryVstores", ctx, params)
+	ret0, _ := ret[0].([]*client.VstoreInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryVstores indicates an expected call of QueryVstores.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) QueryVstores(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryVstores",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).QueryVstores), ctx, params)
+}
+
+// QueryZoneBySN mocks base method.
+func (m *MockDMEASeriesClientInterface) QueryZoneBySN(ctx context.Context, sn string) (*client.ZoneInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryZoneBySN", ctx, sn)
+	ret0, _ := ret[0].(*client.ZoneInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryZoneBySN indicates an expected call of QueryZoneBySN.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) QueryZoneBySN(ctx, sn any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryZoneBySN",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).QueryZoneBySN), ctx, sn)
 }
 
 // ReLogin mocks base method.
@@ -327,7 +738,8 @@ func (m *MockDMEASeriesClientInterface) ReLogin(ctx context.Context) error {
 // ReLogin indicates an expected call of ReLogin.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) ReLogin(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReLogin", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).ReLogin), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReLogin",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).ReLogin), ctx)
 }
 
 // SetSystemInfo mocks base method.
@@ -341,11 +753,42 @@ func (m *MockDMEASeriesClientInterface) SetSystemInfo(ctx context.Context, sn st
 // SetSystemInfo indicates an expected call of SetSystemInfo.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) SetSystemInfo(ctx, sn any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSystemInfo", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).SetSystemInfo), ctx, sn)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSystemInfo",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).SetSystemInfo), ctx, sn)
+}
+
+// SetZoneID mocks base method.
+func (m *MockDMEASeriesClientInterface) SetZoneID(id string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetZoneID", id)
+}
+
+// SetZoneID indicates an expected call of SetZoneID.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) SetZoneID(id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetZoneID",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).SetZoneID), id)
+}
+
+// UpdateDTreeQuota mocks base method.
+func (m *MockDMEASeriesClientInterface) UpdateDTreeQuota(ctx context.Context, quotaID string,
+	params *client.UpdateQuotaParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDTreeQuota", ctx, quotaID, params)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateDTreeQuota indicates an expected call of UpdateDTreeQuota.
+func (mr *MockDMEASeriesClientInterfaceMockRecorder) UpdateDTreeQuota(ctx, quotaID, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDTreeQuota",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).UpdateDTreeQuota), ctx, quotaID, params)
 }
 
 // UpdateFileSystem mocks base method.
-func (m *MockDMEASeriesClientInterface) UpdateFileSystem(ctx context.Context, fsID string, params *client.UpdateFileSystemParams) error {
+func (m *MockDMEASeriesClientInterface) UpdateFileSystem(ctx context.Context, fsID string,
+	params *client.UpdateFileSystemParams) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateFileSystem", ctx, fsID, params)
 	ret0, _ := ret[0].(error)
@@ -355,7 +798,8 @@ func (m *MockDMEASeriesClientInterface) UpdateFileSystem(ctx context.Context, fs
 // UpdateFileSystem indicates an expected call of UpdateFileSystem.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) UpdateFileSystem(ctx, fsID, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateFileSystem", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).UpdateFileSystem), ctx, fsID, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateFileSystem",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).UpdateFileSystem), ctx, fsID, params)
 }
 
 // ValidateLogin mocks base method.
@@ -369,5 +813,6 @@ func (m *MockDMEASeriesClientInterface) ValidateLogin(ctx context.Context) error
 // ValidateLogin indicates an expected call of ValidateLogin.
 func (mr *MockDMEASeriesClientInterfaceMockRecorder) ValidateLogin(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateLogin", reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).ValidateLogin), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateLogin",
+		reflect.TypeOf((*MockDMEASeriesClientInterface)(nil).ValidateLogin), ctx)
 }

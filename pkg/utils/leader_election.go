@@ -36,13 +36,20 @@ type LeaderElectionConf struct {
 	LeaseDuration time.Duration
 	RenewDeadline time.Duration
 	RetryPeriod   time.Duration
+	Client        kubernetes.Interface
+	Recorder      record.EventRecorder
 }
 
 // RunWithLeaderElection run with leader election
-func RunWithLeaderElection(ctx context.Context, leaderElection LeaderElectionConf, k8sClient *kubernetes.Clientset,
-	recorder record.EventRecorder, runFunc func(ctx context.Context, ch chan os.Signal), ch chan os.Signal) {
+func RunWithLeaderElection(ctx context.Context, leaderElection LeaderElectionConf,
+	runFunc func(ctx context.Context, ch chan os.Signal), ch chan os.Signal) {
 	if ch == nil {
-		log.Errorln("the channel should not be nil")
+		log.AddContext(ctx).Errorln("The channel should not be nil")
+		return
+	}
+	if leaderElection.Client == nil {
+		log.AddContext(ctx).Errorln("The leaderElection client should not be nil")
+		ch <- syscall.SIGINT
 		return
 	}
 
@@ -57,9 +64,9 @@ func RunWithLeaderElection(ctx context.Context, leaderElection LeaderElectionCon
 		resourcelock.LeasesResourceLock,
 		app.GetGlobalConfig().Namespace,
 		leaderElection.LeaderName,
-		k8sClient.CoreV1(),
-		k8sClient.CoordinationV1(),
-		resourcelock.ResourceLockConfig{Identity: id, EventRecorder: recorder})
+		leaderElection.Client.CoreV1(),
+		leaderElection.Client.CoordinationV1(),
+		resourcelock.ResourceLockConfig{Identity: id, EventRecorder: leaderElection.Recorder})
 	if err != nil {
 		log.AddContext(ctx).Errorf("Error creating resource lock: %v", err)
 		ch <- syscall.SIGINT

@@ -33,17 +33,20 @@ type ExpandVolumeModel struct {
 
 // Expander is used to expand a filesystem volume
 type Expander struct {
-	ctx    context.Context
-	cli    client.DMEASeriesClientInterface
-	params *ExpandVolumeModel
+	ctx     context.Context
+	cli     client.DMEASeriesClientInterface
+	params  *ExpandVolumeModel
+	handler ModeHandler
 }
 
 // NewExpander inits a new filesystem volume expander
-func NewExpander(ctx context.Context, cli client.DMEASeriesClientInterface, params *ExpandVolumeModel) *Expander {
+func NewExpander(ctx context.Context, cli client.DMEASeriesClientInterface, params *ExpandVolumeModel,
+	handler ModeHandler) *Expander {
 	return &Expander{
-		ctx:    ctx,
-		cli:    cli,
-		params: params,
+		ctx:     ctx,
+		cli:     cli,
+		params:  params,
+		handler: handler,
 	}
 }
 
@@ -71,14 +74,10 @@ func (e *Expander) expandFilesystem() error {
 			e.params.Name, e.params.Capacity, fs.TotalCapacityInByte)
 	}
 
-	pool, err := e.cli.GetHyperScalePoolByName(e.ctx, fs.StoragePoolName)
-	if err != nil {
-		return fmt.Errorf("get storage pool by name: %s failed: %w", fs.StoragePoolName, err)
-	}
-
-	if pool == nil {
-		return fmt.Errorf("failed to expand filesystem: %s, pool: %s does not exist", e.params.Name,
-			fs.StoragePoolName)
+	// Pool validation
+	_, poolErr := e.handler.GetPool(e.ctx, fs.StoragePoolName)
+	if poolErr != nil {
+		return fmt.Errorf("get storage pool by name: %s failed: %w", fs.StoragePoolName, poolErr)
 	}
 
 	params := &client.UpdateFileSystemParams{Capacity: transDmeCapacityFromByteIoGb(e.params.Capacity)}

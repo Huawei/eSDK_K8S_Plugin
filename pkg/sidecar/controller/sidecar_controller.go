@@ -45,6 +45,7 @@ const (
 	defaultRetryIntervalStart = 5 * time.Second
 	defaultRetryIntervalMax   = 5 * time.Minute
 	defaultProvisionTimeout   = 5 * time.Minute
+	backendResource           = "backend"
 )
 
 var (
@@ -169,7 +170,7 @@ func (ctrl *backendController) Run(ctx context.Context, workers int, stopCh <-ch
 
 	ctrl.initializeCaches(ctx, ctrl.contentLister)
 	for i := 0; i < workers; i++ {
-		go wait.Until(ctrl.runContentWorker, time.Second, stopCh)
+		go wait.Until(func() { ctrl.runContentWorker(ctx) }, time.Second, stopCh)
 	}
 
 	if stopCh != nil {
@@ -207,19 +208,26 @@ func (ctrl *backendController) updateContentStore(ctx context.Context, content i
 	return utils.StoreObjectUpdate(ctx, ctrl.contentStore, content, "storageBackendContent")
 }
 
-func (ctrl *backendController) runContentWorker() {
-	for ctrl.processNextContentWorkItem() {
+func (ctrl *backendController) runContentWorker(ctx context.Context) {
+	for {
+		if processNext := ctrl.processNextContentWorkItem(ctx); !processNext {
+			break
+		}
 	}
 }
 
-func (ctrl *backendController) processNextContentWorkItem() bool {
+func (ctrl *backendController) processNextContentWorkItem(ctx context.Context) bool {
+	ctx, err := log.SetRequestInfoWithTag(ctx, backendResource)
+	if err != nil {
+		log.Warningf("Set request id error %v", err)
+	}
 	obj, shutdown := ctrl.contentQueue.Get()
 	if shutdown {
 		log.Infof("processNextContentWorkItem obj: [%v], shutdown: [%v]", obj, shutdown)
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), *provisionTimeout)
+	ctx, cancel := context.WithTimeout(ctx, *provisionTimeout)
 	defer cancel()
 	defer ctrl.contentQueue.Done(obj)
 	if err := ctrl.handleContentWork(ctx, obj); err != nil {

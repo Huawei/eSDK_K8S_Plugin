@@ -25,6 +25,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
@@ -121,4 +123,50 @@ func mockGetSecret(data map[string][]byte, err error) *gomonkey.Patches {
 		func(_ *k8sutils.KubeClient, ctx context.Context, secretName, namespace string) (*corev1.Secret, error) {
 			return &corev1.Secret{Data: data}, err
 		})
+}
+
+func TestGetLeaderElectionClient_BuildConfigFailed(t *testing.T) {
+	// arrange
+	patches := gomonkey.ApplyFuncReturn(k8sutils.BuildConfig, nil, errors.New("build config failed"))
+	defer patches.Reset()
+
+	// action
+	client, err := GetLeaderElectionClient()
+
+	// assert
+	assert.Nil(t, client)
+	assert.Error(t, err)
+}
+
+func TestGetLeaderElectionClient_NewForConfigFailed(t *testing.T) {
+	// arrange
+	fakeConfig := &rest.Config{}
+	patches := gomonkey.ApplyFuncReturn(k8sutils.BuildConfig, fakeConfig, nil)
+	defer patches.Reset()
+	patches.ApplyFuncReturn(kubernetes.NewForConfig, nil, errors.New("new client failed"))
+	defer patches.Reset()
+
+	// action
+	client, err := GetLeaderElectionClient()
+
+	// assert
+	assert.Nil(t, client)
+	assert.Error(t, err)
+}
+
+func TestGetLeaderElectionClient_Success(t *testing.T) {
+	// arrange
+	fakeConfig := &rest.Config{}
+	fakeClient := &kubernetes.Clientset{}
+	patches := gomonkey.ApplyFuncReturn(k8sutils.BuildConfig, fakeConfig, nil)
+	defer patches.Reset()
+	patches.ApplyFuncReturn(kubernetes.NewForConfig, fakeClient, nil)
+	defer patches.Reset()
+
+	// action
+	client, err := GetLeaderElectionClient()
+
+	// assert
+	assert.NoError(t, err)
+	assert.Equal(t, fakeClient, client)
 }

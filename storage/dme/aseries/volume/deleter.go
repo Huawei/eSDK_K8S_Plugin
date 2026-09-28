@@ -19,83 +19,23 @@ package volume
 
 import (
 	"context"
-
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/dme/aseries/client"
 )
 
-// DeleteVolumeModel is used to delete a filesystem volume
-type DeleteVolumeModel struct {
-	Protocol string
-	Name     string
-}
-
-func (model *DeleteVolumeModel) sharePath() string {
-	return "/" + model.Name + "/"
-}
-
-// Deleter is used to delete a filesystem volume
+// Deleter is used to delete a volume via ModeHandler
 type Deleter struct {
-	ctx    context.Context
-	cli    client.DMEASeriesClientInterface
-	params *DeleteVolumeModel
+	ctx     context.Context
+	handler ModeHandler
 }
 
-// NewDeleter inits a new filesystem volume deleter
-func NewDeleter(ctx context.Context, cli client.DMEASeriesClientInterface, params *DeleteVolumeModel) *Deleter {
+// NewDeleter inits a new volume deleter
+func NewDeleter(ctx context.Context, handler ModeHandler) *Deleter {
 	return &Deleter{
-		ctx:    ctx,
-		cli:    cli,
-		params: params,
+		ctx:     ctx,
+		handler: handler,
 	}
 }
 
-// Delete deletes a filesystem resource from storage
-func (c *Deleter) Delete() error {
-	if err := c.deleteNfsShare(); err != nil {
-		return err
-	}
-
-	if err := c.deleteDataTurboShare(); err != nil {
-		return err
-	}
-
-	if err := c.deleteFilesystem(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *Deleter) deleteNfsShare() error {
-	nfsShare, err := c.cli.GetNfsShareByPath(c.ctx, c.params.sharePath())
-	if err != nil {
-		return err
-	}
-	if nfsShare == nil {
-		return nil
-	}
-	return c.cli.DeleteNfsShare(c.ctx, nfsShare.ID)
-}
-
-func (c *Deleter) deleteDataTurboShare() error {
-	dtShare, err := c.cli.GetDataTurboShareByPath(c.ctx, c.params.sharePath())
-	if err != nil {
-		return err
-	}
-	if dtShare == nil {
-		return nil
-	}
-	return c.cli.DeleteDataTurboShare(c.ctx, dtShare.ID)
-}
-
-func (c *Deleter) deleteFilesystem() error {
-	fs, err := c.cli.GetFileSystemByName(c.ctx, c.params.Name)
-	if err != nil {
-		return err
-	}
-
-	if fs == nil {
-		return nil
-	}
-	return c.cli.DeleteFileSystem(c.ctx, fs.ID)
+// Delete deletes a volume resource from storage
+func (d *Deleter) Delete() error {
+	return d.handler.Delete(d.ctx)
 }

@@ -24,6 +24,8 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app"
+	cfg "github.com/Huawei/eSDK_K8S_Plugin/v4/csi/app/config"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/base/attacher"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/client"
@@ -56,6 +58,16 @@ func TestDoradoV6Attacher_ControllerAttach_Success(t *testing.T) {
 	// mock
 	mock := gomonkey.NewPatches()
 	defer mock.Reset()
+
+	// Save and restore GetGlobalConfig to avoid affecting other tests
+	originalGetGlobalConfig := app.GetGlobalConfig
+	app.GetGlobalConfig = func() *cfg.CompletedConfig {
+		return cfg.MockCompletedConfig()
+	}
+	defer func() {
+		app.GetGlobalConfig = originalGetGlobalConfig
+	}()
+
 	mock.ApplyMethodReturn(&client.OceanstorClient{}, "GetHostByName",
 		map[string]interface{}{"ID": "1", "NAME": hostName}, nil).
 		ApplyFuncReturn(attacher.GetSingleInitiator, "initiator1", nil).

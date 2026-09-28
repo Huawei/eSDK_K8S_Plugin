@@ -304,7 +304,6 @@ func (p *OceanstorNasPlugin) DeleteSnapshot(ctx context.Context, snapshotParentI
 	}
 	nas := p.getNasObj()
 
-	snapshotName = utils.GetFSSnapshotName(snapshotName)
 	err := nas.DeleteSnapshot(ctx, snapshotParentId, snapshotName)
 	if err != nil {
 		return err

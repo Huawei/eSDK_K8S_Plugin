@@ -21,6 +21,7 @@ import (
 	"reflect"
 
 	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/util/retry"
 
 	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/lib/drcsi"
@@ -31,17 +32,19 @@ import (
 func (ctrl *backendController) initContentStatus(ctx context.Context, content *xuanwuv1.StorageBackendContent) (
 	*xuanwuv1.StorageBackendContent, error) {
 
-	newContent, err := utils.GetContent(ctx, ctrl.clientSet, content.Name)
-	if err != nil {
-		return nil, fmt.Errorf("initContentStatus: failed to get storageBackendContent %s from api server: %v",
-			content.Name, err)
-	}
+	var newContent *xuanwuv1.StorageBackendContent
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		var getErr error
+		newContent, getErr = utils.GetContent(ctx, ctrl.clientSet, content.Name)
+		if getErr != nil {
+			return fmt.Errorf("initContentStatus: failed to get storageBackendContent %s from api server: %v",
+				content.Name, getErr)
+		}
 
-	if newContent.Status != nil {
-		return newContent, nil
-	}
+		if newContent.Status != nil {
+			return nil
+		}
 
-	if newContent.Status == nil {
 		newContent.Status = &xuanwuv1.StorageBackendContentStatus{
 			ContentName:     "",
 			VendorName:      "",
@@ -49,10 +52,50 @@ func (ctrl *backendController) initContentStatus(ctx context.Context, content *x
 			Online:          true,
 			Capabilities:    make(map[string]bool),
 		}
+
+		log.AddContext(ctx).Infof("Init content %s with status %+v.", newContent.Name, newContent.Status)
+		var updateErr error
+		newContent, updateErr = utils.UpdateContentStatus(ctx, ctrl.clientSet, newContent)
+		return updateErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return newContent, nil
+}
+
+// updateEvent holds the reason and message for the event recorded by updateContentStatusWithEvent.
+type updateEvent struct {
+	reason  string
+	message string
+}
+
+// fetchFreshAndUpdateContent fetches fresh content from the API server, computes
+// the diff via shouldUpdateContent, and calls updateContentStatusWithEvent if needed.
+// This avoids stale informer cache values overwriting fields concurrently modified
+// by other components (e.g., Online set by controller).
+func (ctrl *backendController) fetchFreshAndUpdateContent(ctx context.Context,
+	content *xuanwuv1.StorageBackendContent, status *drcsi.GetBackendStatsResponse,
+	backendId string, event updateEvent) (*xuanwuv1.StorageBackendContent, error) {
+
+	freshContent, err := utils.GetContent(ctx, ctrl.clientSet, content.Name)
+	if err != nil {
+		log.AddContext(ctx).Errorf("failed to get fresh content %s: %v", content.Name, err)
+		return nil, err
+	}
+	if freshContent.Status == nil {
+		freshContent.Status = &xuanwuv1.StorageBackendContentStatus{}
+	}
+	if !ctrl.shouldUpdateContent(ctx, freshContent, status, backendId) {
+		return freshContent, nil
 	}
 
-	log.AddContext(ctx).Infof("Init content %s with status %+v.", newContent.Name, newContent.Status)
-	return utils.UpdateContentStatus(ctx, ctrl.clientSet, newContent)
+	newContent, err := ctrl.updateContentStatusWithEvent(ctx, freshContent, event.reason, event.message)
+	if err != nil {
+		log.AddContext(ctx).Errorf("update content %s status failed, error: %v", content.Name, err)
+		return nil, err
+	}
+	return newContent, nil
 }
 
 func (ctrl *backendController) createContent(ctx context.Context, content *xuanwuv1.StorageBackendContent) (
@@ -67,19 +110,8 @@ func (ctrl *backendController) createContent(ctx context.Context, content *xuanw
 		return nil, err
 	}
 
-	if !ctrl.shouldUpdateContent(ctx, content, nil, backendId) {
-		return content, nil
-	}
-
-	newContent, err := ctrl.updateContentStatusWithEvent(
-		ctx, content, "CreatedContent", "Successful created content with provider")
-	if err != nil {
-		log.AddContext(ctx).Errorf("createContent: update content %s status failed, error: %v",
-			content.Name, err)
-		return content, err
-	}
-
-	return newContent, nil
+	return ctrl.fetchFreshAndUpdateContent(ctx, content, nil, backendId,
+		updateEvent{reason: "CreatedContent", message: "Successful created content with provider"})
 }
 
 func (ctrl *backendController) createContentWrapper(ctx context.Context,
@@ -197,25 +229,29 @@ func (ctrl *backendController) getContentStats(ctx context.Context, content *xua
 	}
 
 	log.AddContext(ctx).Debugf("getContentStats status %+v", status)
-	if !ctrl.shouldUpdateContent(ctx, content, status, "") {
-		return content, nil
-	}
 
-	newContent, err := ctrl.updateContentStatusWithEvent(
-		ctx, content, "UpdateContentStatus", "Successful update content status")
-	if err != nil {
-		log.AddContext(ctx).Errorf("getContentStats: update content %s status failed, error: %v",
-			content.Name, err)
-		return content, err
-	}
-
-	return newContent, nil
+	return ctrl.fetchFreshAndUpdateContent(ctx, content, status, "",
+		updateEvent{reason: "UpdateContentStatus", message: "Successful update content status"})
 }
 
 func (ctrl *backendController) updateContentStatusWithEvent(ctx context.Context,
 	content *xuanwuv1.StorageBackendContent, reason, message string) (*xuanwuv1.StorageBackendContent, error) {
 
-	newContent, err := utils.UpdateContentStatus(ctx, ctrl.clientSet, content)
+	desiredStatus := content.Status.DeepCopy()
+	var newContent *xuanwuv1.StorageBackendContent
+
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		var getErr error
+		newContent, getErr = utils.GetContent(ctx, ctrl.clientSet, content.Name)
+		if getErr != nil {
+			return getErr
+		}
+
+		newContent.Status = desiredStatus
+		var updateErr error
+		newContent, updateErr = utils.UpdateContentStatus(ctx, ctrl.clientSet, newContent)
+		return updateErr
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +259,7 @@ func (ctrl *backendController) updateContentStatusWithEvent(ctx context.Context,
 	ctrl.eventRecorder.Event(newContent, coreV1.EventTypeNormal, reason, message)
 	if _, err = ctrl.updateContentStore(ctx, newContent); err != nil {
 		log.AddContext(ctx).Errorf("update content %s status error: failed to update internal cache %v",
-			newContent.Name, err)
+			content.Name, err)
 		return nil, err
 	}
 	return newContent, nil
@@ -240,16 +276,8 @@ func (ctrl *backendController) updateContentObj(
 		return nil, err
 	}
 
-	if !ctrl.shouldUpdateContent(ctx, content, nil, "") {
-		return content, nil
-	}
-
-	newContent, err := ctrl.updateContentStatusWithEvent(
-		ctx, content, "UpdateContent", "Successful update content")
-	if err != nil {
-		return nil, fmt.Errorf("updateContentObj: update content %s status failed, error: %w", content.Name, err)
-	}
-	return newContent, nil
+	return ctrl.fetchFreshAndUpdateContent(ctx, content, nil, "",
+		updateEvent{reason: "UpdateContent", message: "Successful update content"})
 }
 
 func (ctrl *backendController) updateContentWrapper(ctx context.Context,

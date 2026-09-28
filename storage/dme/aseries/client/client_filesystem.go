@@ -25,15 +25,22 @@ import (
 )
 
 const (
-	createFilesystemUrl     = "/rest/fileservice/v1/filesystems/customize-filesystems"
-	filesystemWithFsIDUrl   = "/rest/fileservice/v1/filesystems/%s"
-	deleteFilesystemUrl     = "/rest/fileservice/v1/filesystems/delete"
-	batchQueryFilesystemUrl = "/rest/fileservice/v1/filesystems/query"
-	queryNfsShareUrl        = "/rest/fileservice/v1/nfs-shares/query"
-	deleteNfsShareUrl       = "/rest/fileservice/v1/nfs-shares/delete"
-	queryDataTurboShareUrl  = "/rest/fileservice/v1/dpc-shares/query"
-	deleteDataTurboShareUrl = "/rest/fileservice/v1/dpc-shares/delete"
-	queryDataTurboUserUrl   = "/rest/fileservice/v1/dpc-administrators/query"
+	createFilesystemUrl       = "/rest/fileservice/v1/filesystems/customize-filesystems"
+	filesystemWithFsIDUrl     = "/rest/fileservice/v1/filesystems/%s"
+	syncFilesystemWithFsIDUrl = "/rest/fileservice/v1-sync/filesystems/%s"
+	deleteFilesystemUrl       = "/rest/fileservice/v1/filesystems/delete"
+	batchQueryFilesystemUrl   = "/rest/fileservice/v1/filesystems/query"
+	queryNfsShareUrl          = "/rest/fileservice/v1/nfs-shares/query"
+	deleteNfsShareUrl         = "/rest/fileservice/v1/nfs-shares/delete"
+	queryDataTurboShareUrl    = "/rest/fileservice/v1/dpc-shares/query"
+	deleteDataTurboShareUrl   = "/rest/fileservice/v1/dpc-shares/delete"
+	queryDataTurboUserUrl     = "/rest/fileservice/v1/dpc-administrators/query"
+	syncDeleteNfsShareUrl     = "/rest/fileservice/v1-sync/nfs-shares/%s" // shared with DTree
+	createKVCacheUrl          = "/rest/fileservice/v1-sync/kv-cache-stores"
+	deleteKVCacheUrl          = "/rest/fileservice/v1-sync/kv-cache-stores/%s"
+	queryKVCacheUrl           = "/rest/kvcachemgmt/v1/kv-cache-stores/query"
+
+	privateShareMode = "1"
 )
 
 // Filesystem defines interfaces for file system operations
@@ -48,6 +55,12 @@ type Filesystem interface {
 	GetDataTurboUserByName(ctx context.Context, name string) (*DataTurboAdmin, error)
 	GetNfsShareByPath(ctx context.Context, path string) (*NfsShareInfo, error)
 	DeleteNfsShare(ctx context.Context, id string) error
+	DeleteNfsPrivateShare(ctx context.Context, id string) error
+	CreateKVCache(ctx context.Context, params *CreateKVCacheParams) (*KVCacheStore, error)
+	DeleteKVCache(ctx context.Context, kvcacheStoreId string) error
+	QueryKVCache(ctx context.Context, params *QueryKVCacheParams) (*KVCacheStore, error)
+	SyncDeleteFileSystem(ctx context.Context, fsID string) error
+	SyncDeleteNfsShare(ctx context.Context, id string) error
 }
 
 // FilesystemClient defines client implements the Filesystem interface
@@ -60,8 +73,10 @@ func (cli *FilesystemClient) UpdateFileSystem(ctx context.Context, fsID string, 
 	if params == nil {
 		return errors.New("params is nil")
 	}
-	reqUrl := fmt.Sprintf(filesystemWithFsIDUrl, fsID)
-	err := gracefulCallWithTaskWait(ctx, cli, http.MethodPut, reqUrl, params)
+	err := gracefulCallWithSyncFallback(ctx, cli, http.MethodPut, &SyncFallbackUrls{
+		SyncUrl:  fmt.Sprintf(syncFilesystemWithFsIDUrl, fsID),
+		AsyncUrl: fmt.Sprintf(filesystemWithFsIDUrl, fsID),
+	}, params)
 	if err != nil {
 		return fmt.Errorf("update filesystem for fsId: %s failed: %w", fsID, err)
 	}
@@ -83,7 +98,7 @@ func (cli *FilesystemClient) DeleteFileSystem(ctx context.Context, fsID string) 
 // GetFileSystemByID used for get file system by id
 func (cli *FilesystemClient) GetFileSystemByID(ctx context.Context, fsID string) (*FileSystemInfo, error) {
 	reqUrl := fmt.Sprintf(filesystemWithFsIDUrl, fsID)
-	resp, err := gracefulCall[FileSystemInfo](ctx, cli, http.MethodPut, reqUrl, nil)
+	resp, err := gracefulCall[FileSystemInfo](ctx, cli, http.MethodGet, reqUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get filesystem for fsId: %s failed: %w", fsID, err)
 	}
@@ -128,7 +143,7 @@ func (cli *FilesystemClient) GetDataTurboShareByPath(ctx context.Context,
 	path string) (*DataTurboShare, error) {
 	param := &GetDataTurboShareParam{
 		StorageId: cli.GetStorageID(),
-		ZoneId:    cli.GetStorageID(),
+		ZoneId:    cli.GetZoneID(),
 		SharePath: path,
 	}
 	resp, err := gracefulCall[DataTurboShareResponse](ctx, cli, http.MethodPost, queryDataTurboShareUrl, param)
@@ -157,7 +172,7 @@ func (cli *FilesystemClient) DeleteDataTurboShare(ctx context.Context, id string
 func (cli *FilesystemClient) GetDataTurboUserByName(ctx context.Context, name string) (*DataTurboAdmin, error) {
 	param := &GetDataTurboAdminParam{
 		StorageId: cli.GetStorageID(),
-		ZoneId:    cli.GetStorageID(),
+		ZoneId:    cli.GetZoneID(),
 		Name:      name,
 	}
 	resp, err := gracefulCall[DataTurboAdminResponse](ctx, cli, http.MethodPost, queryDataTurboUserUrl, param)
@@ -175,7 +190,7 @@ func (cli *FilesystemClient) GetNfsShareByPath(ctx context.Context, path string)
 	param := &GetNfsShareParam{
 		SharePath: path,
 		StorageId: cli.GetStorageID(),
-		ZoneId:    cli.GetStorageID(),
+		ZoneId:    cli.GetZoneID(),
 	}
 	resp, err := gracefulCall[NfsShareInfoResponse](ctx, cli, http.MethodPost, queryNfsShareUrl, param)
 	if err != nil {
@@ -195,6 +210,70 @@ func (cli *FilesystemClient) DeleteNfsShare(ctx context.Context, id string) erro
 	err := gracefulCallWithTaskWait(ctx, cli, http.MethodPost, deleteNfsShareUrl, param)
 	if err != nil {
 		return fmt.Errorf("delete nfs share for share id: %s failed: %w", id, err)
+	}
+	return nil
+}
+
+// DeleteNfsPrivateShare used for delete nfs private share by id
+func (cli *FilesystemClient) DeleteNfsPrivateShare(ctx context.Context, id string) error {
+	param := &DeleteNfsShareParam{
+		NfsShareIds:  []string{id},
+		SharePrivate: privateShareMode,
+	}
+	err := gracefulCallWithTaskWait(ctx, cli, http.MethodPost, deleteNfsShareUrl, param)
+	if err != nil {
+		return fmt.Errorf("delete nfs share for share id: %s failed: %w", id, err)
+	}
+	return nil
+}
+
+// CreateKVCache creates a KVCache store (one-stop: FS + share + KVCache)
+func (cli *FilesystemClient) CreateKVCache(ctx context.Context, params *CreateKVCacheParams) (*KVCacheStore, error) {
+	resp, err := gracefulCall[KVCacheStore](ctx, cli, http.MethodPost, createKVCacheUrl, params)
+	if err != nil {
+		return nil, fmt.Errorf("create KVCache failed: %w", err)
+	}
+	return resp, nil
+}
+
+// DeleteKVCache deletes a KVCache store by raw_id (one-stop: deletes FS + share + KVCache)
+func (cli *FilesystemClient) DeleteKVCache(ctx context.Context, kvcacheStoreId string) error {
+	url := fmt.Sprintf(deleteKVCacheUrl, kvcacheStoreId)
+	_, err := gracefulCall[struct{}](ctx, cli, http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("delete KVCache %s failed: %w", kvcacheStoreId, err)
+	}
+	return nil
+}
+
+// QueryKVCache queries KVCache stores by parameters
+func (cli *FilesystemClient) QueryKVCache(ctx context.Context, params *QueryKVCacheParams) (*KVCacheStore, error) {
+	resp, err := gracefulCall[KVCacheQueryResponse](ctx, cli, http.MethodPost, queryKVCacheUrl, params)
+	if err != nil {
+		return nil, fmt.Errorf("query KVCache failed: %w", err)
+	}
+	if resp.Total == 0 || len(resp.KVCacheStores) == 0 {
+		return nil, nil
+	}
+	return &resp.KVCacheStores[0], nil
+}
+
+// SyncDeleteFileSystem deletes a filesystem by ID using the synchronous API
+func (cli *FilesystemClient) SyncDeleteFileSystem(ctx context.Context, fsID string) error {
+	url := fmt.Sprintf(syncFilesystemWithFsIDUrl, fsID)
+	_, err := gracefulCall[struct{}](ctx, cli, http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("sync delete filesystem %s failed: %w", fsID, err)
+	}
+	return nil
+}
+
+// SyncDeleteNfsShare deletes an NFS share by ID using the synchronous API
+func (cli *FilesystemClient) SyncDeleteNfsShare(ctx context.Context, id string) error {
+	url := fmt.Sprintf(syncDeleteNfsShareUrl, id)
+	_, err := gracefulCall[struct{}](ctx, cli, http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("sync delete NFS share %s failed: %w", id, err)
 	}
 	return nil
 }
@@ -352,5 +431,48 @@ type GetNfsShareParam struct {
 
 // DeleteNfsShareParam defines delete nfs share param
 type DeleteNfsShareParam struct {
-	NfsShareIds []string `json:"nfs_share_ids"`
+	NfsShareIds  []string `json:"nfs_share_ids"`
+	SharePrivate string   `json:"share_private,omitempty"`
+}
+
+// CreateKVCacheParams defines parameters for creating KVCache
+type CreateKVCacheParams struct {
+	StorageID         string                 `json:"storage_id"`
+	ZoneID            string                 `json:"zone_id"`
+	PoolRawID         string                 `json:"pool_raw_id"`
+	VstoreID          string                 `json:"vstore_id"`
+	DataCleanupSwitch string                 `json:"data_cleanup_switch"`
+	MaxSurvivalTime   int32                  `json:"max_survival_time,omitempty"`
+	KVCacheStores     []KVCacheStoreBaseInfo `json:"kv_cache_stores"`
+}
+
+// KVCacheStoreBaseInfo defines a single KVCache store to create
+type KVCacheStoreBaseInfo struct {
+	Name        string `json:"name"`
+	Capacity    int64  `json:"capacity"`
+	Description string `json:"description,omitempty"`
+}
+
+// KVCacheStore defines KVCache store response
+type KVCacheStore struct {
+	ID       string `json:"id"`
+	RawID    string `json:"raw_id"`
+	Name     string `json:"name"`
+	Capacity int64  `json:"capacity"`
+}
+
+// QueryKVCacheParams defines parameters for querying KVCache
+type QueryKVCacheParams struct {
+	ID        string `json:"id,omitempty"`
+	StorageID string `json:"storage_id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	VstoreID  string `json:"vstore_id,omitempty"`
+	RawID     string `json:"raw_id,omitempty"`
+	ZoneID    string `json:"zone_id,omitempty"`
+}
+
+// KVCacheQueryResponse defines the response of KVCache query
+type KVCacheQueryResponse struct {
+	Total         int            `json:"total"`
+	KVCacheStores []KVCacheStore `json:"kv_cache_stores"`
 }

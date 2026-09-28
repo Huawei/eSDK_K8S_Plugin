@@ -198,6 +198,11 @@ func NewBackend(backendName string, config map[string]interface{}) (*model.Backe
 			storage = constants.OceanStorASeriesNasDme
 		}
 	}
+	if storage == constants.OceanStorASeriesDtree {
+		if _, ok := config["storageDeviceSN"]; ok {
+			storage = constants.OceanStorASeriesDtreeDme
+		}
+	}
 	targetPlugin := plugin.GetPlugin(storage)
 	if targetPlugin == nil {
 		return nil, fmt.Errorf("cannot get plugin for storage: [%s]", storage)
@@ -841,6 +846,10 @@ func filterByNFSProtocol(ctx context.Context, nfsProtocol string, candidatePools
 	var filterPools []*model.StoragePool
 	for _, pool := range candidatePools {
 		if _, ok := pool.Plugin.(*plugin.DMEASeriesPlugin); ok {
+			filterPools = append(filterPools, pool)
+			continue
+		}
+		if _, ok := pool.Plugin.(*plugin.DMEASeriesDtreePlugin); ok {
 			filterPools = append(filterPools, pool)
 			continue
 		}

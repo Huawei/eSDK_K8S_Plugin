@@ -102,6 +102,23 @@ func (p *NAS) selectSnapshotParent(ctx context.Context, params map[string]interf
 	if err != nil {
 		return fmt.Errorf("try get snapshot by name error: %w", err)
 	}
+	// Fallback: try original name when converted name not found.
+	// Read path (selectSnapshotParent): query converted name first (matches CSI-created snapshots
+	// whose storage names have '-' replaced with '_'), then fallback to original name from
+	// SourceSnapshotName (matches pre-provisioned snapshots whose storage names retain '-').
+	// This is the opposite direction from DeleteSnapshot, which queries original name first
+	// then fallback to converted name — see DeleteSnapshot for the rationale.
+	if snapshot == nil {
+		originalName := wrapper.SourceSnapshotName()
+		if originalName != snapshotName {
+			log.AddContext(ctx).Infof("Snapshot %s not found with converted name, fallback to original name %s",
+				snapshotName, originalName)
+			existsCli, snapshot, err = p.tryGetSnapshotByName(ctx, wrapper.SnapshotParentId(), originalName)
+			if err != nil {
+				return fmt.Errorf("try get snapshot by name error: %w", err)
+			}
+		}
+	}
 	if snapshot == nil {
 		return fmt.Errorf("snapshot %s of filesystem %s not exists", snapshotName, wrapper.SnapshotParentId())
 	}
@@ -1036,6 +1053,27 @@ func (p *NAS) DeleteSnapshot(ctx context.Context, snapshotParentId, snapshotName
 	existsCli, snapshot, err := p.tryGetSnapshotByName(ctx, snapshotParentId, snapshotName)
 	if err != nil {
 		return fmt.Errorf("try get snapshot by name %s error: %w", snapshotName, err)
+	}
+	// Fallback: try converted name when original name not found.
+	// Delete path: query original name first (matches user input and pre-provisioned snapshots
+	// that retain '-'), then fallback to converted name (matches CSI-created snapshots whose
+	// storage names have '-' replaced with '_'). This is the opposite direction from
+	// selectSnapshotParent, which queries converted name first then fallback to original name —
+	// because selectSnapshotParent is a read path that defaults to the CSI naming convention,
+	// while DeleteSnapshot must accept whatever name the caller provides.
+	if snapshot == nil {
+		convertedName := utils.GetFSSnapshotName(snapshotName)
+		if convertedName != snapshotName {
+			log.AddContext(ctx).Infof("Snapshot %s not found with original name, fallback to converted name %s",
+				snapshotName, convertedName)
+			existsCli, snapshot, err = p.tryGetSnapshotByName(ctx, snapshotParentId, convertedName)
+			if err != nil {
+				return fmt.Errorf("try get snapshot by name %s error: %w", convertedName, err)
+			}
+			if snapshot != nil {
+				snapshotName = convertedName
+			}
+		}
 	}
 	if snapshot == nil {
 		if p.metroRemoteCli != nil && (p.cli.GetCurrentSiteWwn() == p.metroRemoteCli.GetCurrentSiteWwn()) {

@@ -35,6 +35,7 @@ const (
 	nfsShareReadWrite     = "read/write"
 	nfsShareWriteModeSync = "synchronization"
 	dpcShareReadWrite     = "read_and_write"
+	sectorSize            = 512
 )
 
 var (
@@ -54,11 +55,14 @@ var (
 
 // Creator is used to create a filesystem volume
 type Creator struct {
-	fsId   string
-	pool   *client.HyperScalePool
-	ctx    context.Context
-	cli    client.DMEASeriesClientInterface
-	params *CreateVolumeModel
+	fsId           string
+	pool           client.PoolRef
+	kvcacheStoreId string
+	vstoreID       string
+	ctx            context.Context
+	cli            client.DMEASeriesClientInterface
+	params         *CreateVolumeModel
+	handler        ModeHandler
 }
 
 // CreateVolumeModel is used to create a volume
@@ -74,6 +78,10 @@ type CreateVolumeModel struct {
 	AllocationType     string
 	AuthClients        []string
 	AuthUsers          []string
+	EnableKVCache      bool
+	EnableTimeAwareGC  bool
+	GCTimeThreshold    int64
+	VstoreName         string // zoneVstoreName from SC
 }
 
 func (model *CreateVolumeModel) sharePath() string {
@@ -81,19 +89,28 @@ func (model *CreateVolumeModel) sharePath() string {
 }
 
 // NewCreator inits a new filesystem volume creator
-func NewCreator(ctx context.Context, cli client.DMEASeriesClientInterface, params *CreateVolumeModel) *Creator {
+func NewCreator(ctx context.Context, cli client.DMEASeriesClientInterface, params *CreateVolumeModel,
+	handler ModeHandler) *Creator {
 	return &Creator{
-		ctx:    ctx,
-		cli:    cli,
-		params: params,
+		ctx:     ctx,
+		cli:     cli,
+		params:  params,
+		handler: handler,
 	}
 }
 
 // Create creates a filesystem resource and returns a volume object
 func (c *Creator) Create() (utils.Volume, error) {
 	tr := flow.NewTransaction()
-	tr.Then(c.validateAndPrepareParams, c.rollBackendFilesystem)
-	tr.Then(c.createFilesystem, nil)
+
+	if c.params.EnableKVCache {
+		tr.Then(c.validateAndPrepareParams, nil)
+		tr.Then(nil, c.cleanupKVCacheFilesystem)
+		tr.Then(c.createKVCache, c.rollbackKVCache)
+	} else {
+		tr.Then(c.validateAndPrepareParams, nil)
+		tr.Then(c.createFilesystem, c.rollBackendFilesystem)
+	}
 
 	err := tr.Commit()
 	if err != nil {
@@ -109,13 +126,18 @@ func (c *Creator) Create() (utils.Volume, error) {
 
 	vol := utils.NewVolume(c.params.Name)
 	vol.SetSize(c.params.Capacity)
-	vol.SetID(c.fsId)
+	if c.fsId != "" {
+		vol.SetID(c.fsId)
+	}
+	if c.kvcacheStoreId != "" {
+		vol.SetKvCacheStoreId(c.kvcacheStoreId)
+	}
 
 	return vol, nil
 }
 
 func (c *Creator) validateAndPrepareParams() error {
-	if c.params.Protocol == constants.ProtocolNfs && len(c.params.AuthClients) == 0 {
+	if c.params.Protocol == constants.ProtocolNfs && len(c.params.AuthClients) == 0 && !c.params.EnableKVCache {
 		return fmt.Errorf("authClient parameter must be provided in StorageClass for nfs protocol")
 	}
 
@@ -123,19 +145,37 @@ func (c *Creator) validateAndPrepareParams() error {
 		return fmt.Errorf("authUser parameter must be provided in StorageClass for dtfs protocol")
 	}
 
-	return c.setPool()
-}
-
-func (c *Creator) setPool() error {
-	pool, err := c.cli.GetHyperScalePoolByName(c.ctx, c.params.PoolName)
-	if err != nil {
+	if err := c.resolveVstoreID(); err != nil {
 		return err
 	}
 
-	if pool == nil {
-		return fmt.Errorf("pool %s does not exist", c.params.PoolName)
-	}
+	return c.setPool()
+}
 
+func (c *Creator) resolveVstoreID() error {
+	if c.params.VstoreName == "" {
+		return nil
+	}
+	vstores, err := c.cli.QueryVstores(c.ctx, &client.VstoreQueryParams{
+		Name:      c.params.VstoreName,
+		StorageID: c.cli.GetStorageID(),
+		ZoneID:    c.cli.GetZoneID(),
+	})
+	if err != nil {
+		return fmt.Errorf("query vstore by name %s failed: %w", c.params.VstoreName, err)
+	}
+	if len(vstores) == 0 {
+		return fmt.Errorf("vstore %s not found", c.params.VstoreName)
+	}
+	c.vstoreID = vstores[0].ID
+	return nil
+}
+
+func (c *Creator) setPool() error {
+	pool, err := c.handler.GetPool(c.ctx, c.params.PoolName)
+	if err != nil {
+		return err
+	}
 	c.pool = pool
 	return nil
 }
@@ -190,7 +230,7 @@ func (c *Creator) deleteNfsShare() error {
 		return err
 	}
 	if nfsShare != nil {
-		if err := c.cli.DeleteNfsShare(c.ctx, nfsShare.ID); err != nil {
+		if err := c.cli.SyncDeleteNfsShare(c.ctx, nfsShare.ID); err != nil {
 			return err
 		}
 	}
@@ -211,11 +251,13 @@ func (c *Creator) deleteDpcShare() error {
 }
 
 func (c *Creator) getCreateFilesystemParams() (*client.CreateFilesystemParams, error) {
+	poolRawID := c.pool.GetRawID()
+
 	param := &client.CreateFilesystemParams{
 		SnapshotDirVisible: c.params.SnapshotDirVisible,
 		StorageID:          c.cli.GetStorageID(),
-		PoolRawID:          c.pool.RawId,
-		ZoneID:             c.cli.GetStorageID(),
+		PoolRawID:          poolRawID,
+		ZoneID:             c.cli.GetZoneID(),
 		FilesystemSpecs: []*client.FilesystemSpec{
 			{
 				Name:        c.params.Name,
@@ -230,11 +272,9 @@ func (c *Creator) getCreateFilesystemParams() (*client.CreateFilesystemParams, e
 		param.Tuning = &client.Tuning{AllocationType: c.params.AllocationType}
 	}
 
-	deleter := NewDeleter(c.ctx, c.cli, &DeleteVolumeModel{Name: c.params.Name, Protocol: c.params.Protocol})
-
 	// Get nfs share params.
 	if len(c.params.AuthClients) != 0 {
-		if err := deleter.deleteNfsShare(); err != nil {
+		if err := c.deleteNfsShare(); err != nil {
 			return nil, err
 		}
 		param.CreateNfsShareParam = c.getCreateNfsShareParam()
@@ -242,7 +282,7 @@ func (c *Creator) getCreateFilesystemParams() (*client.CreateFilesystemParams, e
 
 	// Get data turbo share params at the same time.
 	if len(c.params.AuthUsers) != 0 {
-		if err := deleter.deleteDataTurboShare(); err != nil {
+		if err := c.deleteDpcShare(); err != nil {
 			return nil, err
 		}
 		dtShareParam, err := c.getCreateDpcShareParam()
@@ -304,10 +344,96 @@ func (c *Creator) createFilesystem() error {
 }
 
 func (c *Creator) rollBackendFilesystem() {
-	model := &DeleteVolumeModel{Name: c.params.Name, Protocol: c.params.Protocol}
-	deleter := NewDeleter(c.ctx, c.cli, model)
-	if err := deleter.Delete(); err != nil {
+	if err := c.handler.Delete(c.ctx); err != nil {
 		log.AddContext(c.ctx).Warningf("Delete filesystem %s failed: %v", c.params.Name, err)
+	}
+}
+
+func (c *Creator) createKVCache() error {
+	// Idempotency: check if KVCache already exists
+	queryParams := &client.QueryKVCacheParams{
+		Name:     c.params.Name,
+		VstoreID: c.vstoreID,
+		ZoneID:   c.cli.GetZoneID(),
+	}
+	existingKV, err := c.cli.QueryKVCache(c.ctx, queryParams)
+	if err != nil {
+		return fmt.Errorf("query KVCache for idempotency check failed: %w", err)
+	}
+	if existingKV != nil {
+		c.kvcacheStoreId = existingKV.ID
+		return nil
+	}
+
+	// Get pool raw_id
+	poolRawID := c.pool.GetRawID()
+
+	capacitySectors := utils.TransVolumeCapacity(c.params.Capacity, sectorSize)
+	params := &client.CreateKVCacheParams{
+		StorageID: c.cli.GetStorageID(),
+		ZoneID:    c.cli.GetZoneID(),
+		PoolRawID: poolRawID,
+		VstoreID:  c.vstoreID,
+		KVCacheStores: []client.KVCacheStoreBaseInfo{
+			{
+				Name:        c.params.Name,
+				Capacity:    capacitySectors,
+				Description: c.params.Description,
+			},
+		},
+	}
+
+	if c.params.EnableTimeAwareGC {
+		params.DataCleanupSwitch = "on"
+		params.MaxSurvivalTime = int32(c.params.GCTimeThreshold)
+	} else {
+		params.DataCleanupSwitch = "off"
+	}
+
+	result, err := c.cli.CreateKVCache(c.ctx, params)
+	if err != nil {
+		return fmt.Errorf("create KVCache failed: %w", err)
+	}
+	c.kvcacheStoreId = result.ID
+	return nil
+}
+
+func (c *Creator) rollbackKVCache() {
+	if c.kvcacheStoreId == "" {
+		return
+	}
+	if err := c.cli.DeleteKVCache(c.ctx, c.kvcacheStoreId); err != nil {
+		log.AddContext(c.ctx).Errorf("rollback KVCache %s failed: %v", c.kvcacheStoreId, err)
+	}
+}
+
+// cleanupKVCacheFilesystem deletes the filesystem and NFS share created by DME
+// when creating KVCache. This is called during rollback to ensure no residual resources remain.
+func (c *Creator) cleanupKVCacheFilesystem() {
+	fs, err := c.cli.GetFileSystemByName(c.ctx, c.params.Name)
+	if err != nil {
+		log.AddContext(c.ctx).Warningf("query filesystem %s for KVCache rollback cleanup failed: %v", c.params.Name,
+			err)
+		return
+	}
+	if fs == nil {
+		return
+	}
+	sharePath := c.params.sharePath()
+	nfsShare, err := c.cli.GetNfsShareByPath(c.ctx, sharePath)
+	if err != nil {
+		log.AddContext(c.ctx).Warningf("query NFS share for filesystem %s rollback cleanup failed: %v", c.params.Name,
+			err)
+	} else if nfsShare != nil {
+		// Delete KvCache NFS share must use private delete mode
+		if err := c.cli.DeleteNfsPrivateShare(c.ctx, nfsShare.ID); err != nil {
+			log.AddContext(c.ctx).Warningf("sync delete NFS private share %s for filesystem %s "+
+				"rollback cleanup failed: %v", nfsShare.ID, c.params.Name, err)
+		}
+	}
+	if err := c.cli.SyncDeleteFileSystem(c.ctx, fs.ID); err != nil {
+		log.AddContext(c.ctx).Warningf("sync delete filesystem %s for KVCache rollback cleanup failed: %v", c.params.Name,
+			err)
 	}
 }
 

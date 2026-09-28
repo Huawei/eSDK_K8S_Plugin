@@ -20,12 +20,13 @@ package client
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 )
@@ -37,7 +38,7 @@ type mockRespData struct {
 func Test_gracefulCall_UnconnectedError(t *testing.T) {
 	// arrange
 	mockCli := &BaseClient{}
-	unconnectedErr := errors.New(storage.Unconnected)
+	unconnectedErr := storage.ErrUnconnected
 
 	wantResp := &mockRespData{Name: "testName"}
 	successBody, err := json.Marshal(wantResp)
@@ -264,4 +265,166 @@ func Test_gracefulCallWithSync_EmptyTask(t *testing.T) {
 
 	// assert
 	assert.ErrorContains(t, gotErr, "run task failed with empty return")
+}
+
+func Test_gracefulCallWithSyncFallback_SyncSuccess(t *testing.T) {
+	// Arrange - sync API succeeds, no fallback needed
+	mockCli := &BaseClient{}
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(mockCli, "Call", []byte("{}"), nil)
+
+	// Action
+	gotErr := gracefulCallWithSyncFallback(context.Background(), mockCli, http.MethodPut,
+		&SyncFallbackUrls{SyncUrl: "syncUrl", AsyncUrl: "asyncUrl"}, nil)
+
+	// Assert
+	assert.NoError(t, gotErr)
+}
+
+func Test_gracefulCallWithSyncFallback_LegacyErrorFallbackSuccess(t *testing.T) {
+	// Arrange - sync API returns LegacyError(apiNotFound), async API succeeds
+	mockCli := &BaseClient{}
+	legacyErrBody, err := json.Marshal(LegacyError{ErrorCode: apiNotFoundCode, ExceptionInfo: "can not find api"})
+	require.NoError(t, err)
+	taskRespBody, err := json.Marshal(&TaskResponse{TaskID: "task-1"})
+	require.NoError(t, err)
+	taskInfo := &Task{ID: "task-1", Status: TaskStatusSuccess}
+
+	callCount := 0
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodFunc(mockCli, "Call", func(_ context.Context, _, url string, _ any) ([]byte, error) {
+		callCount++
+		if url == "syncUrl" {
+			return legacyErrBody, nil
+		}
+		return taskRespBody, nil
+	}).ApplyMethodReturn(mockCli, "GetTaskInfos", []*Task{taskInfo}, nil).
+		ApplyFuncReturn(time.Sleep)
+
+	// Action
+	gotErr := gracefulCallWithSyncFallback(context.Background(), mockCli, http.MethodPut,
+		&SyncFallbackUrls{SyncUrl: "syncUrl", AsyncUrl: "asyncUrl"}, nil)
+
+	// Assert
+	assert.NoError(t, gotErr)
+	assert.Equal(t, 2, callCount)
+}
+
+func Test_gracefulCallWithSyncFallback_LegacyErrorFallbackFail(t *testing.T) {
+	// Arrange - sync API returns LegacyError(apiNotFound), async API also fails
+	mockCli := &BaseClient{}
+	legacyErrBody, err := json.Marshal(LegacyError{ErrorCode: apiNotFoundCode, ExceptionInfo: "can not find api"})
+	require.NoError(t, err)
+	asyncErrBody, err := json.Marshal(BusinessError{ErrorCode: "500", ErrorMessage: "internal error"})
+	require.NoError(t, err)
+
+	callCount := 0
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodFunc(mockCli, "Call", func(_ context.Context, _, url string, _ any) ([]byte, error) {
+		callCount++
+		if url == "syncUrl" {
+			return legacyErrBody, nil
+		}
+		return asyncErrBody, nil
+	})
+
+	// Action
+	gotErr := gracefulCallWithSyncFallback(context.Background(), mockCli, http.MethodPut,
+		&SyncFallbackUrls{SyncUrl: "syncUrl", AsyncUrl: "asyncUrl"}, nil)
+
+	// Assert
+	assert.Error(t, gotErr)
+	assert.Equal(t, 2, callCount)
+}
+
+func Test_gracefulCallWithSyncFallback_OtherError_NoFallback(t *testing.T) {
+	// Arrange - sync API returns non-ApiNotFound error, should not fallback
+	mockCli := &BaseClient{}
+	wantErr := BusinessError{ErrorCode: "12345", ErrorMessage: "some error"}
+	errBody, err := json.Marshal(wantErr)
+	require.NoError(t, err)
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(mockCli, "Call", errBody, nil)
+
+	// Action
+	gotErr := gracefulCallWithSyncFallback(context.Background(), mockCli, http.MethodPut,
+		&SyncFallbackUrls{SyncUrl: "syncUrl", AsyncUrl: "asyncUrl"}, nil)
+
+	// Assert
+	assert.Equal(t, wantErr, gotErr)
+}
+
+func Test_gracefulCallWithSyncFallback_AuthError_NoFallback(t *testing.T) {
+	// Arrange - sync API returns AuthError, should not fallback (gracefulCall retries once then returns)
+	mockCli := &BaseClient{}
+	authErrBody, err := json.Marshal(AuthError{Code: "5001", Description: "auth error"})
+	require.NoError(t, err)
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(mockCli, "Call", authErrBody, nil)
+
+	// Action
+	gotErr := gracefulCallWithSyncFallback(context.Background(), mockCli, http.MethodPut,
+		&SyncFallbackUrls{SyncUrl: "syncUrl", AsyncUrl: "asyncUrl"}, nil)
+
+	// Assert
+	assert.Error(t, gotErr)
+}
+
+func Test_gracefulCallWithSyncFallback_LegacyErrorOtherCode_NoFallback(t *testing.T) {
+	// Arrange - sync API returns LegacyError with non-ApiNotFound code
+	mockCli := &BaseClient{}
+	wantErr := LegacyError{ErrorCode: "99999", ExceptionInfo: "other legacy error"}
+	errBody, err := json.Marshal(wantErr)
+	require.NoError(t, err)
+
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(mockCli, "Call", errBody, nil)
+
+	// Action
+	gotErr := gracefulCallWithSyncFallback(context.Background(), mockCli, http.MethodPut,
+		&SyncFallbackUrls{SyncUrl: "syncUrl", AsyncUrl: "asyncUrl"}, nil)
+
+	// Assert
+	assert.Equal(t, wantErr, gotErr)
+}
+
+func Test_gracefulCallAndMarshal_EmptyBody_DeleteMethod(t *testing.T) {
+	// arrange
+	mockCli := &BaseClient{}
+	// mock Call to return empty body (e.g. HTTP 204 No Content)
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(mockCli, "Call", []byte{}, nil)
+
+	// act - DELETE with empty body should succeed
+	gotResp, gotErr := gracefulCallAndMarshal[mockRespData](
+		context.Background(), mockCli, http.MethodDelete, "testUrl", nil)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.NotNil(t, gotResp)
+}
+
+func Test_gracefulCallAndMarshal_EmptyBody_ReturnsZeroValue(t *testing.T) {
+	// arrange
+	mockCli := &BaseClient{}
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(mockCli, "Call", []byte{}, nil)
+
+	// act - empty body returns zero value without error
+	gotResp, gotErr := gracefulCallAndMarshal[mockRespData](context.Background(), mockCli, http.MethodGet, "testUrl", nil)
+
+	// assert
+	assert.NoError(t, gotErr)
+	assert.NotNil(t, gotResp)
+	assert.Equal(t, "", gotResp.Name)
 }

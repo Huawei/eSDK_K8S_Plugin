@@ -25,9 +25,11 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
-	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/oceanstorage/oceanstor/volume"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/test/mocks/mock_client"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 )
 
 func Test_OceanstorDTreePlugin_AttachVolume_Scenario(t *testing.T) {
@@ -77,17 +79,31 @@ func Test_OceanstorDTreePlugin_AttachVolume_WithParentNameFromResult(t *testing.
 	mockRes := map[string]any{
 		constants.DTreeParentKey: "parent-from-result",
 	}
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorDTreePlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
 	}
 
-	// mock
+	// mock - patch attachDTreeVolume and getFilteredIPs
 	patches := gomonkey.ApplyFuncReturn(attachDTreeVolume, mockRes, nil).
-		ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.DTree{}, "AutoManageAuthClient", nil)
+		ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil)
 	defer patches.Reset()
+
+	// mock - set up client expectations for autoManageAuthClient internal calls
+	mockCli.EXPECT().GetvStoreID().AnyTimes().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/parent-from-result/test-volume/", "").
+		Return(map[string]any{"ID": "share-001"}, nil)
+	mockCli.EXPECT().GetNfsShareAccess(gomock.Any(), "share-001", "192.168.1.1", "").
+		Return(nil, nil)
+	mockCli.EXPECT().GetNfsShareAccessRange(gomock.Any(), "share-001", "", int64(0), int64(1)).
+		Return([]any{}, nil)
+	mockCli.EXPECT().AllowNfsShareAccess(gomock.Any(), gomock.Any()).Return(nil)
 
 	// action
 	gotRes, gotErr := p.AttachVolume(context.Background(), "test-volume", nil)
@@ -100,18 +116,32 @@ func Test_OceanstorDTreePlugin_AttachVolume_WithParentNameFromResult(t *testing.
 func Test_OceanstorDTreePlugin_AttachVolume_WithParentNameFromPlugin(t *testing.T) {
 	// arrange
 	mockRes := map[string]any{}
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorDTreePlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
 		parentName: "parent-from-plugin",
 	}
 
-	// mock
+	// mock - patch attachDTreeVolume and getFilteredIPs
 	patches := gomonkey.ApplyFuncReturn(attachDTreeVolume, mockRes, nil).
-		ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.DTree{}, "AutoManageAuthClient", nil)
+		ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil)
 	defer patches.Reset()
+
+	// mock - set up client expectations for autoManageAuthClient internal calls
+	mockCli.EXPECT().GetvStoreID().AnyTimes().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/parent-from-plugin/test-volume/", "").
+		Return(map[string]any{"ID": "share-001"}, nil)
+	mockCli.EXPECT().GetNfsShareAccess(gomock.Any(), "share-001", "192.168.1.1", "").
+		Return(nil, nil)
+	mockCli.EXPECT().GetNfsShareAccessRange(gomock.Any(), "share-001", "", int64(0), int64(1)).
+		Return([]any{}, nil)
+	mockCli.EXPECT().AllowNfsShareAccess(gomock.Any(), gomock.Any()).Return(nil)
 
 	// action
 	gotRes, gotErr := p.AttachVolume(context.Background(), "test-volume", nil)
@@ -223,7 +253,12 @@ func Test_OceanstorDTreePlugin_DetachVolume_GetFilteredIPsError(t *testing.T) {
 
 func Test_OceanstorDTreePlugin_DetachVolume_IOIsolation(t *testing.T) {
 	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorDTreePlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
@@ -233,11 +268,18 @@ func Test_OceanstorDTreePlugin_DetachVolume_IOIsolation(t *testing.T) {
 		constants.DTreeParentKey: "parent-name",
 	}
 
-	// mock
-	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.DTree{}, "AutoManageAuthClient", nil).
-		ApplyMethodReturn(&volume.DTree{}, "CheckAllClientsStatus", nil)
+	// mock - patch getFilteredIPs
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil)
 	defer patches.Reset()
+
+	// mock - autoManageAuthClient: share not found, NoAccess returns nil immediately
+	mockCli.EXPECT().GetvStoreID().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/parent-name/test-volume/", "").
+		Return(nil, nil)
+	// mock - checkAllClientsStatus: GetvStoreID + CheckNfsShareAccessStatus succeeds
+	mockCli.EXPECT().GetvStoreID().Return("")
+	mockCli.EXPECT().CheckNfsShareAccessStatus(gomock.Any(), "/parent-name/test-volume",
+		"192.168.1.1", "", gomock.Any()).Return(false, nil)
 
 	// action
 	gotErr := p.DetachVolume(context.Background(), "test-volume", parameters)
@@ -248,7 +290,12 @@ func Test_OceanstorDTreePlugin_DetachVolume_IOIsolation(t *testing.T) {
 
 func Test_OceanstorDTreePlugin_DetachVolume_AutoManageAuthClientError(t *testing.T) {
 	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorDTreePlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
@@ -256,23 +303,32 @@ func Test_OceanstorDTreePlugin_DetachVolume_AutoManageAuthClientError(t *testing
 	parameters := map[string]interface{}{
 		constants.DTreeParentKey: "parent-name",
 	}
-	wantErr := errors.New("fake error")
+	wantErr := errors.New("get share error")
 
-	// mock
-	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.DTree{}, "AutoManageAuthClient", wantErr)
+	// mock - patch getFilteredIPs
+	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil)
 	defer patches.Reset()
+
+	// mock - autoManageAuthClient fails at GetNfsShareByPath
+	mockCli.EXPECT().GetvStoreID().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/parent-name/test-volume/", "").
+		Return(nil, wantErr)
 
 	// action
 	gotErr := p.DetachVolume(context.Background(), "test-volume", parameters)
 
 	// assert
-	assert.ErrorIs(t, gotErr, wantErr)
+	assert.ErrorContains(t, gotErr, "failed to auto manage auth client")
 }
 
 func Test_OceanstorDTreePlugin_DetachVolume_CheckAllClientsStatusError(t *testing.T) {
 	// arrange
+	mockCtrl := gomock.NewController(t)
+	mockCli := mock_client.NewMockOceanstorClientInterface(mockCtrl)
 	p := &OceanstorDTreePlugin{
+		OceanstorPlugin: OceanstorPlugin{
+			cli: mockCli,
+		},
 		nfsAutoAuthClient: &NfsAutoAuthClient{
 			Enabled: true,
 		},
@@ -281,17 +337,21 @@ func Test_OceanstorDTreePlugin_DetachVolume_CheckAllClientsStatusError(t *testin
 		"IOIsolation":            true,
 		constants.DTreeParentKey: "parent-name",
 	}
-	wantErr := errors.New("fake error")
+	wantErr := errors.New("check status failed")
 
-	// mock
+	// mock - patch getFilteredIPs and WaitUntil (simulate checkAllClientsStatus failure)
 	patches := gomonkey.ApplyFuncReturn(getFilteredIPs, []string{"192.168.1.1"}, nil).
-		ApplyMethodReturn(&volume.DTree{}, "AutoManageAuthClient", nil).
-		ApplyMethodReturn(&volume.DTree{}, "CheckAllClientsStatus", wantErr)
+		ApplyFuncReturn(utils.WaitUntil, wantErr)
 	defer patches.Reset()
+
+	// mock - autoManageAuthClient: share not found, NoAccess returns nil immediately
+	mockCli.EXPECT().GetvStoreID().Return("")
+	mockCli.EXPECT().GetNfsShareByPath(gomock.Any(), "/parent-name/test-volume/", "").
+		Return(nil, nil)
 
 	// action
 	gotErr := p.DetachVolume(context.Background(), "test-volume", parameters)
 
 	// assert
-	assert.ErrorIs(t, gotErr, wantErr)
+	assert.ErrorContains(t, gotErr, "failed to check i/o isolation")
 }

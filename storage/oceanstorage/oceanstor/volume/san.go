@@ -51,6 +51,34 @@ type SAN struct {
 	Base
 }
 
+// getLunSnapshotByNameWithFallback queries snapshot by truncated name first,
+// if not found, falls back to query by original name.
+// This covers both CSI-created snapshots (truncated name) and
+// pre-provisioned snapshots (original name may exceed 31 chars on V6).
+func getLunSnapshotByNameWithFallback(ctx context.Context, cli client.OceanstorClientInterface,
+	snapshotName string) (map[string]interface{}, error) {
+	truncatedName := utils.GetSnapshotName(snapshotName)
+	snapshot, err := cli.GetLunSnapshotByName(ctx, truncatedName)
+	if err != nil {
+		return nil, err
+	}
+
+	if snapshot != nil {
+		return snapshot, nil
+	}
+
+	if truncatedName != snapshotName {
+		log.AddContext(ctx).Infof("Snapshot %s not found by truncated name %s, fallback to original name",
+			snapshotName, truncatedName)
+		snapshot, err = cli.GetLunSnapshotByName(ctx, snapshotName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return snapshot, nil
+}
+
 type hyperMetroPairParam struct {
 	domainID    string
 	localLunID  string
@@ -87,7 +115,7 @@ func (p *SAN) preCreate(ctx context.Context, params map[string]interface{}) erro
 	if v, exist := params["sourcevolumename"].(string); exist {
 		params["clonefrom"] = p.cli.MakeLunName(v)
 	} else if v, exist := params["sourcesnapshotname"].(string); exist {
-		params["fromSnapshot"] = utils.GetSnapshotName(v)
+		params["fromSnapshot"] = v
 	} else if v, exist := params["clonefrom"].(string); exist {
 		params["clonefrom"] = p.cli.MakeLunName(v)
 	}
@@ -207,6 +235,10 @@ func (p *SAN) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return pkgUtils.Errorf(ctx, "Unmarshal san HASRSSOBJECT failed, data: %v, err: %v", rssStr, err)
 	}
+	if hasSnapshot, ok := rss["SnapShot"]; ok && hasSnapshot == "TRUE" {
+		return fmt.Errorf("there are snapshots exist in lun %s. Please delete the snapshots firstly", name)
+	}
+
 	taskflow := flow.NewTaskFlow(ctx, "Delete-LUN-Volume")
 	if hyperMetro, ok := rss["HyperMetro"]; ok && hyperMetro == "TRUE" {
 		taskflow.AddTask("Delete-HyperMetro", p.deleteHyperMetro, nil)
@@ -445,7 +477,7 @@ func (p *SAN) fromSnapshotByClonePair(ctx context.Context,
 	if !ok {
 		return nil, pkgUtils.Errorf(ctx, "format srcSnapshotName to string failed, data: %v", params["fromSnapshot"])
 	}
-	srcSnapshot, err := p.cli.GetLunSnapshotByName(ctx, srcSnapshotName)
+	srcSnapshot, err := getLunSnapshotByNameWithFallback(ctx, p.cli, srcSnapshotName)
 	if err != nil {
 		return nil, err
 	}
@@ -660,7 +692,7 @@ func (p *SAN) fromSnapshotByLunCopy(ctx context.Context,
 		return nil, pkgUtils.Errorf(ctx, "srcSnapshotName convert to string failed, data: %v", params["fromSnapshot"])
 	}
 
-	srcSnapshot, err := p.cli.GetLunSnapshotByName(ctx, srcSnapshotName)
+	srcSnapshot, err := getLunSnapshotByNameWithFallback(ctx, p.cli, srcSnapshotName)
 	if err != nil {
 		return nil, err
 	}
@@ -1742,7 +1774,7 @@ func (p *SAN) executeCreateSnapshotTask(ctx context.Context, lunId, snapshotName
 
 // DeleteSnapshot deletes lun snapshot
 func (p *SAN) DeleteSnapshot(ctx context.Context, snapshotName string) error {
-	snapshot, err := p.cli.GetLunSnapshotByName(ctx, snapshotName)
+	snapshot, err := getLunSnapshotByNameWithFallback(ctx, p.cli, snapshotName)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get lun snapshot by name %s error: %v", snapshotName, err)
 		return err
@@ -1759,7 +1791,7 @@ func (p *SAN) DeleteSnapshot(ctx context.Context, snapshotName string) error {
 
 	var needDeleteRemote bool
 	if p.metroRemoteCli != nil {
-		remoteSnapshot, err := p.metroRemoteCli.GetLunSnapshotByName(ctx, snapshotName)
+		remoteSnapshot, err := getLunSnapshotByNameWithFallback(ctx, p.metroRemoteCli, snapshotName)
 		if err != nil {
 			log.AddContext(ctx).Errorf("Get remote lun snapshot by name %s error: %v", snapshotName, err)
 			return err

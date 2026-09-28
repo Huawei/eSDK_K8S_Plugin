@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -103,7 +104,7 @@ func (cli *FCClient) GetFCInitiator(ctx context.Context, wwn string) (map[string
 }
 
 // GetFCInitiatorByID used for get fc initiator by id(wwn)
-func (cli *FCClient) GetFCInitiatorByID(ctx context.Context, wwn string) (map[string]interface{}, error) {
+func (cli *FCClient) GetFCInitiatorByID(ctx context.Context, wwn string) (map[string]any, error) {
 	url := fmt.Sprintf("/fc_initiator/%s", wwn)
 	resp, err := cli.Get(ctx, url, nil)
 	if err != nil {
@@ -111,12 +112,16 @@ func (cli *FCClient) GetFCInitiatorByID(ctx context.Context, wwn string) (map[st
 	}
 
 	code := int64(resp.Error["code"].(float64))
+	if code == storage.ObjectNotExist {
+		log.AddContext(ctx).Infof("FC initiator %s does not exist", wwn)
+		return map[string]any{}, nil
+	}
 	if code != 0 {
 		msg := fmt.Sprintf("Get fc initiator by ID %s error: %d", wwn, code)
 		return nil, errors.New(msg)
 	}
 
-	respData, ok := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]any)
 	if !ok {
 		return nil, errors.New("convert resp.Data to map[string]interface{} failed")
 	}

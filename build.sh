@@ -22,7 +22,7 @@ VER=$1
 # [X86 ARM]
 PLATFORM=$2
 
-package_name="eSDK_Storage_CSI_V${VER}_${PLATFORM}_64"
+package_name="eSDK-Storage-Plugins_CSI-${VER}_Linux-${PLATFORM}-64"
 
 echo "Start to make with Makefile"
 make -f Makefile VER=$1 PLATFORM=$2

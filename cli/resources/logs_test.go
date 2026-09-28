@@ -28,6 +28,8 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	coreV1 "k8s.io/api/core/v1"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/cli/config"
 )
 
 func TestLogs_initialize_Success(t *testing.T) {
@@ -605,6 +607,60 @@ func Test_zipMultiFiles_walkFuncFail(t *testing.T) {
 
 	// cleanup
 	t.Cleanup(func() {
+		p.Reset()
+	})
+}
+
+func Test_compressLocalLogs_customOceanctlLogPath(t *testing.T) {
+	// arrange
+	originalLogDir := config.LogDir
+	config.LogDir = "/custom/log/path"
+	nodeList := map[string][]coreV1.Pod{"node1": {}}
+	wantPath := "/custom/log/path/oceanctl-log"
+
+	var gotFilePaths []string
+	mockFile := &os.File{}
+	mockWriter := &zip.Writer{}
+
+	// mock
+	p := gomonkey.NewPatches()
+	p.ApplyFunc(os.MkdirAll, func(path string, perm os.FileMode) error {
+		return nil
+	}).ApplyFunc(os.OpenFile, func(name string, flag int, perm os.FileMode) (*os.File, error) {
+		return mockFile, nil
+	}).ApplyFunc(zip.NewWriter, func(w io.Writer) *zip.Writer {
+		return mockWriter
+	}).ApplyFunc(filepath.Walk, func(root string, fn filepath.WalkFunc) error {
+		gotFilePaths = append(gotFilePaths, root)
+		return nil
+	}).ApplyMethod(reflect.TypeOf(mockFile), "Close", func(_ *os.File) error {
+		return nil
+	}).ApplyMethod(reflect.TypeOf(mockWriter), "Close", func(_ *zip.Writer) error {
+		return nil
+	})
+
+	// act
+	gotErr := compressLocalLogs(nodeList, "test.zip")
+
+	// assert
+	if gotErr != nil {
+		t.Errorf("Test_compressLocalLogs_customOceanctlLogPath failed, gotErr [%v], wantErr [%v]", gotErr, nil)
+	}
+	found := false
+	for _, fp := range gotFilePaths {
+		if fp == wantPath {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Test_compressLocalLogs_customOceanctlLogPath failed, gotFilePaths [%v], "+
+			"want contains [%s]", gotFilePaths, wantPath)
+	}
+
+	// cleanup
+	t.Cleanup(func() {
+		config.LogDir = originalLogDir
 		p.Reset()
 	})
 }

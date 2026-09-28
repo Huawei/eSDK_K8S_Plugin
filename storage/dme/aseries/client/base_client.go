@@ -64,8 +64,7 @@ var (
 			systemInfoUrl: true,
 		},
 		http.MethodPost: {
-			storagePoolUrl:          true,
-			batchQueryFilesystemUrl: true,
+			storagePoolUrl: true,
 		},
 	}
 
@@ -100,6 +99,9 @@ type BaseClientInterface interface {
 	GetStorageID() string
 	GetBackendID() string
 	GetDeviceSN() string
+	GetZoneID() string
+	IsLocalMode() bool
+	SetZoneID(id string)
 }
 
 // BaseClient defines client implements the base client interface
@@ -114,7 +116,9 @@ type BaseClient struct {
 	backendID       string
 	storageID       string
 	deviceSN        string
-	token           string
+
+	zoneID string
+	token  string
 
 	reLoginMutex     sync.Mutex
 	requestSemaphore *utils.Semaphore
@@ -324,9 +328,15 @@ func (cli *BaseClient) Login(ctx context.Context) error {
 	if err == nil {
 		return nil
 	}
+	// Only credential errors should trigger logout and mark backend offline.
+	// Transient errors (network, session expired) skip logout/offline to allow retry.
+	if !isCredentialError(err) {
+		log.AddContext(ctx).Warningf("login failed with transient error: %v, skip logout and offline", err)
+		return err
+	}
 	cli.Logout(ctx)
 	if setErr := pkgUtils.SetStorageBackendContentOnlineStatus(ctx, cli.GetBackendID(), false); setErr != nil {
-		return fmt.Errorf("login failed: %w\nSetStorageBackendContentOffline [%s] failed. error: %v",
+		return fmt.Errorf("login failed: %w\nSetStorageBackendContentOffline [%s] failed: %w",
 			err, cli.GetBackendID(), setErr)
 	}
 	return err
@@ -367,8 +377,9 @@ func (cli *BaseClient) Call(ctx context.Context, method string, url string, data
 		return nil, errors.New("req is nil")
 	}
 
+	bodyStr := formatRequestBody(data)
 	log.FilteredLog(ctx, isFilterLog(method, url), utils.IsDebugLog(method, url, debugLog, debugLogRegex),
-		fmt.Sprintf("Request method: %s, Url: %s, body: %v", method, req.URL, data))
+		fmt.Sprintf("Request method: %s, Url: %s, body: %s", method, req.URL, bodyStr))
 
 	if cli.requestSemaphore == nil {
 		return nil, errors.New("request semaphore is nil")
@@ -388,7 +399,7 @@ func (cli *BaseClient) Call(ctx context.Context, method string, url string, data
 	resp, err := cli.client.Do(req)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Send request method: %s, Url: %s, error: %v", method, req.URL, err)
-		return nil, errors.New(storage.Unconnected)
+		return nil, storage.ErrUnconnected
 	}
 	defer resp.Body.Close()
 
@@ -402,6 +413,18 @@ func (cli *BaseClient) Call(ctx context.Context, method string, url string, data
 		fmt.Sprintf("Response method: %s, url: %s, body: %s", method, req.URL, respBody))
 
 	return respBody, nil
+}
+
+// formatRequestBody serializes data to JSON string for logging.
+// Falls back to %+v when json.Marshal fails (e.g. for types with MarshalJSON errors).
+func formatRequestBody(data any) string {
+	if data == nil {
+		return ""
+	}
+	if reqBytes, err := json.Marshal(data); err == nil {
+		return string(reqBytes)
+	}
+	return fmt.Sprintf("%+v", data)
 }
 
 // GetTaskInfos gets task infos by task id
@@ -428,4 +451,24 @@ func (cli *BaseClient) GetBackendID() string {
 // GetDeviceSN get device sn of client
 func (cli *BaseClient) GetDeviceSN() string {
 	return cli.deviceSN
+}
+
+// GetZoneID returns the zone ID; if not set, returns StorageID for backward compatibility
+func (cli *BaseClient) GetZoneID() string {
+	if cli.zoneID == "" {
+		return cli.storageID
+	}
+	return cli.zoneID
+}
+
+// SetZoneID sets the zone ID
+func (cli *BaseClient) SetZoneID(id string) {
+	cli.reLoginMutex.Lock()
+	defer cli.reLoginMutex.Unlock()
+	cli.zoneID = id
+}
+
+// IsLocalMode returns true if zoneID was configured (local mode)
+func (cli *BaseClient) IsLocalMode() bool {
+	return cli.zoneID != ""
 }

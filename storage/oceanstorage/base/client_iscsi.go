@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -109,7 +110,7 @@ func (cli *IscsiClient) GetIscsiInitiator(ctx context.Context, initiator string)
 }
 
 // GetIscsiInitiatorByID used for get iscsi initiator by id
-func (cli *IscsiClient) GetIscsiInitiatorByID(ctx context.Context, initiator string) (map[string]interface{}, error) {
+func (cli *IscsiClient) GetIscsiInitiatorByID(ctx context.Context, initiator string) (map[string]any, error) {
 	url := fmt.Sprintf("/iscsi_initiator/%s", initiator)
 	resp, err := cli.Get(ctx, url, nil)
 	if err != nil {
@@ -117,12 +118,16 @@ func (cli *IscsiClient) GetIscsiInitiatorByID(ctx context.Context, initiator str
 	}
 
 	code := int64(resp.Error["code"].(float64))
+	if code == storage.ObjectNotExist {
+		log.AddContext(ctx).Infof("ISCSI initiator %s does not exist", initiator)
+		return map[string]any{}, nil
+	}
 	if code != 0 {
 		msg := fmt.Sprintf("Get ISCSI initiator by ID %s error: %d", initiator, code)
 		return nil, errors.New(msg)
 	}
 
-	respData, ok := resp.Data.(map[string]interface{})
+	respData, ok := resp.Data.(map[string]any)
 	if !ok {
 		return nil, pkgUtils.Errorf(ctx, "convert respData to map failed, data: %v", resp.Data)
 	}

@@ -85,20 +85,28 @@ const (
 	// DefaultKubeAPIBurst is the default burst limit for Kubernetes API requests
 	DefaultKubeAPIBurst = 10
 
+	// LeaderElectionQPS is the QPS limit for leader election client
+	LeaderElectionQPS float32 = 50.0
+	// LeaderElectionBurst is the burst limit for leader election client
+	LeaderElectionBurst = 100
+
 	// AllocationUnitBytes default is 512 Bytes, it is the allocation and capacity unit for OceanStor
-	AllocationUnitBytes = 512
+	AllocationUnitBytes = 512 * Byte
 	// FusionAllocUnitBytes default is 1Mi, it is the allocation unit for FusionStorage
-	FusionAllocUnitBytes = 1024 * 1024
+	FusionAllocUnitBytes = MB
 	// FusionFileCapacityUnit default is 1024 Bytes, it is the capacity unit for FusionStorage
-	FusionFileCapacityUnit int64 = 1024
+	FusionFileCapacityUnit int64 = KB
 	// FusionDTreeCapacityUnit default is 1 Bytes, it is the capacity unit for FusionStorage DTree quota
-	FusionDTreeCapacityUnit int64 = 1
+	FusionDTreeCapacityUnit int64 = Byte
 	// DmeCapacityUnitGb default is 1GB, it is the capacity unit for Dme
-	DmeCapacityUnitGb int64 = 1024 * 1024 * 1024
+	DmeCapacityUnitGb int64 = GB
 	// DmeCapacityUnitMb default is 1MB, it is the capacity unit for Dme
-	DmeCapacityUnitMb int64 = 1024 * 1024
+	DmeCapacityUnitMb int64 = MB
+	// DmeCapacityUnitKb default is 1KB, it is the capacity unit for Dme
+	DmeCapacityUnitKb int64 = KB
+
 	// ASeriesDTreeCapacityUnit default is 1 Bytes, it is the capacity unit for FusionStorage DTree quota
-	ASeriesDTreeCapacityUnit int64 = 1
+	ASeriesDTreeCapacityUnit int64 = Byte
 	// DefaultIntBase is the default value of int base
 	DefaultIntBase = 10
 	// DefaultIntBitSize is the default value of bit size
@@ -132,6 +140,10 @@ const (
 	AuthModeScopeLDAP = "1"
 	// KvCacheStoreId is the id of kvCache
 	KvCacheStoreId = "kvcacheStoreId"
+
+	// ZoneSNKey is the backend parameter key for zone serial number
+	ZoneSNKey = "zoneSN"
+
 	// DefaultDescription is the default description
 	DefaultDescription = "Created from Kubernetes CSI"
 	// RescanLabelKey is the label key of va need to rescan
@@ -170,4 +182,20 @@ const (
 	RestoreModeClone = "clone"
 	// RestoreModeSnapshot defines the volume restore mode of snapshot
 	RestoreModeSnapshot = "snapshot"
+)
+
+// CapacityUnit defines storage capacity units in binary (IEC) scale.
+// iota increments per line: Byte=0, KB=1, MB=2, GB=3, TB=4.
+// Each unit equals 1 << (10 * iota), i.e., Byte=1, KB=1024, MB=1024², GB=1024³, TB=1024⁴.
+const (
+	// Byte 1 B
+	Byte = 1 << (10 * iota)
+	// KB is 1024 B
+	KB
+	// MB is 1048576 B
+	MB
+	// GB is 1073741824 B
+	GB
+	// TB is 1099511627776 B
+	TB
 )

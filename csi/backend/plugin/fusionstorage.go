@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	xuanwuv1 "github.com/Huawei/eSDK_K8S_Plugin/v4/client/apis/xuanwu/v1"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
 	pkgVolume "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/volume"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage/fusionstorage/client"
@@ -99,6 +100,7 @@ func (p *FusionStoragePlugin) getParams(name string,
 		"fsPermission",
 		"snapshotDirectoryVisibility",
 		"qos",
+		constants.AdvancedOptionsKey,
 	}
 
 	for _, key := range paramKeys {

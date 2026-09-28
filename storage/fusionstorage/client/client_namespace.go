@@ -23,7 +23,11 @@ import (
 	"fmt"
 	fusionURL "net/url"
 	"strconv"
+	"strings"
 
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
+	pkgUtils "github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/utils"
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils"
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/utils/log"
 )
 
@@ -54,7 +58,6 @@ func (cli *RestClient) CreateFileSystem(ctx context.Context, params map[string]a
 		"storage_pool_id": params["poolId"].(int64),
 		"account_id":      strconv.Itoa(cli.accountId),
 	}
-
 	if params["protocol"] == "dpc" {
 		data["forbidden_dpc"] = notForbidden
 	}
@@ -66,6 +69,12 @@ func (cli *RestClient) CreateFileSystem(ctx context.Context, params map[string]a
 	if val, exist := params["isshowsnapdir"].(bool); exist {
 		data["is_show_snap_dir"] = val
 	}
+
+	data, err := cli.mergeAdvancedOptions(params, data)
+	if err != nil {
+		return nil, err
+	}
+
 	resp, err := cli.post(ctx, "/api/v2/converged_service/namespaces", data)
 	if err != nil {
 		return nil, err
@@ -96,6 +105,28 @@ func (cli *RestClient) CreateFileSystem(ctx context.Context, params map[string]a
 	}
 
 	return nil, fmt.Errorf("failed to create filesystem %v", data)
+}
+
+// mergeAdvancedOptions parses the advancedOptions JSON from params and merges into data.
+// Keys already present in data are not overwritten.
+func (cli *RestClient) mergeAdvancedOptions(params map[string]any, data map[string]interface{}) (
+	map[string]interface{}, error) {
+	if data == nil {
+		return data, nil
+	}
+
+	val, ok := utils.GetValue[string](params, strings.ToLower(constants.AdvancedOptionsKey))
+	if !ok || val == "" {
+		return data, nil
+	}
+
+	advancedOptions := make(map[string]interface{})
+	if err := json.Unmarshal([]byte(val), &advancedOptions); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal advancedOptions[%s]: %v", val, err)
+	}
+
+	data = pkgUtils.CombineMap(data, advancedOptions)
+	return data, nil
 }
 
 // DeleteFileSystem used to delete file system by id

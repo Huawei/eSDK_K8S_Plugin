@@ -389,6 +389,26 @@ func GetK8SAndCrdClient(ctx context.Context) (*kubernetes.Clientset, *clientSet.
 	return k8sClient, crdClient, nil
 }
 
+// GetLeaderElectionClient returns a dedicated kubernetes client for leader election.
+// This client uses independent QPS/Burst to avoid being throttled by business API traffic.
+func GetLeaderElectionClient() (kubernetes.Interface, error) {
+	kubeConfig := app.GetGlobalConfig().KubeConfig
+	config, err := k8sutils.BuildConfig(kubeConfig,
+		k8sutils.QPS(constants.LeaderElectionQPS),
+		k8sutils.Burst(constants.LeaderElectionBurst))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get leader election cluster config, kube config: %s, error %w",
+			kubeConfig, err)
+	}
+
+	client, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get leader election kubernetes client, error %w", err)
+	}
+
+	return client, nil
+}
+
 // InitRecorder used to init event recorder
 func InitRecorder(client kubernetes.Interface, componentName string) record.EventRecorder {
 	eventBroadcaster := record.NewBroadcaster()

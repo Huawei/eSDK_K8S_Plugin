@@ -90,15 +90,13 @@ func (d *CsiDriver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeReque
 			return &csi.DeleteVolumeResponse{}, err
 		}
 		err = bk.Plugin.DeleteDTreeVolume(ctx, volName, parentName)
-	} else if bk.Storage == constants.OceanStorASeriesNas {
-		params, err := d.getASeriesNasDeleteParams(volumeId)
-		if err != nil {
-			log.AddContext(ctx).Errorf("Delete volume %s error: %v", volumeId, err)
-			return &csi.DeleteVolumeResponse{}, err
+	} else {
+		params, buildErr := d.buildDeleteVolumeParams(bk, volumeId)
+		if buildErr != nil {
+			log.AddContext(ctx).Errorf("Build delete params for volume %s error: %v", volumeId, buildErr)
+			return &csi.DeleteVolumeResponse{}, buildErr
 		}
 		err = bk.Plugin.DeleteVolume(ctx, volName, params)
-	} else {
-		err = bk.Plugin.DeleteVolume(ctx, volName, nil)
 	}
 	if err != nil {
 		log.AddContext(ctx).Errorf("Delete volume %s error: %v", volumeId, err)

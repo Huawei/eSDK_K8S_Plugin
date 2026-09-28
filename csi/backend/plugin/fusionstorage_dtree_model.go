@@ -57,20 +57,20 @@ func (param *CreateDTreeVolumeParameter) genCreateDTreeModel(dtreeName, backendP
 		Protocol:     protocol,
 		DTreeName:    dtreeName,
 		ParentName:   parentname,
-		AllSquash:    constants.AllSquashValue,
-		RootSquash:   constants.RootSquashValue,
+		AllSquash:    constants.NoAllSquashValue,
+		RootSquash:   constants.NoRootSquashValue,
 		Description:  param.Description,
 		FsPermission: param.FsPermission,
 		Capacity:     param.Size,
 		AuthClients:  strings.Split(param.AuthClient, ";"),
 	}
 
-	if param.AllSquash == constants.NoAllSquash {
-		model.AllSquash = constants.NoAllSquashValue
+	if param.AllSquash == constants.AllSquash {
+		model.AllSquash = constants.AllSquashValue
 	}
 
-	if param.RootSquash == constants.NoRootSquash {
-		model.RootSquash = constants.NoRootSquashValue
+	if param.RootSquash == constants.RootSquash {
+		model.RootSquash = constants.RootSquashValue
 	}
 
 	return model, nil

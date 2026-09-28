@@ -26,14 +26,15 @@ import (
 	"github.com/Huawei/eSDK_K8S_Plugin/v4/pkg/constants"
 )
 
-func TestCreateDmeVolumeParameter_genCreateVolumeModel_Success(t *testing.T) {
+// --- genCreateVolumeModel integration tests ---
 
+func TestCreateDmeVolumeParameter_genCreateVolumeModel_GlobalNfsSuccess(t *testing.T) {
 	// arrange
 	param := &CreateDmeVolumeParameter{AuthClient: "test1;test2",
 		AllSquash: constants.AllSquash, RootSquash: constants.NoRootSquash}
 
 	// act
-	model, err := param.genCreateVolumeModel("test", constants.ProtocolNfs, SectorSize)
+	model, err := param.genCreateVolumeModel("test", constants.ProtocolNfs, SectorSize, false)
 
 	// assert
 	assert.NoError(t, err)
@@ -42,69 +43,156 @@ func TestCreateDmeVolumeParameter_genCreateVolumeModel_Success(t *testing.T) {
 	assert.Equal(t, constants.NoRootSquashValue, model.RootSquash)
 }
 
-func TestCreateDmeVolumeParameter_genCreateVolumeModel_Error(t *testing.T) {
-
+func TestCreateDmeVolumeParameter_genCreateVolumeModel_GlobalDtfsError(t *testing.T) {
 	// arrange
 	param := &CreateDmeVolumeParameter{}
 
 	// act
-	model, err := param.genCreateVolumeModel("test", constants.ProtocolDtfs, SectorSize)
+	model, err := param.genCreateVolumeModel("test", constants.ProtocolDtfs, SectorSize, false)
 
 	// assert
 	assert.Error(t, err)
 	assert.Nil(t, model)
 	assert.True(t, strings.Contains(err.Error(), constants.ProtocolDtfs))
-
 }
 
-func TestCreateDmeVolumeParameter_validate_NfsError(t *testing.T) {
+func TestCreateDmeVolumeParameter_GenCreateVolumeModel_WithKVCache(t *testing.T) {
+	param := &CreateDmeVolumeParameter{
+		StoragePool:       "pool1",
+		EnableKVCache:     "true",
+		EnableTimeAwareGc: "true",
+		GcTimeThreshold:   "1",
+	}
+	model, err := param.genCreateVolumeModel("test", constants.ProtocolNfs, 512, true)
+	assert.NoError(t, err)
+	assert.True(t, model.EnableKVCache)
+	assert.True(t, model.EnableTimeAwareGC)
+	assert.Equal(t, int64(1), model.GCTimeThreshold)
+}
 
-	// arrange
-	param := &CreateDmeVolumeParameter{}
-
-	// act
-	err := param.validate(constants.ProtocolNfs)
-
-	// assert
+func TestCreateDmeVolumeParameter_GenCreateVolumeModel_KVCacheValidation(t *testing.T) {
+	param := &CreateDmeVolumeParameter{
+		StoragePool:       "pool1",
+		EnableKVCache:     "true",
+		EnableTimeAwareGc: "true",
+		// GcTimeThreshold missing
+	}
+	_, err := param.genCreateVolumeModel("test", constants.ProtocolNfs, 512, true)
 	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), constants.ProtocolNfs))
+	assert.Contains(t, err.Error(), "gcTimeThreshold")
 }
 
-func TestCreateDmeVolumeParameter_validate_DtfsError(t *testing.T) {
-
-	// arrange
-	param := &CreateDmeVolumeParameter{}
-
-	// act
-	err := param.validate(constants.ProtocolDtfs)
-
-	// assert
-	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), constants.ProtocolDtfs))
+func TestCreateDmeVolumeParameter_GenCreateVolumeModel_KVCacheNfsNoAuthClient(t *testing.T) {
+	// KVCache mode: NFS without authClient should succeed (DME handles auth internally)
+	param := &CreateDmeVolumeParameter{
+		StoragePool:   "pool1",
+		EnableKVCache: "true",
+	}
+	model, err := param.genCreateVolumeModel("test", constants.ProtocolNfs, 512, true)
+	assert.NoError(t, err)
+	assert.True(t, model.EnableKVCache)
 }
 
-func TestCreateDmeVolumeParameter_validate_AllSquashError(t *testing.T) {
+// --- validateCommon tests ---
 
-	// arrange
+func TestCreateDmeVolumeParameter_validateCommon_AllSquashError(t *testing.T) {
 	param := &CreateDmeVolumeParameter{AuthClient: "test", AllSquash: "test"}
-
-	// act
-	err := param.validate(constants.ProtocolNfs)
-
-	// assert
+	err := param.validateCommon()
 	assert.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), constants.AllSquash))
 }
 
-func TestCreateDmeVolumeParameter_validate_RootSquashError(t *testing.T) {
-
-	// arrange
+func TestCreateDmeVolumeParameter_validateCommon_RootSquashError(t *testing.T) {
 	param := &CreateDmeVolumeParameter{AuthClient: "test", RootSquash: "test"}
-
-	// act
-	err := param.validate(constants.ProtocolNfs)
-
-	// assert
+	err := param.validateCommon()
 	assert.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), constants.RootSquash))
+}
+
+func TestCreateDmeVolumeParameter_validateCommon_SnapshotDirVisibilityError(t *testing.T) {
+	param := &CreateDmeVolumeParameter{SnapshotDirectoryVisibility: "invalid"}
+	err := param.validateCommon()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "snapshotDirectoryVisibility")
+}
+
+func TestCreateDmeVolumeParameter_validateCommon_Success(t *testing.T) {
+	param := &CreateDmeVolumeParameter{AuthClient: "test"}
+	err := param.validateCommon()
+	assert.NoError(t, err)
+}
+
+// --- validateGlobal tests ---
+
+func TestCreateDmeVolumeParameter_validateGlobal_NfsNoAuthClient(t *testing.T) {
+	param := &CreateDmeVolumeParameter{}
+	err := param.validateGlobal(constants.ProtocolNfs)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), constants.ProtocolNfs)
+}
+
+func TestCreateDmeVolumeParameter_validateGlobal_NfsWithAuthClient(t *testing.T) {
+	param := &CreateDmeVolumeParameter{AuthClient: "client1"}
+	err := param.validateGlobal(constants.ProtocolNfs)
+	assert.NoError(t, err)
+}
+
+func TestCreateDmeVolumeParameter_validateGlobal_DtfsNoAuthUser(t *testing.T) {
+	param := &CreateDmeVolumeParameter{}
+	err := param.validateGlobal(constants.ProtocolDtfs)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), constants.ProtocolDtfs)
+}
+
+func TestCreateDmeVolumeParameter_validateGlobal_DtfsWithAuthUser(t *testing.T) {
+	param := &CreateDmeVolumeParameter{AuthUser: "user1"}
+	err := param.validateGlobal(constants.ProtocolDtfs)
+	assert.NoError(t, err)
+}
+
+// --- validateLocal tests ---
+
+func TestCreateDmeVolumeParameter_validateLocal_NfsNoAuthClient(t *testing.T) {
+	// KVCache mode: NFS without authClient is OK
+	param := &CreateDmeVolumeParameter{EnableKVCache: "true"}
+	err := param.validateLocal(constants.ProtocolNfs)
+	assert.NoError(t, err)
+}
+
+func TestCreateDmeVolumeParameter_validateLocal_DtfsNoAuthUser(t *testing.T) {
+	param := &CreateDmeVolumeParameter{EnableKVCache: "true"}
+	err := param.validateLocal(constants.ProtocolDtfs)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), constants.ProtocolDtfs)
+}
+
+func TestCreateDmeVolumeParameter_validateLocal_GcTimeThresholdEmpty(t *testing.T) {
+	param := &CreateDmeVolumeParameter{
+		EnableKVCache:     "true",
+		EnableTimeAwareGc: "true",
+		// GcTimeThreshold is empty
+	}
+	err := param.validateLocal(constants.ProtocolNfs)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "gcTimeThreshold must be provided")
+}
+
+func TestCreateDmeVolumeParameter_validateLocal_GcTimeThresholdProvided(t *testing.T) {
+	param := &CreateDmeVolumeParameter{
+		EnableKVCache:     "true",
+		EnableTimeAwareGc: "true",
+		GcTimeThreshold:   "1",
+	}
+	err := param.validateLocal(constants.ProtocolNfs)
+	assert.NoError(t, err)
+}
+
+func TestCreateDmeVolumeParameter_validateLocal_GcDisabled(t *testing.T) {
+	param := &CreateDmeVolumeParameter{
+		EnableKVCache:     "true",
+		EnableTimeAwareGc: "false",
+		// GcTimeThreshold not needed when GC is disabled
+	}
+	err := param.validateLocal(constants.ProtocolNfs)
+	assert.NoError(t, err)
 }

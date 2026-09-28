@@ -112,7 +112,7 @@ func (p *OceanstorPlugin) init(ctx context.Context, config map[string]interface{
 func (p *OceanstorPlugin) updateBackendCapabilities(ctx context.Context) (map[string]interface{}, error) {
 	features, err := p.cli.GetLicenseFeature(ctx)
 	if err != nil {
-		log.Errorf("Get license feature error: %v", err)
+		log.AddContext(ctx).Errorf("Get license feature error: %v", err)
 		return nil, err
 	}
 

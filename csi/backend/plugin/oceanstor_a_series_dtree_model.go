@@ -26,7 +26,7 @@ import (
 
 const (
 	fsPermissionLength = 3
-	allocType          = "thin"
+	allocTypeThin      = "thin"
 )
 
 // CreateASeriesDTreeVolumeParameter is the parameter for creating A-series DTree volume
@@ -121,7 +121,7 @@ func (param *CreateASeriesDTreeVolumeParameter) validate(protocol string) error 
 		}
 	}
 
-	if param.AllocType != "" && param.AllocType != allocType {
+	if param.AllocType != "" && param.AllocType != allocTypeThin {
 		return fmt.Errorf("allocType must be thin, got: %s", param.AllocType)
 	}
 

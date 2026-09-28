@@ -58,5 +58,53 @@ func TestAttachmentManager_GetMappingProperties(t *testing.T) {
 	// assert
 	assert.Nil(t, err)
 	assert.Equal(t, want, got)
+}
 
+func TestAttachmentManager_AttachFC_Success(t *testing.T) {
+	// arrange
+	manager := AttachmentManager{Cli: &client.OceanstorClient{}}
+	hostID := "1"
+	params := map[string]interface{}{"HostName": "node1"}
+	wwn := "20:00:00:00:00:00:00:01"
+	initiatorInfo := map[string]interface{}{
+		"ID":            wwn,
+		"RUNNINGSTATUS": "27",
+		"ISFREE":        "true",
+		"PARENTID":      "",
+	}
+	want := []map[string]interface{}{initiatorInfo}
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyFuncReturn(GetMultipleInitiators, []string{wwn}, nil)
+	mock.ApplyMethodReturn(&client.OceanstorClient{}, "GetFCInitiator", initiatorInfo, nil)
+	mock.ApplyMethodReturn(&client.OceanstorClient{}, "AddFCInitiatorToHost", nil)
+
+	// action
+	got, err := manager.AttachFC(context.Background(), hostID, params)
+
+	// assert
+	assert.Nil(t, err)
+	assert.Equal(t, want, got)
+}
+
+func TestAttachmentManager_AttachFC_NoValidInitiator(t *testing.T) {
+	// arrange
+	manager := AttachmentManager{Cli: &client.OceanstorClient{}}
+	hostID := "1"
+	params := map[string]interface{}{"HostName": "node1"}
+	wwn := "20:00:00:00:00:00:00:01"
+
+	mock := gomonkey.NewPatches()
+	defer mock.Reset()
+	mock.ApplyFuncReturn(GetMultipleInitiators, []string{wwn}, nil)
+	mock.ApplyMethodReturn(&client.OceanstorClient{}, "GetFCInitiator", nil, nil)
+
+	// action
+	got, err := manager.AttachFC(context.Background(), hostID, params)
+
+	// assert
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "no valid FC initiator found")
+	assert.Nil(t, got)
 }

@@ -23,13 +23,22 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/Huawei/eSDK_K8S_Plugin/v4/storage"
 )
+
+func writeJSON(t *testing.T, w http.ResponseWriter, data string) {
+	t.Helper()
+	_, err := w.Write([]byte(data))
+	assert.NoError(t, err)
+}
 
 var taskSuccessResp = `
 		{
@@ -63,60 +72,89 @@ var queryTaskResp = `
 ]
 `
 
+func getMockClientWithServer(serverURL string) *BaseClient {
+	cli, _ := NewBaseClient(context.Background(), &storage.NewClientConfig{})
+	cli.url = serverURL
+	cli.token = "test-token"
+	cli.client = &http.Client{}
+	return cli
+}
+
 func TestFilesystemClient_UpdateFileSystem_Success(t *testing.T) {
-	// Arrange
-	patch := gomonkey.ApplyMethod((*MockTransport)(nil), "RoundTrip",
-		func(t *MockTransport, req *http.Request) (*http.Response, error) {
-			if strings.Contains(req.URL.String(), "filesystems") {
-				return &http.Response{
-					StatusCode: 200,
-					Body:       io.NopCloser(bytes.NewBufferString(taskSuccessResp)),
-				}, nil
-			}
-			return &http.Response{
-				StatusCode: 200,
-				Body:       io.NopCloser(bytes.NewBufferString(queryTaskResp)),
-			}, nil
-		}).
-		ApplyFuncReturn(time.Sleep)
-	defer patch.Reset()
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPut, r.Method)
+		assert.Contains(t, r.URL.Path, "/rest/fileservice/v1-sync/filesystems/")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{}`)
+	}))
+	defer mockServer.Close()
 
-	// Mock
-	cli := &FilesystemClient{BaseClientInterface: getMockClient(200, "")}
-
-	// Action
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
 	err := cli.UpdateFileSystem(context.Background(), "bbb", &UpdateFileSystemParams{111})
-
-	// Assert
 	assert.NoError(t, err)
 }
 
 func TestFilesystemClient_UpdateFileSystem_NullPointerError(t *testing.T) {
-	// Arrange
-	errorResp := ""
-
-	// Mock
-	cli := &FilesystemClient{BaseClientInterface: getMockClient(200, errorResp)}
-
-	// Action
-	err1 := cli.UpdateFileSystem(context.Background(), "bbb", nil)
-
-	// Assert
-	assert.Error(t, err1)
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer("http://localhost")}
+	err := cli.UpdateFileSystem(context.Background(), "bbb", nil)
+	assert.Error(t, err)
 }
 
 func TestFilesystemClient_UpdateFileSystem_responseError(t *testing.T) {
-	// Arrange
-	errorResp := ""
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"code":"500","description":"internal error"}`)
+	}))
+	defer mockServer.Close()
 
-	// Mock
-	cli := &FilesystemClient{BaseClientInterface: getMockClient(200, errorResp)}
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	err := cli.UpdateFileSystem(context.Background(), "bbb", &UpdateFileSystemParams{111})
+	assert.Error(t, err)
+}
 
-	// Action
-	err2 := cli.UpdateFileSystem(context.Background(), "bbb", &UpdateFileSystemParams{111})
+func TestFilesystemClient_UpdateFileSystem_FallbackToAsync(t *testing.T) {
+	// Arrange - sync API returns apiNotFoundCode in legacy format, async API succeeds
+	callCount := 0
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if strings.Contains(r.URL.Path, "v1-sync") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			writeJSON(t, w, `{"errorCode":"49401026001","exceptionInfo":"can not find api"}`)
+		} else {
+			// Async API returns task
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			writeJSON(t, w, `{"task_id":"task-123"}`)
+		}
+	}))
+	defer mockServer.Close()
 
-	// Assert
-	assert.Error(t, err2)
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodFunc(cli, "ReLogin", func(_ context.Context) error { return nil })
+	patches.ApplyMethodReturn(cli, "GetTaskInfos", []*Task{{ID: "task-123", Status: TaskStatusSuccess}}, nil)
+
+	err := cli.UpdateFileSystem(context.Background(), "bbb", &UpdateFileSystemParams{111})
+	assert.NoError(t, err)
+}
+
+func TestFilesystemClient_UpdateFileSystem_OtherBizError(t *testing.T) {
+	// Arrange - sync API returns a different business error, should not fallback
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"error_code":"12345","error_msg":"some other error"}`)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	err := cli.UpdateFileSystem(context.Background(), "bbb", &UpdateFileSystemParams{111})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "12345")
 }
 
 func TestFilesystemClient_DeleteFileSystem_Success(t *testing.T) {
@@ -175,8 +213,16 @@ func TestFilesystemClient_GetFileSystemByID_Success(t *testing.T) {
 			"available_capacity_in_byte": 10
 		}
 	`
-	// Mock
-	cli := &FilesystemClient{BaseClientInterface: getMockClient(200, successResp)}
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Contains(t, r.URL.Path, "/rest/fileservice/v1/filesystems/")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, successResp)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
 
 	// Action
 	filesystem, err := cli.GetFileSystemByID(context.Background(), "aaa")
@@ -189,17 +235,22 @@ func TestFilesystemClient_GetFileSystemByID_Success(t *testing.T) {
 
 func TestFilesystemClient_GetFileSystemByID_Error(t *testing.T) {
 	// Arrange
-	errorResp := ""
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"error_code":"500","error_msg":"internal error"}`)
+	}))
+	defer mockServer.Close()
 
-	// Mock
-	cli := &FilesystemClient{BaseClientInterface: getMockClient(200, errorResp)}
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
 
 	// Action
-	resp, err := cli.GetFileSystemByID(context.Background(), "bbb")
+	fs, err := cli.GetFileSystemByID(context.Background(), "aaa")
 
 	// Assert
 	assert.Error(t, err)
-	assert.Nil(t, resp)
+	assert.Nil(t, fs)
+	assert.Contains(t, err.Error(), "get filesystem for fsId: aaa failed")
 }
 
 func TestFilesystemClient_GetFileSystemByName_Success(t *testing.T) {
@@ -346,18 +397,22 @@ func TestFilesystemClient_GetDataTurboShareByPath_Success(t *testing.T) {
 	assert.Equal(t, "D7B61A59AEA63A70B50ACE49269E31CE", share.ID)
 }
 
-func TestFilesystemClient_GetDataTurboShareByPath_Error(t *testing.T) {
-	// Arrange
-	successResp := ""
+func TestFilesystemClient_GetDataTurboShareByPath_Empty(t *testing.T) {
+	// Arrange - query returns total=0
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"total":0,"data":[]}`)
+	}))
+	defer mockServer.Close()
 
-	// Mock
-	cli := &FilesystemClient{BaseClientInterface: getMockClient(200, successResp)}
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
 
 	// Action
 	share, err := cli.GetDataTurboShareByPath(context.Background(), "")
 
 	// Assert
-	assert.Error(t, err)
+	assert.NoError(t, err)
 	assert.Nil(t, share)
 }
 
@@ -425,19 +480,23 @@ func TestFilesystemClient_GetDataTurboUserByName_Success(t *testing.T) {
 	assert.Equal(t, "8F65541068B63E4E85F351979203823A", admin.ID)
 }
 
-func TestFilesystemClient_GetDataTurboUserByName_Error(t *testing.T) {
-	// Arrange
-	successResp := ""
+func TestFilesystemClient_GetDataTurboUserByName_Empty(t *testing.T) {
+	// Arrange - query returns total=0
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"total":0,"administrators":[]}`)
+	}))
+	defer mockServer.Close()
 
-	// Mock
-	cli := &FilesystemClient{BaseClientInterface: getMockClient(200, successResp)}
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
 
 	// Action
 	admin, err := cli.GetDataTurboUserByName(context.Background(), "aaa")
 
 	// Assert
-	assert.Error(t, err)
-	assert.Nil(t, admin)
+	assert.NoError(t, err)
+	assert.Empty(t, admin)
 }
 
 func TestFilesystemClient_GetNfsShareByPath_Success(t *testing.T) {
@@ -491,4 +550,247 @@ func TestFilesystemClient_DeleteNfsShare_Success(t *testing.T) {
 
 	// Assert
 	assert.Nil(t, err)
+}
+
+func TestFilesystemClient_DeleteNfsPrivateShare_Success(t *testing.T) {
+	// Arrange
+	patch := gomonkey.ApplyMethod((*MockTransport)(nil), "RoundTrip",
+		func(t *MockTransport, req *http.Request) (*http.Response, error) {
+			if req.URL.String() == deleteNfsShareUrl {
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewBufferString(taskSuccessResp)),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString(queryTaskResp)),
+			}, nil
+		}).
+		ApplyFuncReturn(time.Sleep)
+	defer patch.Reset()
+
+	// Mock
+	cli := &FilesystemClient{BaseClientInterface: getMockClient(200, "")}
+
+	// Action
+	err := cli.DeleteNfsPrivateShare(context.Background(), "")
+
+	// Assert
+	assert.Nil(t, err)
+}
+
+func TestFilesystemClient_CreateKVCache(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/rest/fileservice/v1-sync/kv-cache-stores", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"id":"kv-id-1","raw_id":"1","name":"test-kv","capacity":20971520}`)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	params := &CreateKVCacheParams{
+		StorageID:         "storage-1",
+		ZoneID:            "zone-1",
+		PoolRawID:         "1",
+		VstoreID:          "vstore-1",
+		DataCleanupSwitch: "off",
+		KVCacheStores:     []KVCacheStoreBaseInfo{{Name: "test-kv", Capacity: 20971520}},
+	}
+	result, err := cli.CreateKVCache(context.Background(), params)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, "1", result.RawID)
+}
+
+func TestFilesystemClient_DeleteKVCache(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/rest/fileservice/v1-sync/kv-cache-stores/raw-id-1", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{}`)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	err := cli.DeleteKVCache(context.Background(), "raw-id-1")
+	assert.NoError(t, err)
+}
+
+func TestFilesystemClient_DeleteKVCache_EmptyBody(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodDelete, r.Method)
+		assert.Equal(t, "/rest/fileservice/v1-sync/kv-cache-stores/raw-id-1", r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	err := cli.DeleteKVCache(context.Background(), "raw-id-1")
+	assert.NoError(t, err)
+}
+
+func TestFilesystemClient_QueryKVCache_ByName(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/rest/kvcachemgmt/v1/kv-cache-stores/query", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"total":1,"kv_cache_stores":[`+
+			`{"id":"kv-id-1","raw_id":"1","name":"test-kv","vstore_id":"vstore-1"}]}`)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	params := &QueryKVCacheParams{Name: "test-kv", VstoreID: "vstore-1"}
+	result, err := cli.QueryKVCache(context.Background(), params)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestFilesystemClient_QueryKVCache_NotFound(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"total":0,"kv_cache_stores":[]}`)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	params := &QueryKVCacheParams{Name: "nonexistent"}
+	result, err := cli.QueryKVCache(context.Background(), params)
+	assert.NoError(t, err)
+	assert.Nil(t, result)
+}
+
+func TestFilesystemClient_UpdateFileSystem_FallbackAsyncError(t *testing.T) {
+	// Arrange
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/sessions") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			writeJSON(t, w, "{}")
+			return
+		}
+		if strings.Contains(r.URL.Path, "v1-sync") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			writeJSON(t, w, `{"errorCode":"49401026001","exceptionInfo":"can not find api"}`)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			writeJSON(t, w, `{"error_code":"500","error_msg":"internal error"}`)
+		}
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodFunc(cli, "ReLogin", func(_ context.Context) error { return nil })
+
+	// Action
+	err := cli.UpdateFileSystem(context.Background(), "fs-1", &UpdateFileSystemParams{100})
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "update filesystem for fsId: fs-1 failed")
+}
+
+func TestFilesystemClient_UpdateFileSystem_LegacyErrorCodeFallback(t *testing.T) {
+	// Arrange - DME old env returns errorCode/exceptionInfo format
+	// gracefulCall returns LegacyError directly (no retry for apiNotFound)
+	// UpdateFileSystem detects LegacyError.IsApiNotFound() → fallback to async API → success
+	callCount := 0
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if strings.Contains(r.URL.Path, "v1-sync") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			writeJSON(t, w, `{"errorCode":"49401026001",`+
+				`"exceptionInfo":"can not find api, please check if the request url is valid or the api has published!`+
+				` url=/rest/fileservice/v1-sync/filesystems/123"}`)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			writeJSON(t, w, `{"task_id":"task-456"}`)
+		}
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	patches := gomonkey.NewPatches()
+	defer patches.Reset()
+	patches.ApplyMethodReturn(cli, "GetTaskInfos", []*Task{{ID: "task-456", Status: TaskStatusSuccess}}, nil)
+
+	// Action
+	err := cli.UpdateFileSystem(context.Background(), "123", &UpdateFileSystemParams{200})
+
+	// Assert
+	assert.NoError(t, err)
+	assert.Equal(t, 2, callCount) // sync + async(fallback)
+}
+
+func TestFilesystemClient_CreateKVCache_Error(t *testing.T) {
+	// Arrange
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"error_code":"500","error_msg":"internal error"}`)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	params := &CreateKVCacheParams{StorageID: "storage-1", ZoneID: "zone-1"}
+
+	// Action
+	result, err := cli.CreateKVCache(context.Background(), params)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "create KVCache failed")
+}
+
+func TestFilesystemClient_DeleteKVCache_Error(t *testing.T) {
+	// Arrange
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"error_code":"500","error_msg":"internal error"}`)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+
+	// Action
+	err := cli.DeleteKVCache(context.Background(), "raw-id-1")
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "delete KVCache raw-id-1 failed")
+}
+
+func TestFilesystemClient_QueryKVCache_Error(t *testing.T) {
+	// Arrange
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, `{"error_code":"500","error_msg":"internal error"}`)
+	}))
+	defer mockServer.Close()
+
+	cli := &FilesystemClient{BaseClientInterface: getMockClientWithServer(mockServer.URL)}
+	params := &QueryKVCacheParams{Name: "test-kv"}
+
+	// Action
+	result, err := cli.QueryKVCache(context.Background(), params)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "query KVCache failed")
 }

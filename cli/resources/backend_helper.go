@@ -61,6 +61,7 @@ type BackendConfiguration struct {
 	AccountName         string                   `json:"accountName,omitempty" yaml:"accountName"`
 	Urls                []string                 `json:"urls,omitempty" yaml:"urls"`
 	StorageDeviceSN     string                   `json:"storageDeviceSN,omitempty" yaml:"storageDeviceSN"`
+	ZoneSN              string                   `json:"zoneSN,omitempty" yaml:"zoneSN"`
 	Pools               []string                 `json:"pools,omitempty" yaml:"pools"`
 	MetrovStorePairID   string                   `json:"metrovStorePairID,omitempty" yaml:"metrovStorePairID"`
 	MetroBackend        string                   `json:"metroBackend,omitempty" yaml:"metroBackend"`

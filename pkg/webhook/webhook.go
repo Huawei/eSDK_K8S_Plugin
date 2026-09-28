@@ -163,7 +163,11 @@ func (c *Controller) getRequestBody(ctx context.Context, w http.ResponseWriter, 
 func (c *Controller) serve(w http.ResponseWriter, r *http.Request, admit admitHandler) {
 	var body []byte
 	var err error
-	ctx := context.Background()
+	ctx, err := log.SetRequestInfo(context.Background())
+	if err != nil {
+		log.Warningf("Set request id error %v", err)
+	}
+
 	log.AddContext(ctx).Infof("Start to handle request: %v", r)
 	if body, err = c.getRequestBody(ctx, w, r); err != nil {
 		return
@@ -305,7 +309,7 @@ func (c *Controller) Start(ctx context.Context, webHookCfg Config, admissionWebh
 	go func() {
 		err = c.srv.ListenAndServeTLS("", "")
 		if err != nil && c.started {
-			log.Errorf(" starting webhook server occur error, error is %v", err)
+			log.AddContext(ctx).Errorf("Starting webhook server occur error, error is %v", err)
 		}
 	}()
 	c.started = true
@@ -486,18 +490,22 @@ func validateStorageBackendClaim(ctx context.Context, operation admissionV1.Oper
 }
 
 func admitStorageBackendClaim(ar admissionV1.AdmissionReview) *admissionV1.AdmissionResponse {
-	log.Infoln("Start admit StorageBackendClaim.")
-	ctx := context.Background()
+	ctx, err := log.SetRequestInfo(context.Background())
+	if err != nil {
+		log.Warningf("Set request id error %v", err)
+	}
+
+	log.AddContext(ctx).Infoln("Start admit StorageBackendClaim.")
 	newClaim, oldClaim, err := getStorageBackendClaim(ctx, ar.Request.Operation, ar.Request.OldObject.Raw,
 		ar.Request.Object.Raw)
 	if err != nil {
-		log.Errorf("Failed to get StorageBackendClaim, error: %v", err)
+		log.AddContext(ctx).Errorf("Failed to get StorageBackendClaim, error: %v", err)
 		return getFalseAdmissionResponse(err)
 	}
 
 	err = validateStorageBackendClaim(ctx, ar.Request.Operation, newClaim, oldClaim)
 	if err != nil {
-		log.Errorf("Failed to validate StorageBackendClaim, error: %v", err)
+		log.AddContext(ctx).Errorf("Failed to validate StorageBackendClaim, error: %v", err)
 		return getFalseAdmissionResponse(err)
 	}
 
