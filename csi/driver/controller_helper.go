@@ -385,10 +385,10 @@ func processDescription(ctx context.Context, parameters map[string]interface{}) 
 	description, exist := parameters["description"].(string)
 	if !exist {
 		// Set description default value
-		parameters["description"] = "Created from Kubernetes CSI"
-		return nil
+		description = constants.DefaultDescription
 	}
 
+	description = withPVCDescription(description, parameters)
 	if len(description) > maxDescriptionLength {
 		errMsg := fmt.Sprintf("StorageClass parameter \"description\": [%v] invalid, the length exceeds %d.",
 			description, maxDescriptionLength)
@@ -396,7 +396,25 @@ func processDescription(ctx context.Context, parameters map[string]interface{}) 
 		return errors.New(errMsg)
 	}
 
+	parameters["description"] = description
 	return nil
+}
+
+func withPVCDescription(description string, parameters map[string]interface{}) string {
+	pvcName, _ := parameters[constants.PVCNameKey].(string)
+	pvcNamespace, _ := parameters[constants.PVCNamespaceKey].(string)
+	if pvcName == "" && pvcNamespace == "" {
+		return description
+	}
+
+	pvc := pvcName
+	if pvcNamespace != "" && pvcName != "" {
+		pvc = fmt.Sprintf("%s/%s", pvcNamespace, pvcName)
+	} else if pvcNamespace != "" {
+		pvc = pvcNamespace
+	}
+
+	return fmt.Sprintf("%s, PVC: %s", description, pvc)
 }
 
 func processParentName(ctx context.Context, parameters map[string]interface{}) error {
