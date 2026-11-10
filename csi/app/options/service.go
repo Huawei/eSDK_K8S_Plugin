@@ -67,6 +67,7 @@ type serviceOptions struct {
 	kubeletRootDir   string
 	volumeNamePrefix string
 	hostNamePrefix   string
+	shortHostname    bool
 
 	maxVolumesPerNode     int
 	webHookPort           int
@@ -197,6 +198,8 @@ func (opt *serviceOptions) addFeatureFlags(ff *flag.FlagSet) {
 	ff.StringVar(&opt.hostNamePrefix, "host-name-prefix", "",
 		"Prefix to apply to the host name on the storage side."+
 			" Default is k8s_ for OceanStor/OceanDisk, and empty for other storages.")
+	ff.BoolVar(&opt.shortHostname, "short-hostname", false,
+		"Use short hostname (without domain) when creating hosts on storage.")
 }
 
 func (opt *serviceOptions) addRateLimitingFlags(ff *flag.FlagSet) {
@@ -221,6 +224,7 @@ func (opt *serviceOptions) ApplyFlags(cfg *config.AppConfig, ff *flag.FlagSet) {
 	cfg.VolumeNamePrefix = opt.volumeNamePrefix
 	cfg.HostNamePrefix = opt.hostNamePrefix
 	cfg.HostNamePrefixSet = isFlagSet(ff, "host-name-prefix")
+	cfg.ShortHostname = opt.shortHostname
 	cfg.MaxVolumesPerNode = opt.maxVolumesPerNode
 	cfg.WebHookPort = opt.webHookPort
 	cfg.WebHookAddress = opt.webHookAddress

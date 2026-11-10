@@ -55,8 +55,16 @@ func ChmodFsPermission(ctx context.Context, targetPath, fsPermission string) {
 }
 
 // GetHostName retrieves the hostname of the system.
-func GetHostName(ctx context.Context) (string, error) {
-	hostname, err := ExecShellCmd(ctx, "hostname | xargs echo -n")
+func GetHostName(ctx context.Context, short bool) (string, error) {
+	var cmd string
+	if short {
+		// -s is supported by GNU coreutils hostname and busybox
+		cmd = "hostname -s"
+	} else {
+		cmd = "hostname"
+	}
+
+	hostname, err := ExecShellCmd(ctx, cmd+" | xargs echo -n")
 	if err != nil {
 		return "", err
 	}

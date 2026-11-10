@@ -22,6 +22,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -102,13 +103,28 @@ func TestGetHostName(t *testing.T) {
 	temp := ExecShellCmd
 	defer func() { ExecShellCmd = temp }()
 
-	ExecShellCmd = func(_ context.Context, _ string, _ ...interface{}) (string, error) {
-		return "worker-node1", nil
+	ExecShellCmd = func(_ context.Context, cmd string, _ ...interface{}) (string, error) {
+		switch {
+		case strings.Contains(cmd, "hostname -s"):
+			return "worker-node1", nil
+		case strings.Contains(cmd, "hostname"):
+			return "worker-node1.example.com", nil
+		default:
+			log.Errorf("unexpected command: %s", cmd)
+			return "", nil
+		}
 	}
 
-	expectedHost, err := GetHostName(context.Background())
-	assert.Equal(t, "worker-node1", expectedHost,
-		"case name is testGetHostName, result: %v, error: %v", expectedHost, err)
+	// Case 1: short=false — full FQDN.
+	host, err := GetHostName(context.Background(), false)
+	assert.NoError(t, err)
+	assert.Equal(t, "worker-node1.example.com", host)
+
+	// Case 2: short=true — short hostname.
+	host, err = GetHostName(context.Background(), true)
+	assert.NoError(t, err)
+	assert.Equal(t, "worker-node1", host)
+
 }
 
 func Test_GetHostIPs_Success(t *testing.T) {
