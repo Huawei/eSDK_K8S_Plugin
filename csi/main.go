@@ -164,7 +164,7 @@ func runVAController(ctx context.Context, k8sClient *kubernetes.Clientset,
 	recorder record.EventRecorder, ch chan os.Signal) {
 	k8sFactory := k8sInformers.NewSharedInformerFactory(k8sClient, 0)
 
-	hostName, err := utils.GetHostName(ctx)
+	hostName, err := utils.GetHostName(ctx, app.GetGlobalConfig().ShortHostname)
 	if err != nil {
 		log.AddContext(ctx).Errorf("Get hostName failed, err: %v", err)
 		ch <- syscall.SIGINT

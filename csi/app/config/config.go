@@ -50,6 +50,7 @@ type serviceConfig struct {
 	VolumeNamePrefix  string
 	HostNamePrefix    string
 	HostNamePrefixSet bool
+	ShortHostname     bool
 
 	MaxVolumesPerNode int
 	WebHookPort       int

@@ -101,7 +101,7 @@ func attachVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) ([]byte,
 	}
 	defer buildBackend.Plugin.Logout(ctx)
 
-	hostName, err := utils.GetHostName(ctx)
+	hostName, err := utils.GetHostName(ctx, app.GetGlobalConfig().ShortHostname)
 	if err != nil {
 		return nil, fmt.Errorf("attach volume failed while getting hostname, err: %w", err)
 	}

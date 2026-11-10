@@ -159,7 +159,7 @@ func (d *CsiDriver) NodeUnpublishVolume(ctx context.Context,
 // NodeGetInfo used to get node info
 func (d *CsiDriver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	defer utils.RecoverPanic(ctx)
-	hostname, err := utils.GetHostName(ctx)
+	hostname, err := utils.GetHostName(ctx, app.GetGlobalConfig().ShortHostname)
 	if err != nil {
 		log.AddContext(ctx).Errorln("Cannot get current host's hostname")
 		return nil, status.Error(codes.Internal, err.Error())

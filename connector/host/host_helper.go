@@ -224,7 +224,7 @@ type NodeHostInfo struct {
 // If the initiator query fails, the error will not be returned directly,
 // because the current host may not have an initiator, which should be judged by the caller and handled accordingly
 func NewNodeHostInfo(ctx context.Context, reportIps bool) (*NodeHostInfo, error) {
-	hostName, err := utils.GetHostName(ctx)
+	hostName, err := utils.GetHostName(ctx, app.GetGlobalConfig().ShortHostname)
 	if err != nil {
 		log.AddContext(ctx).Errorf("failed to get host name: [%v]", err)
 		return nil, err
